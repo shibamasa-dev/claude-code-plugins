@@ -722,6 +722,7 @@ def _walk(command: str, cwd, assigns: dict, level: int):
         yield Cmd({}, [], None, command, True, False, {})
         return
     cur, assigns = cwd, dict(assigns)
+    funcs = False   # 関数が定義された（cd 等が上書きされうる）
     for seg in _parse_segments(command):
         text = seg["text"].strip()
         if not text:
@@ -732,6 +733,12 @@ def _walk(command: str, cwd, assigns: dict, level: int):
         except ValueError:
             raw_tokens = text.split()
             opaque = True
+        if (seg["after"] == "(" and len(raw_tokens) == 1) or raw_tokens[:1] == ["function"]:
+            # 関数定義（`cd() { :; }` / `function cd {…}`）。以後 cd 等の意味が変わりうるので
+            # 以後の cwd は判定不能にする（定義の本体は後続セグメントとして評価される）
+            cur, funcs = None, True
+            assigns = {k: None for k in assigns}
+            continue
         env, tokens, nested, flags = _unwrap(raw_tokens)
         certain = _certain(seg)
         b = os.path.basename(tokens[0]) if tokens else ""
@@ -756,7 +763,7 @@ def _walk(command: str, cwd, assigns: dict, level: int):
             cur = None
             assigns = {k: None for k in assigns}
         elif b in ("cd", "pushd"):
-            cur = _resolve_cd(tokens, cur, assigns) if (certain and b == "cd") else None
+            cur = _resolve_cd(tokens, cur, assigns) if (certain and b == "cd" and not funcs) else None
         elif b == "popd":
             cur = None
 

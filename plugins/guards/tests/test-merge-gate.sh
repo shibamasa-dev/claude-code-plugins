@@ -54,7 +54,9 @@ row "git -C $NOREMOTE status; git merge feature"            "$VICTIM"  'remote �
 row "cd $NOREMOTE && cd - && gh pr merge 1"                  "$VICTIM"  'cd して cd - で戻ってからマージ'                  'ask'
 row "git -C $ALLOWED status; gh pr merge 1 -R victim/repo"   "$VICTIM"  '許可リポの git -C をおとりに -R 指定マージ'       'ask'
 row "false && cd $NOREMOTE; gh pr merge 1"                   "$VICTIM"  '実行されない条件付き cd をおとりにマージ'        'ask'
-row "(cd $NOREMOTE); git merge feature"                      "$VICTIM"  'サブシェル内の cd をおとりにマージ'              'ask'
+row "cd() { :; }; cd $NOREMOTE; gh pr merge 1"                 "$VICTIM"  'cd を関数で無効化してからおとりの cd'          'ask'
+row "function cd { :; }; cd $NOREMOTE; git merge feature"        "$VICTIM"  'function 構文で cd を無効化'                    'ask'
+row "(cd $NOREMOTE); git merge feature"                     "$VICTIM"  'サブシェル内の cd（cd 追跡の退行防止）'              'ask'
 
 echo
 echo '=== B: gh のリポ指定（-R / --repo / GH_REPO / PR の URL）を判定に使うこと ==='
