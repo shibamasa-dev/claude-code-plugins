@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codebase Doctor"
+  short_description: "Audit codebase for essential application features"
+  default_prompt: "/codebase-doctor"

@@ -1,0 +1,37 @@
+[
+  {
+    "id": "trigger_prw_1",
+    "description": "PR を作成した直後 → 指示が無くても発動すべき（PR 作成後は必ず起動）",
+    "user_message": "PR 作ったよ。example-org/example-repo#310。",
+    "expected": "invoke",
+    "notes": "PR 作成の報告そのものがトリガー。「レビュー待って」の明示は不要"
+  },
+  {
+    "id": "trigger_prw_2",
+    "description": "既存 PR へ push した直後 → 発動すべき",
+    "user_message": "指摘対応を push した。レビュー来たら教えて。",
+    "expected": "invoke",
+    "notes": "push 後も同じワークフロー（既存スレッドのさらい→Monitor）"
+  },
+  {
+    "id": "trigger_no_prw_3",
+    "description": "再レビューを投げるかの判断相談 → 発動しない（基準「Critical/P1 3件以上」は CLAUDE.md 本体にあり skill 不要）",
+    "user_message": "CodeRabbit の Critical が 3 件あって全部直した。再レビュー投げるべき？",
+    "expected": "no-invoke",
+    "notes": "2026-09-21 eval で 0/2。判断ルールは常時ロード側に置いてあるので skill 発火は不要と判断し期待値を反転"
+  },
+  {
+    "id": "trigger_no_prw_1",
+    "description": "PR とは無関係のコード修正依頼 → 発動すべきでない",
+    "user_message": "このバリデーションのバグを直して。",
+    "expected": "no-invoke",
+    "notes": "PR 作成・push・レビューの文脈なし"
+  },
+  {
+    "id": "trigger_no_prw_2",
+    "description": "再レビュー依頼の投稿だけを頼まれた → pr-rereview の領分（投稿後の監視は pr-rereview から起動される）",
+    "user_message": "PR #59 に coderabbit と codex の再レビュー依頼を投げて。",
+    "expected": "no-invoke",
+    "notes": "投稿は pr-rereview。pr-review-wait は pr-rereview の実装方針 6 から後続起動される"
+  }
+]

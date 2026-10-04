@@ -1,0 +1,56 @@
+# PR と main への push で、プラグインの検証とフックのテストを回す。
+# 必須チェックにしても止まらないよう paths フィルタは付けない（フィルタ付きの必須チェックは
+# 対象外の PR で "Expected" のまま永久に待つ）。
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # version の確認で base と比べるため
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: claude plugin validate --strict（marketplace と各プラグイン）
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude plugin validate --strict .
+          for p in plugins/*/; do claude plugin validate --strict "$p"; done
+      # 社内の固有名（secret BLOCKED_PATTERNS）は fork の PR にも効くよう leak-scan.yml が見る
+      - name: SKILL.md の name とディレクトリ名・個人環境の混入
+        run: python3 .github/scripts/check-repo.py
+      - name: 中身を変えたプラグインは version も上がっているか
+        if: github.event_name == 'pull_request'
+        run: .github/scripts/check-version-bump.sh "origin/${{ github.base_ref }}"
+
+  tests:
+    # テストは macOS の date -v / touch -t を前提にしている（Linux では runbook の 3 件が落ちる）
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: hooks の回帰スイープ（食い違いが 1 件でもあれば失敗）
+        run: |
+          git config --global user.name ci
+          git config --global user.email ci@users.noreply.github.com
+          fail=0
+          for t in plugins/*/tests/run-all.sh; do
+            echo "::group::$t"
+            rc=0; out=$(bash "$t" 2>&1) || rc=$?   # 失敗しても出力を出してから判定する（-e で黙って落ちない）
+            echo "$out"
+            echo "::endgroup::"
+            if [ "$rc" != 0 ]; then echo "::error::$t が exit $rc で終了"; fail=1; fi
+            echo "$out" | grep -q '食い違い 0 件' || { echo "::error::$t に食い違いがある"; fail=1; }
+          done
+          exit $fail

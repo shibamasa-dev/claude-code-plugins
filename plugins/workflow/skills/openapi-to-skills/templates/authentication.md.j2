@@ -1,0 +1,42 @@
+# Authentication
+
+This document describes the authentication methods supported by this API.
+
+{% for scheme in schemes -%}
+## {{ scheme.name }}
+
+**Type:** {{ scheme.type }}
+
+{% if scheme.description -%}
+{{ scheme.description }}
+
+{% endif -%}
+{% if scheme.type == "apiKey" -%}
+- **In:** {{ scheme.in_ }}
+
+{% elif scheme.type == "http" -%}
+- **Scheme:** {{ scheme.scheme }}
+{% if scheme.bearer_format -%}
+- **Bearer Format:** {{ scheme.bearer_format }}
+{% endif %}
+{% elif scheme.type == "oauth2" and scheme.flows -%}
+{% for flow in scheme.flows -%}
+**{{ flow.name }} flow:**
+{% if flow.authorization_url -%}
+- Authorization URL: {{ flow.authorization_url }}
+{% endif -%}
+{% if flow.token_url -%}
+- Token URL: {{ flow.token_url }}
+{% endif -%}
+{% if flow.scopes | length > 0 -%}
+- Scopes:
+{%- for scope, desc in flow.scopes.items() %}
+  - `{{ scope }}`: {{ desc }}
+{%- endfor %}
+{% endif %}
+{% endfor -%}
+{% elif scheme.type == "openIdConnect" -%}
+- **OpenID Connect URL:** {{ scheme.openid_connect_url }}
+
+{% endif -%}
+{% endfor -%}

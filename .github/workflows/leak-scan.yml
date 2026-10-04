@@ -1,0 +1,36 @@
+# 社内の固有名（secret BLOCKED_PATTERNS）が公開リポに入るのを PR の段階で止める。
+# fork からの pull_request ではシークレットが渡らないため、pull_request_target で base 側の
+# スクリプトを動かし、PR の中身はデータとして読むだけにする（PR のコードは一切実行しない）。
+name: leak-scan
+
+on:
+  pull_request_target:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  blocked-patterns:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 検査スクリプト（base 側＝信頼できるコード）
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: base
+          persist-credentials: false
+      - name: 検査対象（PR の head。読むだけ）
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: target
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          persist-credentials: false
+      - name: 個人環境・社内の固有名の混入
+        env:
+          BLOCKED_PATTERNS: ${{ secrets.BLOCKED_PATTERNS }}
+          HIDE_BLOCKED_LOCATIONS: "1"  # 公開ログに一致した場所を出さない（check-repo.py 参照）
+        working-directory: target
+        run: python3 ../base/.github/scripts/check-repo.py

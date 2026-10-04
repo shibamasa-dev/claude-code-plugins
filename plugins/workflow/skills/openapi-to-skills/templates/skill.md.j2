@@ -1,0 +1,77 @@
+---
+name: {{ meta.name }}
+description: {{ meta.description }}. Use when working with the {{ meta.title }} or when the user needs to interact with this API.
+{% if meta.license -%}
+license: {{ meta.license.name }}{{ " (" ~ meta.license.url ~ ")" if meta.license.url else "" }}
+{% endif -%}
+metadata:
+  api-version: "{{ meta.version }}"
+  openapi-version: "{{ meta.openapi_version }}"
+{%- if meta.contact %}
+  contact: "{{ meta.contact }}"
+{%- endif %}
+---
+
+# {{ meta.title }}
+
+{% if meta.description -%}
+{{ meta.description }}
+
+{% endif -%}
+## How to Use This Skill
+
+This API documentation is split into multiple files for on-demand loading.
+
+**Directory structure:**
+```
+references/
+├── resources/      # {{ resources | length }} resource index files
+├── operations/     # {{ total_ops }} operation detail files
+└── schemas/        # {{ schema_groups | length }} schema groups, {{ total_schemas }} schema files
+```
+
+**Navigation flow:**
+1. Find the resource you need in the list below
+2. Read `references/resources/<resource>.md` to see available operations
+3. Read `references/operations/<operation>.md` for full details
+4. If an operation references a schema, read `references/schemas/<prefix>/<schema>.md`
+{% if meta.servers | length > 0 %}
+## Base URL
+
+{% for server in meta.servers -%}
+- `{{ server.url }}`{{ " - " ~ server.description if server.description else "" }}
+{% endfor -%}
+{% endif -%}
+{% if meta.security_schemes | length > 0 %}
+## Authentication
+
+Supported methods: {% for s in meta.security_schemes %}**{{ s }}**{% if not loop.last %}, {% endif %}{% endfor %}. See `references/authentication.md` for details.
+
+{% if has_setup_script -%}
+### Credential Setup
+
+Run the setup script to store credentials in the OS keychain (one-time):
+
+```bash
+./auth/setup.sh
+```
+{% endif -%}
+{% if has_token_manager -%}
+### Token Management
+
+```bash
+# Get current access token
+./auth/token-manager.sh get
+
+# Force token refresh (e.g. on 401)
+./auth/token-manager.sh refresh
+```
+
+**Workflow:** Use `get` for requests. On `401`, call `refresh` and retry.
+{% endif -%}
+{% endif %}
+## Resources
+
+{% for resource in resources -%}
+- **{{ resource.tag }}** → `references/resources/{{ resource.tag | to_filename }}.md` ({{ resource.operations | length }} ops){{ " - " ~ resource.description[:50] if resource.description else "" }}
+{% endfor -%}

@@ -1,0 +1,7 @@
+{
+  "name": "docs",
+  "version": "0.1.1",
+  "description": "画像生成プロンプト・コードで描くモーション動画のスキル",
+  "author": { "name": "shibamasa-dev" },
+  "license": "MIT"
+}

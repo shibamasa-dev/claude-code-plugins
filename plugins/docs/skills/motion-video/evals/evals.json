@@ -1,0 +1,127 @@
+{
+  "skill_name": "motion-video",
+  "runner": "sh evals/run.sh（Chrome を起動するので Claude Code の Bash sandbox 外で実行）",
+  "evals": [
+    {
+      "id": 1,
+      "name": "example-intro-15s-16x9",
+      "prompt": "Example Co.（架空の会社）の会社紹介動画を 15 秒・16:9 で作って。色とフォントとロゴは brand.json（メイン #1F4E79 / アクセント #C8553D / サブ #E08A2E / 補助 #F2C14E）を使って。",
+      "expected_output": "絵コンテ（シーン表＋代表コマ＋contact/strip/phone）で一度止まり、承認後に 1920x1080・60fps・900 コマ・音付きの mp4 と poster/contact/README/source を出す。2回書き出しても mp4 のハッシュが同じ。承認前・承認後の変更では本番書き出しが止まる。",
+      "fixture": "example-intro",
+      "brand": "fixture",
+      "expect": {
+        "scenes": 5,
+        "duration": 15,
+        "fps": 60,
+        "aspects": { "16:9": [1920, 1080] },
+        "audio": true,
+        "determinism": ["16:9"],
+        "brandColor": "#1F4E79",
+        "brandMinShare": 0.05,
+        "gate": true
+      },
+      "assertions": [
+        "storyboard が storyboard.md / storyboard.json・シーン数ぶんの代表コマ・contact/strip/phone を出す",
+        "決定論チェック（同じコマを2回描いてハッシュ一致）が OK",
+        "brand.json の主色が代表コマに十分な面積で出ている",
+        "承認前の final は exit 3 で止まり mp4 を作らない",
+        "1920x1080・60fps・900 コマ・H.264/yuv420p・aac",
+        "poster.png / contact.png / README.md / manifest.json / source/ が納品物にある",
+        "mp4 の音量が -14 LUFS ±1・トゥルーピーク -1 dBFS 以下",
+        "2回書き出した mp4 の sha256 が一致",
+        "承認後に video.js を変えると final も approve も exit 3 で止まる"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "media-mix-image-and-clip-30fps",
+      "prompt": "管理画面のスクショ（assets/screenshot.png）と操作の録画（clips/demo.mp4）を載せた 5 秒の紹介カットを 30fps で作って。",
+      "expected_output": "スクショ（画像素材）と実写クリップの両方が画面に出る 1920x1080・30fps・150 コマの mp4。クリップはブラウザ再生でなく連番にばらしたコマを貼っていて、2種類以上のコマが使われている。",
+      "fixture": "media-mix",
+      "brand": "references",
+      "media": true,
+      "expect": {
+        "scenes": 3,
+        "duration": 5,
+        "fps": 30,
+        "aspects": { "16:9": [1920, 1080] },
+        "audio": true,
+        "media": true,
+        "determinism": ["16:9"],
+        "silentWindow": [0.6, 1.4]
+      },
+      "assertions": [
+        "storyboard が代表コマと証拠を出し、決定論チェックが OK",
+        "1920x1080・30fps（既定の 60 以外が効く）・150 コマ",
+        "画像素材（スクショ）を実際に描いた（描画マニフェスト）",
+        "実写クリップのコマを2種類以上貼った（描画マニフェスト）",
+        "効果音だけの動画は cue の無い区間が無音（BGM を勝手に足さない）",
+        "2回書き出した mp4 の sha256 が一致"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "multi-aspect-9x16-1x1-16x9-loop",
+      "prompt": "同じシーンを 9:16 と 1:1 と 16:9 で書き出して。SNS 用に 4 秒のループにしたい。",
+      "expected_output": "同じ video.js から 1080x1920 / 1080x1080 / 1920x1080 の3本。3画角とも絵コンテが出て、ループの継ぎ目チェック（seam.png と連続性の判定）が OK。各画角とも2回書き出しで sha256 一致。",
+      "fixture": "multi-aspect",
+      "brand": "references",
+      "expect": {
+        "scenes": 2,
+        "duration": 4,
+        "fps": 60,
+        "loop": true,
+        "aspects": { "9:16": [1080, 1920], "1:1": [1080, 1080], "16:9": [1920, 1080] },
+        "audio": true,
+        "determinism": ["9:16", "1:1", "16:9"]
+      },
+      "assertions": [
+        "3画角ぶんの代表コマと証拠（seam 含む）が出る",
+        "ループ継ぎ目の連続性チェックが OK",
+        "9:16=1080x1920・1:1=1080x1080・16:9=1920x1080、いずれも 60fps・240 コマ",
+        "3画角とも2回書き出した mp4 の sha256 が一致"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "bgm-calm-8s",
+      "prompt": "8 秒の短いカットに BGM を付けて。コードは Am → F → C → G、落ち着いた感じで。効果音も今までどおり鳴らして。",
+      "expected_output": "コード進行とスタイルから作曲した BGM（MIDI → FluidSynth）と効果音が混ざった 1920x1080・60fps・480 コマの mp4。絵コンテの段階で preview.wav とスペクトログラムが出る。mp4 の音量は -14 LUFS ±1・トゥルーピーク -1 dBFS 以下。2回書き出しても sha256 が同じ。",
+      "fixture": "bgm-calm",
+      "brand": "references",
+      "expect": {
+        "scenes": 4,
+        "duration": 8,
+        "fps": 60,
+        "aspects": { "16:9": [1920, 1080] },
+        "audio": true,
+        "music": { "style": "calm", "window": [0.6, 1.9] },
+        "determinism": ["16:9"]
+      },
+      "assertions": [
+        "storyboard が代表コマと証拠を出し、決定論チェックが OK",
+        "絵コンテの段階で preview.wav と spectrogram.png が出て、BGM が指定のスタイルで作曲されている",
+        "1920x1080・60fps・480 コマ・H.264/yuv420p・aac",
+        "mp4 の音量が -14 LUFS ±1・トゥルーピーク -1 dBFS 以下",
+        "効果音の無い区間にも BGM が鳴っている",
+        "manifest に BGM の記録（スタイル・音源・MIDI のハッシュ）がある",
+        "2回書き出した mp4 の sha256 が一致"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "render-contracts",
+      "kind": "contracts",
+      "prompt": "（内部検査）決定論・ループ・禁止 API のチェックが本当に落ちうるか、ばねとビートグリッドの数式が正しいかを確かめる。",
+      "expected_output": "前フレームの状態を持ち越す render・Math.random を使う render・周期のずれたループを、それぞれ検出して失敗させる。ばねの4プリセットが収束し、default は行き過ぎず snappy/playful は小さく行き過ぎる。",
+      "assertions": [
+        "前フレームの状態を持ち越す render は check が失敗する",
+        "Math.random を使う render は理由付きで失敗する",
+        "周期のずれたループは継ぎ目で失敗する",
+        "ばね・springTrack・beatGrid の数式",
+        "作曲は同じ入力で同じ MIDI・style や seed を変えると別の MIDI",
+        "コード名の解釈（Cmaj7・分数コード・読めない名前で止まる）"
+      ]
+    }
+  ]
+}

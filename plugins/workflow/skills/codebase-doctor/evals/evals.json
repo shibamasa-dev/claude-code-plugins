@@ -1,0 +1,156 @@
+{
+  "skill_name": "codebase-doctor",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "/codebase-doctor を実行して、このプロジェクトの品質チェックをしてください。",
+      "expected_output": "スタック検出、全チェック項目の判定、スコア計算、レポートファイル生成、修正提案、ユーザーレビュー要求",
+      "files": [],
+      "expectations": [
+        "スタック検出で言語・フレームワーク・プロジェクトタイプ・コンポーネントの4要素が明示されている",
+        "CLAUDE.md または AGENTS.md を読み込み、記載されたルールを後続チェックの判定基準に反映している",
+        "Check 1 (AI Agent Guidelines) が他のチェックより先に実行されている",
+        "各チェック項目に PASS/WARN/FAIL/SKIP のいずれかが明示的に付与されている",
+        "ターミナル出力が '=== Codebase Doctor Report ===' で始まるフォーマットに従っている",
+        "スコア計算で SKIP が分母から除外されている",
+        "スコア計算で WARN が 0.5 としてカウントされている",
+        "スコアが X/Y 形式（例: 5/7）で表示されている",
+        ".context/doctor/ に YYYYMMDDHHmmss 形式のタイムスタンプ付き .md ファイルが生成されている",
+        "レポートに Summary, Detailed Findings, Fix Proposals, User Review の4セクションがある",
+        "FAIL/WARN の各項目に What（何を）, Where（どこに）, How（どうやって）の修正提案がある",
+        "修正を自動適用せず、ユーザーに承認を求めている",
+        "Testing が FAIL の場合、他のチェック結果に [*] サフィックスが付与されている"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "このコードベースの品質をチェックしてください。基本的な機能が揃っているか確認したいです。",
+      "expected_output": "コマンド名を直接指定しなくても、codebase-doctor スキルがトリガーされて同等のチェックが実行される",
+      "files": [],
+      "expectations": [
+        "codebase-doctor のワークフロー（Detect → Select → Run → Report → Propose → Review）に従って監査が実行されている",
+        "明示的な /codebase-doctor コマンドなしでもスキルが正しくトリガーされている",
+        "check-patterns.md の rg 構文パターン（| でOR検索）が使用されている",
+        "未対応言語の場合 [inferred] マークが使われている（該当する場合）"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "evals/files/python-fastapi/ ディレクトリをプロジェクトルートとして codebase-doctor を実行してください。",
+      "expected_output": "Python/FastAPI/SQLite スタックが検出され、条件チェック（Migration, API Error, Input Validation, Security）が発火し、意図的な問題が正しく検出される",
+      "files": [
+        "evals/files/python-fastapi/pyproject.toml",
+        "evals/files/python-fastapi/app/__init__.py",
+        "evals/files/python-fastapi/app/main.py",
+        "evals/files/python-fastapi/app/database.py",
+        "evals/files/python-fastapi/app/models.py"
+      ],
+      "expectations": [
+        "スタック検出: Python, FastAPI, SQLite(またはDB)が検出されている",
+        "Check 1 (AI Agent Guidelines): FAIL — CLAUDE.md/AGENTS.md が存在しない",
+        "Check 2 (Logging): FAIL — logging/structlog 未使用、print() で代用されている点を指摘",
+        "Check 3 (Error Handling): FAIL — except: pass のエラー握りつぶしを検出",
+        "Check 4 (Configuration): PASS または WARN — os.environ での設定読み取りを検出",
+        "Check 6 (Testing): FAIL — テストファイルが存在しない",
+        "Check 7 (Dependency Lock): FAIL — poetry.lock/Pipfile.lock/uv.lock が存在しない（requirements.txt はロックファイルと見なさない）",
+        "Check 8 (Database Migrations): FAIL — マイグレーションツール未使用、直接 CREATE TABLE を検出",
+        "Check 9 (Input Validation): FAIL または WARN — エンドポイントにバリデーションがない",
+        "Check 10 (API Error Responses): FAIL または WARN — エラーレスポンスが不統一",
+        "Check 11 (Security): FAIL — SQL文字列連結（SQLインジェクション脆弱性）を検出",
+        "Testing FAIL のため、他チェックに [*] サフィックスが付与されている",
+        "Graceful Shutdown (Check 5) は SKIP ではなく FAIL — サーバーアプリにもかかわらずシグナルハンドリングがない"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "evals/files/nextjs-frontend/ ディレクトリをプロジェクトルートとして codebase-doctor を実行してください。",
+      "expected_output": "TypeScript/Next.js スタックが検出され、DB/API系チェックが SKIP になり、CLAUDE.md のルール違反（console.log）が検出される",
+      "files": [
+        "evals/files/nextjs-frontend/package.json",
+        "evals/files/nextjs-frontend/package-lock.json",
+        "evals/files/nextjs-frontend/tsconfig.json",
+        "evals/files/nextjs-frontend/CLAUDE.md",
+        "evals/files/nextjs-frontend/src/app/page.tsx",
+        "evals/files/nextjs-frontend/src/app/layout.tsx",
+        "evals/files/nextjs-frontend/src/__tests__/page.test.tsx",
+        "evals/files/nextjs-frontend/.gitignore"
+      ],
+      "expectations": [
+        "スタック検出: TypeScript, Next.js, Web UI が検出されている",
+        "Check 1 (AI Agent Guidelines): PASS または WARN — CLAUDE.md が存在し、tech stack・conventions が定義されている（commands 未記載なら WARN も許容）",
+        "CLAUDE.md の 'console.log は使わない' ルールが後続チェックのキャリブレーションに反映されている",
+        "Check 2 (Logging): WARN または FAIL — CLAUDE.md で禁止された console.log が page.tsx で使用されている点を指摘（代替ライブラリ未導入なら FAIL も許容）",
+        "Check 6 (Testing): PASS — テストファイルが存在し、jest が設定されている",
+        "Check 7 (Dependency Lock): PASS — package-lock.json が存在する",
+        "Check 8 (Database Migrations): SKIP — DB が検出されていない",
+        "Check 10 (API Error Responses): SKIP — HTTP API エンドポイント（app/api/）が存在しない",
+        "SKIP されたチェックがスコアの分母から除外されている",
+        "スコアの分母が全11項目ではなく、SKIP を除いた数になっている"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "evals/files/no-guidelines/ ディレクトリをプロジェクトルートとして codebase-doctor を実行してください。",
+      "expected_output": "Node.js/Express スタックが検出され、Check 1 FAIL が後続チェックに影響し、意図的な問題（空catch、不統一エラーレスポンス）が検出される",
+      "files": [
+        "evals/files/no-guidelines/package.json",
+        "evals/files/no-guidelines/package-lock.json",
+        "evals/files/no-guidelines/src/index.js",
+        "evals/files/no-guidelines/src/routes/users.js",
+        "evals/files/no-guidelines/src/__tests__/index.test.js",
+        "evals/files/no-guidelines/.gitignore"
+      ],
+      "expectations": [
+        "スタック検出: JavaScript, Express, HTTP API が検出されている",
+        "Check 1 (AI Agent Guidelines): FAIL — CLAUDE.md/AGENTS.md/.cursorrules のいずれも存在しない",
+        "Check 1 FAIL のため、後続チェックがプロジェクト固有ルールではなく汎用パターンで判定されている旨の言及がある（例: 'No project guidelines found — checks use generic patterns' 等）",
+        "Check 2 (Logging): PASS — winston による structured logging を検出",
+        "Check 3 (Error Handling): FAIL — 空の catch ブロックを検出",
+        "Check 4 (Configuration): PASS または WARN — process.env での設定読み取りを検出",
+        "Check 5 (Graceful Shutdown): PASS — process.on('SIGTERM') を検出",
+        "Check 6 (Testing): PASS または WARN — テストファイルは存在するが内容が薄い",
+        "Check 7 (Dependency Lock): PASS — package-lock.json が存在する",
+        "Check 8 (Database Migrations): SKIP — DB が検出されていない",
+        "Check 10 (API Error Responses): FAIL または WARN — res.status(200).send('error:...') のアンチパターンを検出、またはステータスコードの不統一を指摘",
+        "Check 9 (Input Validation): FAIL または WARN — API エンドポイントにバリデーションがない"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "テストフェーズにはいるのでプロジェクト設定を見直してほしい。",
+      "expected_output": "phase=test と判定され、テスト関連チェック(6/9/10/12/13)に重みが置かれ、テスト用のプロジェクトスコープスキルとテストコマンドの permissions が提案される",
+      "files": [],
+      "expectations": [
+        "ユーザーの明示指定を優先して phase=test と判定し、レポートに Phase 行が出ている",
+        "Check 12 でテスト実行コマンドが permissions.allow に含まれるか検証している",
+        "Check 13 でテスト系スキルの要否を判断する際、まず ユーザーのスキルカタログ（あれば）を参照している",
+        "スキル導入コマンドに -g が付いていない（プロジェクトスコープ）",
+        "実装品質チェックも実行はされるが、修正提案の優先度が test フェーズの項目より低く扱われている"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "リポジトリを作ったばかりです。/codebase-doctor で初期設定を見てください。",
+      "expected_output": "phase=setup と判定され、CLAUDE.md・permissions・スタック対応スキルが重点的に見られる。Hooks は繰り返しパターンが無いため SKIP",
+      "files": [],
+      "expectations": [
+        "コミット数・テスト有無・CI 有無から phase=setup と推定している",
+        "Check 1(AI Agent Guidelines) が FAIL または WARN として報告されている",
+        "Check 14(Hooks) が SKIP になっており、根拠として繰り返しパターンが無いことが述べられている",
+        "Check 15(Remote Execution) がリモート実行の意図なしとして SKIP になっている"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "さっき設定を入れたばかりですが、もう一度プロジェクト設定を見直してください。",
+      "expected_output": "既に満たされている項目は PASS として報告され、それらに対する修正提案が出ない（冪等）",
+      "files": [],
+      "expectations": [
+        "既存の .claude/settings.json や導入済みスキルを先に読み取っている",
+        "既に導入済みのスキルを再度インストールする提案をしていない",
+        "既存の permissions エントリや CLAUDE.md を上書きする提案をしていない（追加のみ提案）",
+        "変化が無い項目について「既に PASS」と明示し、提案リストが空またはそれに近い"
+      ]
+    }
+  ]
+}

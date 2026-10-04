@@ -1,0 +1,16 @@
+{
+  "name": "Example Co.",
+  "colors": {
+    "primary": "#1F4E79",
+    "accent": "#C8553D",
+    "secondary": "#E08A2E",
+    "support": "#F2C14E",
+    "ink": "#0E1B1C",
+    "paper": "#F4F1EA"
+  },
+  "fonts": {
+    "ja": { "family": "Noto Sans JP", "fallback": ["Hiragino Sans", "Hiragino Kaku Gothic ProN", "sans-serif"], "file": null },
+    "heading": { "family": "Montserrat", "fallback": ["Helvetica Neue", "Arial", "sans-serif"], "file": null }
+  },
+  "logo": null
+}

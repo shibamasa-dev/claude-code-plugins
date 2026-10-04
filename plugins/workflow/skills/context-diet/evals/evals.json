@@ -1,0 +1,59 @@
+[
+  {
+    "name": "healthy: 閾値内なら ok / exit 0 / breach なし（索引が実在すること込み）",
+    "fixture": "healthy",
+    "expect_verdict": "ok",
+    "expect_exit": 0,
+    "expect_no_breach": true,
+    "expect_index_exists": true
+  },
+  {
+    "name": "bloated_index: 索引の平均行長超過を検知する",
+    "fixture": "bloated_index",
+    "expect_verdict": "over_threshold",
+    "expect_exit": 1,
+    "expect_breach_contains": ["index_avg_line"]
+  },
+  {
+    "name": "broken_links: 索引欠落・本体欠落は breach、[[link]] 未解決は情報のみ",
+    "fixture": "broken_links",
+    "expect_verdict": "over_threshold",
+    "expect_exit": 1,
+    "expect_breach_contains": ["missing_from_index", "missing_bodies"],
+    "expect_unresolved_wiki": 1
+  },
+  {
+    "name": "oversize: 常時ロード合計の閾値超過を検知する",
+    "fixture": "oversize",
+    "expect_verdict": "over_threshold",
+    "expect_exit": 1,
+    "expect_breach_contains": ["standing_total"]
+  },
+
+  {
+    "name": "inventory/fresh: personal と有効プラグインの skills を列挙し plugin:skill 名で出す",
+    "tool": "inventory",
+    "fixture": "fresh",
+    "expect_skill_names": ["keeper", "dropme", "demo:helper"],
+    "expect_absent_skill_names": ["ghost:helper"],
+    "expect_totals": {"skills_found": 3, "skills_already_overridden": 0},
+    "expect_live_desc_bytes_gt": 0
+  },
+  {
+    "name": "inventory/configured: 既存 settings の denied/override を読んで済み分を除外する",
+    "tool": "inventory",
+    "fixture": "configured",
+    "expect_skill_names": ["keeper", "dropme", "demo:helper"],
+    "expect_totals": {"skills_found": 3, "skills_already_overridden": 2},
+    "expect_denied": ["claude.ai Notion"],
+    "expect_overridden": {"dropme": "user-invocable-only", "demo:helper": "off"}
+  },
+  {
+    "name": "inventory/no-settings: settings.json が無くても壊れず空で返す",
+    "tool": "inventory",
+    "fixture": "no_settings",
+    "expect_totals": {"skills_found": 3, "skills_already_overridden": 0},
+    "expect_denied": [],
+    "expect_settings_exists": false
+  }
+]

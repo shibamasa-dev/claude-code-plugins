@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# --- Cross-platform keychain abstraction ---
+
+store_secret() {
+    local service="$1" account="$2" value="$3"
+    case "$(uname)" in
+        Darwin)
+            security add-generic-password -s "$service" -a "$account" -w "$value" -U
+            ;;
+        Linux)
+            echo "$value" | secret-tool store --label="$service" service "$service" account "$account"
+            ;;
+        *)
+            echo "Error: Unsupported OS" >&2; exit 1
+            ;;
+    esac
+}
+
+SKILL_SERVICE="skill:{{ skill_name }}"
+
+echo "=== {{ skill_name }} Credential Setup ==="
+echo "Credentials will be stored in your OS keychain."
+echo
+{% for scheme in schemes %}
+# --- {{ scheme.name }} ({{ scheme.type }}) ---
+echo "Setting up: {{ scheme.name }} ({{ scheme.type }})"
+{% if scheme.type == "apiKey" %}
+read -rsp "  Enter API key: " _val; echo
+store_secret "$SKILL_SERVICE" "{{ scheme.name }}:api_key" "$_val"
+{% elif scheme.type == "http" and scheme.scheme == "basic" %}
+read -rp "  Enter username: " _user
+read -rsp "  Enter password: " _pass; echo
+store_secret "$SKILL_SERVICE" "{{ scheme.name }}:username" "$_user"
+store_secret "$SKILL_SERVICE" "{{ scheme.name }}:password" "$_pass"
+{% elif scheme.type == "http" %}
+read -rsp "  Enter token: " _val; echo
+store_secret "$SKILL_SERVICE" "{{ scheme.name }}:token" "$_val"
+{% elif scheme.type == "oauth2" or scheme.type == "openIdConnect" %}
+read -rp "  Enter client_id: " _cid
+read -rsp "  Enter client_secret: " _csec; echo
+store_secret "$SKILL_SERVICE" "{{ scheme.name }}:client_id" "$_cid"
+store_secret "$SKILL_SERVICE" "{{ scheme.name }}:client_secret" "$_csec"
+{% endif %}
+echo "  Done."
+echo
+{% endfor %}
+echo "All credentials stored successfully."

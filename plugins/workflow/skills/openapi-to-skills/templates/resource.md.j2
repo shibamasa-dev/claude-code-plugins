@@ -1,0 +1,13 @@
+# {{ tag }}
+
+{% if description -%}
+{{ description }}
+
+{% endif -%}
+## Operations
+
+| Method | Path | Summary | Details |
+|--------|------|---------|----------|
+{% for op in operations -%}
+| {{ op.method }} | `{{ op.path }}` | {{ op.summary if op.summary is not none else "" }} | [View](../operations/{{ op.operation_id | to_filename }}.md) |
+{% endfor -%}

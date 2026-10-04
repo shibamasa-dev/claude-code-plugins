@@ -1,0 +1,22 @@
+[
+  {"query": "テストフェーズにはいるのでプロジェクト設定を見直してほしい", "should_trigger": true},
+  {"query": "/codebase-doctor", "should_trigger": true},
+  {"query": "このプロジェクト、何か足りてないものある？", "should_trigger": true},
+  {"query": "リポジトリ作ったばかりなんだけど、最初にやっとくべき設定ってある？", "should_trigger": true},
+  {"query": "新しく入ったプロジェクトなんだけど、今どういう状態か把握したい", "should_trigger": true},
+  {"query": "AIにまるっと書かせたコードなんだけど、ちゃんとしてるか不安。見てもらえる？", "should_trigger": true},
+  {"query": "そろそろリリースするので設定周りを一通り確認しておきたい", "should_trigger": true},
+  {"query": "このプロジェクトに入れておくといいスキルってある？", "should_trigger": true},
+  {"query": "permissions の設定が足りてない気がするので、プロジェクト全体で見直したい", "should_trigger": true},
+  {"query": "audit this codebase before we ship it", "should_trigger": true},
+  {"query": "CLAUDE.md を書き直して、コーディング規約の節を足しておいて", "should_trigger": false},
+  {"query": "画像生成できるスキルを探して入れて", "should_trigger": false},
+  {"query": "npm test が permission で止まるので、これだけ許可して", "should_trigger": false},
+  {"query": "このPRをレビューして問題があれば指摘して", "should_trigger": false},
+  {"query": "src/auth.ts のユニットテストを書いて", "should_trigger": false},
+  {"query": "このリポジトリをクラウド環境でも動くようにセットアップして", "should_trigger": false},
+  {"query": "ログイン処理でエラーが出てるので直して", "should_trigger": false},
+  {"query": "このプロジェクトの進捗をまとめて報告して", "should_trigger": false},
+  {"query": "新しいプロジェクトを Notion に登録して立ち上げたい", "should_trigger": false},
+  {"query": "settings.json に環境変数を1つ追加しておいて", "should_trigger": false}
+]

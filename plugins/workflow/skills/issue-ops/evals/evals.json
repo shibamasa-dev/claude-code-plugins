@@ -1,0 +1,37 @@
+[
+  {
+    "id": "trigger_io_1",
+    "description": "issue の起票依頼 → 発動すべき（Issue Fields の設定値・issue_write の型が要る）",
+    "user_message": "年末調整の対応を issue にして。11月中に終わらせたい。",
+    "expected": "invoke",
+    "notes": "Priority・Start/Target date・Recurrence の決め方を skill が持つ"
+  },
+  {
+    "id": "trigger_io_2",
+    "description": "issue の close 依頼 → 発動すべき（## 結果 / ## 次回への引き継ぎ の記録ルール）",
+    "user_message": "example-org/example-repo#36 終わったから閉じて。",
+    "expected": "invoke",
+    "notes": "未記録のまま close しない・Recurrence 付きは引き継ぎ節が要る"
+  },
+  {
+    "id": "trigger_io_3",
+    "description": "大きい仕事の分割相談 → 発動すべき（ゴール issue＋子 issue・sub-issues・blocked by）",
+    "user_message": "この EDI 置き換え、3ヶ月かかりそうだから親 issue と子 issue に分けたい。",
+    "expected": "invoke",
+    "notes": "階層と依存の規約（深さ2段・addBlockedBy）を skill が持つ"
+  },
+  {
+    "id": "trigger_no_io_1",
+    "description": "issue の内容を読むだけ → 発動すべきでない",
+    "user_message": "example-org/example-repo#39 の body を要約して。",
+    "expected": "no-invoke",
+    "notes": "issue_read 1コールで済む。規約手順は不要"
+  },
+  {
+    "id": "trigger_no_io_2",
+    "description": "GitHub と無関係なタスク管理の雑談 → 発動すべきでない",
+    "user_message": "今日やることを口頭で3つ挙げて。",
+    "expected": "no-invoke",
+    "notes": "issue を作る・更新する意図がない"
+  }
+]

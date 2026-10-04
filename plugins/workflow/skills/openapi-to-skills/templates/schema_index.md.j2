@@ -1,0 +1,9 @@
+# {{ prefix }} Schemas
+
+{{ schemas | length }} schemas in this group.
+
+| Schema | Type | Description |
+|--------|------|-------------|
+{% for schema in schemas -%}
+| [{{ schema.name }}]({{ schema.name | to_filename }}.md) | {{ schema.type }} | {{ (schema.description if schema.description is not none else "")[:50] }} |
+{% endfor -%}

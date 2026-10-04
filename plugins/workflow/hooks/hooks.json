@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "SessionStart": [ { "hooks": [
+      { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/handoff.py\"" },
+      { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/knowledge-freshness.py\"" },
+      { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/issue-writeback.py\"" },
+      { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/runbook.py\" hook-session-start" } ] } ],
+    "UserPromptSubmit": [ { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/issue-writeback.py\"" } ] } ],
+    "Stop": [ { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/issue-writeback.py\"" }, { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/runbook.py\" hook-stop" } ] } ],
+    "SessionEnd": [ { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/issue-writeback.py\"" } ] } ],
+    "PostToolUse": [
+      { "matcher": "Bash|mcp__.*__(issue_read|issue_write|add_issue_comment|sub_issue_write)", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/issue-writeback.py\"" } ] },
+      { "matcher": "^Artifact$", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/artifact-ledger.py\"" } ] },
+      { "matcher": "Edit|Write", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/testcase-lint.py\"" } ] },
+      { "matcher": "mcp__claude-in-chrome__.*|mcp__computer-use__.*|mcp__remote-devices__.*|mcp__Claude_Browser__.*", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/runbook.py\" hook-post" } ] }
+    ]
+  }
+}

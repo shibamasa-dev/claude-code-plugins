@@ -1,0 +1,39 @@
+#!/bin/bash
+# claude-code-plugins:pre-commit （install.sh が自分のフックかを見分ける目印。消さない）
+# 公開リポにコミットする前に、個人環境・社内の固有名の混入とコミット作者のメールを止める。
+# 有効化（clone ごとに 1 回・中身を更新したときも）: bash .githooks/install.sh
+# install.sh はこのフックと検査スクリプトをこのリポの .git/hooks/ に**コピー**する。core.hooksPath で
+# 作業ツリーを直接指すと、外部の PR ブランチを checkout してコミットしただけでその PR の
+# スクリプトが手元で実行されるため（Codex security review 指摘）。
+# 以前から別の場所のフック（グローバルの core.hooksPath 等）を使っていた場合は、検査のあとにそちらも走らせる。
+# 社内の固有名は手元のファイル（改行区切りの正規表現）から読む。リポには置かない:
+#   ${XDG_CONFIG_HOME:-~/.config}/claude-code-plugins/blocked-patterns
+set -u
+hooks="$(cd "$(dirname "$0")" && pwd)"  # install.sh が置いた場所（.git/hooks）
+
+# 公開リポのコミットに私用・会社のメールを載せない（GitHub の noreply を使う）。
+# git config ではなく実際に使われる作者・コミッターを見る（--author や GIT_AUTHOR_EMAIL での上書きも拾う）
+for who in GIT_AUTHOR_IDENT GIT_COMMITTER_IDENT; do
+  email=$(git var "$who" | sed -n 's/.*<\(.*\)>.*/\1/p')
+  case "$email" in
+    *@users.noreply.github.com) ;;
+    *) echo "pre-commit: ${who%_IDENT} のメールが noreply ではない（$email）。git config user.email <id>+<login>@users.noreply.github.com を設定する" >&2
+       exit 1 ;;
+  esac
+done
+
+f="${XDG_CONFIG_HOME:-$HOME/.config}/claude-code-plugins/blocked-patterns"
+BLOCKED_PATTERNS="$( [ -r "$f" ] && cat "$f" )" python3 "$hooks/check-repo.py" --index >&2 || {
+  echo "pre-commit: 上の混入を直してからコミットする" >&2
+  exit 1
+}
+
+# 以前のフックがあれば続けて走らせる: 同じ場所にあった pre-commit（install.sh が退避）と、
+# 以前の core.hooksPath（install.sh が記録した場所）の pre-commit
+if [ -x "$hooks/pre-commit.prior" ]; then
+  "$hooks/pre-commit.prior" "$@" || exit $?
+fi
+prior=$(cat "$hooks/prior-hooks-path" 2>/dev/null || true)
+if [ -n "$prior" ] && [ -x "$prior/pre-commit" ]; then
+  exec "$prior/pre-commit" "$@"
+fi

@@ -1,0 +1,30 @@
+[
+  {
+    "id": "trigger_wrap_1",
+    "description": "「セッション閉じたい」→ 発動",
+    "user_message": "セッション閉じたいのだけど後片付けとかいる？",
+    "expected": "invoke",
+    "notes": "閉じる意図が明示"
+  },
+  {
+    "id": "trigger_wrap_2",
+    "description": "「今日はここまで」→ 発動",
+    "user_message": "今日はここまでにする。残ってるものある？",
+    "expected": "invoke",
+    "notes": "終了＋残件確認"
+  },
+  {
+    "id": "trigger_no_wrap_1",
+    "description": "作業中の通常依頼 → 発動しない",
+    "user_message": "このテストが落ちる原因を調べて。",
+    "expected": "no-invoke",
+    "notes": "終了の文脈なし"
+  },
+  {
+    "id": "trigger_no_wrap_2",
+    "description": "git status を見たいだけ → 発動しない",
+    "user_message": "git status 見せて。",
+    "expected": "no-invoke",
+    "notes": "単発コマンドで足りる"
+  }
+]
