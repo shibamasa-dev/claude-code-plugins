@@ -21,6 +21,9 @@ matcher は "Bash"（ツール名しかマッチできない）なので全 Bash
                    ゲートの目的は「複数のオープン PR が絡むマージ」なので守る対象が無い。
                    判定できない(未認証/オフライン)ときは従来どおり deny。
                    fallback はコマンド位置でしか判定しない(文字列リテラル誤爆の修正)。
+                   **作用するリポはマージコマンド自身から決める**(2026-10-04): git は自分の
+                   -C と、それより前の確実な cd だけ。gh は -R/--repo・GH_REPO・PR の URL。
+                   決められない(cd -・変数・条件付き cd 等)ときは例外を与えない。
   2. rm-guard    : 再帰 rm (-r/-rf) の破壊事故防止。
                    - 壊滅的ターゲット(/, ~, $HOME, システムdir, 裸の* 等) → 無条件 deny
                    - 相対パス / /tmp / $TMPDIR / ~/.worktrees 配下 → allow
@@ -32,6 +35,8 @@ matcher は "Bash"（ツール名しかマッチできない）なので全 Bash
                    ことなので、Claude が自己申告で通せるなら確認が起きない。
                    同一コマンド内の単純な変数代入(`T=/tmp/x; rm -rf $T`)は解決してから
                    判定する(解決できたぶんだけ誤爆が減る)。
+                   sudo/env/command/nohup/xargs 等のラッパー・`sh -c`・eval・( )・$( )・
+                   `find -delete`/`-exec rm` も中を展開して同じ判定にかける(2026-10-04)。
   3. push-freshness : git push 前に origin/main より behind でないことを検証。
                    spinoff 等で古い main から切ったブランチを最新に追従させ、
                    テキスト競合だけでなく意味的ドリフト(シグネチャ変更等)を
@@ -51,7 +56,7 @@ import sys
 # 実行中の Bash コールの cwd (main で hook 入力から設定)。git 系ルールが参照する。
 _CWD = None
 
-HOME = os.path.expanduser("~")
+HOME = os.path.normpath(os.path.expanduser("~"))   # $HOME の末尾 / や // で接頭辞判定が外れないように
 
 SYSTEM_DIRS = {
     "/etc", "/usr", "/var", "/bin", "/sbin", "/opt",
@@ -98,39 +103,41 @@ MERGE_RE = re.compile(
 )
 
 
-def _is_merge_command(tokens: list) -> bool:
+def _gh_positional(tokens: list) -> list:
+    """gh の位置引数（-R/--repo の値は除く。`gh pr -R x merge` の形でも pr/merge を拾うため）。"""
+    out, i = [], 1
+    while i < len(tokens):
+        a = tokens[i]
+        if a in ("-R", "--repo"):
+            i += 2
+            continue
+        if not a.startswith("-"):
+            out.append(a)
+        i += 1
+    return out
+
+
+def _is_merge_command(tokens: list, cwd=None, assigns=None) -> bool:
     """トークン列が実際の `gh pr merge` / `git merge` コマンドかを判定する。
 
     引用文字列の中に 'git merge' が現れるだけのコマンド（例: tmux send-keys で
     指示文を送る・echo で手順を出力する）を誤検知しないため、コマンド位置
-    （先頭トークン）だけを見る（2026-07-13 誤爆3件の恒久修正）。
+    （先頭トークン。ラッパーは _unwrap が剥がす）だけを見る（2026-07-13 誤爆3件の恒久修正）。
     """
     if not tokens:
         return False
     base = os.path.basename(tokens[0])
     if base == "gh":
-        rest = [t for t in tokens[1:] if not t.startswith("-")]
+        rest = _gh_positional(tokens)
         # `gh stack merge` は stack 全段を一括マージする（stacked PRs・2026-07 public preview）。
         # `gh pr merge` は stacked PR に使えないため、stack 経路もここで受けないとゲートが素通りになる。
         return len(rest) >= 2 and rest[0] in ("pr", "stack") and rest[1] == "merge"
     if base == "git":
-        args = tokens[1:]
-        i = 0
-        while i < len(args):  # git のグローバルオプション(-C path / -c k=v 等)を読み飛ばす
-            if args[i] in ("-C", "-c", "--git-dir", "--work-tree"):
-                i += 2
-                continue
-            if args[i].startswith("-"):
-                i += 1
-                continue
-            break
-        if i < len(args) and args[i] == "merge":
-            sub = args[i + 1:]
+        _, sub, subargs = _git_parse(tokens, cwd, assigns or {})
+        if sub == "merge":
             # --abort/--continue/--quit は merge 操作でない。--ff-only はポインタ移動のみで
             # 合成（Frankenstein マージ）が起こり得ないため対象外（例: local main の origin 同期）。
-            if any(s in ("--abort", "--continue", "--quit", "--ff-only") for s in sub):
-                return False
-            return True
+            return not any(s in ("--abort", "--continue", "--quit", "--ff-only") for s in subargs)
     return False
 
 
@@ -174,32 +181,16 @@ _MERGE_OPTS_WITH_VALUE = frozenset({
 })
 
 
-def _merge_sources(tokens: list) -> list:
-    """`git ... merge <ref>...` のソース ref を返す。git merge でなければ空。"""
-    if not tokens or os.path.basename(tokens[0]) != "git":
-        return []
-    args = tokens[1:]
-    i = 0
-    while i < len(args):  # git のグローバルオプションを読み飛ばす
-        if args[i] in ("-C", "-c", "--git-dir", "--work-tree"):
-            i += 2
-            continue
-        if args[i].startswith("-"):
-            i += 1
-            continue
-        break
-    if i >= len(args) or args[i] != "merge":
-        return []
-    rest, out, j = args[i + 1:], [], 0
-    while j < len(rest):
-        a = rest[j]
+def _merge_sources(subargs: list) -> list:
+    """`git merge` の引数（サブコマンドより後ろ）からソース ref を返す。"""
+    out, j = [], 0
+    while j < len(subargs):
+        a = subargs[j]
         if a in _MERGE_OPTS_WITH_VALUE:
             j += 2
             continue
-        if a.startswith("-"):
-            j += 1
-            continue
-        out.append(a)
+        if not a.startswith("-"):
+            out.append(a)
         j += 1
     return out
 
@@ -237,10 +228,17 @@ def _is_upstream_catchup(sources: list, cwd) -> bool:
     return bool(safe) and all(s in safe for s in sources)
 
 
-def _repo_slug(cwd):
-    """origin の owner/repo。取れなければ None（＝例外に当たらない＝deny 側）。"""
+def _repo_slug(cwd, sole_origin=False):
+    """origin の owner/repo。取れなければ None（＝例外に当たらない＝ask/deny 側）。
+
+    sole_origin: gh はリモートが複数あると upstream 等を優先して操作対象を決めるので、
+    origin 以外のリモートがあるときは origin の slug を操作対象とみなさない。"""
     if cwd is None:
         return None
+    if sole_origin:
+        r = _git(["remote"], cwd)
+        if r.returncode != 0 or r.stdout.split() != ["origin"]:
+            return None
     r = _git(["remote", "get-url", "origin"], cwd)
     if r.returncode != 0:
         return None
@@ -248,25 +246,115 @@ def _repo_slug(cwd):
     return m.group(1) if m else None
 
 
-def _open_pr_count(cwd):
-    """オープン PR の件数。判定できなければ None（＝安全側で deny のまま）。"""
-    if cwd is None:
+def _norm_slug(v: str):
+    """-R/--repo・GH_REPO の値（OWNER/REPO・HOST/OWNER/REPO・URL）を owner/repo にする。"""
+    v = re.sub(r"^[a-z]+://", "", v.strip()).rstrip("/")
+    v = re.sub(r"\.git$", "", v)
+    parts = [p for p in v.split("/") if p]
+    if len(parts) < 2 or "$" in v or "`" in v:
         return None
-    r = _git(["remote"], cwd)
-    if r.returncode != 0:
-        return None            # git リポでない等
-    if not r.stdout.strip():
-        return 0               # remote が無いリポに PR は存在しえない
-    try:
-        proc = subprocess.run(
-            ["gh", "pr", "list", "--state", "open", "--json", "number"],
-            cwd=cwd, capture_output=True, text=True, timeout=10,
-        )
-        if proc.returncode != 0:
-            return None        # 未認証・オフライン等
-        return len(json.loads(proc.stdout or "[]"))
-    except (subprocess.TimeoutExpired, ValueError, OSError):
+    return "/".join(parts[-2:])
+
+
+_PR_COUNT_CACHE = {}
+
+
+def _open_pr_count(cwd=None, slug=None):
+    """オープン PR の件数。判定できなければ None（＝安全側）。
+
+    slug があれば `gh pr list -R slug`（-R/--repo を付けたマージはそのリポに作用する）、
+    無ければ cwd のリポで数える。"""
+    key = (cwd, slug)
+    if key in _PR_COUNT_CACHE:
+        return _PR_COUNT_CACHE[key]
+    n = None
+    if slug:
+        argv = ["gh", "pr", "list", "-R", slug, "--state", "open", "--json", "number"]
+        run_cwd = _CWD if (_CWD and os.path.isdir(_CWD)) else None
+    elif cwd is not None:
+        argv = ["gh", "pr", "list", "--state", "open", "--json", "number"]
+        run_cwd = cwd
+        r = _git(["remote"], cwd)
+        if r.returncode != 0:
+            argv = None            # git リポでない等
+        elif not r.stdout.strip():
+            argv, n = None, 0      # remote が無いリポに PR は存在しえない
+    else:
+        argv = None
+    if argv:
+        try:
+            proc = subprocess.run(argv, cwd=run_cwd, capture_output=True, text=True, timeout=10)
+            if proc.returncode == 0:
+                n = len(json.loads(proc.stdout or "[]"))
+        except (subprocess.TimeoutExpired, ValueError, OSError):
+            n = None               # 未認証・オフライン等
+    _PR_COUNT_CACHE[key] = n
+    return n
+
+
+def _merge_target(cmd):
+    """マージコマンド1つが作用するリポ。returns dict(kind, cwd, slug, sources) か None(判定不能)。
+
+    **リポはそのコマンド自身のトークンから決める。** 以前はコマンド全体の最初の
+    `git -C <path>` や cd を見ていたので、別セグメントのおとり（`git -C <remote 無し> status;
+    gh pr merge -R <他リポ>`）で判定対象のリポをすり替えられた。"""
+    if cmd.opaque:
         return None
+    toks = cmd.tokens
+    if os.path.basename(toks[0]) == "git":
+        if any(k in cmd.env for k in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR")):
+            return None
+        gcwd, _, subargs = _git_parse(toks, cmd.cwd, cmd.assigns)
+        if gcwd is None or not os.path.isdir(gcwd):
+            return None
+        return {"kind": "git", "cwd": gcwd, "slug": _repo_slug(gcwd),
+                "sources": _merge_sources(subargs)}
+    # gh: 操作対象のリポは -R/--repo・GH_REPO・PR の URL のどれかで上書きされうる
+    slugs = set()
+    if "GH_REPO" in cmd.env:
+        slugs.add(_norm_slug(_resolve(cmd.env["GH_REPO"], cmd.assigns)))
+    i = 1
+    while i < len(toks):
+        a = toks[i]
+        if a in ("-R", "--repo"):
+            slugs.add(_norm_slug(_resolve(toks[i + 1], cmd.assigns)) if i + 1 < len(toks) else None)
+            i += 2
+            continue
+        if a.startswith("--repo="):
+            slugs.add(_norm_slug(_resolve(a.split("=", 1)[1], cmd.assigns)))
+        elif a.startswith("-R") and len(a) > 2:
+            slugs.add(_norm_slug(_resolve(a[2:], cmd.assigns)))
+        else:
+            m = re.match(r"^https?://[^/]+/([^/]+/[^/]+)/pull/\d+", a)
+            if m:
+                slugs.add(m.group(1))
+        i += 1
+    if slugs:
+        if None in slugs or len(slugs) != 1 or _gh_positional(toks)[0] != "pr":
+            return None            # 解決できない・食い違う・gh stack での上書き
+        return {"kind": "gh", "cwd": None, "slug": slugs.pop(), "sources": []}
+    if cmd.cwd is None:
+        return None
+    return {"kind": "gh", "cwd": cmd.cwd, "slug": _repo_slug(cmd.cwd, sole_origin=True),
+            "sources": []}
+
+
+def _merge_exempt(t) -> bool:
+    """このマージがゲートの例外に当たるか。リポを特定できないものは例外にしない。"""
+    if t is None:
+        return False
+    # このゲートが守るのは「複数のオープン PR/ブランチが絡むマージ」。オープン PR が
+    # 0 件なら守る対象が無い（使い捨ての検証リポ・remote 無しのローカルリポ等）。
+    # cwd が無いのは -R 等でリポを明示した gh だけ（そのリポで数える）。
+    if (_open_pr_count(cwd=t["cwd"]) if t["cwd"] else _open_pr_count(slug=t["slug"])) == 0:
+        return True
+    # guards の設定 merge_allowed_repos のリポだけは Claude 判断でマージしてよい。
+    if t["slug"] and t["slug"] in MERGE_ALLOWED_REPOS:
+        return True
+    # upstream 追いつきマージ（origin/<default> か origin/<current> を現在のブランチへ）は
+    # 2本の in-flight ブランチを合成しないので対象外。push-freshness が手順(1)として
+    # 指示しているのがこれで、塞ぐと両ルールが矛盾する(2026-09-23)。
+    return t["kind"] == "git" and _is_upstream_catchup(t["sources"], t["cwd"])
 
 
 def rule_merge_gate(command: str):
@@ -274,39 +362,18 @@ def rule_merge_gate(command: str):
     # 付ければ検証の中身を見ずに素通りしたが、それは Claude が自分で立てられる
     # 「自己申告」だった。CLAUDE.md が「マージは常にユーザー判断」と定めている以上、
     # 証跡を積んで Claude に通させる設計自体が方針と食い違う。判断する人に返す。
-    hit = False
-    hit_tokens = []      # 解析できたマージコマンドのトークン列
-    opaque_hit = False   # 解析できずソースを特定できなかったもの
-    for seg in _split_segments(command):
-        try:
-            tokens = shlex.split(seg)
-        except ValueError:
-            if _fallback_is_merge(seg):
-                hit = True
-                opaque_hit = True
+    targets = []
+    for cmd in _commands(command):
+        if cmd.opaque:
+            if _fallback_is_merge(cmd.raw) or _is_merge_command(cmd.tokens):
+                targets.append(None)   # 解析できずリポもソースも特定できない
             continue
-        while tokens and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tokens[0]):
-            tokens.pop(0)
-        if _is_merge_command(tokens):
-            hit = True
-            hit_tokens.append(tokens)
-    if not hit:
+        if _is_merge_command(cmd.tokens, cmd.cwd, cmd.assigns):
+            targets.append(_merge_target(cmd))
+    if not targets:
         return None
-    # このゲートが守るのは「複数のオープン PR/ブランチが絡むマージ」。オープン PR が
-    # 0 件なら守る対象が無い（使い捨ての検証リポ・remote 無しのローカルリポ等）。
-    # 判定できなかった場合(None)は従来どおり deny する。
-    cwd = _effective_cwd(command)
-    if _open_pr_count(cwd) == 0:
-        return None
-    # CLAUDE.md の例外リポだけは Claude 判断でマージしてよい。
-    if _repo_slug(cwd) in MERGE_ALLOWED_REPOS:
-        return None
-    # upstream 追いつきマージ（origin/<default> か origin/<current> を現在のブランチへ）は
-    # 2本の in-flight ブランチを合成しないので対象外。push-freshness が手順(1)として
-    # 指示しているのがこれで、塞ぐと両ルールが矛盾する(2026-09-23)。
-    # 解析できなかったセグメントが1つでもあれば、ソースを確認できないので例外にしない。
-    if (not opaque_hit and hit_tokens
-            and all(_is_upstream_catchup(_merge_sources(tk), cwd) for tk in hit_tokens)):
+    # マージコマンドが複数あれば、すべてが例外に当たるときだけ通す。
+    if all(_merge_exempt(t) for t in targets):
         return None
     checklist = (
         "複数のオープンPR/ブランチが絡むマージでは、実行前に次を検証すること:\n"
@@ -357,61 +424,374 @@ def _strip_heredocs(command: str) -> str:
     return "\n".join(out)
 
 
-def _split_segments(command: str):
-    """パイプ/セミコロン/&&/改行で分割する。引用符の中では分割しない（中はデータ）。"""
-    segs, buf, quote, i = [], [], None, 0
+SUBST = "$__SUBST__"   # コマンド置換を外側のセグメントに残すときの印（解決不能な変数として扱われる）
+
+
+def _parse_segments(command: str) -> list:
+    """コマンドを単純コマンド単位のセグメントに分ける。
+
+    返り値は dict(text, depth, before, after) のリスト。before/after は前後の区切り
+    （'^' 先頭, '$' 末尾, ';' '&&' '||' '|' '&' '\\n' '(' ')'）。
+    - 引用符の中では分割しない（中はデータ）。ただし `$( )` とバッククォートは
+      ダブルクォートの中でも実行されるので、中身を別セグメント(depth+1)として取り出す
+    - 引用符の外の `( )` もサブシェルとして中身を別セグメント(depth+1)にする
+    - `2>&1` `&>` の & は区切りではない
+    """
     s = _strip_heredocs(command)
+    out = []
+    st = {"buf": [], "before": "^", "depth": 0, "quote": None}
+    stack = []   # (closer, 外側の状態)
+
+    def flush(sep):
+        out.append({"text": "".join(st["buf"]), "depth": st["depth"],
+                    "before": st["before"], "after": sep})
+        st["buf"] = []
+        st["before"] = sep
+
+    def open_subst(closer):
+        stack.append((closer, dict(st, buf=list(st["buf"]))))
+        st.update(buf=[], before="(", depth=st["depth"] + 1, quote=None)
+
+    def close_subst():
+        flush(")")
+        closer, outer = stack.pop()
+        st.update(outer)
+        if closer != "(":           # $( ) / ` ` は外側の語の一部として印を残す
+            st["buf"].append(SUBST)
+        else:
+            st["before"] = ")"
+
+    i = 0
     while i < len(s):
         c = s[i]
-        if quote:
-            if c == "\\" and quote == '"' and i + 1 < len(s):
-                buf.append(s[i:i + 2]); i += 2; continue
-            if c == quote:
-                quote = None
-            buf.append(c)
-        elif c == "\\" and i + 1 < len(s):
-            buf.append(s[i:i + 2]); i += 2; continue
-        elif c in "'\"":
-            quote = c; buf.append(c)
-        elif c in "|;&\n":
-            segs.append("".join(buf)); buf = []
-        else:
-            buf.append(c)
-        i += 1
-    segs.append("".join(buf))
-    return segs
-
-
-ASSIGN_RE = re.compile(
-    r"(?:\A|[;&|\n]|\s)([A-Za-z_][A-Za-z0-9_]*)=([^\s;&|\n]*)"
-)
-VAR_REF_RE = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?")
-
-
-def _collect_assignments(command: str) -> dict:
-    """同一コマンド文字列内の**単純な**変数代入を集める（例: `T=/tmp/x`）。
-
-    右辺にコマンド置換や他の変数が入るものは採らない（静的に解決できないため）。
-    これが無いと `T=/tmp/x; rm -rf $T` のような、同じコマンドの中で完結していて
-    安全だと確定できる削除まで deny に倒れる（2026-09-23 に実地で1回踏んだ）。
-    """
-    out = {}
-    for m in ASSIGN_RE.finditer(command):
-        name, val = m.group(1), m.group(2)
-        val = val.strip().strip('"').strip("'")
-        if not val or "$" in val or "`" in val:
+        q = st["quote"]
+        top = stack[-1][0] if stack else None
+        if q == "'":
+            st["buf"].append(c)
+            if c == "'":
+                st["quote"] = None
+            i += 1
             continue
-        out[name] = val
+        if c == "\\" and i + 1 < len(s):
+            st["buf"].append(s[i:i + 2]); i += 2
+            continue
+        if top == "`" and c == "`":
+            close_subst(); i += 1
+            continue
+        if s.startswith("$(", i):
+            open_subst(")"); i += 2
+            continue
+        if c == "`":
+            open_subst("`"); i += 1
+            continue
+        if q == '"':
+            st["buf"].append(c)
+            if c == '"':
+                st["quote"] = None
+            i += 1
+            continue
+        if c in "'\"":
+            st["quote"] = c; st["buf"].append(c); i += 1
+            continue
+        if c == ")":
+            if top in (")", "("):
+                close_subst()
+            else:
+                flush(")")          # case のパターン等。区切りとして扱う
+            i += 1
+            continue
+        if c == "(":
+            flush("(")
+            stack.append(("(", dict(st, buf=[])))
+            st.update(buf=[], before="(", depth=st["depth"] + 1)
+            i += 1
+            continue
+        two = s[i:i + 2]
+        if two in ("&&", "||", "|&", ";;"):
+            flush(two); i += 2
+            continue
+        if c == "&" and (s[i + 1:i + 2] == ">" or (i > 0 and s[i - 1] in "<>")):
+            st["buf"].append(c); i += 1   # リダイレクト（2>&1 / &>）
+            continue
+        if c in "|;&\n":
+            flush(c); i += 1
+            continue
+        st["buf"].append(c)
+        i += 1
+    flush("$")
+    while stack:                      # 閉じていない括弧: 外側の残りも捨てずに評価する
+        _, outer = stack.pop()
+        st.update(outer)
+        flush("$")
     return out
+
+
+def _split_segments(command: str):
+    """パイプ/セミコロン/&&/改行/サブシェル/コマンド置換で分割したテキストのリスト。"""
+    return [seg["text"] for seg in _parse_segments(command)]
+
+
+VAR_REF_RE = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?")
+ASSIGN_TOKEN_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", re.S)
 
 
 def _resolve(raw: str, assigns: dict) -> str:
     """判明している代入だけを展開する。未知の変数はそのまま残す（＝other に倒れる）。"""
     if not assigns:
         return raw
-    return VAR_REF_RE.sub(
-        lambda m: assigns.get(m.group(1), m.group(0)), raw
-    )
+
+    def sub(m):
+        v = assigns.get(m.group(1))
+        return v if v is not None else m.group(0)
+    return VAR_REF_RE.sub(sub, raw)
+
+
+def _resolved_value(raw: str, assigns: dict):
+    """代入の右辺を静的に解決する。解決できなければ None（＝その変数は以後 unknown）。"""
+    v = _resolve(raw, assigns)
+    if "$" in v or "`" in v:
+        return None
+    return os.path.expanduser(v) if v.startswith("~") else v
+
+
+# ------------------------------------------------- 単純コマンドの列挙（全ルール共通）
+# 実行を別コマンドへ渡すだけのラッパー。読み飛ばして中のコマンドを評価する。
+# 値を取るオプションは次のトークンも読み飛ばす。
+_WRAPPER_OPTS_WITH_VALUE = {
+    "sudo": {"-u", "-g", "-h", "-p", "-C", "-D", "-R", "-r", "-t", "-T", "-U"},
+    "doas": {"-u", "-C"},
+    "nice": {"-n", "--adjustment"},
+    "exec": {"-a"},
+    "time": set(),
+    "nohup": set(),
+    "command": set(),
+    "builtin": set(),
+    "caffeinate": {"-t", "-w"},
+    "stdbuf": {"-i", "-o", "-e"},
+    "timeout": {"-s", "--signal", "-k", "--kill-after"},
+    "gtimeout": {"-s", "--signal", "-k", "--kill-after"},
+    "xargs": {"-I", "-n", "-P", "-L", "-s", "-E", "-d", "-a", "--max-args", "--max-procs",
+              "--max-lines", "--max-chars", "--eof", "--delimiter", "--arg-file", "--replace"},
+}
+_SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
+_KEYWORDS = {"{", "}", "!", "if", "then", "else", "elif", "do", "while", "until", "fi", "done", "coproc"}
+
+
+def _unwrap(tokens: list):
+    """ラッパーを剥がす。returns (env, tokens, nested, flags)
+
+    env    : 先頭（とラッパー中）の環境変数代入
+    tokens : 実際に実行されるコマンド（空なら代入だけ or 中身は nested）
+    nested : `sh -c STR` / `eval ...` / `env -S STR` の文字列（再帰して評価する）
+    flags  : {'xargs': 引数が標準入力から来る, 'shell_state': eval/source のように
+              今のシェルの cwd・変数を書き換えうる, 'chdir': env -C で cwd が変わる}
+    """
+    env, nested, flags = {}, [], {"xargs": False, "shell_state": False, "chdir": False}
+    t = list(tokens)
+    while t:
+        while t and t[-1] == "}":
+            t.pop()
+        if not t:
+            break
+        h = t[0]
+        m = ASSIGN_TOKEN_RE.match(h)
+        if m:
+            env[m.group(1)] = m.group(2)
+            t.pop(0)
+            continue
+        if h in _KEYWORDS:
+            t.pop(0)
+            continue
+        b = os.path.basename(h)
+        if b in ("command", "builtin") and len(t) > 1 and t[1] in ("-v", "-V"):
+            break   # 実行ではなく問い合わせ
+        if b == "env":
+            t.pop(0)
+            while t:
+                a = t[0]
+                if ASSIGN_TOKEN_RE.match(a):
+                    k, v = a.split("=", 1); env[k] = v; t.pop(0)
+                elif a in ("-u", "--unset"):
+                    del t[:2]
+                elif a in ("-C", "--chdir") or a.startswith("--chdir="):
+                    flags["chdir"] = True
+                    del t[:1 if "=" in a else 2]
+                elif a in ("-S", "--split-string") or a.startswith("--split-string="):
+                    val = a.split("=", 1)[1] if "=" in a else (t[1] if len(t) > 1 else "")
+                    rest = t[1:] if "=" in a else t[2:]
+                    try:
+                        t = shlex.split(val) + rest
+                    except ValueError:
+                        nested.append(val); t = []
+                    break
+                elif a.startswith("-"):
+                    t.pop(0)
+                else:
+                    break
+            continue
+        if b in _WRAPPER_OPTS_WITH_VALUE:
+            with_val = _WRAPPER_OPTS_WITH_VALUE[b]
+            if b == "xargs":
+                flags["xargs"] = True
+            t.pop(0)
+            while t and t[0].startswith("-") and t[0] != "-":
+                a = t.pop(0)
+                if a == "--":
+                    break
+                if a in with_val and t:
+                    t.pop(0)
+            if b in ("timeout", "gtimeout") and t:
+                t.pop(0)   # DURATION
+            while b == "sudo" and t and ASSIGN_TOKEN_RE.match(t[0]):
+                k, v = t.pop(0).split("=", 1); env[k] = v
+            continue
+        if b in _SHELLS:
+            for j in range(1, len(t)):
+                a = t[j]
+                if not a.startswith("-"):
+                    break
+                if re.match(r"^-[A-Za-z]*c[A-Za-z]*$", a):
+                    if j + 1 < len(t):
+                        nested.append(t[j + 1])
+                    t = []
+                    break
+            break
+        if b == "eval":
+            nested.append(" ".join(t[1:]))
+            flags["shell_state"] = True
+            t = []
+            break
+        if b in ("source", "."):
+            flags["shell_state"] = True
+        break
+    return env, t, nested, flags
+
+
+def _certain(seg: dict) -> bool:
+    """このセグメントが今のシェルで必ず実行されるか（cd・変数代入が後続に効くと言えるか）。
+
+    サブシェルの中・条件付き（`a && cd x` / `a || cd x`）・パイプ・バックグラウンドの
+    cd や代入は、後続に効くとは限らない。"""
+    return (seg["depth"] == 0 and seg["before"] in ("^", ";", "\n", "&", ";;")
+            and seg["after"] not in ("|", "|&", "&"))
+
+
+def _resolve_cd(tokens: list, cur, assigns: dict):
+    """`cd [-L|-P] [dir]` の移動先。判定不能なら None。"""
+    args = [a for a in tokens[1:] if a not in ("-L", "-P", "-e", "-@")]
+    if not args:
+        return HOME
+    if len(args) > 1 or args[0] == "-":
+        return None
+    v = _resolved_value(args[0], assigns)
+    if v is None:
+        return None
+    if not os.path.isabs(v):
+        # CDPATH があると相対名の行き先が変わる
+        if cur is None or (os.environ.get("CDPATH") and not v.startswith(".")):
+            return None
+        v = os.path.join(cur, v)
+    v = os.path.normpath(v)
+    return v if os.path.isdir(v) else None
+
+
+class Cmd:
+    """列挙された単純コマンド1つ。cwd は実行される作業ディレクトリ（判定不能なら None）。"""
+    __slots__ = ("env", "tokens", "cwd", "raw", "opaque", "xargs", "assigns")
+
+    def __init__(self, env, tokens, cwd, raw, opaque, xargs, assigns):
+        self.env, self.tokens, self.cwd, self.raw = env, tokens, cwd, raw
+        self.opaque, self.xargs, self.assigns = opaque, xargs, assigns
+
+
+_CMDS_CACHE = {}
+
+
+def _commands(command: str) -> list:
+    """command に含まれる単純コマンドを、ラッパー・`sh -c`・eval・サブシェル・コマンド置換の
+    中まで展開して列挙する（全ルール共通。メモ化）。"""
+    key = (command, _CWD)
+    if key not in _CMDS_CACHE:
+        start = _CWD if (_CWD and os.path.isdir(_CWD)) else None
+        _CMDS_CACHE[key] = list(_walk(command, start, {}, 0))
+    return _CMDS_CACHE[key]
+
+
+def _walk(command: str, cwd, assigns: dict, level: int):
+    if level > 4:
+        yield Cmd({}, [], None, command, True, False, {})
+        return
+    cur, assigns = cwd, dict(assigns)
+    for seg in _parse_segments(command):
+        text = seg["text"].strip()
+        if not text:
+            continue
+        try:
+            raw_tokens = shlex.split(text)
+            opaque = False
+        except ValueError:
+            raw_tokens = text.split()
+            opaque = True
+        env, tokens, nested, flags = _unwrap(raw_tokens)
+        certain = _certain(seg)
+        b = os.path.basename(tokens[0]) if tokens else ""
+        here = None if flags["chdir"] else cur
+        yield Cmd(env, tokens, here, text, opaque, flags["xargs"], dict(assigns))
+        for n in nested:
+            yield from _walk(n, here, assigns, level + 1)
+        # ---- このセグメントが今のシェルの状態（変数・cwd）をどう変えるか
+        if not tokens and env:                      # 純粋な代入 `T=/tmp/x`
+            for k, v in env.items():
+                assigns[k] = _resolved_value(v, assigns) if certain else None
+        elif b in ("export", "declare", "typeset", "local", "readonly"):
+            for a in tokens[1:]:
+                m = ASSIGN_TOKEN_RE.match(a)
+                if m:
+                    assigns[m.group(1)] = _resolved_value(m.group(2), assigns) if certain else None
+        elif b in ("read", "unset", "for", "select", "getopts", "mapfile", "readarray", "printf"):
+            for a in tokens[1:]:
+                if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", a):
+                    assigns[a] = None
+        if flags["shell_state"]:
+            cur = None
+            assigns = {k: None for k in assigns}
+        elif b in ("cd", "pushd"):
+            cur = _resolve_cd(tokens, cur, assigns) if (certain and b == "cd") else None
+        elif b == "popd":
+            cur = None
+
+
+def _git_parse(tokens: list, cwd, assigns: dict):
+    """`git [global opts] <sub> <args>` を読む。returns (gitcwd, sub, subargs)。
+
+    -C は重ねると連結される（git -C a -C b == a/b）。--git-dir / --work-tree は
+    どのリポに作用するか静的に決めきれないので gitcwd=None。"""
+    args, i, gcwd = tokens[1:], 0, cwd
+    while i < len(args):
+        a = args[i]
+        if a == "-C":
+            v = _resolved_value(args[i + 1], assigns) if i + 1 < len(args) else None
+            if v is None or gcwd is None and not os.path.isabs(v):
+                gcwd = None
+            elif v:
+                gcwd = os.path.normpath(os.path.join(gcwd or "/", v))
+            i += 2
+            continue
+        if a in ("--git-dir", "--work-tree"):
+            gcwd = None; i += 2
+            continue
+        if a.startswith(("--git-dir=", "--work-tree=")):
+            gcwd = None; i += 1
+            continue
+        if a in ("-c", "--namespace", "--exec-path", "--config-env", "--super-prefix"):
+            i += 2
+            continue
+        if a.startswith("-"):
+            i += 1
+            continue
+        break
+    sub = args[i] if i < len(args) else None
+    return gcwd, sub, args[i + 1:]
 
 
 def _classify_target(raw: str, assigns: dict = None) -> str:
@@ -444,45 +824,86 @@ def _classify_target(raw: str, assigns: dict = None) -> str:
     return "other"
 
 
+_RECURSIVE_FLAG_RE = re.compile(r"^-[a-zA-Z]*[rR]")
+_FIND_ACTIONS = ("-exec", "-execdir", "-ok", "-okdir")
+
+
+def _is_recursive_rm(tokens: list) -> bool:
+    return any(_RECURSIVE_FLAG_RE.match(f) or f == "--recursive"
+               for f in tokens[1:] if f.startswith("-") and f != "--")
+
+
+def _find_delete_starts(tokens: list):
+    """`find <start>... -delete` / `-exec rm ...` なら開始パスのリスト、削除しない find なら None。
+
+    find は開始パス配下を再帰的にたどるので、削除アクション付きなら開始パスの再帰削除とみなす。"""
+    if not tokens or os.path.basename(tokens[0]) != "find":
+        return None
+    deleting = "-delete" in tokens
+    for i, a in enumerate(tokens):
+        if a in _FIND_ACTIONS:
+            action = []
+            for b in tokens[i + 1:]:
+                if b in (";", "+"):
+                    break
+                action.append(b)
+            if re.search(r"(^|[\s/;&|(`])(rm|unlink|trash)(\s|$)", " ".join(action)):
+                deleting = True
+    if not deleting:
+        return None
+    starts, i = [], 1
+    while i < len(tokens) and tokens[i] in ("-H", "-L", "-P", "-E", "-X", "-d", "-s", "-x"):
+        i += 1
+    while i < len(tokens) and not tokens[i].startswith(("-", "(", "!", ")")):
+        starts.append(tokens[i]); i += 1
+    return starts
+
+
+_OPAQUE_DELETE_RE = re.compile(r"(^|[\s;&|(`/])(rm|find|trash)\s")
+_OPAQUE_ABS_RE = re.compile(r"(^|\s)[\"']?(/|~|\$\{?HOME)")
+
+
 def rule_rm_guard(command: str):
     # **通過マーカーは持たない**(2026-09-23 廃止)。以前は特定の環境変数を先頭に
     # 付ければ素通りしたが、それは Claude 自身が立てられる「自己申告」だった。
     # このルールの目的は**人に確認させること**なので、Claude が自分で通せるなら確認は起きない。
     # push-freshness と違い rm には「安全である」ことを測る方法が無く、判断そのものが要る。
     # だから判断する人に返す＝Claude には通させない。
-    assigns = _collect_assignments(command)
+    # sudo/env/xargs 等のラッパー・`sh -c`・eval・サブシェル・コマンド置換の中も _commands が展開する。
     worst = None  # None < other < catastrophic
-    for seg in _split_segments(command):
-        try:
-            tokens = shlex.split(seg)
-        except ValueError:
-            tokens = seg.split()
-        # 先頭の環境変数代入をスキップ
-        while tokens and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tokens[0]):
-            tokens.pop(0)
+
+    def note(c):
+        nonlocal worst
+        if c == "catastrophic":
+            worst = "catastrophic"
+        elif c == "other" and worst is None:
+            worst = "other"
+
+    for cmd in _commands(command):
+        tokens, assigns = cmd.tokens, cmd.assigns
+        if cmd.opaque and _OPAQUE_DELETE_RE.search(cmd.raw) and _OPAQUE_ABS_RE.search(cmd.raw):
+            note("other")   # 引用符が閉じていない等で正しく読めない削除は安全側
         if not tokens:
             continue
-        cmd = os.path.basename(tokens[0])
+        cmd_name = os.path.basename(tokens[0])
         targets = [t for t in tokens[1:] if not t.startswith("-")]
-        if cmd == "trash":
+        if cmd.xargs:
+            targets.append("$__XARGS__")   # 引数は標準入力から来る＝静的に判定不能
+        if cmd_name == "trash":
             # ゴミ箱へ移すだけで取り消せるので、安全領域外でも通す。壊滅的ターゲットだけ止める
             if any(_classify_target(t, assigns) == "catastrophic" for t in targets):
-                worst = "catastrophic"
+                note("catastrophic")
             continue
-        if cmd != "rm":
+        starts = _find_delete_starts(tokens)
+        if starts is not None:
+            for t in starts:
+                # `find . -name x -delete` のように条件で絞るのが普通なので、カレントの . は相対扱い
+                note("safe" if t in (".", "./") else _classify_target(t, assigns))
             continue
-        flags = [t for t in tokens[1:] if t.startswith("-") and t != "--"]
-        recursive = any(
-            re.match(r"^-[a-zA-Z]*[rR]", f) or f == "--recursive" for f in flags
-        )
-        if not recursive:
+        if cmd_name != "rm" or not _is_recursive_rm(tokens):
             continue
         for t in targets:
-            c = _classify_target(t, assigns)
-            if c == "catastrophic":
-                worst = "catastrophic"
-            elif c == "other" and worst is None:
-                worst = "other"
+            note(_classify_target(t, assigns))
     if worst == "catastrophic":
         return deny(
             "🛑 rm-guard(グローバルhook): 壊滅的な再帰削除ターゲット(ルート/ホーム/システムdir/裸の * 等)を検出。"
@@ -500,6 +921,7 @@ def rule_rm_guard(command: str):
             "(確認すべきこと: 削除対象は目的の特定パスか / 未コミットの作業・"
             "他セッションの worktree を巻き込まないか)"
             "(ユーザー資産に触る場合は先にユーザー承認を取ること)。"
+            "sudo・xargs・sh -c・eval・find -delete 等で包んでも同じ判定になる。"
         )
     return None
 
@@ -600,9 +1022,14 @@ def rule_main_commit_freshness(command: str):
     「古かったよ」と言うより、積む前に止める方が手戻りが無い。merge 後の pull 追従は
     止める対象が無いので git-freshness.py(PostToolUse) が担当する。
     """
-    if "MAIN_FRESHNESS_OK=1" in command:
-        return None
     if not COMMIT_RE.search(command):
+        return None
+    commits = [c for c in _commands(command) if c.tokens
+               and os.path.basename(c.tokens[0]) == "git"
+               and _git_parse(c.tokens, c.cwd, c.assigns)[1] == "commit"]
+    # マーカーは commit コマンド自身の先頭の環境変数代入としてだけ効く（echo や
+    # コメントに書いた文字列では通らない）。
+    if commits and all(_marker(c, "MAIN_FRESHNESS_OK") for c in commits):
         return None
     cwd = _effective_cwd(command)
     if cwd is None:
@@ -687,39 +1114,95 @@ def _squash_merged(p: str) -> bool:
     return r.returncode == 0 and head in r.stdout.split()
 
 
+def _marker(cmd, name: str) -> bool:
+    """通過マーカー（`NAME=1 <cmd>`）がそのコマンド自身の先頭の環境変数代入として付いているか。
+    以前はコマンド文字列のどこかに含まれれば通していたので、echo やコメントでも通った。"""
+    return cmd.env.get(name) == "1"
+
+
+def _under_worktrees(p: str) -> bool:
+    return p == WORKTREES_PREFIX.rstrip("/") or p.startswith(WORKTREES_PREFIX)
+
+
+def _inside_worktree(p: str) -> bool:
+    """p が worktree の中のサブパス（worktree の root そのものでも、root を含む上位でもない）か。"""
+    d = p
+    while d and not os.path.isdir(d):
+        d = os.path.dirname(d)
+    if not d:
+        return False
+    try:
+        r = _git(["rev-parse", "--show-toplevel"], d)
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    if r.returncode != 0 or not r.stdout.strip():
+        return False
+    # git は実パスを返す（macOS の /var → /private/var 等）ので両辺を実パスで比べる
+    top, rp = os.path.realpath(r.stdout.strip()), os.path.realpath(p)
+    wt = os.path.realpath(WORKTREES_PREFIX)
+    return top.startswith(wt + "/") and rp.startswith(top + "/")
+
+
 def rule_worktree_guard(command: str):
-    if ".worktrees" not in command and "worktree" not in command:
+    root = WORKTREES_PREFIX.rstrip("/")
+    cwd0 = os.path.normpath(_CWD) if _CWD else ""
+    cwd_in_wt = bool(cwd0) and _under_worktrees(cwd0)
+    if ".worktrees" not in command and "worktree" not in command and not cwd_in_wt:
         return None  # 高速素通し
-    if "WORKTREE_RM_OK=1" in command:
-        return None
-    targets = []
-    for seg in _split_segments(command):
-        try:
-            tokens = shlex.split(seg)
-        except ValueError:
-            tokens = seg.split()
-        while tokens and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tokens[0]):
-            tokens.pop(0)
-        if not tokens:
+    # 相対パス・変数の行き先が分からないとき、worktree を巻き込みうる文脈かどうか
+    risky_unknown = ".worktrees" in command or cwd0 == root
+    targets = []   # (表示名, 絶対パス or None=判定不能)
+    for cmd in _commands(command):
+        tokens = cmd.tokens
+        if not tokens or _marker(cmd, "WORKTREE_RM_OK"):
             continue
         base = os.path.basename(tokens[0])
-        args = [t for t in tokens[1:] if not t.startswith("-")]
-        if base == "git" and len(args) >= 2 and args[0] == "worktree" and args[1] == "remove":
-            targets.extend(args[2:])
-        elif base in ("rm", "trash"):
-            flags = [t for t in tokens[1:] if t.startswith("-") and t != "--"]
-            if base == "trash" or any(re.match(r"^-[a-zA-Z]*[rR]", f) or f == "--recursive" for f in flags):
-                for t in args:
-                    exp = os.path.normpath(os.path.expanduser(t.strip('"').strip("'")))
-                    if exp.startswith(WORKTREES_PREFIX):
-                        targets.append(t)
-    bad = [t for t in targets if _worktree_state(t) != "merged_clean"]
+        if base == "git":
+            gcwd, sub, subargs = _git_parse(tokens, cmd.cwd, cmd.assigns)
+            if sub == "worktree" and subargs[:1] == ["remove"]:
+                for t in (a for a in subargs[1:] if not a.startswith("-")):
+                    v = _resolved_value(t, cmd.assigns)
+                    if v is not None and not os.path.isabs(v):
+                        v = os.path.join(gcwd, v) if gcwd else None
+                    targets.append((t, os.path.normpath(v) if v else None))
+            continue
+        starts = _find_delete_starts(tokens)
+        if starts is not None:
+            paths = starts
+        elif base == "trash" or (base == "rm" and _is_recursive_rm(tokens)):
+            paths = [t for t in tokens[1:] if not t.startswith("-")]
+        else:
+            continue
+        if cmd.xargs and (risky_unknown or cwd_in_wt):
+            targets.append(("(xargs の入力)", None))
+        for t in paths:
+            v = _resolved_value(t.strip('"').strip("'"), cmd.assigns)
+            if v is None:
+                if risky_unknown:
+                    targets.append((t, None))
+                continue
+            if os.path.isabs(v):
+                exp = os.path.normpath(v)
+                if _under_worktrees(exp):
+                    targets.append((t, exp))
+                continue
+            # 相対パス: 実行される cwd で解決する（`cd ~/.worktrees && rm -rf name` 等）。
+            # worktree の中のサブパス（build/ 等の掃除）は対象外
+            if cmd.cwd is None:
+                if risky_unknown:
+                    targets.append((t, None))
+                continue
+            exp = os.path.normpath(os.path.join(cmd.cwd, v))
+            if _under_worktrees(exp) and not _inside_worktree(exp):
+                targets.append((t, exp))
+    bad = [t for t, p in targets if p is None or _worktree_state(p) != "merged_clean"]
     if not bad:
         return None
     return deny(
         f"🛑 worktree-guard: 未マージか判定不能の worktree を削除しようとしている: {', '.join(bad[:3])}\n"
         "未マージ worktree の削除は禁止(未回収の作業が消える)。main 取り込み済みなら自動で通る。"
-        "本当に消すならユーザー明示OKを取り `WORKTREE_RM_OK=1 ` を先頭に付けて再実行。"
+        "本当に消すならユーザー明示OKを取り、削除コマンド自身の先頭に `WORKTREE_RM_OK=1 ` を付けて再実行"
+        "（例: `WORKTREE_RM_OK=1 git worktree remove <path>`）。"
     )
 
 
@@ -750,15 +1233,10 @@ def rule_gh_comments_guard(command: str):
 def rule_pip_freeze_guard(command: str):
     if "freeze" not in command:
         return None  # 高速素通し
-    if "PIP_FREEZE_OK=1" in command:
-        return None
-    for seg in _split_segments(command):
-        try:
-            tokens = shlex.split(seg)
-        except ValueError:
-            tokens = seg.split()
-        while tokens and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tokens[0]):
-            tokens.pop(0)
+    for cmd in _commands(command):
+        tokens = cmd.tokens
+        if _marker(cmd, "PIP_FREEZE_OK"):
+            continue
         if len(tokens) >= 2 and os.path.basename(tokens[0]) in ("pip", "pip3") and tokens[1] == "freeze":
             return deny(
                 "🛑 pip-freeze-guard: uv 製 venv には pip が無く `pip freeze` は無言で0件を返す(空の退避ファイル事故)。"
@@ -771,12 +1249,12 @@ def rule_pip_freeze_guard(command: str):
 def rule_shared_venv_guard(command: str):
     if ".venvs" not in command:
         return None  # 高速素通し（共有 venv ~/.venvs/ に言及しないコマンドは対象外）
-    if "SHARED_VENV_OK=1" in command:
-        return None
-    for seg in _split_segments(command):
-        joined = " ".join(seg.split())
-        if re.search(r"\buv\s+pip\s+(sync|uninstall)\b", joined) or \
-                (re.search(r"\buv\s+pip\s+install\b", joined) and "--exact" in joined):
+    for cmd in _commands(command):
+        tk = cmd.tokens
+        if _marker(cmd, "SHARED_VENV_OK") or len(tk) < 3:
+            continue
+        if os.path.basename(tk[0]) == "uv" and tk[1] == "pip" and \
+                (tk[2] in ("sync", "uninstall") or (tk[2] == "install" and "--exact" in tk)):
             return deny(
                 "🛑 shared-venv-guard: 共有 venv(~/.venvs/) への sync / --exact / uninstall は"
                 "定義に無い同居パッケージを消す。install(追加のみ)を使うか、"
@@ -815,7 +1293,13 @@ def main() -> None:
     # どれかが deny なら deny を返す（マージと危険な操作を1行につないだものを ask で通さない）。
     pending_ask = None
     for rule in RULES:
-        result = rule(command)
+        try:
+            result = rule(command)
+        except Exception as e:  # noqa: BLE001
+            # hook の異常終了は「許可」扱いになるので、自分のバグでは安全側（確認）に倒す
+            msg = (f"⚠️ bash-guard: ルール {rule.__name__} の評価中に例外 "
+                   f"({type(e).__name__}: {e})。安全側に倒す（確認 or 拒否）。")
+            result = deny(msg) if _PERMISSION_MODE == "bypassPermissions" else ask(msg)
         if not result:
             continue
         decision = result.get("hookSpecificOutput", {}).get("permissionDecision")

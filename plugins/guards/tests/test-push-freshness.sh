@@ -49,4 +49,14 @@ git checkout -q "$MAINB"
 printf '  %-46s -> %s  (allow 期待: main 系は対象外)\n' 'main で push' "$(probe "git push -u origin $MAINB")"
 printf '  %-46s -> %s  (allow 期待: push 以外)\n' 'git status' "$(probe 'git status')"
 
+echo
+echo '=== main-freshness: main が origin/main より遅れている状態のマーカー ==='
+git checkout -q -b ahead "$MAINB" && git commit -q --allow-empty -m ahead
+git update-ref refs/remotes/origin/main ahead
+git checkout -q "$MAINB"
+printf '  %-46s -> %s  (deny 期待)\n' '素の commit' "$(probe 'git commit -m x')"
+printf '  %-46s -> %s  (allow 期待)\n' 'commit 自身の先頭にマーカー' "$(probe 'MAIN_FRESHNESS_OK=1 git commit -m x')"
+printf '  %-46s -> %s  (deny 期待)\n' 'マーカーを echo の引数に' "$(probe 'echo MAIN_FRESHNESS_OK=1; git commit -m x')"
+printf '  %-46s -> %s  (deny 期待)\n' 'マーカーをコメントに' "$(probe 'git commit -m x # MAIN_FRESHNESS_OK=1')"
+
 rm -rf /tmp/gtest
