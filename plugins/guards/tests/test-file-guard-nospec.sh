@@ -1,5 +1,5 @@
 #!/bin/bash
-# ルールファイル（FILE_GUARD_SPEC）が無いときは何も出さずに通すこと。
+# FILE_GUARD_SPEC が存在しないパスを指すとき（明示的に外したとき）は何も出さずに通すこと。
 set -u
 H="$(cd "$(dirname "$0")/.." && pwd)/hooks/file-guard.py"
 R=$(mktemp -d "${TMPDIR:-/tmp}/fg-nospec.XXXX"); mkdir -p "$R/docs" "$R/scripts"; git -C "$R" init -q
