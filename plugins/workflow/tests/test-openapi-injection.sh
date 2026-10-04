@@ -77,6 +77,21 @@ row 'キー名に引用符・; を含む spec を拒否する' "$(conv "$T/evil-
 row 'tokenUrl に空白を含む spec を拒否する' "$(conv "$T/evil-url.yaml" -o "$T/out-url")" refuse
 row '拒否したときファイルを生成しない' "$([ -e "$T/out-name" ] || [ -e "$T/out-url" ] && echo files || echo none)" none
 
+cat > "$T/http-url.yaml" <<'YAML'
+openapi: 3.0.3
+info: {title: Plain, version: "1"}
+paths: {}
+components:
+  securitySchemes:
+    cc:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: http://auth.example.com/token
+          scopes: {}
+YAML
+row '認証情報を平文の http:// に送る spec を拒否する' "$(conv "$T/http-url.yaml" -o "$T/out-http")" refuse
+
 echo '=== 検証をすり抜けた値もテンプレート側で引用される（二重の防御） ==='
 # 検証を通さずテンプレートを直接描画し、生成された resolve_token_url だけを実行する
 uv run -q --project "$SKILL_DIR" python - "$SKILL_DIR/scripts" "$T" <<'PY' >"$T/tm.sh" 2>/dev/null

@@ -181,7 +181,9 @@ def to_skill_name(name: str) -> str:
 # 生成する auth/*.sh に埋め込む値の検証。spec は URL から読めるため信用しない。
 # 不正な値は黙って直さず変換を止める（何が埋め込まれたかを利用者が把握できるように）
 SCHEME_NAME_RE = re.compile(r"[A-Za-z0-9_.-]+")
-AUTH_URL_RE = re.compile(r"https?://[^\s\x00-\x1f]+")  # 値はスクリプトに shlex.quote で入るので、ここでは URL の形と空白・制御文字だけを見る
+# 値はスクリプトに shlex.quote で入るので、ここでは URL の形と空白・制御文字だけを見る。
+# 認証情報（client secret 等）を送る先なので http:// は手元（localhost / 127.0.0.1）だけ許す
+AUTH_URL_RE = re.compile(r"(?:https://|http://(?:localhost|127\.0\.0\.1)(?::\d+)?(?:/|$))[^\s\x00-\x1f]*")
 
 
 def validate_scheme_name(name: object) -> None:
@@ -195,7 +197,7 @@ def validate_auth_url(scheme_name: str, field_name: str, url: str | None) -> Non
     if url is not None and (not isinstance(url, str) or not AUTH_URL_RE.fullmatch(url)):
         raise ValueError(
             f"securitySchemes.{scheme_name} の {field_name} {url!r} は使えません"
-            "（http:// か https:// で始まり、空白・改行を含まない URL のみ可）"
+            "（https:// で始まり空白・改行を含まない URL のみ可。http:// は localhost / 127.0.0.1 だけ）"
         )
 
 
