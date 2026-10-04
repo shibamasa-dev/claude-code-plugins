@@ -13,4 +13,18 @@ echo '=== ユーザーの規約が無い（プラグイン既定） ==='
 row 'docs/ 直下の新規 .md'             "$(probe "$R/repo/docs/new.md")" deny
 row 'docs/README.md'                   "$(probe "$R/repo/docs/README.md")" silent
 row 'scripts/ 直下の新規スクリプト'    "$(probe "$R/repo/scripts/new.sh")" deny
+echo '=== ユーザーの規約がある（同梱の既定より優先） ==='
+mkdir -p "$R/home/.claude/rules"
+cat > "$R/home/.claude/rules/repo-structure.md" <<'SPEC'
+<!-- guard:docs-allow-filenames -->
+- new.md
+<!-- /guard:docs-allow-filenames -->
+<!-- guard:docs-subfolders -->
+- spec: 仕様
+<!-- /guard:docs-subfolders -->
+<!-- guard:script-extensions -->
+- .sh
+<!-- /guard:script-extensions -->
+SPEC
+row 'ユーザー規約で許可した docs/new.md' "$(probe "$R/repo/docs/new.md")" silent
 rm -rf "$R"
