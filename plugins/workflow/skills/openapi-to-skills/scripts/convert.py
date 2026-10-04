@@ -2,6 +2,7 @@
 from __future__ import annotations
 import os
 import re
+import shlex
 import sys
 import unicodedata
 from dataclasses import dataclass, field
@@ -177,6 +178,27 @@ def to_skill_name(name: str) -> str:
     return to_filename(name).lower()[:64]
 
 
+# 生成する auth/*.sh に埋め込む値の検証。spec は URL から読めるため信用しない。
+# 不正な値は黙って直さず変換を止める（何が埋め込まれたかを利用者が把握できるように）
+SCHEME_NAME_RE = re.compile(r"[A-Za-z0-9_.-]+")
+AUTH_URL_RE = re.compile(r"https://[^\s$`\"'\\;|&<>]+")
+
+
+def validate_scheme_name(name: object) -> None:
+    if not isinstance(name, str) or not SCHEME_NAME_RE.fullmatch(name):
+        raise ValueError(
+            f"securitySchemes のキー名 {name!r} は使えません（英数字と _ . - のみ可）"
+        )
+
+
+def validate_auth_url(scheme_name: str, field_name: str, url: str | None) -> None:
+    if url is not None and (not isinstance(url, str) or not AUTH_URL_RE.fullmatch(url)):
+        raise ValueError(
+            f"securitySchemes.{scheme_name} の {field_name} {url!r} は使えません"
+            "（https:// で始まり、空白・改行・シェルの特殊文字 $ ` \" ' \\ ; | & < > を含まない URL のみ可）"
+        )
+
+
 def get_ref_name(ref: str) -> str:
     """Extract the last segment from a $ref path."""
     return ref.rsplit("/", 1)[-1]
@@ -204,7 +226,9 @@ def parse(spec: dict, options: dict | None = None) -> SkillDocument:
     filter_opts = options.get("filter", {})
     group_by = options.get("group_by", "auto")
 
-    meta = parse_meta(spec, options.get("skill_name"))
+    # -n/--name の指定もタイトル由来と同じくファイル名用に無害化する
+    skill_name = options.get("skill_name")
+    meta = parse_meta(spec, to_filename(skill_name) if skill_name else None)
     resources = parse_resources(spec, filter_opts, group_by)
     schema_groups = parse_schema_groups(spec)
     auth_schemes = parse_auth_schemes(spec)
@@ -515,6 +539,7 @@ def parse_auth_schemes(spec: dict) -> list[AuthSchemeDocument]:
 
     schemes = []
     for name, scheme in security_schemes.items():
+        validate_scheme_name(name)
         if is_reference_object(scheme):
             continue
 
@@ -531,8 +556,12 @@ def parse_auth_schemes(spec: dict) -> list[AuthSchemeDocument]:
             doc.bearer_format = scheme.get("bearerFormat")
         elif scheme["type"] == "oauth2":
             doc.flows = parse_oauth_flows(scheme.get("flows"))
+            for flow in doc.flows:
+                validate_auth_url(name, "authorizationUrl", flow.authorization_url)
+                validate_auth_url(name, "tokenUrl", flow.token_url)
         elif scheme["type"] == "openIdConnect":
             doc.openid_connect_url = scheme.get("openIdConnectUrl")
+            validate_auth_url(name, "openIdConnectUrl", doc.openid_connect_url)
 
         schemes.append(doc)
 
@@ -671,6 +700,8 @@ def create_renderer(template_dir: Path | None = None) -> Environment:
     )
     env.filters["to_filename"] = to_filename
     env.filters["extract_schema_prefix"] = extract_schema_prefix
+    # .sh テンプレートに spec 由来の値を埋め込むときは必ずこれで引用する
+    env.filters["sh_quote"] = lambda v: shlex.quote(str(v))
     return env
 
 
