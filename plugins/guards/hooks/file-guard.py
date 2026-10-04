@@ -72,6 +72,22 @@ def split_kv(entries: list) -> list:
     return out
 
 
+def repo_parts(path: str) -> list:
+    """path をリポのルート（.git を持つ最も近い祖先）からの相対パスに割る。
+
+    チェックアウト先のパス（例: /work/skills/proj）に含まれる要素で例外を誤発動させないため。
+    リポの外なら絶対パスのまま割る。
+    """
+    d = os.path.dirname(path)
+    while True:
+        if os.path.exists(os.path.join(d, ".git")):
+            return os.path.relpath(path, d).split(os.sep)
+        up = os.path.dirname(d)
+        if up == d:
+            return path.split(os.sep)
+        d = up
+
+
 def allow_with_notice(text: str) -> None:
     """Write は止めずに、検証できなかったことだけ伝える。"""
     print(json.dumps({
@@ -129,7 +145,7 @@ def main() -> None:
 
     # ---- 例外（有効・無効は SPEC の ID で決まる）
     # skill は `<skill>/scripts/` 直下にスクリプトを置くのが正しい形なので対象外にする。
-    if "path-component-skills" in exemptions and "skills" in parts:
+    if "path-component-skills" in exemptions and parent == "scripts" and "skills" in repo_parts(norm):
         sys.exit(0)
     if "sibling-skill-md" in exemptions:
         parent_dir = os.path.dirname(norm)

@@ -55,7 +55,7 @@
 - **例外: skill のレイアウト。** skill は `<skill>/scripts/` 直下にスクリプトを置くのが正しい形（`skill-creator` の型）なので、この規約の対象外にする。リポ直下の `scripts/` を機能別サブフォルダへ割る話とは別物。
 
 <!-- guard:exemptions -->
-- path-component-skills: パス要素のどこかが `skills` であるツリー全体（skill は `<skill>/scripts/` 直下にスクリプトを置く形が正しいため）
+- path-component-skills: リポのルートからのパス要素に `skills` がある `scripts/` 直下（skill は `<skill>/scripts/` 直下にスクリプトを置く形が正しいため。チェックアウト先のパスや docs/ には効かない）
 - sibling-skill-md: `scripts/` の親ディレクトリに `SKILL.md` がある場合（skill は `skills/` 配下とは限らないため）
 <!-- /guard:exemptions -->
 
