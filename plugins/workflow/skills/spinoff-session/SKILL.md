@@ -20,7 +20,7 @@ description: 今やっているタスクを別の Claude Code セッション（
 会話から作業場所が分からなければ一覧から確認する:
 
 ```bash
-bash scripts/list-projects.sh [root_dir]  # 既定: ~/dev
+bash ${CLAUDE_PLUGIN_ROOT}/skills/spinoff-session/scripts/list-projects.sh [root_dir]  # 既定: ~/dev
 ```
 
 番号付きで表示し、「どのプロジェクトで実行しますか？」と確認する。推測で決めない。
@@ -43,7 +43,7 @@ bash scripts/list-projects.sh [root_dir]  # 既定: ~/dev
 ### ④ 起動する
 
 ```bash
-bash scripts/spawn.sh [--worktree|--no-worktree] [--base <branch>] [--wait|--unattended] [--issue <ref>] [--model <name>] [--force-shared] <project_path> "<task>"
+bash ${CLAUDE_PLUGIN_ROOT}/skills/spinoff-session/scripts/spawn.sh [--worktree|--no-worktree] [--base <branch>] [--wait|--unattended] [--issue <ref>] [--model <name>] [--force-shared] <project_path> "<task>"
 ```
 
 - **既定は待機モード（`--wait`）**: 起動直後は着手せず概要を出して止まる。ユーザーが `tmux attach -t spin_<slug>` で「開始」と言うまで動かない。
@@ -63,7 +63,7 @@ bash scripts/spawn.sh [--worktree|--no-worktree] [--base <branch>] [--wait|--una
 |---|---|
 | 実装・コミット・PR 作成 | spinoff |
 | レビュー bot の到着を待つ | **起動元**（spinoff の PR に `pr-review-wait` を使う） |
-| 到着を知らせる | 起動元が `bash scripts/nudge.sh spin_<slug> "PR #N にレビューが来たので対応して"` |
+| 到着を知らせる | 起動元が `bash ${CLAUDE_PLUGIN_ROOT}/skills/spinoff-session/scripts/nudge.sh spin_<slug> "PR #N にレビューが来たので対応して"` |
 | レビュー対応・push | spinoff |
 | マージ判断・マージ指示 | 起動元（ユーザー判断） |
 | セッションを畳む | 起動元が、マージ済み・用済みを確認して `tmux kill-session -t spin_<slug>` |
@@ -73,8 +73,8 @@ bash scripts/spawn.sh [--worktree|--no-worktree] [--base <branch>] [--wait|--una
 - **完了したら畳む。溜めない。** 並列セッションが増えると、アカウント共有の rate limit 経由で Remote Control が 401 で切れ、並列数を減らすまで戻らないことがある（約 20 並列で発生した実例あり。upstream の anthropics/claude-code#32642 は NOT_PLANNED）。
 - **`claude "<task>"` はタスク完了後も idle で残り、自動では `/exit` しない。** `/exit` したときだけ tmux セッションも消える。
 - **畳んでも作業は失われない。** セッションを kill しても worktree・ブランチ・コミット・PR は残る。
-- **保険の掃除**: `bash scripts/reap.sh --idle <分>` で一定時間 idle の `spin_` セッションを畳む。定期実行するなら閾値は「同日の待機セッションは残し、完了済みは半日以上残さない」くらいにする。
-- **worktree の掃除**: `bash scripts/reap.sh --worktrees`（既定 dry-run、`--force` で実削除）。`~/.worktrees` 配下で、クリーンかつ main に取り込み済み（squash は PR の状態で判定）で 24 時間触っていないものだけ消す。**未マージの worktree は消さない。**
+- **保険の掃除**: `bash ${CLAUDE_PLUGIN_ROOT}/skills/spinoff-session/scripts/reap.sh --idle <分>` で一定時間 idle の `spin_` セッションを畳む。定期実行するなら閾値は「同日の待機セッションは残し、完了済みは半日以上残さない」くらいにする。
+- **worktree の掃除**: `bash ${CLAUDE_PLUGIN_ROOT}/skills/spinoff-session/scripts/reap.sh --worktrees`（既定 dry-run、`--force` で実削除）。`~/.worktrees` 配下で、クリーンかつ main に取り込み済み（squash は PR の状態で判定）で 24 時間触っていないものだけ消す。**未マージの worktree は消さない。**
 
 ## 使う人ごとの差し込み口
 
@@ -89,13 +89,15 @@ bash scripts/spawn.sh [--worktree|--no-worktree] [--base <branch>] [--wait|--una
 
 ## スクリプト
 
+どれも `${CLAUDE_PLUGIN_ROOT}/skills/spinoff-session/scripts/` にある（プロジェクトの cwd からの相対パスではない）。
+
 | スクリプト | 用途 |
 |---|---|
-| `scripts/spawn.sh` | spinoff セッションを起動する |
-| `scripts/nudge.sh <session> "<message>"` | 稼働中の spinoff に指示を1行送る |
-| `scripts/list-projects.sh [root]` | git リポジトリを番号付きで列挙する |
-| `scripts/list.sh` | 稼働中の `spin_` セッションと spin worktree を一覧する |
-| `scripts/reap.sh [--all \| --idle <分> \| --worktrees [--force]]` | セッション・worktree を掃除する（既定 dry-run） |
+| `spawn.sh` | spinoff セッションを起動する |
+| `nudge.sh <session> "<message>"` | 稼働中の spinoff に指示を1行送る |
+| `list-projects.sh [root]` | git リポジトリを番号付きで列挙する |
+| `list.sh` | 稼働中の `spin_` セッションと spin worktree を一覧する |
+| `reap.sh [--all \| --idle <分> \| --worktrees [--force]]` | セッション・worktree を掃除する（既定 dry-run） |
 
 ## やってはいけないこと
 

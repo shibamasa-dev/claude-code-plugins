@@ -4,13 +4,15 @@ set -u
 D="$(cd "$(dirname "$0")/.." && pwd)/skills/spinoff-session/scripts"
 W=$(mktemp -d "${TMPDIR:-/tmp}/spinoff-test.XXXX")
 mkdir -p "$W/bin" "$W/wt"
-REPO="$W/repo"; git init -q -b main "$REPO" && git -C "$REPO" commit -q --allow-empty -m init
+REPO="$W/repo"; git init -q -b main "$REPO" && git -C "$REPO" -c user.name=test -c user.email=test@example.com commit -q --allow-empty -m init
 
 # tmux スタブ: 呼ばれた引数を1行ずつ記録する。has-session は spin_alive だけ成功させる
 cat > "$W/bin/tmux" <<EOF
 #!/bin/bash
 printf '%s\n' "\$*" >> "$W/tmux.log"
-[ "\$1" = has-session ] && [ "\$3" != spin_alive ] && exit 1
+[ "\$1" = has-session ] && [ "\$3" != =spin_alive ] && exit 1
+# new-session は渡されたコマンドを実際にシェルで走らせる（claude もスタブなので何もしない）
+[ "\$1" = new-session ] && bash -c "\${@: -1}"
 exit 0
 EOF
 chmod +x "$W/bin/tmux"
@@ -66,6 +68,25 @@ PATH="$W/bin:$PATH" bash "$D/nudge.sh" other "x" >/dev/null 2>&1 && r=ok || r=re
 row 'spin_ 以外のセッションには送らない' "$r" refuse
 PATH="$W/bin:$PATH" bash "$D/nudge.sh" spin_gone "x" >/dev/null 2>&1 && r=ok || r=refuse
 row '存在しないセッションには送らない' "$r" refuse
+grep -q -- '-t =spin_alive' "$W/tmux.log" && r=yes || r=no
+row 'セッション名は完全一致で指定する（=）' "$r" yes
+
+echo '=== --model の値はシェルに解釈させない ==='
+: > "$W/tmux.log"
+spawn --no-worktree --model '$(touch '"$W"'/pwned)' "$REPO" "task" >/dev/null 2>&1
+[ -e "$W/pwned" ] && r=yes || r=no
+row 'モデル名に書いたコマンドは実行されない' "$r" no
+
+echo '=== list-projects.sh ==='
+git -C "$REPO" worktree add -q "$W/proj/linked" -b linked main 2>/dev/null
+mkdir -p "$W/proj"; cp -R "$REPO" "$W/proj/clone"; mkdir -p "$W/proj/fake/.git"
+out=$(bash "$D/list-projects.sh" "$W/proj")
+echo "$out" | grep -q "$W/proj/linked" && r=yes || r=no
+row 'linked worktree（.git がファイル）も出す' "$r" yes
+echo "$out" | grep -q "$W/proj/clone" && r=yes || r=no
+row '通常の clone を出す' "$r" yes
+echo "$out" | grep -q "$W/proj/fake" && r=yes || r=no
+row 'git でない .git ディレクトリは出さない' "$r" no
 
 git -C "$REPO" worktree prune 2>/dev/null
 rm -rf "$W"

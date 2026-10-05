@@ -41,10 +41,11 @@ if [ -d "$wt_root" ]; then
     else
       clean_label="clean"
     fi
+    # 祖先かどうかだけを見る（未着手の worktree も in-local-main になる。マージ済みかは reap.sh が PR 状態も見て判定する）
     if git -C "$wt" merge-base --is-ancestor "$branch" main >/dev/null 2>&1; then
-      merged_label="merged"
+      merged_label="in-local-main"
     else
-      merged_label="unmerged"
+      merged_label="not-in-local-main"
     fi
     printf "  %-50s  %-20s  %s / %s\n" "$wt" "$branch" "$clean_label" "$merged_label"
   done

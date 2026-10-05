@@ -169,7 +169,7 @@ esc="${esc//\$/\\\$}"
 esc="${esc//\`/\\\`}"
 
 model_opt=""
-[ -n "$model" ] && model_opt="--model ${model} "
+[ -n "$model" ] && model_opt="--model $(printf '%q' "$model") "
 # /exit でセッションを閉じたら tmux セッションも消える（自己消滅）
 inner="claude -n \"${session}\" ${model_opt}--permission-mode bypassPermissions \"${esc}\"; tmux kill-session -t ${session}"
 
@@ -193,5 +193,5 @@ else
 fi
 [ -n "$issue_id" ] && echo "  issue        : ${issue_id}"
 echo "  アクセス方法 : tmux attach -t ${session}"
-echo "  指示を送る   : scripts/nudge.sh ${session} \"<指示>\""
+echo "  指示を送る   : nudge.sh ${session} \"<指示>\""
 echo "  後始末       : 用が済んだら起動元が tmux kill-session -t ${session}（worktree はマージ後に reap.sh --worktrees）"

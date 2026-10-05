@@ -11,9 +11,11 @@ if [ ! -d "$root" ]; then
   exit 1
 fi
 
-# .git ディレクトリを探し、親ディレクトリ（リポジトリのルート）を列挙
 repos_file=$(mktemp "${TMPDIR:-/tmp}/list-projects.XXXXXX")
-find "$root" -maxdepth 4 -name .git -type d 2>/dev/null | sed 's|/\.git$||' | sort > "$repos_file"
+# .git はディレクトリ（通常の clone）とファイル（linked worktree）の両方がある
+find "$root" -maxdepth 4 -name .git 2>/dev/null | sed 's|/\.git$||' | sort | while IFS= read -r d; do
+  git -C "$d" rev-parse --git-dir >/dev/null 2>&1 && printf '%s\n' "$d"
+done > "$repos_file"
 
 count=$(wc -l < "$repos_file" | tr -d ' ')
 
