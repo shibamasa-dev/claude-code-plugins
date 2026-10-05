@@ -14,6 +14,7 @@ printf '%s\n' "\$*" >> "$W/tmux.log"
 exit 0
 EOF
 chmod +x "$W/bin/tmux"
+printf '#!/bin/bash\nexit 0\n' > "$W/bin/claude"; chmod +x "$W/bin/claude"
 NO_TMUX="$W/notmux"; mkdir -p "$NO_TMUX"
 for c in bash git date head tr sed basename dirname mktemp cat; do ln -sf "$(command -v $c)" "$NO_TMUX/$c"; done
 
@@ -37,6 +38,8 @@ grep -q '待機タスク' "$W/tmux.log" && r=yes || r=no
 row '既定は待機モード' "$r" yes
 grep -q -- '--model' "$W/tmux.log" && r=yes || r=no
 row '--model を省くとモデルを指定しない' "$r" no
+PATH="$W/bin:$PATH" SPINOFF_WORKTREE_ROOT="$W/wt" bash "$D/list.sh" 2>/dev/null | grep -q "$W/wt/repo-fix-the-bug-" && r=yes || r=no
+row 'list.sh が SPINOFF_WORKTREE_ROOT の worktree を出す' "$r" yes
 
 echo '=== 差し込み口 ==='
 : > "$W/tmux.log"

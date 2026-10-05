@@ -49,7 +49,7 @@ bash scripts/spawn.sh [--worktree|--no-worktree] [--base <branch>] [--wait|--una
 - **既定は待機モード（`--wait`）**: 起動直後は着手せず概要を出して止まる。ユーザーが `tmux attach -t spin_<slug>` で「開始」と言うまで動かない。
 - **投げっぱなしは `--unattended`**。**issue 対応は `--issue <URL|owner/repo#N>`**（既定が unattended になり、タスク文に「PR 作成まで・マージしない・レビュー到着は起動元が知らせる」を足す）。
 - `--model` を省くと Claude Code の既定モデルで起動する。
-- worktree は `~/.worktrees/<repo>-<slug>`（`SPINOFF_WORKTREE_ROOT` で変更可）、ブランチは `spin/<slug>`、セッション名は `spin_<slug>`。
+- worktree は `~/.worktrees/<repo>-<slug>`（`SPINOFF_WORKTREE_ROOT` で変更可。`list.sh`・`reap.sh` も同じ変数を見る）、ブランチは `spin/<slug>`、セッション名は `spin_<slug>`。
 
 ### ⑤ 報告する
 

@@ -33,9 +33,9 @@ set -euo pipefail
 # worktree 活性ガードの idle 閾値（分）。この時間内に活動があれば merged/clean でも保持する。
 wt_idle_min="${REAP_WT_IDLE_MIN:-1440}"
 
-# worktree の探索ルート（既定 $HOME/.worktrees）。REAP_WT_IDLE_MIN と同様に env で上書き可能。
+# worktree の探索ルート（既定 $HOME/.worktrees）。spawn.sh と同じ SPINOFF_WORKTREE_ROOT で上書きする。
 # テスト・非標準配置で使う（本番は既定のまま）。
-wt_root="${REAP_WT_ROOT:-$HOME/.worktrees}"
+wt_root="${SPINOFF_WORKTREE_ROOT:-$HOME/.worktrees}"
 
 # このブランチの現 HEAD が MERGED PR の head commit と一致するか判定する（squash merge 検出用）。
 #   戻り値: 0=現 HEAD と一致する MERGED PR あり / 1=無い・不明（gh 不在/エラー/0 件）。
@@ -52,8 +52,9 @@ _branch_pr_merged() {
   head_oid=$(git -C "$wt" rev-parse HEAD 2>/dev/null) || return 1
   [ -n "$head_oid" ] || return 1
   # gh はカレントディレクトリの remote からリポジトリを解決するため worktree 内で実行する。
-  # --head でこのブランチ head の PR に絞り、--state merged で MERGED のみ、その head commit を列挙。
-  oids=$( cd "$wt" && gh pr list --head "$br" --state merged --json headRefOid --jq '.[].headRefOid' 2>/dev/null ) || return 1
+  # --head でこのブランチ head の PR に絞り、--base main で main 向けだけ（develop 等へのマージは main に入っていない）、
+  # --state merged で MERGED のみ、その head commit を列挙。
+  oids=$( cd "$wt" && gh pr list --head "$br" --base main --state merged --json headRefOid --jq '.[].headRefOid' 2>/dev/null ) || return 1
   # 列挙した head commit（1 行 1 SHA）の中に現 HEAD と完全一致する行があるか（-x=行全体一致）。
   if printf '%s\n' "$oids" | grep -qxF "$head_oid"; then
     return 0

@@ -12,7 +12,8 @@ if [ -s "$sessions_file" ]; then
   while IFS=' ' read -r name created activity; do
     idle_sec=$(( now - activity ))
     idle_min=$(( idle_sec / 60 ))
-    created_fmt=$(date -r "$created" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "unknown")
+    created_fmt=$(date -r "$created" "+%Y-%m-%d %H:%M:%S" 2>/dev/null \
+      || date -d "@$created" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "unknown")
     printf "  %-40s  created: %s  idle: %d min\n" "$name" "$created_fmt" "$idle_min"
   done < "$sessions_file"
 else
@@ -22,7 +23,7 @@ rm -f "$sessions_file"
 
 echo ""
 echo "=== spin worktrees ==="
-wt_root="$HOME/.worktrees"
+wt_root="${SPINOFF_WORKTREE_ROOT:-$HOME/.worktrees}"
 wt_found=0
 if [ -d "$wt_root" ]; then
   for wt in "$wt_root"/*/; do
