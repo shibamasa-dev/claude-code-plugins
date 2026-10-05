@@ -29,7 +29,7 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 
 ### workflow — issue・PR・セッション運用
 
-スキル: `issue-ops`（issue の起票〜close の規約）／`pr-review-wait`・`pr-rereview`（CodeRabbit・Codex のレビュー待ちと再レビュー）／`session-wrap`（閉じる前の残件確認）／`codebase-doctor`／`context-diet`／`remote-setup`／`weekly-orchestrator-base`／`openapi-to-skills`／`testcase-generator`
+スキル: `issue-ops`（issue の起票〜close の規約）／`spinoff-session`（タスクを tmux 上の別セッション＋git worktree に切り出す。macOS / Linux 専用）／`pr-review-wait`・`pr-rereview`（CodeRabbit・Codex のレビュー待ちと再レビュー）／`session-wrap`（閉じる前の残件確認）／`codebase-doctor`／`context-diet`／`remote-setup`／`weekly-orchestrator-base`／`openapi-to-skills`／`testcase-generator`
 
 フック: `handoff`（セッションをまたぐ次の入口）／`issue-writeback`（読んだ issue に決定を書き戻させる）／`runbook`（ブラウザ・画面操作の手順を記録）／`knowledge-freshness`（スキルの鮮度切れを知らせる）／`artifact-ledger`（公開した Artifact をプロジェクトに記録）／`testcase-lint`
 
@@ -46,7 +46,7 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 ## 前提
 
 - macOS / Linux、`python3`、`git`、`gh`
-- `motion-video` は Node.js・Chrome・ffmpeg、`openapi-to-skills` は `uv`
+- `motion-video` は Node.js・Chrome・ffmpeg、`openapi-to-skills` は `uv`、`spinoff-session` は `tmux`（Windows は非対応）
 
 ## コントリビュート前の確認
 

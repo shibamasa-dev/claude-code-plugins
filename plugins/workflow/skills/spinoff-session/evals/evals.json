@@ -1,0 +1,37 @@
+[
+  {
+    "id": "trigger_spinoff_1",
+    "description": "明示的な「別セッションで走らせて」発言 → 発動すべき",
+    "user_message": "このタスクを別セッションで走らせてください。プロジェクトは ~/dev/myproject です。",
+    "expected": "invoke",
+    "notes": "「別セッションで走らせて」はコアトリガー語"
+  },
+  {
+    "id": "trigger_spinoff_2",
+    "description": "「切り出して投げっぱなしで動かして」→ 発動すべき",
+    "user_message": "このリファクタリングを切り出して投げっぱなしで動かしてほしい。バックグラウンドでいい。",
+    "expected": "invoke",
+    "notes": "「切り出して」「投げっぱなし」「バックグラウンド」複数トリガー語を含む"
+  },
+  {
+    "id": "trigger_no_spinoff_1",
+    "description": "通常のタスク依頼 → 発動すべきでない",
+    "user_message": "このコードをリファクタリングしてください。",
+    "expected": "no-invoke",
+    "notes": "別セッション・切り出し・バックグラウンド等の語がない通常依頼"
+  },
+  {
+    "id": "trigger_no_spinoff_2",
+    "description": "セッション一覧確認のみ → spinoff-session の起動は不要",
+    "user_message": "今動いているセッションを見せて。",
+    "expected": "no-invoke",
+    "notes": "list.sh は呼べるが spinoff-session スキル自体の起動は不要（情報確認のみ）"
+  },
+  {
+    "id": "trigger_spinoff_3",
+    "description": "「サブセッション起動」→ 発動すべき",
+    "user_message": "サブセッション起動して、このタスクをそちらで処理してほしい。",
+    "expected": "invoke",
+    "notes": "「サブセッション起動」はトリガー語"
+  }
+]
