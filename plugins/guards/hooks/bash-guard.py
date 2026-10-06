@@ -739,8 +739,24 @@ def _git(args, cwd, timeout=8):
     )
 
 
-def _default_branch(cwd):
-    """リポの既定ブランチ。origin/HEAD が無ければ origin/main・origin/master の有る方。"""
+def _remote_default(cwd):
+    """origin が今いう既定ブランチ（ls-remote、読むだけ）。手元の origin/HEAD は fetch で更新されないため先に聞く。
+    繋がらない・認証が要るときは None（待たせない）。"""
+    try:
+        r = subprocess.run(["git", "ls-remote", "--symref", "origin", "HEAD"], cwd=cwd, capture_output=True, stdin=subprocess.DEVNULL,
+                           text=True, timeout=5, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    m = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", r.stdout, re.M) if r.returncode == 0 else None
+    return m.group(1) if m else None
+
+
+def _default_branch(cwd, online=True):
+    """リポの既定ブランチ。origin に聞き、繋がらなければ手元の origin/HEAD、それも無ければ origin/main・origin/master の有る方。
+    online=False は origin に聞かない（commit のたびに通信させないため）。"""
+    name = _remote_default(cwd) if online else None
+    if name:
+        return name
     r = _git(["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"], cwd, timeout=5)
     name = r.stdout.strip() if r.returncode == 0 else ""
     if name.startswith("origin/"):
@@ -830,7 +846,7 @@ def rule_main_commit_freshness(command: str):
         if r.returncode != 0:
             return None
         branch = r.stdout.strip()
-        if branch not in ("main", "master", _default_branch(cwd)):
+        if branch not in ("main", "master", _default_branch(cwd, online=False)):
             return None  # feature ブランチは rule_push_freshness が push 時に見る
         # fetch は best-effort（offline なら素通り＝commit を邪魔しない）
         _git(["fetch", "origin", branch, "--quiet"], cwd)

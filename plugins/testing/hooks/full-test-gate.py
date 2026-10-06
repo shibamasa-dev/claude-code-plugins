@@ -6,7 +6,7 @@
   {
     "command": "cd etl/database/stored_procedures && python -m pytest tests/ -q",  # 全体テスト（リポジトリ直下で実行）
     "paths": ["etl/database"],            # 変更量を数える対象パス
-    "base": "origin/main",                # 省略時はリポの既定ブランチ（origin/HEAD。無ければ origin/main）
+    "base": "origin/main",                # 省略時はリポの既定ブランチ（origin に問い合わせ。繋がらなければ origin/HEAD、無ければ origin/main）
     "thresholds": {"lines": 500, "commits": 10, "days": 14},   # どれかを超えたら通知
     "skipped_regex": "(\\d+) skipped",   # 出力から skip 件数を拾う（任意）
     "max_skipped": 20,                    # これを超えたら記録しない（任意）
@@ -49,10 +49,32 @@ def load_project(cwd):
     return cfg, top, os.path.join(STATE_DIR, key + ".json")
 
 
+def _remote_default(top):
+    """origin が今いう既定ブランチ（ls-remote、読むだけ）。手元の origin/HEAD は fetch で更新されないため先に聞く。
+    繋がらない・認証が要るときは None（待たせない）。"""
+    try:
+        r = subprocess.run(["git", "ls-remote", "--symref", "origin", "HEAD"], cwd=top, capture_output=True, stdin=subprocess.DEVNULL,
+                           text=True, timeout=5, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    m = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", r.stdout, re.M) if r.returncode == 0 else None
+    return m.group(1) if m else None
+
+
+_DEFAULT_BASE = {}
+
+
 def default_base(top):
-    """設定に base が無いときの比較先。origin/HEAD の指す先、無ければ origin/main。"""
-    rc, ref = git(top, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
-    return ref if rc == 0 and ref.startswith("origin/") else "origin/main"
+    """設定に base が無いときの比較先。origin に聞き、繋がらなければ手元の origin/HEAD、それも無ければ origin/main。
+    1回のフックの中では最初の結果を使い回す（問い合わせは1回だけ）。"""
+    if top not in _DEFAULT_BASE:
+        name = _remote_default(top)
+        if name:
+            _DEFAULT_BASE[top] = f"origin/{name}"
+        else:
+            rc, ref = git(top, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+            _DEFAULT_BASE[top] = ref if rc == 0 and ref.startswith("origin/") else "origin/main"
+    return _DEFAULT_BASE[top]
 
 
 def base_of(top, cfg):
@@ -148,7 +170,7 @@ def hook_session_start(cwd):
         over.append("days")
     if over:
         print(f"[full-test] 全体テストの時期です。{text}（しきい値超過: {', '.join(over)}）。"
-              "作業の切れ目に main で `full-test-gate run` を実行してください。")
+              f"作業の切れ目に {base_of(top, cfg)} と同じ状態で `full-test-gate run` を実行してください。")
 
 
 def hook_pre_bash(cwd, command):
@@ -164,7 +186,7 @@ def hook_pre_bash(cwd, command):
                   f"{m['files']} ファイル）。")
     else:
         reason = "全体テストの記録がありません。"
-    reason += " 先に main の状態で `full-test-gate run` を通してください。"
+    reason += f" 先に {base_of(top, cfg)} と同じ状態で `full-test-gate run` を通してください。"
     print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                              "permissionDecision": "deny",
                                              "permissionDecisionReason": "[full-test] " + reason}},

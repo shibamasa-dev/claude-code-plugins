@@ -5,7 +5,7 @@ testing プラグインの変更履歴。書式は [Keep a Changelog](https://ke
 ## [0.1.1] - 2026-10-06
 
 ### Fixed
-- full-test-gate：`base` を設定していないときの比較先を `origin/main` 固定から既定ブランチ（origin/HEAD、無ければ `origin/main`）にした
+- full-test-gate：`base` を設定していないときの比較先を `origin/main` 固定から既定ブランチにした。origin に問い合わせ、繋がらなければ手元の origin/HEAD、それも無ければ `origin/main`。通知と止めるときのメッセージも、その比較先の名前を出す
 
 ## [0.1.0] - 2026-10-06
 

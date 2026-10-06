@@ -66,8 +66,23 @@ def _current_branch(cwd):
     return r.stdout.strip() if r.returncode == 0 else None
 
 
+def _remote_default(cwd):
+    """origin が今いう既定ブランチ（ls-remote、読むだけ）。手元の origin/HEAD は fetch で更新されないため先に聞く。
+    繋がらない・認証が要るときは None（待たせない）。"""
+    try:
+        r = subprocess.run(["git", "ls-remote", "--symref", "origin", "HEAD"], cwd=cwd, capture_output=True, stdin=subprocess.DEVNULL,
+                           text=True, timeout=5, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    m = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", r.stdout, re.M) if r.returncode == 0 else None
+    return m.group(1) if m else None
+
+
 def _default_branch(cwd):
-    """リポの既定ブランチ。origin/HEAD が無ければ origin/main・origin/master の有る方。"""
+    """リポの既定ブランチ。origin に聞き、繋がらなければ手元の origin/HEAD、それも無ければ origin/main・origin/master の有る方。"""
+    name = _remote_default(cwd)
+    if name:
+        return name
     r = _git(["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"], cwd, timeout=5)
     name = r.stdout.strip() if r.returncode == 0 else ""
     if name.startswith("origin/"):
@@ -101,6 +116,28 @@ def _origin_slug(cwd):
     return f"{m.group(1)}/{m.group(2)}".lower() if m else None
 
 
+def _origin_host_slug(cwd):
+    """origin の (host, owner/repo)（小文字）。GitHub Enterprise など github.com 以外のホストも読む。"""
+    r = _git(["config", "--get", "remote.origin.url"], cwd, timeout=5)
+    url = r.stdout.strip() if r.returncode == 0 else ""
+    m = (re.match(r"^[a-z][a-z0-9+.-]*://(?:[^@/]+@)?([^/:]+)(?::\d+)?/(.+)$", url, re.I)
+         or re.match(r"^(?:[^@/]+@)?([^/:]+):(.+)$", url))
+    if not m:
+        return None
+    parts = re.sub(r"(?:\.git)?/?$", "", m.group(2)).split("/")
+    return (m.group(1).lower(), "/".join(parts[-2:]).lower()) if len(parts) >= 2 else None
+
+
+def _same_repo(cwd, repo):
+    """gh の -R（[HOST/]OWNER/REPO）が cwd の origin と同じリポか。HOST 省略時は GH_HOST、無ければ github.com。"""
+    origin = _origin_host_slug(cwd)
+    parts = repo.strip().rstrip("/").split("/")
+    if not origin or len(parts) not in (2, 3):
+        return False
+    host = parts[0].lower() if len(parts) == 3 else (os.environ.get("GH_HOST") or "github.com").lower()
+    return (host, "/".join(parts[-2:]).lower()) == origin
+
+
 # ------------------------------------------------------------ post-merge-pull
 GH_MERGE_RE = re.compile(r"\bgh\s+pr\s+merge\b([^;&|\n]*)")
 # gh pr merge で値を取るフラグ（セレクタと取り違えないため）
@@ -131,6 +168,10 @@ def _gh_merge_target(args: str):
         elif not t.startswith("-") and sel is None:
             sel = t
         i += 1
+    if not repo and sel:
+        u = re.match(r"^https?://([^/]+)/([^/]+)/([^/]+)/pull/\d+", sel)
+        if u:
+            repo = "/".join(u.groups())  # URL のセレクタはそのリポを指す
     return sel, repo
 
 
@@ -157,7 +198,7 @@ def rule_post_merge_pull(command: str):
         g = GH_MERGE_RE.search(command)
         if g:
             sel, repo = _gh_merge_target(g.group(1))
-            if repo and _origin_slug(cwd) != repo.lower():
+            if repo and not _same_repo(cwd, repo):
                 return None  # 別リポの PR をマージしただけ
             base = _gh_base(cwd, sel, repo) or _default_branch(cwd)
         else:

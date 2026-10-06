@@ -63,5 +63,19 @@ adv_dev >/dev/null
 printf '#!/bin/sh\nexit 1\n' > "$T/bin/gh"
 row 'gh pr view が失敗したら既定ブランチ（main）として扱う' "$(res "$(run Bash '{"command":"gh pr merge 7"}')")" silent
 row 'gh pr merge -R 別リポ は手元を動かさない' "$(res "$(run Bash '{"command":"gh pr merge 7 -R O/other"}')")" silent
+printf '#!/bin/sh\necho develop\n' > "$T/bin/gh"
+row 'gh pr merge -R github.com/O/R（ホスト付きの同じリポ）' "$(res "$(run Bash '{"command":"gh pr merge 7 -R github.com/O/R"}')")" pulled
+adv_dev >/dev/null
+row 'gh pr merge -R 別ホスト/O/R は手元を動かさない' "$(res "$(run Bash '{"command":"gh pr merge 8 -R ghe.example.com/O/R"}')")" silent
+
+row 'gh pr merge <別リポの PR の URL> は手元を動かさない' "$(res "$(run Bash '{"command":"gh pr merge https://github.com/O/other/pull/9"}')")" silent
+row 'gh pr merge <同じリポの PR の URL>' "$(res "$(run Bash '{"command":"gh pr merge https://github.com/O/R/pull/9"}')")" pulled
+
+# origin 側で既定ブランチを develop に変えた（手元の origin/HEAD は main のまま。fetch では更新されない）
+printf '#!/bin/sh\nexit 1\n' > "$T/bin/gh"
+git -C "$T/origin.git" symbolic-ref HEAD refs/heads/develop
+adv_dev >/dev/null
+row '  手元の origin/HEAD は古いまま（main）' "$(git -C "$T/me" symbolic-ref --short refs/remotes/origin/HEAD | sed 's#^origin/##')" main
+row 'マージ先が取れなければ origin の今の既定（develop）を使う' "$(res "$(run Bash '{"command":"gh pr merge 10"}')")" pulled
 
 rm -rf "$T"

@@ -8,6 +8,8 @@ guards プラグインの変更履歴。書式は [Keep a Changelog](https://kee
 - git-freshness：マージの後に追従させるブランチを main 固定から PR のマージ先にした。GitHub コネクタは返ってきたマージコミットが今のブランチの origin に入っていれば追従、`gh pr merge` は `gh pr view` の baseRefName（取れなければ既定ブランチ）。`-R` で別リポを指したときは動かない
 - bash-guard：push 前と commit 前の鮮度チェック、worktree 削除時の未マージ判定の基準を main 固定から既定ブランチ（origin/HEAD、無ければ main / master）にした
 - フックのメッセージから特定の運用（スケジューラ）を前提にした書き方を外した
+- 既定ブランチは origin に問い合わせて決める（`git ls-remote --symref`、読むだけ）。繋がらなければ手元の origin/HEAD、それも無ければ main / master。手元の origin/HEAD は fetch で更新されず、origin 側で既定を変えると古いままになるため。commit 前のチェックだけは通信せず手元の値を使う
+- git-freshness：`gh pr merge` の `-R` のホスト付きの形（`github.com/OWNER/REPO`）と、PR の URL を指定したときも、手元の origin と同じリポかを確かめる
 
 ## [0.2.0] - 2026-10-06
 
