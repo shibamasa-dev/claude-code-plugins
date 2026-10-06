@@ -5,7 +5,7 @@
   "plugins": [
     { "name": "guards", "source": "./plugins/guards", "description": "破壊的な Bash 操作・古い main からの push・未検証マージ・リポ構造違反の書き込みを止めるフック", "category": "security" },
     { "name": "workflow", "source": "./plugins/workflow", "description": "issue 運用・セッションの引き継ぎ・runbook 記録などのスキルとフック", "category": "productivity" },
-    { "name": "review", "source": "./plugins/review", "description": "PR のレビューを回すスキルとコマンド（レビュー bot の結果待ち・再レビュー依頼・AI レビューから修正まで）", "category": "development" },
+    { "name": "review", "source": "./plugins/review", "description": "依頼からマージまでの開発フローと PR のレビューを回すスキルとコマンド（フローの入口・レビュー bot の結果待ち・再レビュー依頼・AI レビューから修正まで）", "category": "development" },
     { "name": "testing", "source": "./plugins/testing", "description": "テストを設計して回すスキルとフック（Gherkin のテストケース作成・成果物の検証・全体テストのゲート）", "category": "testing" },
     { "name": "devtools", "source": "./plugins/devtools", "description": "リポの立ち上げと道具づくりのスキル（基本設定の点検・クラウド環境のセットアップ）", "category": "development" },
     { "name": "docs", "source": "./plugins/docs", "description": "画像生成プロンプト・コードで描くモーション動画のスキル", "category": "design" }

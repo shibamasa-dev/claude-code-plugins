@@ -2,6 +2,11 @@
 
 review プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.2.0] - 2026-10-06
+
+### Added
+- `dev-flow` スキル：issue の対応も口頭の依頼も、依頼からマージまでを1本のフローで回す入口。構造変更の基準とアーキレビュー、Issue Fields（`Arch Review`・`Verification`）が無いときの警告、実装後の自己レビュー、PR 本文の `Closes` / `Refs` と `Arch-Review:` の欄、マージ前の `## 結果`、リポ単位の自動マージ（`.claude/dev-flow.json`）を持つ
+
 ## [0.1.0] - 2026-10-06
 
 ### Added

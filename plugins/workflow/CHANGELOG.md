@@ -2,6 +2,11 @@
 
 workflow プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.1.8] - 2026-10-06
+
+### Changed
+- issue-ops：アーキレビュー・ゲートの判定と PR 本文の欄は review プラグインの `dev-flow` に移し、ここには issue 側の操作だけ残した。`## 結果` は「`Closes` を書く前」ではなく「`Closes` の PR をマージする前」に書く、に揃えた。PR の突き合わせと body の読み方をコネクタのツールで書いた
+
 ## [0.1.7] - 2026-10-06
 
 ### Removed
