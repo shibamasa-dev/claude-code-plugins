@@ -39,7 +39,8 @@ MERGE=mcp__github__merge_pull_request
 AUTO=mcp__github__enable_pr_auto_merge
 OK_BODY=$'## 概要\nx\n\nCloses #5\nArch-Review: not-needed — 文言の修正だけ'
 pr_in() { printf '{"owner":"O","repo":"R","title":"t","head":"%s","base":"main","body":%s}' "${2:-feat}" "$(j "$1")"; }
-pr_out() { printf '[{"type":"text","text":%s}]' "$(j "{\"html_url\":\"https://github.com/O/R/pull/$1\",\"number\":$1}")"; }
+# コネクタの結果の形（[{"type":"text","text":"<JSON>"}]）。macOS の bash 3.2 は "$(… \" …)" の入れ子を読み違えるので python で組む
+pr_out() { python3 -c 'import json,sys; n=int(sys.argv[1]); print(json.dumps([{"type":"text","text":json.dumps({"html_url":"https://github.com/O/R/pull/%d" % n,"number":n})}]))' "$1"; }
 
 echo '=== A: PR 本文の印（PreToolUse） ==='
 row 'コネクタ: 印が両方ある' "$(pre a $CREATE "$(pr_in "$OK_BODY")")" allow
@@ -135,7 +136,8 @@ row 'セッションが違えば記録も別' "$(pre c1x $MERGE "$(mi 20)")" all
 
 echo
 echo '=== D: 掃除（SessionStart） ==='
-touch -d '40 days ago' "$CLAUDE_PLUGIN_DATA/dev-flow-gate/c1.json"
+# touch -d は GNU だけ（macOS の touch には無い）なので python で mtime を戻す
+python3 -c 'import os,sys,time; t=time.time()-40*86400; os.utime(sys.argv[1],(t,t))' "$CLAUDE_PLUGIN_DATA/dev-flow-gate/c1.json"
 printf '{"hook_event_name":"SessionStart","session_id":"s"}' | python3 "$HOOK"
 [ -e "$CLAUDE_PLUGIN_DATA/dev-flow-gate/c1.json" ] && r=kept || r=gone
 row '30 日より古い状態ファイルを消す' "$r" gone
