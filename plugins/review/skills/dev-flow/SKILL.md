@@ -1,0 +1,133 @@
+---
+name: dev-flow
+description: issue の対応も口頭の実装依頼も、依頼を受けてからマージまでを1本の開発フローで回す入口の手順（構造変更の判定とアーキレビュー、実装後の自己レビュー、PR 本文の印、レビュー待ちと再レビュー、`## 結果` を書いてからのマージ、自動マージのリポ）。「この issue やって」「#12 対応して」「〜を実装して」「〜を直して」「PR 作って」「マージして」「マージしていい？」、英語の "work on issue", "implement", "fix", "open a PR", "ready to merge?" で発動。コードやプラグインを変える依頼を受けたら、着手する前に必ず読む。
+last_reviewed: 2026-10-06
+review_after: 2027-04-06
+---
+
+# dev-flow — 開発フローの入口
+
+> 段の順番と、段をまたぐ約束の正典はここ。段の中の細かい手順は、名前を挙げたスキルが持つ。入っていないスキルは、ここに書いた最低限の手順で代える。
+
+## 9 段
+
+| 段 | やること | 詳しい手順 |
+|---|---|---|
+| 1. 依頼を受ける | issue か口頭かを分ける | issue-ops（workflow） |
+| 2. 構造変更の判定 | 構造変更ならアーキレビューで GO をもらう。GO まで実装 PR を出さない | この SKILL |
+| 3. 実装と検証 | リポのチェックを回し、自分で diff を読み直す | この SKILL |
+| 4. PR を作る | `Closes` / `Refs` と `Arch-Review:` を本文に書く | この SKILL |
+| 5. レビューと CI を待つ | そのリポで使うレビューツールすべてと CI を待つ | pr-review-wait |
+| 6. 指摘を評価して直す | 照合して判定、PR 本文に対応表。重い指摘を基準件数以上直したら再レビュー → 5 へ | pr-review-wait・pr-rereview |
+| 7. `## 結果` を書く | `Closes` 先の issue の body に書く | issue-ops |
+| 8. マージを提案する | 条件がそろったら1回だけ提案する | この SKILL |
+| 9. マージ | ユーザーの指示でマージ。自動マージのリポでは自分でマージ | この SKILL |
+
+## 0. 最初に確かめること（同じセッションの同じリポでは1回だけ）
+
+1. **Issue Fields**: `list_issue_fields`（owner と repo を指定）を呼ぶ。
+   - 組織のリポで `Arch Review` か `Verification` が無い → ユーザーに1回警告する：「組織の設定の Issue Fields に `Arch Review`（Pending / Approved）と `Verification`（Not needed / Pending / Verified）を登録すると、アーキレビューと実機確認の状態を issue に残せます」。登録されるまでは、GO はチャットでもらい、未検証の項目は `## 結果` に書く。
+   - 個人アカウントのリポ（Organization として解決できない・空が返る）→ Issue Fields は組織専用で使えない旨を1回伝え、同じ代わりの方法で進める。
+2. **自動マージ**: リポの `.claude/dev-flow.json` を読む（手元に clone があればファイル、無ければ `get_file_contents`）。`{"autoMerge": true}` なら自動マージのリポ（9 段）。ファイルが無い・`false` なら既定どおりユーザーがマージする。
+3. **レビューツール**: pr-review-wait の決め方に従う（リポの CLAUDE.md / AGENTS.md の `review-bots:` 行が優先）。
+
+## 1. 依頼を受ける
+
+- **issue から**: `issue_read` で body を読む。受け入れ基準と、Issue Fields の `Arch Review` を見る。
+- **口頭の依頼**: 終わるまでに複数のステップが要るなら、着手前に issue 化を提案する（書き方は issue-ops）。1つの PR で終わる単発の依頼なら issue を作らずに進め、PR 本文に `Refs: none (verbal request)` と書く。結果はその PR 本文に残す。
+
+## 2. 構造変更の判定
+
+**構造変更として GO をもらうもの**:
+
+- プラグイン・スキル・フック・mods・コマンド・MCP サーバーの追加と削除
+- プラグインの境界の変更（部品の移動・分割・統合、プラグイン間の参照の追加）
+- 他から使われる約束の変更（userConfig のキー、PR 本文の書式、フックが見る印、ファイルの置き場所）
+- 既存のフックに止める条件を足す変更
+
+**対象外**: 既存スキルの文言の手直し、約束を変えないバグ修正、テストやドキュメントだけの変更。
+
+- issue に `Arch Review` が設定されていれば、その値が判定より優先する。`Pending` なら実装 PR を出さない。`Approved` なら GO 済み。
+- 構造変更なのに GO が無いとき：Issue Fields があれば `Arch Review: Pending` にし、採用案・設計要件を issue の body（大きければ設計書）に書いて、ユーザーに GO を聞く。GO までに許されるのは調査・設計の相談・設計コメントだけ。
+- 迷ったら構造変更として扱う。自分で決めた設計判断（境界、部品間の参照、削除）は、PR より先に issue に並べて確かめる。
+- GO の解除はユーザーが `Approved` に変えるか、明示の GO を出したとき。
+
+## 3. 実装と検証
+
+- リポのチェックを回す（CONTRIBUTING・PR テンプレート・CI の設定にあるもの：テスト、lint、validator、version と CHANGELOG の確認）。
+- **自分で diff を読み直す**（`git diff origin/<base>...HEAD`）。CI やレビュアーに落とされる理由を探すつもりで読む：
+  - 頼まれていない変更・消し忘れのデバッグ出力
+  - 個人のパス・メールアドレス・特定の個人名や社内の固有名（配布するリポでは特に）
+  - version・CHANGELOG・README の更新漏れ
+  - 振る舞いを変えたのにテストが無い
+- 見つけたものは PR を出す前に直す。
+
+## 4. PR を作る
+
+コネクタの `create_pull_request` で作る。リポに PR テンプレートがあればその見出しに沿う。本文には次の2つを必ず入れる（dev-flow-gate フックが入っていれば、無いと止まる）:
+
+- **`Closes #N` か `Refs #N`**（別リポなら `owner/repo#N`）
+  - `Closes`：issue の受け入れ基準がすべて ✅ になる見込みの PR。マージで issue が閉じるので、7 段の `## 結果` をマージ前に必ず書く。
+  - `Refs`：受け入れ基準の一部だけ。PR 本文に「未達の項目」と「残件の行き先（層 / issue 番号 / やらない）」を書く。マージ後に issue を閉じるのは依頼元のセッション。
+  - 口頭の依頼で issue が無い：`Refs: none (verbal request)`
+- **`Arch-Review:`** の1行
+  - 構造変更でない：`Arch-Review: not-needed — <理由>`
+  - 構造変更で GO 済み：`Arch-Review: approved — <GO の在りか（issue・設計書・メッセージのリンク）>`
+
+## 5〜6. 待つ・評価する・直す
+
+手順は pr-review-wait（待ち方・到着判定・評価・対応表）と pr-rereview（再レビューの頼み方）。段をまたぐ約束だけここに置く:
+
+- **待ち方はクラウドとローカルで違う。** クラウドのセッションは PR イベントの購読（`subscribe_pr_activity` があればそれ）でターンを終える。イベントがターンをまたいで起こしてくれる。ローカルは Monitor を立てる。Monitor はシェルのコマンドを回す仕組みなので、中では `gh` を使う（コネクタを使えない、CLI が残る例外）。
+- **レート制限・上限で止まったツールは未レビュー**として数え、待ち時間の後にそのツールにだけ頼み直す。
+- **再レビューは、重い指摘（Critical・P1 相当）を基準件数（既定 3）以上直したときだけ**、その回に頼んだツールへ頼む。それ以外は push して CI だけ待つ。どちらでも 5 段に戻る。
+- 指摘への対応はスレッドに返信せず、PR 本文の対応表（指摘 / 判定 / 対応 / 根拠）に書く。
+
+## 7. `## 結果` を書く
+
+- `Closes` 先の issue の body の末尾に `## 結果`（1〜5行：結論／やったこと・やらなかったこと／参照 PR）を書く。書き方と、再発性タスクの `## 次回への引き継ぎ` は issue-ops。
+- body の更新は全置換なので、`issue_read` で今の body を取ってから、末尾に足した全文を `issue_write`（update）で渡す。
+- 実環境でしか確かめられない受け入れ基準が残るなら、`## 結果` に「やらなかったこと（意図的）」として書き、Issue Fields があれば `Verification: Pending` にする。
+- **マージより前に書く**。マージで自動 close された後に書くと、記録の無い close になる。
+
+## 8. マージを提案する
+
+次がそろったら、ユーザーに1回だけ「マージしてよい」と提案する:
+
+- そのリポで使うレビューツールがすべて結果を出した（レート制限は数えない）
+- 指摘への対応が終わり、PR 本文の対応表が最新
+- CI が緑、マージの衝突が無い
+- `Closes` 先の `## 結果` が書けている
+
+待っている間は黙って待つ。`version` と CHANGELOG だけを変える push（main の取り込みなど）は、レビューを頼み直さずに CI だけ待ってよい。
+
+## 9. マージ
+
+- **既定はユーザーがマージする**（ユーザーがマージを明示して指示したら、Claude がマージしてよい）。
+- **自動マージのリポ**（0 段で `.claude/dev-flow.json` が `{"autoMerge": true}`）：8 段の条件がそろった時点で、Claude が `merge_pull_request` でマージする。リポが GitHub の auto-merge を許可していれば、`enable_pr_auto_merge` で CI 待ちを GitHub に任せてもよい。ただし次はユーザーに回す：
+  - 破壊的な変更・後戻りしにくい変更（データの移行、公開 API の削除など）
+  - Claude が作っていない PR
+- **自動マージを有効にする**：ユーザーが「このリポは自動でマージして」と言ったら、`.claude/dev-flow.json` に `{"autoMerge": true}` を足す PR を出す。その PR をユーザーがマージした時点で有効になる。止めるときは `false` にするかファイルを消す。guards の `merge_allowed_repos` を使っていたリポは、このファイルに移す。
+- マージの後：`Refs` にした issue は、依頼元のセッションが `## 結果` を書いて閉じる。手元の clone は main に追従させる（guards の git-freshness が入っていれば自動）。
+
+## GitHub の操作（コネクタが第一）
+
+GitHub の操作は GitHub コネクタのツールで行う。`gh` は、コネクタで取れないものにだけ使う。
+
+| 操作 | コネクタ | `gh` を使うとき |
+|---|---|---|
+| issue を読む・作る・更新・close | `issue_read`・`issue_write` | `issue_write` が承認フォームを出す環境（issue-ops） |
+| issue のコメント・親子 | `add_issue_comment`・`sub_issue_write` | 同上 |
+| PR を作る・更新 | `create_pull_request`・`update_pull_request` | — |
+| PR・レビュー・CI を読む | `pull_request_read`（get・get_reviews・get_review_comments・get_comments・get_check_runs） | — |
+| マージ | `merge_pull_request`・`enable_pr_auto_merge` | — |
+| ローカルでレビューを待つ | — | Monitor の中（シェルのコマンドなので） |
+
+`git`（commit・push・main の取り込み）は手元の操作なので CLI のまま使う。
+
+## やらないこと
+
+- `Arch Review: Pending`（または GO 待ち）の issue で実装 PR を出す
+- レート制限・上限で止まったツールを「レビュー済み」に数える
+- `Closes` 先の `## 結果` を書かずにマージする・マージを提案する
+- 自動マージのリポでない PR を、ユーザーの指示なしにマージする

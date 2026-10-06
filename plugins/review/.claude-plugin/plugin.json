@@ -1,7 +1,7 @@
 {
   "name": "review",
-  "version": "0.1.0",
-  "description": "PR のレビューを回すスキルとコマンド（レビュー bot の結果待ち・再レビュー依頼・AI レビューから修正まで）",
+  "version": "0.2.0",
+  "description": "依頼からマージまでの開発フローと PR のレビューを回すスキルとコマンド（フローの入口・レビュー bot の結果待ち・再レビュー依頼・AI レビューから修正まで）",
   "author": {
     "name": "shibamasa-dev"
   },
@@ -11,6 +11,7 @@
   "keywords": [
     "github",
     "pull-requests",
-    "code-review"
+    "code-review",
+    "workflow"
   ]
 }

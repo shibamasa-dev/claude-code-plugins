@@ -1,0 +1,37 @@
+[
+  {
+    "id": "trigger_devflow_issue",
+    "description": "issue の対応を頼まれた → 着手前に発動すべき",
+    "user_message": "example-org/example-repo#42 の対応お願い。",
+    "expected": "invoke",
+    "notes": "発動後の期待: issue の body と Arch Review を読み、構造変更かを判定してから着手する。構造変更で GO が無ければ実装 PR を出さずに GO を聞く"
+  },
+  {
+    "id": "trigger_devflow_verbal_new_skill",
+    "description": "口頭で新しいスキルの追加を頼まれた → 発動し、構造変更としてアーキレビューに回すべき",
+    "user_message": "review プラグインに、リリースノートを書くスキルを足して。",
+    "expected": "invoke",
+    "notes": "新しいスキルの追加は構造変更。発動後の期待: いきなり実装 PR を出さず、設計（置き場所・他の部品との関係）を示して GO を聞く。複数ステップなら issue 化も提案する"
+  },
+  {
+    "id": "trigger_devflow_english",
+    "description": "英語の実装依頼 → 発動すべき",
+    "user_message": "Please fix the off-by-one bug in the pagination helper and open a PR.",
+    "expected": "invoke",
+    "notes": "発動後の期待: 単発の依頼なので issue は作らず、PR 本文に `Refs: none (verbal request)` と `Arch-Review: not-needed — <理由>` を書く"
+  },
+  {
+    "id": "trigger_devflow_merge_question",
+    "description": "レビュー途中でマージしてよいか聞かれた → 発動して条件を確かめるべき",
+    "user_message": "PR #18、CI は緑になった。もうマージしていい？",
+    "expected": "invoke",
+    "notes": "発動後の期待: レビューツールがすべて結果を出したか（レート制限は未レビュー）、Closes 先の `## 結果` が書けているかを確かめ、欠けていれば何が欠けているかを返す"
+  },
+  {
+    "id": "no_trigger_devflow_question",
+    "description": "コードの説明を求められただけ → 発動しない",
+    "user_message": "この関数って何をしてるの？",
+    "expected": "no-invoke",
+    "notes": "変更を伴わない質問。フローの対象外"
+  }
+]
