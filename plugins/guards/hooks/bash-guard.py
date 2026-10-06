@@ -960,13 +960,17 @@ def _under_worktrees(p: str) -> bool:
     return p == WORKTREES_PREFIX.rstrip("/") or p.startswith(WORKTREES_PREFIX)
 
 
-def _linked_worktrees_under(p: str) -> list:
+def _linked_worktrees_under(p: str, follow: str = "") -> list:
     """p 自身か p の下にある linked worktree の実パス（メインの作業ツリーは除く）。
     p の属するリポの `git worktree list` と、p の中の `.git` ファイルの走査を合わせる。
     走査が上限で打ち切られたときは None を混ぜる（判定不能として止める側）。
-    p が無い・読めないときは []（rm-guard の判定に任せる）。"""
-    if not os.path.isdir(p) or os.path.islink(p):
+    p が無い・読めないときは []（rm-guard の判定に任せる）。
+    follow は find のシンボリックリンクの扱い（"H" は開始パスだけ、"L" は中もたどる）。
+    rm はリンク自体しか消さないので、follow が無ければリンクの先は見ない。"""
+    if not os.path.isdir(p) or (os.path.islink(p) and not follow):
         return []
+    if follow:
+        p = os.path.realpath(p)
     try:
         r = _git(["worktree", "list", "--porcelain"], p, env=GIT_ENV)
     except (subprocess.TimeoutExpired, OSError):
@@ -978,7 +982,7 @@ def _linked_worktrees_under(p: str) -> list:
         found = [w for w in (os.path.realpath(x) for x in paths[1:])
                  if w == rp or w.startswith(rp.rstrip("/") + "/")]
     # 別のリポの worktree が中にある場合（git の管理下でない上位フォルダ・関係ないリポの中）も拾う
-    scanned, complete = _scan_worktree_roots(p)
+    scanned, complete = _scan_worktree_roots(p, follow_links=follow == "L")
     return list(dict.fromkeys(found + scanned + ([] if complete else [None])))
 
 
@@ -986,21 +990,27 @@ def _linked_worktrees_under(p: str) -> list:
 _SCAN_SKIP = {".git", "node_modules"}
 
 
-def _scan_worktree_roots(p: str, limit: int = None):
+def _scan_worktree_roots(p: str, limit: int = None, follow_links: bool = False):
     """p の下にある linked worktree の root（`.git` が gitdir: …/worktrees/… を指すファイルのフォルダ）と、
     最後まで見られたか。サブモジュールの `.git` ファイルは modules/ を指すので数えない。
     深さは決めず、見るフォルダの数を limit までにする（巨大なフォルダの削除で待たせない）。
-    limit で打ち切ったら complete=False（見ていない所に worktree が無いとは言えない）。"""
+    limit で打ち切ったら complete=False（見ていない所に worktree が無いとは言えない）。
+    follow_links は `find -L` 用で、フォルダへのリンクもたどる（同じ実体は1回だけ見る）。"""
     if limit is None:
         limit = int(os.environ.get("GUARDS_SCAN_LIMIT") or 20000)   # 環境変数はテスト用
     if os.path.basename(p.rstrip("/")) in _SCAN_SKIP:
         return [], True
-    found, stack, seen = [], [p], 0
+    found, stack, seen, visited = [], [p], 0, set()
     while stack:
         d = stack.pop()
         seen += 1
         if seen > limit:
             return found, False
+        if follow_links:
+            rd = os.path.realpath(d)
+            if rd in visited:
+                continue
+            visited.add(rd)
         try:
             entries = list(os.scandir(d))
         except OSError:
@@ -1016,7 +1026,7 @@ def _scan_worktree_roots(p: str, limit: int = None):
                     if "/worktrees/" in head.replace("\\", "/"):
                         found.append(os.path.realpath(d))
                 continue
-            if e.name not in _SCAN_SKIP and e.is_dir(follow_symlinks=False):
+            if e.name not in _SCAN_SKIP and e.is_dir(follow_symlinks=follow_links):
                 stack.append(e.path)
     return found, True
 
@@ -1084,7 +1094,16 @@ def _brace_expand(s: str, limit: int = 256) -> list:
     return [s]
 
 
-def _worktrees_in_target(p: str, limit: int = 256) -> list:
+def _globstar_base(b: str) -> list:
+    """`**` を含む glob の、`**` より手前の固定のフォルダ（そこから下は丸ごと見る）。
+    bash の globstar が有効だと `**` は何階層でもたどるので、展開を再現せずに上のフォルダで確かめる。"""
+    head = b.split("**", 1)[0]
+    base = head if head.endswith("/") else os.path.dirname(head)
+    base = base.rstrip("/") or ("/" if head.startswith("/") else ".")
+    return glob.glob(base) if glob.has_magic(base) else [base]
+
+
+def _worktrees_in_target(p: str, limit: int = 256, follow: str = "") -> list:
     """消す先 p が消しうる linked worktree（None は確かめきれなかった印）。
     ブレース展開と glob（`*` など）はシェルと同じく展開してから見る。引用符で囲んだ `[` などは
     シェルでは文字どおりに渡るが、ここには引用符が外れて届くので、文字どおりのパスも合わせて見る。"""
@@ -1093,9 +1112,23 @@ def _worktrees_in_target(p: str, limit: int = 256) -> list:
     # 引用符で囲んだ `{a,b}` もシェルでは文字どおりに渡る
     paths = [p] if expanded != [p] and os.path.lexists(p) else []
     for b in expanded[:limit]:
-        paths.extend(glob.glob(b) + ([b] if os.path.lexists(b) else []) if glob.has_magic(b) else [b])
-    found += [w for q in dict.fromkeys(paths) for w in _linked_worktrees_under(os.path.normpath(q))]
+        if not glob.has_magic(b):
+            paths.append(b)
+            continue
+        paths.extend(_globstar_base(b) if "**" in b else glob.glob(b))
+        if os.path.lexists(b):
+            paths.append(b)
+    found += [w for q in dict.fromkeys(paths) for w in _linked_worktrees_under(os.path.normpath(q), follow)]
     return list(dict.fromkeys(found))
+
+
+def _find_follow(tokens: list) -> str:
+    """find がシンボリックリンクをたどるか。"L"（-L・-follow）は中も、"H" は開始パスだけ、"" はたどらない。"""
+    mode, i = "", 1
+    while i < len(tokens) and tokens[i] in ("-H", "-L", "-P", "-E", "-X", "-d", "-s", "-x"):
+        mode = {"-H": "H", "-L": "L", "-P": ""}.get(tokens[i], mode)
+        i += 1
+    return "L" if "-follow" in tokens[i:] else mode
 
 
 _TMPDIR_RE = re.compile(r"^\$(?:TMPDIR\b|\{TMPDIR\}|\{TMPDIR:?-([^}$`]*)\})(.*)$", re.S)
@@ -1158,6 +1191,7 @@ def rule_worktree_guard(command: str):
         # -delete は中身のあるフォルダを消せないので、~/.worktrees の外では worktree の root を消す心配がない
         filtered = starts is not None and _find_filtered(tokens)
         filtered_delete_only = filtered and not _find_exec_deletes(tokens)
+        follow = _find_follow(tokens) if starts is not None else ""
         # このルールが守るのは worktree の丸ごとの削除。worktree の中のファイルを条件で消す
         # （`find . -type f -delete` など）のは、サブパスの削除と同じく対象外（メインの作業ツリーでも同じ危険がある）
         if starts is not None:
@@ -1186,7 +1220,7 @@ def rule_worktree_guard(command: str):
                 if _under_worktrees(exp):
                     targets.append((t, exp))
                 elif not filtered_delete_only:
-                    targets.extend((t, w) for w in _worktrees_in_target(exp))
+                    targets.extend((t, w) for w in _worktrees_in_target(exp, follow=follow))
                 continue
             # 相対パス: 実行される cwd で解決する（`cd ~/.worktrees && rm -rf name` 等）。
             # worktree の中のサブパス（build/ 等の掃除）は対象外
@@ -1199,7 +1233,7 @@ def rule_worktree_guard(command: str):
                 if not _inside_worktree(exp):
                     targets.append((t, exp))
             elif not filtered_delete_only:
-                targets.extend((t, w) for w in _worktrees_in_target(exp))
+                targets.extend((t, w) for w in _worktrees_in_target(exp, follow=follow))
     bad = list(dict.fromkeys(t for t, p in targets if p is None or _worktree_state(p) != "merged_clean"))
     if not bad:
         return None
