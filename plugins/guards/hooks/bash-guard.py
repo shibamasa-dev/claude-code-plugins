@@ -34,6 +34,7 @@ matcher は "Bash"（ツール名しかマッチできない）なので全 Bash
                    再計算するので、「取り込んだ」という申告を信じる必要がない。
                    マーカー方式は Claude が文字列を足すだけで検証ゼロで通過できた。
 """
+import fnmatch
 import glob
 import itertools
 import json
@@ -172,6 +173,16 @@ def _parse_segments(command: str) -> list:
             else:
                 flush(")")          # case のパターン等。区切りとして扱う
             i += 1
+            continue
+        if c == "(" and st["buf"] and st["buf"][-1] in "?*+@!":
+            # extglob（`@(a|b)` など）は語の一部。中の `|` で区切らない
+            j, d = i, 0
+            while j < len(s):
+                d += {"(": 1, ")": -1}.get(s[j], 0)
+                j += 1
+                if d == 0:
+                    break
+            st["buf"].append(s[i:j]); i = j
             continue
         if c == "(":
             flush("(")
@@ -1100,28 +1111,55 @@ def _brace_expand(s: str, limit: int = 256) -> list:
     return [s]
 
 
-def _globstar_base(b: str) -> list:
-    """`**` を含む glob の、`**` より手前の固定のフォルダ（そこから下は丸ごと見る）。
-    bash の globstar が有効だと `**` は何階層でもたどるので、展開を再現せずに上のフォルダで確かめる。"""
-    head = b.split("**", 1)[0]
-    base = head if head.endswith("/") else os.path.dirname(head)
-    base = base.rstrip("/") or ("/" if head.startswith("/") else ".")
-    return glob.glob(base) if glob.has_magic(base) else [base]
+# extglob（`@(a|b)`・`!(x)` など）。中身は解釈せず、その階層を `*` として扱う
+_EXTGLOB_RE = re.compile(r"[?*+@!]\(")
+
+
+def _has_glob(s: str) -> bool:
+    return glob.has_magic(s) or bool(_EXTGLOB_RE.search(s))
+
+
+def _glob_superset(b: str, limit: int = 256) -> list:
+    """glob b がシェルで当たりうるパスを、少なめにならない側で集める。
+    シェルの設定（dotglob・nocaseglob・extglob・globstar）で当たり方が変わるので、
+    `.` で始まる名前も含め、大文字小文字を区別せず、extglob の階層は何にでも当てる。
+    `**` は何階層でもたどるので、その手前のフォルダを丸ごと見る（下は worktree の走査が見る）。
+    当たりが limit を超えたら limit + 1 個で打ち切る（呼ぶ側は確かめきれないとする）。"""
+    absolute = b.startswith("/")
+    cur = ["/" if absolute else "."]
+    for c in (c for c in b.split("/") if c):
+        if "**" in c:
+            return cur
+        if not _has_glob(c):
+            cur = [q for q in (os.path.join(d, c) for d in cur) if os.path.lexists(q)]
+            continue
+        pat = "*" if _EXTGLOB_RE.search(c) else c.lower()
+        nxt = []
+        for d in cur:
+            try:
+                names = os.listdir(d)
+            except OSError:
+                continue
+            nxt += [os.path.join(d, n) for n in names if fnmatch.fnmatchcase(n.lower(), pat)]
+            if len(nxt) > limit:
+                return nxt[:limit + 1]
+        cur = nxt
+    return cur
 
 
 def _worktrees_in_target(p: str, limit: int = 256, follow: str = "") -> list:
     """消す先 p が消しうる linked worktree（None は確かめきれなかった印）。
-    ブレース展開と glob（`*` など）はシェルと同じく展開してから見る。引用符で囲んだ `[` などは
+    ブレース展開はシェルと同じく、glob（`*` など）は当たりうるものを広めに展開してから見る。引用符で囲んだ `[` などは
     シェルでは文字どおりに渡るが、ここには引用符が外れて届くので、文字どおりのパスも合わせて見る。"""
     expanded = _brace_expand(p, limit)
     found = [None] if len(expanded) > limit else []
     # 引用符で囲んだ `{a,b}` もシェルでは文字どおりに渡る
     paths = [p] if expanded != [p] and os.path.lexists(p) else []
     for b in expanded[:limit]:
-        if not glob.has_magic(b):
+        if not _has_glob(b):
             paths.append(b)
             continue
-        paths.extend(_globstar_base(b) if "**" in b else glob.glob(b))
+        paths.extend(_glob_superset(b, limit))
         if os.path.lexists(b):
             paths.append(b)
     paths = list(dict.fromkeys(os.path.normpath(q) for q in paths))

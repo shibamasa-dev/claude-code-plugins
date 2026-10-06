@@ -182,6 +182,12 @@ git -C "$FH" init -q -b main outer && git -C "$FH/outer" commit -q --allow-empty
 git -C "$FH/repo" worktree add -q -b feat/nested "$FH/outer/bucket/feat"
 git -C "$FH/outer/bucket/feat" commit -q --allow-empty -m work
 KCWD="$FH/outer" K 'rm -rf bucket'                '別のリポの中にある未マージの worktree'    'deny'
+# シェルの設定で glob の当たり方が変わる（dotglob・nocaseglob・extglob）ので、当たりうる側で見る
+git -C "$FH/repo" worktree add -q -b feat/hidden "$FH/outer/hb/.hidden/feat"
+git -C "$FH/outer/hb/.hidden/feat" commit -q --allow-empty -m work
+KCWD="$FH/outer" K 'shopt -s dotglob; rm -rf hb/*' 'dotglob で . で始まるフォルダに当たる'     'deny'
+KCWD="$FH/outer" K 'shopt -s nocaseglob; rm -rf B*' 'nocaseglob で大文字小文字を無視して当たる' 'deny'
+KCWD="$FH/outer" K 'shopt -s extglob; rm -rf @(bucket|x)' 'extglob で当たる'                 'deny'
 # 深い所にある worktree も拾う（深さで打ち切らない）
 git -C "$FH/repo" worktree add -q -b feat/deep "$FH/deep/a/b/c/d/e/feat"
 git -C "$FH/deep/a/b/c/d/e/feat" commit -q --allow-empty -m work
