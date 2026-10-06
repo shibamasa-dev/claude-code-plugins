@@ -137,7 +137,7 @@ Scenario Outline: 伝票ファイルの取込で印刷対象フラグが立つ
 何が構造変更か、GO までに許されること、PR 本文の `Arch-Review:` 欄は review プラグインの `dev-flow` スキルが正典。ここには issue 側の操作だけ置く（dev-flow が無い環境でも、下の3行は守る）。
 
 - 構造変更を伴う issue は起票時に `Arch Review: Pending` を設定し、body に採用案・設計要件を書く。`Pending` の間は実装 PR を出さない。委譲するときは seed にゲートの状態を書く。
-- 解除はユーザーが `Approved` に変更（または明示 GO）してから。未設定はレビュー対象外。
+- 解除はユーザーが `Approved` に変更（または明示 GO）してから。フィールドが未設定でも、構造変更なら GO は要る。`Arch Review` を使えない（Issue Fields の無いリポ・個人アカウント）ときは、チャットで GO をもらう。
 - 機械抽出: `list_issues(field_filters: [{field_name:"Arch Review", value:"Pending"}])`。
 
 ### 実機検証ゲート（Verification）（2026-09-23 確定）
