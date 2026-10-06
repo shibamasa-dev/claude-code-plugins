@@ -95,6 +95,8 @@ sed 's#tokenUrl: http://auth.example.com/token#tokenUrl: 123#' "$T/http-url.yaml
 row 'tokenUrl が文字列でない spec を拒否する' "$(conv "$T/num-url.yaml" -o "$T/out-num")" refuse
 sed '/tokenUrl:/d' "$T/http-url.yaml" > "$T/no-url.yaml"
 row 'clientCredentials に tokenUrl が無い spec を拒否する' "$(conv "$T/no-url.yaml" -o "$T/out-nourl")" refuse
+sed 's#clientCredentials:#clientCredentials: {}#; /tokenUrl:/d; /scopes:/d' "$T/http-url.yaml" > "$T/empty-cc.yaml"
+row '空の clientCredentials（{}）の spec を拒否する' "$(conv "$T/empty-cc.yaml" -o "$T/out-emptycc")" refuse
 
 echo '=== discovery が返す token_endpoint も平文の http:// なら使わない ==='
 cat > "$T/oidc.yaml" <<'YAML'

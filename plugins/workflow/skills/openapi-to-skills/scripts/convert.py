@@ -557,14 +557,18 @@ def parse_auth_schemes(spec: dict) -> list[AuthSchemeDocument]:
             doc.scheme = scheme.get("scheme")
             doc.bearer_format = scheme.get("bearerFormat")
         elif scheme["type"] == "oauth2":
-            doc.flows = parse_oauth_flows(scheme.get("flows"))
+            flows = scheme.get("flows")
+            # 空の clientCredentials（{} や null）は parse_oauth_flows が読み飛ばすので、その前に見る
+            if isinstance(flows, dict) and "clientCredentials" in flows and not (
+                isinstance(flows["clientCredentials"], dict) and flows["clientCredentials"].get("tokenUrl") is not None
+            ):
+                raise ValueError(
+                    f"securitySchemes.{name} の clientCredentials に tokenUrl がありません"
+                )
+            doc.flows = parse_oauth_flows(flows)
             for flow in doc.flows:
                 validate_auth_url(name, "authorizationUrl", flow.authorization_url)
                 validate_auth_url(name, "tokenUrl", flow.token_url)
-                if flow.name == "clientCredentials" and flow.token_url is None:
-                    raise ValueError(
-                        f"securitySchemes.{name} の clientCredentials に tokenUrl がありません"
-                    )
         elif scheme["type"] == "openIdConnect":
             doc.openid_connect_url = scheme.get("openIdConnectUrl")
             validate_auth_url(name, "openIdConnectUrl", doc.openid_connect_url)
