@@ -107,7 +107,7 @@ review_after: 2027-04-06
 - **自動マージのリポ**（0 段で `.claude/dev-flow.json` が `{"autoMerge": true}`）：8 段の条件がそろった時点で、Claude が `merge_pull_request` でマージする。リポが GitHub の auto-merge を許可していれば、`enable_pr_auto_merge` で CI 待ちを GitHub に任せてもよい。ただし次はユーザーに回す：
   - 破壊的な変更・後戻りしにくい変更（データの移行、公開 API の削除など）
   - Claude が作っていない PR
-- **自動マージを有効にする**：ユーザーが「このリポは自動でマージして」と言ったら、`.claude/dev-flow.json` に `{"autoMerge": true}` を足す PR を出す。その PR をユーザーがマージした時点で有効になる。止めるときは `false` にするかファイルを消す。guards の `merge_allowed_repos` を使っていたリポは、このファイルに移す。
+- **自動マージを有効にする**：ユーザーが「このリポは自動でマージして」と言ったら、`.claude/dev-flow.json` に `{"autoMerge": true}` を足す PR を出す。その PR をユーザーがマージした時点で有効になる。止めるときは `false` にするかファイルを消す。guards の設定 `merge_allowed_repos`（非推奨）に書いたリポは、このファイルに移す。移すまでは自動マージのリポとして扱う。
 - マージの後：`Refs` にした issue は、依頼元のセッションが `## 結果` を書いて閉じる。手元の clone は main に追従させる（guards の git-freshness が入っていれば自動）。
 
 ## GitHub の操作（コネクタが第一）

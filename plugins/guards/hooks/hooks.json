@@ -4,6 +4,6 @@
       { "matcher": "Bash", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/bash-guard.py\"" } ] },
       { "matcher": "Write", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/file-guard.py\"" } ] }
     ],
-    "PostToolUse": [ { "matcher": "Bash", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/git-freshness.py\"" } ] } ]
+    "PostToolUse": [ { "matcher": "Bash|mcp__.*__merge_pull_request", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/git-freshness.py\"" } ] } ]
   }
 }

@@ -6,9 +6,9 @@ Claude Code の作業を、取り返しがつかなくなる前に止めるフ�
 
 | フック | いつ | 何をするか |
 |---|---|---|
-| bash-guard | Bash の前 | ホーム・システムディレクトリへの再帰削除、未マージ worktree の削除、古い main からの push を止める。マージ（`git merge`・`gh pr merge`）はユーザーの確認に回す。安全領域外の削除は macOS の `trash`（ゴミ箱）なら通す |
+| bash-guard | Bash の前 | ホーム・システムディレクトリへの再帰削除、未マージ worktree の削除、古い main からの push を止める。安全領域外の削除は macOS の `trash`（ゴミ箱）なら通す |
 | file-guard | Write の前 | リポ構造ルール違反の書き込み（`docs/` 直下の .md・`scripts/` 直下のスクリプトの新規作成）を止める |
-| git-freshness | Bash の後 | マージや push の後、ローカル main を最新にするよう知らせる（止めはしない） |
+| git-freshness | Bash の後・GitHub コネクタでマージした後 | マージの後、ローカル main を `--ff-only` で最新にする。できないときは知らせるだけ（止めはしない）。コネクタのマージは、手元の clone が同じリポのときだけ |
 
 ## 設定
 
@@ -16,11 +16,15 @@ Claude Code の作業を、取り返しがつかなくなる前に止めるフ�
 
 | キー | 既定 | 意味 |
 |---|---|---|
-| `merge_allowed_repos` | 空 | Claude の判断でマージしてよいリポ（`owner/repo` をカンマ区切り）。空ならすべてのマージをユーザーの確認に回す |
+| `merge_allowed_repos` | 空 | **非推奨**。guards はもう読まない（0.2.0 でマージの確認を外した）。自動マージは [review](../review/README.md) の `dev-flow` に移り、リポの `.claude/dev-flow.json`（`{"autoMerge": true}`）で決める。移行が済むまでは、review のスキルがここに書いたリポも自動マージのリポとして扱う |
 
 フックごとの調整:
 
 - **file-guard** のルールはプラグイン同梱の [`repo-structure.md`](repo-structure.md)。`~/.claude/rules/repo-structure.md` を置くとそちらが優先、環境変数 `FILE_GUARD_SPEC` を設定するとさらに優先（存在しないパスを指せば無効化）
+
+## マージの扱い
+
+マージの前の確認（以前の bash-guard の merge-gate）は 0.2.0 で外した。マージの条件（レビューがそろう・`Closes` 先の `## 結果`）は review プラグインの `dev-flow` スキルと `dev-flow-gate` フックが持つ。guards だけを入れている場合、マージは止まらない。
 
 ## 前提
 

@@ -21,6 +21,9 @@ bash-guard.py と同じ RULES 方式に揃えてある。
 現行ルール:
   1. post-merge-pull : gh pr merge / git merge の後、main が behind なら --ff-only で追従。
                        clean に通れば実行して報告、通らなければ**触らず**状況だけ注入。
+                       GitHub コネクタのマージ（mcp__*__merge_pull_request）の後も同じ。
+                       こちらは cwd の origin がマージした owner/repo と同じときだけ動く
+                       （別リポの PR をマージしただけで手元の main を動かさない）。
 
 設計上の約束:
   - **自動 stash はしない。** stash pop の競合で作業を黙って壊すため。ff-only が拒否したら
@@ -75,10 +78,35 @@ def _repo_state(cwd):
     return branch, behind, dirty
 
 
+def _origin_slug(cwd):
+    """origin の owner/repo（小文字）。GitHub でなければ None。"""
+    r = _git(["config", "--get", "remote.origin.url"], cwd, timeout=5)
+    m = re.search(r"github\.com[:/]([^/\s]+)/([^/\s]+?)(?:\.git)?/?$", r.stdout.strip()) if r.returncode == 0 else None
+    return f"{m.group(1)}/{m.group(2)}".lower() if m else None
+
+
 # ------------------------------------------------------------ post-merge-pull
 def rule_post_merge_pull(command: str):
     if not MERGE_RE.search(command):
         return None
+    return _pull_main()
+
+
+def rule_post_merge_pull_mcp(tool_input: dict):
+    """コネクタでマージした後。cwd が同じリポのときだけ main を追従させる。"""
+    owner, repo = tool_input.get("owner"), tool_input.get("repo")
+    cwd = _CWD if (_CWD and os.path.isdir(_CWD)) else None
+    if not (owner and repo and cwd):
+        return None
+    try:
+        if _origin_slug(cwd) != f"{owner}/{repo}".lower():
+            return None
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    return _pull_main()
+
+
+def _pull_main():
     cwd = _CWD if (_CWD and os.path.isdir(_CWD)) else None
     if cwd is None:
         return None
@@ -115,7 +143,8 @@ def rule_post_merge_pull(command: str):
         return None
 
 
-RULES = [rule_post_merge_pull]
+RULES = [rule_post_merge_pull]          # Bash のコマンドを見るルール
+MCP_RULES = {"merge_pull_request": rule_post_merge_pull_mcp}  # コネクタのツール名（末尾）→ ルール
 
 
 def main() -> None:
@@ -123,10 +152,17 @@ def main() -> None:
         data = json.load(sys.stdin)
     except Exception:
         sys.exit(0)
-    if data.get("tool_name") != "Bash":
-        sys.exit(0)
+    tool = data.get("tool_name") or ""
     global _CWD
     _CWD = data.get("cwd") or os.getcwd()
+    if tool.startswith("mcp__"):
+        rule = MCP_RULES.get(tool.rsplit("__", 1)[-1])
+        result = rule(data.get("tool_input") or {}) if rule else None
+        if result:
+            print(json.dumps(result, ensure_ascii=False))
+        sys.exit(0)
+    if tool != "Bash":
+        sys.exit(0)
     command = (data.get("tool_input") or {}).get("command", "")
     for rule in RULES:
         result = rule(command)
