@@ -35,7 +35,7 @@ for t in plugins/*/tests/run-all.sh; do bash "$t"; done   # テストは macOS �
 
 main にマージして ci が通ると、`release.yml` が version の上がったプラグインに `<plugin>--v<version>`（例: `guards--v0.1.3`）のタグを打つ。中身は `claude plugin tag --push` で、plugin.json と marketplace.json の version の食い違いもそこで止まる。
 
-手で打つときは:
+取りこぼしを手で打つときは、main を最新にして ci が緑なのを確かめてから:
 
 ```bash
 claude plugin tag plugins/guards --dry-run   # 確認

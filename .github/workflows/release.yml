@@ -9,7 +9,8 @@ on:
     workflows: [ci]
     types: [completed]
     branches: [main]
-  workflow_dispatch:
+# 手動実行（workflow_dispatch）は置かない。ci の結果を確かめずにタグが打ててしまうため。
+# 手で打つときは手元で claude plugin tag --push（CONTRIBUTING.md）。
 
 permissions:
   contents: write # タグの push
@@ -19,16 +20,13 @@ permissions:
 
 jobs:
   tag:
-    # 手動実行は main を選んだときだけ（ci の結果は見ないので、緑を確かめてから回す）
-    if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }} # ci が通ったコミットそのもの
+          ref: ${{ github.event.workflow_run.head_sha }} # ci が通ったコミットそのもの
           fetch-depth: 0
           fetch-tags: true
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
