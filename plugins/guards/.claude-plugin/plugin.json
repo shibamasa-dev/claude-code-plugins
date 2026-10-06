@@ -1,7 +1,7 @@
 {
   "name": "guards",
-  "version": "0.2.2",
-  "description": "破壊的な Bash 操作・古い既定ブランチからの push・リポ構造違反の書き込みを止め、マージの後にローカルのマージ先ブランチを追従させるフック",
+  "version": "0.3.0",
+  "description": "破壊的な Bash 操作・未マージ worktree の削除・古い既定ブランチからの push を止め、マージの後にローカルのマージ先ブランチを追従させるフック。リポ構成のルールはルールファイルを置いたときだけ効く",
   "author": {
     "name": "shibamasa-dev"
   },
@@ -15,6 +15,20 @@
     "guardrails"
   ],
   "userConfig": {
+    "worktree_dirs": {
+      "type": "string",
+      "title": "worktree をまとめて置くフォルダ",
+      "description": "カンマ区切り（例 ~/.worktrees）。ここの配下は再帰削除を通し、未マージか判定できないパスは止める。空なら置き場は特別扱いしない（未マージ worktree の削除はどこでも止める）",
+      "required": false,
+      "default": ""
+    },
+    "shared_venv_dirs": {
+      "type": "string",
+      "title": "共有 venv の置き場",
+      "description": "カンマ区切り（例 ~/.venvs）。ここの venv への uv pip sync・--exact・uninstall を止める。空なら止めない",
+      "required": false,
+      "default": ""
+    },
     "merge_allowed_repos": {
       "type": "string",
       "title": "（非推奨）マージを Claude に任せてよいリポ",

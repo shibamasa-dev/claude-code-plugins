@@ -1,5 +1,5 @@
 #!/bin/bash
-# file-guard.py の判定を全ケース記録する。「判定結果が変更前と完全に一致する」の証拠用。
+# repo-structure-guard.py の判定を全ケース記録する。「判定結果が変更前と完全に一致する」の証拠用。
 # 引数で出力先を指定できるので、変更前/変更後を別ファイルに採って diff できる。
 set -u
 OUT="${1:-/dev/stdout}"
@@ -16,9 +16,9 @@ mkdir -p "$F/repo/.git" "$F/repo/docs/spec" "$F/repo/scripts/sub" \
 : > "$F/repo/docs/EXISTS.md"          # 既存ファイル上書きのケース用
 : > "$F/repo/scripts/exists.sh"
 
-# 仕様ファイル（FILE_GUARD_SPEC で渡す）。判定に要る guard ブロックだけを持つ最小版。
-export FILE_GUARD_SPEC="$F/repo-structure.md"
-cat > "$FILE_GUARD_SPEC" <<'SPEC'
+# 仕様ファイル（REPO_STRUCTURE_SPEC で渡す）。判定に要る guard ブロックだけを持つ最小版。
+export REPO_STRUCTURE_SPEC="$F/repo-structure.md"
+cat > "$REPO_STRUCTURE_SPEC" <<'SPEC'
 <!-- guard:docs-allow-filenames -->
 - README.md
 <!-- /guard:docs-allow-filenames -->
@@ -44,7 +44,7 @@ cat > "$FILE_GUARD_SPEC" <<'SPEC'
 - sibling-skill-md: `scripts/` の親ディレクトリに `SKILL.md` がある場合
 <!-- /guard:exemptions -->
 SPEC
-export HOOK="$(cd "$(dirname "$0")/.." && pwd)/hooks/file-guard.py"
+export HOOK="$(cd "$(dirname "$0")/.." && pwd)/hooks/repo-structure-guard.py"
 
 probe() {
   python3 - "$1" <<'PY'
@@ -58,7 +58,7 @@ PY
 }
 
 {
-  echo "# file-guard.py 判定記録"
+  echo "# repo-structure-guard.py 判定記録"
   while IFS='|' read -r path label; do
     [ -z "$path" ] && continue
     printf '%-8s %s\n' "$(probe "$F/repo/$path")" "$label"

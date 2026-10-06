@@ -10,7 +10,8 @@ matcher は "Bash"（ツール名しかマッチできない）なので全 Bash
    dev-flow-gate フックへ移した。自動マージはリポの .claude/dev-flow.json で決める）
   1. rm-guard    : 再帰 rm (-r/-rf) の破壊事故防止。
                    - 壊滅的ターゲット(/, ~, $HOME, システムdir, 裸の* 等) → 無条件 deny
-                   - 相対パス / /tmp / $TMPDIR / ~/.worktrees 配下 → allow
+                   - 相対パス / /tmp / $TMPDIR / 設定 worktree_dirs の配下 → allow
+                   - マージ済みでクリーンな linked worktree の root → allow（置き場は問わない）
                    - それ以外(絶対パス・解決できない変数展開) → deny
                    - `trash`(macOS のゴミ箱移動) は壊滅的ターゲット以外 allow。取り消せるので、
                      ユーザーが承認した片付けを Claude が完了できる(2026-10-03 承認)。
@@ -51,10 +52,30 @@ SYSTEM_DIRS = {
     "/etc", "/usr", "/var", "/bin", "/sbin", "/opt",
     "/Library", "/System", "/Applications", "/Users", "/private",
 }
-SAFE_PREFIXES = (
-    "/tmp/", "/private/tmp/",
-    HOME + "/.worktrees/",
-)
+
+
+def _option_dirs(key: str) -> tuple:
+    """プラグインの設定（userConfig）に書いたフォルダの一覧。Claude Code がフックに
+    CLAUDE_PLUGIN_OPTION_<KEY> として渡す（カンマ区切り、`~` 可）。空なら ()。
+    ルート・ホーム・システムdir は置き場として受け付けない（丸ごと安全扱いになるため）。"""
+    out = []
+    for part in os.environ.get("CLAUDE_PLUGIN_OPTION_" + key.upper(), "").split(","):
+        part = os.path.expandvars(os.path.expanduser(part.strip()))
+        if not part or not os.path.isabs(part):
+            continue
+        d = os.path.normpath(part)
+        if d in ("/", HOME) or d in SYSTEM_DIRS:
+            continue
+        out.append(d)
+    return tuple(dict.fromkeys(out))
+
+
+# worktree をまとめて置くフォルダ（設定 worktree_dirs。既定は空）
+WORKTREE_DIRS = _option_dirs("worktree_dirs")
+# 複数のプロジェクトで共有する venv の置き場（設定 shared_venv_dirs。既定は空＝shared-venv-guard は効かない）
+SHARED_VENV_DIRS = _option_dirs("shared_venv_dirs")
+
+SAFE_PREFIXES = ("/tmp/", "/private/tmp/") + tuple(d + "/" for d in WORKTREE_DIRS)
 SAFE_VAR_PREFIXES = ("$TMPDIR", "${TMPDIR")
 
 
@@ -550,8 +571,12 @@ def _classify_target(raw: str, assigns: dict = None) -> str:
     # 安全: 相対パス（.. を含まない）
     if not norm.startswith("/") and ".." not in norm.split(os.sep):
         return "safe"
-    # 安全: 一時領域・worktree 配下
+    # 安全: 一時領域・worktree の置き場の配下
     if norm.startswith(SAFE_PREFIXES) or (norm + "/").startswith(SAFE_PREFIXES):
+        return "safe"
+    # 安全: マージ済みでクリーンな linked worktree の root（置き場は問わない。
+    # 未マージなら worktree-guard が先に止める。片付けのたびに確認を出さないため）
+    if _is_linked_worktree_root(norm) and _worktree_state(norm) == "merged_clean":
         return "safe"
     return "other"
 
@@ -707,7 +732,7 @@ def rule_rm_guard(command: str):
             "⚠️ rm-guard(グローバルhook): 一時領域・相対パス以外への再帰削除を検出。\n"
             "**このゲートを黙らせる環境変数やマーカーは無い。rm -r では消せない。**\n"
             "次のどれかにすること:\n"
-            "  (1) 対象が /tmp・$TMPDIR・~/.worktrees 配下、または相対パスで済むなら書き直す\n"
+            "  (1) 対象が /tmp・$TMPDIR・設定した worktree の置き場の配下、または相対パスで済むなら書き直す\n"
             "  (2) 変数で書いているなら、同じコマンドの中で代入するか、リテラルのパスに展開する\n"
             "  (3) macOS なら `trash <パス>` でゴミ箱へ移す（取り消せるので通る。ユーザーが削除を承認済みのときに限る）\n"
             "  (4) trash が無い環境（Linux 等）なら、**何をなぜ消すのかをユーザーに説明し、ユーザーに実行してもらう**\n"
@@ -893,11 +918,11 @@ def rule_main_commit_freshness(command: str):
 
 
 # ------------------------------------------------------------- worktree-guard
-# 未マージ worktree の削除禁止（グローバル CLAUDE.md「⚠️ 未マージ worktree は絶対に削除しない」の強制点。
-# rm-guard は ~/.worktrees/ を SAFE 扱いするため、このルールが rm-guard より先に立つ必要がある）。
-# ~/.worktrees/ の外（Claude Code 標準の <repo>/.claude/worktrees/ など）は、消す先が linked worktree
-# そのものか、それを含む上位のフォルダかを `git worktree list` で見て判定する（2026-10-06）
-WORKTREES_PREFIX = HOME + "/.worktrees/"
+# 未マージ worktree の削除禁止（未回収の作業を消さないための強制点。
+# rm-guard は設定 worktree_dirs の配下を SAFE 扱いするため、このルールが rm-guard より先に立つ必要がある）。
+# 置き場に関係なく（Claude Code 標準の <repo>/.claude/worktrees/ なども）、消す先が linked worktree
+# そのものか、それを含む上位のフォルダかを `git worktree list` と `.git` ファイルの走査で見て判定する。
+# worktree_dirs の配下は、判定できないパス（存在しない・変数で行き先が分からない）も止める（2026-10-06）
 
 
 def _worktree_state(path: str):
@@ -954,7 +979,17 @@ def _marker(cmd, name: str) -> bool:
 
 
 def _under_worktrees(p: str) -> bool:
-    return p == WORKTREES_PREFIX.rstrip("/") or p.startswith(WORKTREES_PREFIX)
+    """p が設定 worktree_dirs のどれかそのものか、その配下か。"""
+    return any(p == d or p.startswith(d + "/") for d in WORKTREE_DIRS)
+
+
+def _is_linked_worktree_root(p: str) -> bool:
+    """p が linked worktree の root（`.git` が gitdir: …/worktrees/… を指すファイル）か。"""
+    try:
+        with open(os.path.join(p, ".git"), errors="replace") as f:
+            return "/worktrees/" in f.read(4096).replace("\\", "/")
+    except OSError:
+        return False
 
 
 def _linked_worktrees_under(p: str) -> list:
@@ -1079,18 +1114,16 @@ def _inside_worktree(p: str) -> bool:
         return False
     # git は実パスを返す（macOS の /var → /private/var 等）ので両辺を実パスで比べる
     top, rp = os.path.realpath(r.stdout.strip()), os.path.realpath(p)
-    wt = os.path.realpath(WORKTREES_PREFIX)
-    return top.startswith(wt + "/") and rp.startswith(top + "/")
+    return any(top.startswith(os.path.realpath(d) + "/") for d in WORKTREE_DIRS) and rp.startswith(top + "/")
 
 
 def rule_worktree_guard(command: str):
-    root = WORKTREES_PREFIX.rstrip("/")
     cwd0 = os.path.normpath(_CWD) if _CWD else ""
     cwd_in_wt = bool(cwd0) and _under_worktrees(cwd0)
     if not cwd_in_wt and not any(w in command for w in ("worktree", "rm", "trash", "find")):
         return None  # 高速素通し
     # 相対パス・変数の行き先が分からないとき、worktree を巻き込みうる文脈かどうか
-    risky_unknown = ".worktrees" in command or cwd0 == root
+    risky_unknown = any(os.path.basename(d) in command for d in WORKTREE_DIRS) or cwd0 in WORKTREE_DIRS
     targets = []   # (表示名, 絶対パス or None=判定不能)
     for cmd in _commands(command):
         tokens = cmd.tokens
@@ -1108,7 +1141,7 @@ def rule_worktree_guard(command: str):
             continue
         starts = _find_delete_starts(tokens)
         # 条件付きの `find … -delete`（`-name '*.pyc'` など）は開始パスを丸ごと消さない。
-        # -delete は中身のあるフォルダを消せないので、~/.worktrees の外では worktree の root を消す心配がない
+        # -delete は中身のあるフォルダを消せないので、worktree_dirs の外では worktree の root を消す心配がない
         filtered_delete_only = starts is not None and _find_filtered(tokens) and not _find_exec_deletes(tokens)
         if starts is not None:
             paths = starts
@@ -1131,7 +1164,7 @@ def rule_worktree_guard(command: str):
                 elif not filtered_delete_only:
                     targets.extend((t, w) for w in _worktrees_in_target(exp))
                 continue
-            # 相対パス: 実行される cwd で解決する（`cd ~/.worktrees && rm -rf name` 等）。
+            # 相対パス: 実行される cwd で解決する（`cd <worktree_dirs> && rm -rf name` 等）。
             # worktree の中のサブパス（build/ 等の掃除）は対象外
             if cmd.cwd is None:
                 if risky_unknown:
@@ -1195,9 +1228,21 @@ def rule_pip_freeze_guard(command: str):
 
 
 # ----------------------------------------------------------- shared-venv-guard
+def _mentions_shared_venv(command: str) -> bool:
+    """コマンドが設定 shared_venv_dirs のどれかを指しているか（`~` の形でも絶対パスでも）。"""
+    for d in SHARED_VENV_DIRS:
+        forms = {d}
+        if d.startswith(HOME + "/"):
+            rest = d[len(HOME):]
+            forms |= {"~" + rest, "$HOME" + rest, "${HOME}" + rest}
+        if any(f in command for f in forms):
+            return True
+    return False
+
+
 def rule_shared_venv_guard(command: str):
-    if ".venvs" not in command:
-        return None  # 高速素通し（共有 venv ~/.venvs/ に言及しないコマンドは対象外）
+    if not SHARED_VENV_DIRS or not _mentions_shared_venv(command):
+        return None  # 高速素通し（設定 shared_venv_dirs が空か、そこに言及しないコマンドは対象外）
     for cmd in _commands(command):
         tk = cmd.tokens
         if _marker(cmd, "SHARED_VENV_OK") or len(tk) < 3:
@@ -1205,7 +1250,7 @@ def rule_shared_venv_guard(command: str):
         if os.path.basename(tk[0]) == "uv" and tk[1] == "pip" and \
                 (tk[2] in ("sync", "uninstall") or (tk[2] == "install" and "--exact" in tk)):
             return deny(
-                "🛑 shared-venv-guard: 共有 venv(~/.venvs/) への sync / --exact / uninstall は"
+                "🛑 shared-venv-guard: 共有 venv(設定 shared_venv_dirs の配下) への sync / --exact / uninstall は"
                 "定義に無い同居パッケージを消す。install(追加のみ)を使うか、"
                 "影響確認済みなら `SHARED_VENV_OK=1 ` を先頭に。"
             )
@@ -1213,7 +1258,7 @@ def rule_shared_venv_guard(command: str):
 
 
 RULES = [
-    rule_worktree_guard,      # rm-guard より先(SAFE_PREFIXES が ~/.worktrees/ を素通しするため)
+    rule_worktree_guard,      # rm-guard より先(SAFE_PREFIXES が worktree_dirs の配下を素通しするため)
     rule_rm_guard,
     rule_push_freshness,
     rule_main_commit_freshness,

@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""PreToolUse hook: Write の repo-structure ガード。
+"""PreToolUse hook: Write の repo-structure-guard（リポ構成のルールを守らせる。オプトイン）。
 
 判定に使う値（許すファイル名・サブフォルダ規定セット・スクリプト拡張子・例外）を
-**このスクリプトは持たない。** 仕様ファイルの `<!-- guard:… -->` ブロックを実行時に読む。
-仕様ファイルは上から順に最初に見つかったものを使う:
-  1. 環境変数 `FILE_GUARD_SPEC`（設定されていればこれだけを見る。無ければ何もしない）
-  2. `~/.claude/rules/repo-structure.md`（ユーザーの規約）
-  3. プラグイン同梱の `repo-structure.md`（既定）
+**このスクリプトは持たない。** ルールファイルの `<!-- guard:… -->` ブロックを実行時に読む。
+ルールファイルは上から順に最初に見つかったものを使い、どれも無ければ何もしない:
+  1. 環境変数 `REPO_STRUCTURE_SPEC`（移行期間は旧名 `FILE_GUARD_SPEC` も読む。
+     設定されていればこれだけを見る。指す先が無ければ何もしない）
+  2. 書き込み先のリポの `.claude/rules/repo-structure.md`（リポごとのルール。コミットすればチームで共有できる）
+  3. `~/.claude/rules/repo-structure.md`（ユーザーのルール）
+見本はプラグインの `examples/repo-structure.md`（ルールとしては読まない。使うならコピーして直す）。
 
 なぜそうするか（2026-09-23）:
   以前は散文（rules）と実装（このファイル）に同じ規約が別表現で存在していた。そして
@@ -24,7 +26,7 @@
 matcher は Write のみ（Edit は既存ファイル対象なので登録しない）。
 
 設計上の約束:
-  - **`FILE_GUARD_SPEC` が指す SPEC が無ければ何もしない。** 明示的に外した利用者には関係が無い。
+  - **ルールファイルが無ければ何もしない。** リポ構成は使う人・リポが決める（2026-10-06 オプトイン化）。
   - **SPEC があるのに読めなければ Write を止めない。** ガードの不調で作業を止めるのは過剰。
     ただし黙って通すと「規約チェック済み」と誤認させるので、通らなかったことを注入する
     （design-lint.py と同じ方針）。
@@ -34,17 +36,35 @@ import os
 import re
 import sys
 
-def resolve_spec() -> str:
-    env = os.environ.get("FILE_GUARD_SPEC")
+SPEC_RELPATH = os.path.join(".claude", "rules", "repo-structure.md")
+
+
+def repo_root(path: str):
+    """path を含むリポのルート（.git を持つ最も近い祖先）。リポの外なら None。"""
+    d = os.path.dirname(path)
+    while True:
+        if os.path.exists(os.path.join(d, ".git")):
+            return d
+        up = os.path.dirname(d)
+        if up == d:
+            return None
+        d = up
+
+
+def resolve_spec(path: str):
+    """書き込み先 path に効くルールファイル。無ければ None（何もしない）。"""
+    env = os.environ.get("REPO_STRUCTURE_SPEC") or os.environ.get("FILE_GUARD_SPEC")
     if env:
         return os.path.expanduser(env)
-    user = os.path.expanduser("~/.claude/rules/repo-structure.md")
+    root = repo_root(path)
+    if root:
+        repo = os.path.join(root, SPEC_RELPATH)
+        if os.path.exists(repo):
+            return repo
+    user = os.path.join(os.path.expanduser("~"), SPEC_RELPATH)
     if os.path.exists(user):
         return user
-    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "repo-structure.md")
-
-
-SPEC = resolve_spec()
+    return None
 
 
 def read_block(spec_text: str, tag: str) -> list:
@@ -78,14 +98,8 @@ def repo_parts(path: str) -> list:
     チェックアウト先のパス（例: /work/skills/proj）に含まれる要素で例外を誤発動させないため。
     リポの外なら絶対パスのまま割る。
     """
-    d = os.path.dirname(path)
-    while True:
-        if os.path.exists(os.path.join(d, ".git")):
-            return os.path.relpath(path, d).split(os.sep)
-        up = os.path.dirname(d)
-        if up == d:
-            return path.split(os.sep)
-        d = up
+    root = repo_root(path)
+    return os.path.relpath(path, root).split(os.sep) if root else path.split(os.sep)
 
 
 def allow_with_notice(text: str) -> None:
@@ -120,10 +134,13 @@ def main() -> None:
     if parent not in ("docs", "scripts"):
         sys.exit(0)
 
+    SPEC = resolve_spec(norm)
+    if SPEC is None:
+        sys.exit(0)  # ルールファイルが無い＝このリポ・この人はリポ構成のルールを使っていない
     try:
         spec_text = open(SPEC, encoding="utf-8", errors="replace").read()
     except FileNotFoundError:
-        sys.exit(0)  # FILE_GUARD_SPEC で存在しないパスを指した＝明示的に外している
+        sys.exit(0)  # 環境変数で存在しないパスを指した＝明示的に外している
     except OSError as e:
         allow_with_notice(
             f"【repo-structure ガード 未実行】{fp}\n"
