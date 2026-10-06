@@ -5,6 +5,11 @@ set -u
 HOOK="$(cd "$(dirname "$0")/.." && pwd)/hooks/issue-writeback.py"
 T=$(mktemp -d "${TMPDIR:-/tmp}/iwb.XXXX")
 export HOME="$T"
+# 偽の gh: `gh pr view`（番号で指していない PR の解決）だけに答え、今のブランチの PR を o/r#455 とする
+mkdir -p "$T/bin"
+printf '#!/bin/bash\n[ "$1 $2" = "pr view" ] && echo https://github.com/o/r/pull/455\n' > "$T/bin/gh"
+chmod +x "$T/bin/gh"
+export PATH="$T/bin:$PATH"
 
 # post <session> <tool_name> <tool_input(JSON)> <tool_response(JSON)>
 post() {
@@ -46,6 +51,22 @@ bash_post a4 'gh api repos/o/r/issues/455' '{"title":"x"}'
 bash_post a4 'gh pr comment 455 -R o/r --body ok' 'https://github.com/o/r/pull/455#issuecomment-2'
 row 'PR と分からず読んだ記録も gh pr comment で解消' "$(stops a4)" 'allow'
 
+bash_post a5 'gh api repos/o/r/issues/455 --jq .title' 'x'
+bash_post a5 'gh pr review --approve 455 -R o/r' ''
+row 'オプションの後ろに番号がある gh pr review でも解消' "$(stops a5)" 'allow'
+
+bash_post a6 'gh api repos/o/r/issues/455 --jq .title' 'x'
+bash_post a6 'gh pr review --approve -R o/r' ''
+row '番号なし（今のブランチ）の gh pr review でも解消' "$(stops a6)" 'allow'
+
+bash_post a7 'gh api repos/o/r/issues/455 --jq .title' 'x'
+bash_post a7 'gh pr edit my-branch -R o/r --body x' ''
+row 'ブランチ名で指した gh pr edit でも解消' "$(stops a7)" 'allow'
+
+bash_post a8 'gh api repos/o/r/issues/455 --jq .title' 'x'
+bash_post a8 "gh pr close -c 'done' 455 -R o/r" ''
+row 'close の -c の値を飛ばして番号を拾う' "$(stops a8)" 'allow'
+
 echo
 echo '=== B: issue は従来どおり ==='
 bash_post b1 'gh issue view 12 -R o/r' 'title: x'
@@ -58,5 +79,9 @@ row '本文に別番号の PR リンクがある issue を読んで更新しな�
 bash_post b3 'gh issue view 12 -R o/r' 'title: x'
 bash_post b3 'gh issue comment 12 -R o/r --body ok' 'https://github.com/o/r/issues/12#issuecomment-3'
 row 'gh issue view のあと gh issue comment' "$(stops b3)" 'allow'
+
+bash_post b4 'gh issue view 12 -R o/r' 'title: x'
+bash_post b4 'gh pr comment -R o/r --body 12' ''
+row 'gh pr comment の本文の数字を PR 番号と取り違えない' "$(stops b4)" 'block'
 
 rm -rf "$T"
