@@ -50,6 +50,7 @@ row 'コネクタ: Arch-Review だけ（Closes/Refs 無し）' "$(pre a $CREATE 
 row 'コネクタ: Refs: none (verbal request) + Arch-Review' "$(pre a $CREATE "$(pr_in $'Refs: none (verbal request)\nArch-Review: not-needed - typo')")" allow
 row 'コネクタ: 別リポの Refs owner/repo#N' "$(pre a $CREATE "$(pr_in $'Refs other/repo#12\nArch-Review: approved -- #12 の GO')")" allow
 row 'コネクタ: Arch-Review の理由が空' "$(pre a $CREATE "$(pr_in $'Closes #5\nArch-Review: not-needed — ')")" deny
+row 'コネクタ: Arch-Review の理由が空で、後ろに行が続く' "$(pre a $CREATE "$(pr_in $'Closes #5\nArch-Review: not-needed — \n\n## 概要')")" deny
 row 'コネクタ: 印が HTML コメント（テンプレの説明）の中だけ' "$(pre a $CREATE "$(pr_in $'<!-- Closes #5\nArch-Review: not-needed — x -->')")" deny
 row 'コネクタ: 本文なし' "$(pre a $CREATE '{"owner":"O","repo":"R","title":"t","head":"f","base":"main"}')" deny
 row 'gh: --body に印が両方ある' "$(pre a Bash "$(bash_in "gh pr create -R O/R --title t --body '$OK_BODY'")")" allow
@@ -73,6 +74,15 @@ row 'gh: -F - <<EOF のヒアドキュメントに印が無い' "$(pre a Bash "$
 x
 EOF")")" deny
 row 'gh: --body "$BODY"（変数で中身が分からない）' "$(pre a Bash "$(bash_in 'gh pr create -R O/R -t t --body "$BODY"')")" deny
+row 'gh: env 越しの gh pr create --fill' "$(pre a Bash "$(bash_in 'env GH_REPO=O/R gh pr create --fill')")" deny
+row 'gh: 印が別のヒアドキュメントにあるだけ' "$(pre a Bash "$(bash_in "gh pr create -R O/R -t t -F - <<'A'
+x
+A
+cat <<'B'
+$OK_BODY
+B")")" deny
+row 'gh: パイプの標準入力（cat f | gh pr create -F -）' "$(pre a Bash "$(bash_in 'cat body-ok.md | gh pr create -R O/R -t t -F -')")" deny
+row 'gh: 改行の後の gh pr create --fill' "$(pre a Bash "$(bash_in $'git push -u origin feat\ngh pr create --fill')")" deny
 row 'gh: --fill（本文を確かめられない）' "$(pre a Bash "$(bash_in 'gh pr create --fill')")" deny
 row 'gh 以外のコマンド（echo の中の gh pr create）' "$(pre a Bash "$(bash_in "echo 'gh pr create --fill'")")" allow
 row 'gh pr view は対象外' "$(pre a Bash "$(bash_in 'gh pr view 3 -R O/R')")" allow
@@ -93,22 +103,36 @@ post b4 Bash "$(bash_in "gh pr create -R O/R -t t -b '$OK_BODY'")" "$(bash_out '
 row 'gh で PR を作って待たずに終える' "$(stop b4)" block
 post b5 $CREATE "$(pr_in "$OK_BODY")" "$(pr_out 11)" >/dev/null
 row 'stop_hook_active のときは止めない' "$(stop b5 true)" allow
+post b7 $CREATE "$(pr_in "$OK_BODY")" "$(pr_out 12)" >/dev/null
+post b7 $CREATE "$(pr_in "$OK_BODY")" "$(pr_out 13)" >/dev/null
+post b7 mcp__claude-code-remote__subscribe_pr_activity '{"owner":"O","repo":"R","pullNumber":12}' '"ok"' >/dev/null
+row '2 本作って 1 本だけ購読したら、残りで止める' "$(stop b7)" block
+post b8 $CREATE "$(pr_in "$OK_BODY")" "$(pr_out 14)" >/dev/null
+post b8 $CREATE "$(pr_in "$OK_BODY")" "$(pr_out 15)" >/dev/null
+post b8 Monitor '{"command":"API=https://api.github.com/repos/O/R\nfor pr in 14 15; do get $API/pulls/$pr/reviews; done"}' '"started"' >/dev/null
+row 'Monitor のコマンドに両方の番号があれば止めない' "$(stop b8)" allow
+post b9 $CREATE "$(pr_in "$OK_BODY")" "$(pr_out 16)" >/dev/null
+post b9 Monitor '{"command":"API=https://api.github.com/repos/other/x\nfor pr in 16; do :; done"}' '"started"' >/dev/null
+row '別リポを見る Monitor では待ちに数えない' "$(stop b9)" block
 post b6 Bash "$(bash_in "gh pr create -R O/R -t t -b '$OK_BODY'")" '{"stdout":"","stderr":"GraphQL: was submitted too quickly"}' >/dev/null
 row 'gh pr create が失敗したら記録しない' "$(stop b6)" allow
 
 echo
 echo '=== C: `## 結果` 無しのマージ（PreToolUse） ==='
 mk() { post "$1" $CREATE "$(pr_in "$2" "${4:-feat}")" "$(pr_out "$3")" >/dev/null; }
+iw_out() { python3 -c 'import json,sys; o,r,n=sys.argv[1:4]; print(json.dumps([{"type":"text","text":json.dumps({"html_url":"https://github.com/%s/%s/issues/%s" % (o,r,n)})}]))' "$@"; }
 mi() { printf '{"owner":"%s","repo":"R","pullNumber":%s}' "${2:-O}" "$1"; }
 mk c1 "$OK_BODY" 20
 row 'Closes 先に `## 結果` の記録が無い（コネクタ）' "$(pre c1 $MERGE "$(mi 20)")" deny
 row '同（enable_pr_auto_merge）' "$(pre c1 $AUTO "$(mi 20)")" deny
 row '同（gh pr merge 番号 -R）' "$(pre c1 Bash "$(bash_in 'gh pr merge 20 -R O/R --squash')")" deny
 row '同（gh pr merge URL）' "$(pre c1 Bash "$(bash_in 'gh pr merge https://github.com/O/R/pull/20')")" deny
-post c1 mcp__github__issue_write '{"method":"update","owner":"o","repo":"r","issue_number":5,"body":"本文\n\n## 結果\n- 済み"}' '"ok"' >/dev/null
+post c1 mcp__github__issue_write '{"method":"update","owner":"o","repo":"r","issue_number":5,"body":"本文\n\n## 結果\n- 済み"}' "$(iw_out o r 5)" >/dev/null
 row 'issue_write で `## 結果` を書いた後（owner の大小は無視）' "$(pre c1 $MERGE "$(mi 20 o)")" allow
 mk c2 "$OK_BODY" 21
-post c2 mcp__github__issue_write '{"method":"update","owner":"O","repo":"R","issue_number":5,"body":"結果はまだ"}' '"ok"' >/dev/null
+post c2 mcp__github__issue_write '{"method":"update","owner":"O","repo":"R","issue_number":5,"body":"結果はまだ"}' "$(iw_out O R 5)" >/dev/null
+post c2 mcp__github__issue_write '{"method":"update","owner":"O","repo":"R","issue_number":5,"body":"##\n結果"}' "$(iw_out O R 5)" >/dev/null
+row '`##` と `結果` が別の行なら見出しに数えない' "$(pre c2 $MERGE "$(mi 21)")" deny
 row '`## 結果` の無い body で update しても通さない' "$(pre c2 $MERGE "$(mi 21)")" deny
 post c2 mcp__github__issue_read '{"method":"get","owner":"O","repo":"R","issue_number":5}' "$(printf '[{"type":"text","text":%s}]' "$(j '{"body":"x\n\n## 結果\nok"}')")" >/dev/null
 row 'issue_read で `## 結果` を読んで確かめた後' "$(pre c2 $MERGE "$(mi 21)")" allow
@@ -128,11 +152,23 @@ row 'このセッションで作っていない PR は止めない' "$(pre c5 $M
 row '作っていない PR のマージ後に一言返す' "$(post c5 $MERGE "$(mi 99)" '"merged"')" inject
 row '作った PR のマージ後は何も返さない' "$(post c5 $MERGE "$(mi 24)" '"merged"')" none
 mk c6 $'Fixes other/x#3, closes #6\nArch-Review: approved — #6' 25
-post c6 mcp__github__issue_write '{"method":"update","owner":"O","repo":"R","issue_number":6,"body":"## 結果\nok"}' '"ok"' >/dev/null
+post c6 mcp__github__issue_write '{"method":"update","owner":"O","repo":"R","issue_number":6,"body":"## 結果\nok"}' "$(iw_out O R 6)" >/dev/null
 row '2 件 Closes のうち別リポの 1 件が未記入' "$(pre c6 $MERGE "$(mi 25)")" deny
-post c6 mcp__github__issue_write '{"method":"update","owner":"other","repo":"x","issue_number":3,"body":"## Results\nok"}' '"ok"' >/dev/null
+post c6 mcp__github__issue_write '{"method":"update","owner":"other","repo":"x","issue_number":3,"body":"## Results\nok"}' "$(iw_out other x 3)" >/dev/null
 row '両方に書いた後' "$(pre c6 $MERGE "$(mi 25)")" allow
 row 'セッションが違えば記録も別' "$(pre c1x $MERGE "$(mi 20)")" allow
+mk c7 "$OK_BODY" 26
+post c7 mcp__github__issue_write '{"method":"update","owner":"O","repo":"R","issue_number":5,"body":"## 結果\nok"}' '"interactive form has been shown to the user"' >/dev/null
+row 'issue_write が承認フォームを出しただけなら記録しない' "$(pre c7 $MERGE "$(mi 26)")" deny
+row 'ラッパー越し（env GH_REPO=O/R gh pr merge）' "$(pre c7 Bash "$(bash_in 'env GH_REPO=O/R gh pr merge 26')")" deny
+row 'ラッパー越し（command gh pr merge）' "$(pre c7 Bash "$(bash_in 'command gh pr merge 26 -R O/R')")" deny
+row 'ラッパー越し（timeout -s KILL 30 gh pr merge）' "$(pre c7 Bash "$(bash_in 'timeout -s KILL 30 gh pr merge 26 -R O/R')")" deny
+row '前の行で export した GH_REPO' "$(pre c7 Bash "$(bash_in 'export GH_REPO=O/R; gh pr merge 26 --squash')")" deny
+row "bash -c '…' の中" "$(pre c7 Bash "$(bash_in "bash -c 'gh pr merge 26 -R O/R'")")" deny
+row '( … ) の中' "$(pre c7 Bash "$(bash_in '(cd . && gh pr merge 26 -R O/R)')")" deny
+row '行末の \\ で続けた gh pr merge' "$(pre c7 Bash "$(bash_in $'gh pr merge 26 \\\n  -R O/R')")" deny
+row '改行の後の gh pr merge' "$(pre c7 Bash "$(bash_in $'git fetch\ngh pr merge 26 -R O/R')")" deny
+row 'command -v gh は実行しない' "$(pre c7 Bash "$(bash_in 'command -v gh && echo ok')")" allow
 
 echo
 echo '=== D: 掃除（SessionStart） ==='

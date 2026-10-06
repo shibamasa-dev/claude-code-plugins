@@ -32,10 +32,23 @@ TAG = "[dev-flow-gate]"
 
 CLOSE_RE = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+((?:[\w.-]+/[\w.-]+)?#\d+)", re.I)
 REFS_RE = re.compile(r"\brefs?\s*:?\s+(?:(?:[\w.-]+/[\w.-]+)?#\d+|none\s*\(verbal request\))", re.I)
-ARCH_RE = re.compile(r"^\s*Arch-Review:\s*(?:not-needed|approved)\s*[—–-]+\s*\S", re.I | re.M)
-RESULT_RE = re.compile(r"^##\s*(?:結果|次回への引き継ぎ|Results?)\s*$", re.M)
+# 行の中の空白は [ \t]。\s だと改行をまたいで次の行の文字を「理由」と読んでしまう
+ARCH_RE = re.compile(r"^[ \t]*Arch-Review:[ \t]*(?:not-needed|approved)[ \t]*[\u2014\u2013-]+[ \t]*\S", re.I | re.M)
+RESULT_RE = re.compile(r"^##[ \t]*(?:結果|次回への引き継ぎ|Results?)[ \t]*$", re.M)
 HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
-HEREDOC_RE = re.compile(r"(<<-?\s*(['\"]?)(\w+)\2)[^\n]*\n.*?\n\s*\3\s*(?:\n|$)", re.S)
+# ヒアドキュメント: <<[-]['"]DELIM['"] の行の残り（group 4）、本文（group 5）、終わりの DELIM 行
+HEREDOC_RE = re.compile(r"(?<!<)<<(?!<)(-?)[ \t]*(['\"]?)(\w+)\2([^\n]*)\n(.*?)\n[ \t]*\3[ \t]*(?=\n|$)", re.S)
+HEREDOC_MARK_RE = re.compile(r"<<__HEREDOC_(\d+)__")
+ASSIGN_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", re.S)
+# gh の前に付くラッパーと、値を取るそのオプション（読み飛ばして中の gh を見る）
+_WRAPPERS = {
+    "env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"},
+    "command": set(), "builtin": set(), "exec": {"-a"}, "nohup": set(), "time": set(),
+    "nice": {"-n", "--adjustment"}, "timeout": {"-s", "--signal", "-k", "--kill-after"},
+    "sudo": {"-u", "--user", "-g", "--group", "-h", "--host", "-p", "--prompt", "-C", "-D", "--chdir"},
+    "stdbuf": {"-i", "-o", "-e"},
+}
+_KEYWORDS = {"!", "{", "}", "if", "then", "else", "elif", "do", "while", "until", "time"}
 PR_URL_RE = re.compile(r"github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)")
 
 
@@ -197,33 +210,101 @@ def failed(tr):
 
 
 # --------------------------------------------------------------- gh parsing
-def gh_commands(command):
-    """Bash コマンドから gh の呼び出しを (positional, options, raw_tokens) で返す。
+def split_heredocs(command):
+    """ヒアドキュメントの本文を取り出し、コマンドには `<<__HEREDOC_i__` の印だけを残す。"""
+    docs = []
 
-    ヒアドキュメントの中身は読み飛ばす（本文の ' や # で字句解析を崩さない）。
+    def repl(m):
+        docs.append(m.group(5) + "\n")
+        return f"<<__HEREDOC_{len(docs) - 1}__{m.group(4)}"
+    return HEREDOC_RE.sub(repl, command), docs
+
+
+def unwrap(c):
+    """1つの単純コマンドのトークンから、前置きの代入・キーワード・ラッパーを外す。(env, 残り)"""
+    env, i = {}, 0
+    while i < len(c):
+        t = c[i]
+        m = ASSIGN_RE.match(t)
+        if m:
+            env[m.group(1)] = m.group(2)
+            i += 1
+        elif t in _KEYWORDS:
+            i += 1
+        elif os.path.basename(t) in _WRAPPERS:
+            name, vopts = os.path.basename(t), _WRAPPERS[os.path.basename(t)]
+            if name == "command" and i + 1 < len(c) and c[i + 1] in ("-v", "-V"):
+                return env, []  # command -v gh は探すだけで実行しない
+            i += 1
+            while i < len(c) and c[i].startswith("-") and c[i] != "-":
+                if c[i] == "--":
+                    i += 1
+                    break
+                i += 2 if (c[i] in vopts and "=" not in c[i]) else 1
+            if name == "timeout" and i < len(c) and re.fullmatch(r"[\d.]+[smhd]?", c[i]):
+                i += 1  # timeout の時間
+            if name == "nice" and i < len(c) and re.fullmatch(r"-?\d+", c[i]):
+                i += 1
+        else:
+            break
+    return env, c[i:]
+
+
+def gh_commands(command, _depth=0):
+    """Bash コマンドから gh の呼び出しを [{"args", "env", "stdin", "docs"}] で返す。
+
+    ヒアドキュメントの本文は字句解析の前に取り出す（本文の ' や # で崩さない）。stdin はその gh に
+    `<<` で渡したヒアドキュメントの番号。env・command・timeout などのラッパーと `sh -c '…'` の中も見る。
     shlex で読めないコマンドは空（止めない側に倒す。PR の本文にあり得る記号で誤爆させない）。"""
-    command = HEREDOC_RE.sub(r"\1", command)
+    command, docs = split_heredocs(command)
+    command = command.replace("\\\n", " ")  # 行末の \ は行の継続
     try:
-        lex = shlex.shlex(command, posix=True, punctuation_chars=";&|")
+        # 改行もコマンドの区切り（引用の中の改行はそのまま残る）
+        lex = shlex.shlex(command, posix=True, punctuation_chars=";&|()\n")
+        lex.whitespace = " \t\r"
         lex.whitespace_split = True
         toks = list(lex)
     except ValueError:
         return []
     cmds, cur = [], []
     for t in toks:
-        if t and set(t) <= set(";&|"):
+        if t and set(t) <= set(";&|()\n"):
             cmds.append(cur)
             cur = []
         else:
             cur.append(t)
     cmds.append(cur)
-    out = []
+    out, exported = [], {}
     for c in cmds:
-        i = 0
-        while i < len(c) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", c[i]):
-            i += 1
-        if i < len(c) and os.path.basename(c[i]) == "gh":
-            out.append(c[i + 1:])
+        if c and c[0] == "export":
+            for t in c[1:]:
+                m = ASSIGN_RE.match(t)
+                if m:
+                    exported[m.group(1)] = m.group(2)
+            continue
+        env, rest = unwrap(c)
+        if not rest:
+            exported.update(env)  # `A=B` だけの行はこのシェルの変数（export 済みの名前なら子にも渡る）
+            continue
+        env = {**exported, **env}
+        exe = os.path.basename(rest[0])
+        if exe in ("sh", "bash", "zsh", "dash") and "-c" in rest[1:] and _depth < 3:
+            k = rest.index("-c")
+            if k + 1 < len(rest):
+                for call in gh_commands(rest[k + 1], _depth + 1):
+                    call["env"] = {**env, **call["env"]}
+                    out.append(call)
+            continue
+        if exe != "gh":
+            continue
+        stdin, args = None, []
+        for a in rest[1:]:
+            m = HEREDOC_MARK_RE.fullmatch(a)
+            if m:
+                stdin = int(m.group(1))
+            else:
+                args.append(a)
+        out.append({"args": args, "env": env, "stdin": stdin, "docs": docs})
     return out
 
 
@@ -279,30 +360,34 @@ def read_file(path, cwd):
         return None
 
 
-def gh_body(opts, cwd, command=""):
-    """gh に渡した本文。確かめられない渡し方（変数・標準入力・--fill など）は None。"""
+def gh_body(opts, cwd, call):
+    """gh に渡した本文。確かめられない渡し方（変数・パイプの標準入力・--fill など）は None。"""
+    docs = call["docs"]
     b = opt(opts, "-b", "--body")
     if b is not None:
-        if "<<" in b and "<<" in command:
-            return command  # --body "$(cat <<'EOF' … EOF)"。本文はコマンドの中のヒアドキュメント
+        m = HEREDOC_MARK_RE.search(b)
+        if m:
+            return docs[int(m.group(1))]  # --body "$(cat <<'EOF' … EOF)"。そのヒアドキュメントの本文だけ
         # "$BODY" のような変数だけの本文は中身が分からない
         return None if re.fullmatch(r"\s*\$\{?\w+\}?\s*", b) else b
     f = opt(opts, "-F", "--body-file")
-    if f == "-" and "<<" in command:
-        return command  # `-F - <<'EOF'` のヒアドキュメント。本文はコマンドの中にある
+    if f in ("-", "/dev/stdin"):
+        # `-F - <<'EOF'`。この gh に渡したヒアドキュメントの本文だけを見る（パイプなどは確かめられない）
+        return docs[call["stdin"]] if call["stdin"] is not None else None
     return read_file(f, cwd)
 
 
 def gh_calls(command, cwd):
     """[(kind, info)] kind ∈ pr_create / pr_merge / issue_edit / issue_view"""
     out = []
-    for args in gh_commands(command):
-        pos, opts = parse_args(args)
+    for call in gh_commands(command):
+        pos, opts = parse_args(call["args"])
         if len(pos) < 2:
             continue
-        repo = opt(opts, "-R", "--repo") or os.environ.get("GH_REPO") or None
+        # GH_REPO はこの gh の前の代入・env だけを見る（フック自身の環境は Bash の環境と別物）
+        repo = opt(opts, "-R", "--repo") or call["env"].get("GH_REPO") or None
         if pos[0] == "pr" and pos[1] == "create":
-            out.append(("pr_create", {"repo": repo or repo_from_cwd(cwd), "body": gh_body(opts, cwd, command),
+            out.append(("pr_create", {"repo": repo or repo_from_cwd(cwd), "body": gh_body(opts, cwd, call),
                                       "head": opt(opts, "-H", "--head") or branch_from_cwd(cwd)}))
         elif pos[0] == "pr" and pos[1] == "merge":
             out.append(("pr_merge", {"repo": repo, "selector": pos[2] if len(pos) > 2 else None}))
@@ -316,7 +401,7 @@ def gh_calls(command, cwd):
                 r = repo or repo_from_cwd(cwd)
                 ref = f"{r}#{nm.group(1)}".lower() if (nm and r) else None
             if ref:
-                out.append(("issue_" + pos[1], {"ref": ref, "body": gh_body(opts, cwd, command)}))
+                out.append(("issue_" + pos[1], {"ref": ref, "body": gh_body(opts, cwd, call)}))
     return out
 
 
@@ -334,6 +419,33 @@ def merge_ref_from_gh(info, st_prs, cwd):
         if head and pr.get("head") == head and (not repo or ref.startswith(repo.lower() + "#")):
             return ref
     return None
+
+
+FORM_RE = re.compile(r"(?i)interactive form|form has been shown|waiting for the user|pending (?:user )?(?:approval|confirmation)")
+
+
+def wait_targets(tool_name, tool_input, prs):
+    """待ちを始めた PR の ref。購読はその PR だけ、Monitor はコマンドに PR 番号（とリポ）が出てくるものだけ。"""
+    if tool_name != "Monitor":
+        o, r = tool_input.get("owner"), tool_input.get("repo")
+        n = tool_input.get("pullNumber") or tool_input.get("pull_number") or tool_input.get("pr_number")
+        if isinstance(r, str) and "/" in r and not o:
+            o, r = r.split("/", 1)
+        try:
+            ref = f"{o}/{r}#{int(n)}".lower()
+        except (TypeError, ValueError):
+            return []
+        return [ref] if ref in prs else []
+    text = json.dumps(tool_input, ensure_ascii=False).lower()
+    names_repo = re.search(r"repos/|github\.com/|\s(?:-r|--repo)[\s=]", text)
+    out = []
+    for ref in prs:
+        slug, n = ref.rsplit("#", 1)
+        if not re.search(rf"(?<![\w.]){n}(?![\w.])", text):
+            continue
+        if slug in text or not names_repo:
+            out.append(ref)
+    return out
 
 
 def base(tool_name):
@@ -435,8 +547,8 @@ def on_post_tool_use(inp):
     if tn == "Monitor" or (tn.startswith("mcp__") and b == "subscribe_pr_activity"):
         if os.path.exists(_path(sid)):
             with State(sid) as st:
-                for pr in st.d["prs"].values():
-                    pr["wait_started"] = True
+                for ref in wait_targets(tn, ti, st.d["prs"]):
+                    st.d["prs"][ref]["wait_started"] = True
         return None
 
     if tn.startswith("mcp__") and b == "create_pull_request":
@@ -452,7 +564,10 @@ def on_post_tool_use(inp):
         if not (o and r and n):
             return None
         if b == "issue_write":
-            text = (ti.get("body") or "") if ti.get("method") == "update" else ""
+            # 承認フォームを出しただけ（ユーザーが送るまで更新されない）などは書けた記録にしない。
+            # 結果にその issue の URL が返ってきたときだけ数える（足りなければ issue_read で読み直せば通る）
+            done = re.search(rf"/issues/{int(n)}(?!\d)", text_of(tr)) and not FORM_RE.search(text_of(tr))
+            text = (ti.get("body") or "") if ti.get("method") == "update" and done else ""
         else:
             text = text_of(tr) if ti.get("method", "get") == "get" else ""
         if RESULT_RE.search(text):
@@ -482,7 +597,12 @@ def on_post_tool_use(inp):
                         record_pr(st, f"{m.group(1)}#{m.group(2)}".lower(), info["body"] or "", info["head"])
                     out = inject(NEXT_STEP)
             elif kind in ("issue_edit", "issue_view"):
-                text = info["body"] if kind == "issue_edit" else text_of(tr)
+                if kind == "issue_edit":
+                    # gh issue edit は成功すると issue の URL を出す
+                    num = info["ref"].rsplit("#", 1)[1]
+                    text = info["body"] if re.search(rf"/issues/{num}(?!\d)", text_of(tr)) else ""
+                else:
+                    text = text_of(tr)
                 if text and RESULT_RE.search(text):
                     with State(sid) as st:
                         if info["ref"] not in st.d["results"]:
