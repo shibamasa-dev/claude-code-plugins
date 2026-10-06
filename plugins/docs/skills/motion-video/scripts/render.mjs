@@ -437,6 +437,9 @@ async function cmdStoryboard(P, f) {
     fs.rmSync(snap, { recursive: true, force: true });
     fs.mkdirSync(snap);
     for (const e of fs.readdirSync(dir)) if (!VERSION_DIR.test(e)) fs.cpSync(path.join(dir, e), path.join(snap, e), { recursive: true });
+    // 写しの storyboard.json は写しの中のファイルを指す（トップは次の版で上書きされる）
+    const q = (p) => JSON.stringify(p + path.sep).slice(1, -1);
+    fs.writeFileSync(path.join(snap, 'storyboard.json'), JSON.stringify(sb, null, 2).split(q(dir)).join(q(snap)));
     console.log(JSON.stringify({ storyboard: path.join(dir, 'storyboard.md'), cutsheet: path.join(dir, 'cutsheet.html'), version, source_hash: S.hash, check: check.ok, warnings, compare, sound: sound && { preview: sound.preview, spectrogram: sound.spectrogram, lufs: sound.lufs, truePeakDb: sound.truePeakDb }, per: Object.fromEntries(Object.entries(per).map(([k, v]) => [k, { contact: v.contact, strip: v.strip, phone: v.phone, seam: v.seam, stills: v.stills.map((x) => x.path) }])) }, null, 2));
   } finally {
     await S.close();
@@ -526,10 +529,11 @@ function storyboardMd(sb, dir, P) {
 // 人は feedback/v<N>.json に版 N へのフィードバックを書き、エージェントは同じファイルの response に対応を書く。
 // 次の storyboard は v<N+1> になる（版番号 = FB の付いた最新の版 + 1。FB が無ければ 1）
 const VERSION_DIR = /^v\d+$/;
-// ファイル名に使えない文字（日本語の ID を含む）は _ にし、元の ID のハッシュを足して衝突させない
+// ファイル名に使えない文字（日本語の ID を含む）は _ にし、~ と元の ID のハッシュを足して衝突させない。
+// 置き換えの要らない ID は ~ を含みえないので、置き換えた ID の名前とは重ならない
 const cutPng = (dir, id, which) => {
   const safe = String(id).replace(/[^\w.-]/g, '_');
-  return path.join(dir, `${safe === String(id) ? safe : `${safe}-${sha(String(id)).slice(0, 8)}`}-${which}.png`);
+  return path.join(dir, `${safe === String(id) ? safe : `${safe}~${sha(String(id)).slice(0, 8)}`}-${which}.png`);
 };
 
 function loadFeedback(proj) {

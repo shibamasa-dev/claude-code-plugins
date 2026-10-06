@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -201,12 +202,15 @@ async function runCutsheetCase(c) {
   const jsrc = path.join(jd, 'video.js');
   let js = fs.readFileSync(jsrc, 'utf8');
   for (const [from, to] of Object.entries(e.jaIds)) js = js.replace(`{ id: '${from}',`, `{ id: '${to}',`);
+  // 置き換え後の名前を ASCII の ID として持つ別のカット（修正前の命名 <置き換え>-<ハッシュ8桁> と同じ文字列）
+  const lookalike = `${'_'.repeat(Object.values(e.jaIds)[0].length)}-${crypto.createHash('sha256').update(Object.values(e.jaIds)[0]).digest('hex').slice(0, 8)}`;
+  js = js.replace(`{ id: '${e.lookalikeOf}',`, `{ id: '${lookalike}',`);
   fs.writeFileSync(jsrc, js.replace('bpm: 120,', `bpm: 120, offset: ${e.offset.value},`));
   const sj = render('storyboard', path.relative(WORK, jd));
   const hj = fs.existsSync(path.join(jd, 'out/storyboard/cutsheet.html')) ? fs.readFileSync(path.join(jd, 'out/storyboard/cutsheet.html'), 'utf8') : '';
-  const jaSrc = Object.values(e.jaIds).map((id) => [...row(hj, id).matchAll(/<img src="([^"]+)"/g)].map((m) => m[1]));
+  const jaSrc = [...Object.values(e.jaIds), lookalike].map((id) => [...row(hj, id).matchAll(/<img src="([^"]+)"/g)].map((m) => m[1]));
   const jaFiles = jaSrc.flat();
-  add(`同じ長さの日本語のカット ID（${Object.values(e.jaIds).join('・')}）でも はじめ / おわり の画像が別のファイルになる`, sj.code === 0 && jaFiles.length === 4 && new Set(jaFiles).size === 4 && jaFiles.every((f) => fs.existsSync(path.join(jd, 'out/storyboard', f))), `exit=${sj.code} img=${jaFiles.join(',')}`);
+  add(`同じ長さの日本語のカット ID（${Object.values(e.jaIds).join('・')}）と、置き換え後の名前に似た ASCII の ID（${lookalike}）でも はじめ / おわり の画像が別のファイルになる`, sj.code === 0 && jaFiles.length === 6 && new Set(jaFiles).size === 6 && jaFiles.every((f) => fs.existsSync(path.join(jd, 'out/storyboard', f))), `exit=${sj.code} img=${jaFiles.join(',')}`);
   const pre = row(hj, Object.values(e.jaIds)[0]).replace(/<[^>]+>/g, ' ');
   const post = row(hj, Object.values(e.jaIds)[1]).replace(/<[^>]+>/g, ' ');
   add(`頭出し ${e.offset.value}s より前に始まるカットは負の拍で出て、小節0・拍0 にならない（${e.offset.pre} / ${e.offset.post}）`, pre.includes(e.offset.pre) && !/小節0|拍0/.test(pre) && post.includes(e.offset.post), `${pre.replace(/\s+/g, ' ').slice(0, 80)} | ${post.replace(/\s+/g, ' ').slice(0, 80)}`);
@@ -219,6 +223,10 @@ async function runCutsheetCase(c) {
   const j2 = sbJson();
   const h2 = html();
   add('FB を置いて再実行すると版が v2 に進み、v1/ が残る', s2.code === 0 && j2?.version === 2 && fs.existsSync(path.join(sbDir, 'v1', 'cutsheet.html')) && fs.existsSync(path.join(sbDir, 'v1', tag, 'cuts', `${e.cuts[0]}-start.png`)), `exit=${s2.code} version=${j2?.version} v1=${fs.readdirSync(sbDir).filter((x) => /^v\d+$/.test(x))}`);
+  const arch = json(fs.readFileSync(path.join(sbDir, 'v1', 'storyboard.json'), 'utf8'));
+  const archPaths = arch ? Object.values(arch.per).flatMap((v) => [...v.cuts.flatMap((x) => [x.startPng, x.endPng]), ...v.stills.map((x) => x.path), v.contact]) : [];
+  const v1dir = path.join(sbDir, 'v1') + path.sep;
+  add('v2 を作った後も、v1/storyboard.json の画像パスは v1/ の中の実在するファイルを指す', archPaths.length && archPaths.every((p) => p.startsWith(v1dir) && fs.existsSync(p)), `件数=${archPaths.length} 外を指す=${archPaths.filter((p) => !p.startsWith(v1dir)).slice(0, 2).join(',')}`);
   const fbTexts = [e.feedback.overall, ...Object.values(e.feedback.cuts).map((x) => (typeof x === 'string' ? x : x.fb))];
   add('カット表に「v1 の FB への対応」表が出て、FB の文面が全部載る', h2.includes('v1 の FB への対応') && fbTexts.every((t) => h2.includes(t)), `見出し=${h2.includes('v1 の FB への対応')} 載っていない=${fbTexts.filter((t) => !h2.includes(t))}`);
   const unans = e.unanswered.map((id) => j2?.warnings?.find((w) => w.includes('対応が書かれていない') && w.includes(`${id}「`)));
