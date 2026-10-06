@@ -1,7 +1,16 @@
 {
   "name": "docs",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "画像生成プロンプト・コードで描くモーション動画のスキル",
-  "author": { "name": "shibamasa-dev" },
-  "license": "MIT"
+  "author": {
+    "name": "shibamasa-dev"
+  },
+  "homepage": "https://github.com/shibamasa-dev/claude-code-plugins/tree/main/plugins/docs",
+  "repository": "https://github.com/shibamasa-dev/claude-code-plugins",
+  "license": "MIT",
+  "keywords": [
+    "image-generation",
+    "video",
+    "motion-graphics"
+  ]
 }
