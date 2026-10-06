@@ -1,7 +1,7 @@
 ---
 name: pr-rereview
-description: GitHub PR に、そのリポのレビュー bot（CodeRabbit・Codex・Copilot・Gemini・Cursor Bugbot など）への再レビュー依頼を投稿する。ユーザーの明示指示があったとき、または pr-review-wait の再レビュー基準（対応した指摘に Critical/P1 級が 3 件以上）を満たしたときに使う。例外として guards プラグインの設定 merge_allowed_repos に書いたリポで、エージェントが作った PR はエージェント判断で自律投稿してよい。
-last_reviewed: 2026-09-21
+description: GitHub PR に、そのリポのレビュー bot（CodeRabbit・Codex・Copilot・Gemini・Cursor Bugbot など）への再レビュー依頼を投稿する。ユーザーの明示指示があったとき、pr-review-wait の再レビュー基準（対応した指摘に Critical/P1 級が 3 件以上）を満たしたとき、またはレート制限が明けた bot に頼み直すときに使う。例外として guards プラグインの設定 merge_allowed_repos に書いたリポで、エージェントが作った PR はエージェント判断で自律投稿してよい。
+last_reviewed: 2026-10-06
 review_after: 2027-03-20
 ---
 
@@ -12,6 +12,8 @@ GitHub PR に、**そのリポでレビューしている bot への再レビュ
 ## 使い方
 
 ユーザーの明示指示があったとき、または `pr-review-wait` の再レビュー基準（対応した指摘に Critical/P1 級が 3 件以上）を満たしたときに実行する。基準の正典は `pr-review-wait`。
+
+**レート制限明けの再依頼は基準の対象外**: bot がレート制限でまだ 1 回もレビューしていないときは、待ち時間が過ぎたら**その bot にだけ**投げてよい（`pr-review-wait` 手順 3a）。
 
 ## merge_allowed_repos のリポの例外（2026-07-29 承認）
 

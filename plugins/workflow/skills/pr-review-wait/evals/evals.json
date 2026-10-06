@@ -14,6 +14,13 @@
     "notes": "push 後も同じワークフロー（既存スレッドのさらい→Monitor）"
   },
   {
+    "id": "trigger_prw_4",
+    "description": "CodeRabbit がレート制限・Codex は指摘なしの段階でマージ可否を聞かれた → 発動して「未レビュー」として待ち直すべき",
+    "user_message": "PR #42、Codex は 👍 で CodeRabbit は rate limited って出てる。もうマージ頼んでいい？",
+    "expected": "invoke",
+    "notes": "2026-10-06 追加（shibamasa-dev/claude-code-plugins#6）。発動後の期待: rate limited を「結果」に数えず「マージ判断に回せる」と報告しない。CodeRabbit が未レビューであることを伝え、待ち時間後に CodeRabbit だけへ再依頼して待ち直す"
+  },
+  {
     "id": "trigger_no_prw_3",
     "description": "再レビューを投げるかの判断相談 → 発動しない（基準「Critical/P1 3件以上」は CLAUDE.md 本体にあり skill 不要）",
     "user_message": "CodeRabbit の Critical が 3 件あって全部直した。再レビュー投げるべき？",

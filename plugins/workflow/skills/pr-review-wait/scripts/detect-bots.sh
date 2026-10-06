@@ -28,8 +28,9 @@ logins=$(gh pr list -R "$REPO" --state all --limit "${DETECT_BOTS_PRS:-5}" --jso
   | while read -r n; do
       gh api "repos/$REPO/pulls/$n/reviews" --jq '.[] | select(.user.type == "Bot") | .user.login' 2>/dev/null
       gh api "repos/$REPO/pulls/$n/comments" --jq '.[] | select(.user.type == "Bot") | .user.login' 2>/dev/null
-      # 「上限に達したので動けなかった」等の通知は、bot が入っていてもレビューしていない印なので数えない
-      gh api "repos/$REPO/issues/$n/comments" --jq '.[] | select(.user.type == "Bot") | select(.body | test("usage limit|couldn.t run"; "i") | not) | .user.login' 2>/dev/null
+      # 「上限に達したので動けなかった」等の通知も、その bot が入っている印として数える。
+      # 外すと上限の回しか来ていない bot が待つ対象から漏れ、「未レビュー」の扱い（references/bots.md）に届かない
+      gh api "repos/$REPO/issues/$n/comments" --jq '.[] | select(.user.type == "Bot") | .user.login' 2>/dev/null
       gh api "repos/$REPO/issues/$n/reactions" --jq '.[] | select(.user.type == "Bot") | .user.login' 2>/dev/null
     done | sort -u)
 ids=$(for b in $BOTS; do
