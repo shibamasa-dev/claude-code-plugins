@@ -2,6 +2,15 @@
 
 guards プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.2.0] - 2026-10-06
+
+### Removed
+- bash-guard のマージ前の確認（merge-gate）を外した。マージの条件は review プラグインの `dev-flow` スキルと `dev-flow-gate` フックへ移した。guards だけを入れている場合、マージは止まらない
+- 設定 `merge_allowed_repos` を非推奨にした。guards はもう読まない。自動マージはリポの `.claude/dev-flow.json`（`{"autoMerge": true}`）へ移す
+
+### Changed
+- git-freshness：GitHub コネクタでマージした後（`merge_pull_request`）も、手元の clone が同じリポならローカル main を追従させる
+
 ## [0.1.5] - 2026-10-06
 
 ### Removed

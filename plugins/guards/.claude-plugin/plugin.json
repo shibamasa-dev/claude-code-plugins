@@ -1,7 +1,7 @@
 {
   "name": "guards",
-  "version": "0.1.5",
-  "description": "破壊的な Bash 操作・古い main からの push・未検証マージ・リポ構造違反の書き込みを止めるフック",
+  "version": "0.2.0",
+  "description": "破壊的な Bash 操作・古い main からの push・リポ構造違反の書き込みを止め、マージの後にローカル main を追従させるフック",
   "author": {
     "name": "shibamasa-dev"
   },
@@ -17,8 +17,8 @@
   "userConfig": {
     "merge_allowed_repos": {
       "type": "string",
-      "title": "マージを Claude に任せてよいリポ",
-      "description": "owner/repo をカンマ区切り。ここに書いたリポだけ merge ゲートを通す（既定は空＝すべてユーザー判断）",
+      "title": "（非推奨）マージを Claude に任せてよいリポ",
+      "description": "非推奨。guards はもう読まない。自動マージは review プラグインの dev-flow（リポの .claude/dev-flow.json）へ移す。移行中は review のスキルがここに書いたリポも自動マージのリポとして扱う",
       "required": false,
       "default": ""
     }
