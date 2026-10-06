@@ -59,4 +59,21 @@ printf '  %-46s -> %s  (allow 期待)\n' 'commit 自身の先頭にマーカー'
 printf '  %-46s -> %s  (deny 期待)\n' 'マーカーを echo の引数に' "$(probe 'echo MAIN_FRESHNESS_OK=1; git commit -m x')"
 printf '  %-46s -> %s  (deny 期待)\n' 'マーカーをコメントに' "$(probe 'git commit -m x # MAIN_FRESHNESS_OK=1')"
 
+echo
+echo '=== 既定ブランチが main 以外（origin/HEAD -> origin/develop） ==='
+git checkout -q -b develop "$MAINB" && git commit -q --allow-empty -m dev1
+git update-ref refs/remotes/origin/develop develop
+git commit -q --allow-empty -m dev-local-only   # 手元の develop は origin/develop より進んでいる（遅れではない）
+git update-ref refs/remotes/origin/develop HEAD~1
+git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/develop
+git checkout -q -b feat/d HEAD~1
+git checkout -q develop && git commit -q --allow-empty -m dev2 && git update-ref refs/remotes/origin/develop HEAD && git reset -q --hard HEAD~1
+git checkout -q feat/d
+printf '  %-46s -> %s  (deny 期待)\n' 'origin/develop より遅れた feature の push' "$(probe 'git push -u origin feat/d')"
+git merge -q --no-edit origin/develop
+printf '  %-46s -> %s  (allow 期待)\n' 'origin/develop を取り込んだ後の push' "$(probe 'git push -u origin feat/d')"
+git checkout -q develop
+printf '  %-46s -> %s  (deny 期待)\n' '遅れた develop の上の commit' "$(probe 'git commit -m x')"
+printf '  %-46s -> %s  (allow 期待: 既定ブランチは対象外)\n' 'develop の push' "$(probe 'git push origin develop')"
+
 rm -rf /tmp/gtest
