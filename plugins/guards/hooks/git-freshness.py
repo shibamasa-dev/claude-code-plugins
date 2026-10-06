@@ -129,13 +129,15 @@ def _origin_host_slug(cwd):
 
 
 def _same_repo(cwd, repo):
-    """gh の -R（[HOST/]OWNER/REPO）が cwd の origin と同じリポか。HOST 省略時は GH_HOST、無ければ github.com。"""
+    """gh の -R（[HOST/]OWNER/REPO）が cwd の origin と同じリポか。
+    HOST 省略時は owner/repo だけで比べる（GitHub Enterprise の clone で `-R O/R` と書いても同じリポとみなす）。"""
     origin = _origin_host_slug(cwd)
     parts = repo.strip().rstrip("/").split("/")
     if not origin or len(parts) not in (2, 3):
         return False
-    host = parts[0].lower() if len(parts) == 3 else (os.environ.get("GH_HOST") or "github.com").lower()
-    return (host, "/".join(parts[-2:]).lower()) == origin
+    if len(parts) == 3 and parts[0].lower() != origin[0]:
+        return False
+    return "/".join(parts[-2:]).lower() == origin[1]
 
 
 # ------------------------------------------------------------ post-merge-pull

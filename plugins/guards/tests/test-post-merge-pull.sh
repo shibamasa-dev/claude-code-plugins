@@ -71,6 +71,14 @@ row 'gh pr merge -R 別ホスト/O/R は手元を動かさない' "$(res "$(run 
 row 'gh pr merge <別リポの PR の URL> は手元を動かさない' "$(res "$(run Bash '{"command":"gh pr merge https://github.com/O/other/pull/9"}')")" silent
 row 'gh pr merge <同じリポの PR の URL>' "$(res "$(run Bash '{"command":"gh pr merge https://github.com/O/R/pull/9"}')")" pulled
 
+# GitHub Enterprise の clone で、ホストを書かずに -R OWNER/REPO と指した
+printf '#!/bin/sh\necho develop\n' > "$T/bin/gh"
+git config --global --add url."file://$T/origin.git".insteadOf https://ghe.example.com/O/R.git
+git -C "$T/me" remote set-url origin https://ghe.example.com/O/R.git
+adv_dev >/dev/null
+row 'GHE の clone で gh pr merge -R O/R（ホスト省略）' "$(res "$(run Bash '{"command":"gh pr merge 11 -R O/R"}')")" pulled
+git -C "$T/me" remote set-url origin https://github.com/O/R.git
+
 # origin 側で既定ブランチを develop に変えた（手元の origin/HEAD は main のまま。fetch では更新されない）
 printf '#!/bin/sh\nexit 1\n' > "$T/bin/gh"
 git -C "$T/origin.git" symbolic-ref HEAD refs/heads/develop
