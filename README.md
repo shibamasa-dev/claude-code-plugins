@@ -20,7 +20,7 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 | フック | いつ | 何を止めるか |
 |---|---|---|
 | bash-guard | Bash の前 | ホーム・システムディレクトリへの再帰削除、未マージ worktree の削除、未検証のマージ（確認を出す）、古い main からの push。安全領域外の削除は macOS の `trash`（ゴミ箱）なら通す |
-| file-guard | Write の前 | リポ構造ルール違反の書き込み。ルールは `~/.claude/rules/repo-structure.md`（`FILE_GUARD_SPEC` で変更可）。無ければ何もしない |
+| file-guard | Write の前 | リポ構造ルール違反の書き込み（docs/ 直下の .md・scripts/ 直下のスクリプトの新規作成）。ルールはプラグイン同梱の `repo-structure.md`。`~/.claude/rules/repo-structure.md` を置くとそちらが優先、`FILE_GUARD_SPEC` を設定するとさらに優先（存在しないパスを指せば無効化） |
 | full-test-gate | セッション開始・Bash の前 | 全体テストを最後に通してからの変更量を知らせ、リリース等のコマンドを未検証の変更があれば止める。対象はリポに `.claude/full-test.json` を置いたプロジェクトだけ |
 | git-freshness | Bash の後 | マージや push の後、ローカル main を最新にするよう知らせる（止めはしない） |
 

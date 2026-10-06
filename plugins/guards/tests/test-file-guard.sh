@@ -7,7 +7,9 @@ OUT="${1:-/dev/stdout}"
 F=/tmp/fg-fixture
 rm -rf "$F"
 # skill レイアウト例外の2形（① パス要素に skills ② scripts/ の親に SKILL.md）
-mkdir -p "$F/repo/docs/spec" "$F/repo/scripts/sub" \
+mkdir -p "$F/repo/.git" "$F/repo/docs/spec" "$F/repo/scripts/sub" \
+         "$F/repo/skills/alpha/docs" \
+         "$F/skills/repo2/.git" "$F/skills/repo2/docs" "$F/skills/repo2/scripts" \
          "$F/repo/skills/alpha/scripts" \
          "$F/repo/deliverables/beta/scripts"
 : > "$F/repo/deliverables/beta/SKILL.md"
@@ -77,6 +79,9 @@ skills/alpha/scripts/foo.sh|skill 例外① パス要素に skills
 deliverables/beta/scripts/foo.sh|skill 例外② scripts/ の親に SKILL.md
 deliverables/gamma/scripts/foo.sh|例外に当たらない scripts/ 直下
 src/foo.sh|docs/ でも scripts/ でもない
+skills/alpha/docs/foo.md|skills 配下でも docs/ 直下は例外にしない
+../skills/repo2/docs/foo.md|チェックアウト先に skills（docs/）
+../skills/repo2/scripts/foo.sh|チェックアウト先に skills（scripts/）
 CASES
 } > "$OUT"
 rm -rf "$F"

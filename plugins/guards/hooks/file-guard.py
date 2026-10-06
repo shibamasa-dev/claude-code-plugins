@@ -2,9 +2,11 @@
 """PreToolUse hook: Write の repo-structure ガード。
 
 判定に使う値（許すファイル名・サブフォルダ規定セット・スクリプト拡張子・例外）を
-**このスクリプトは持たない。** 仕様ファイル（既定 `~/.claude/rules/repo-structure.md`、
-環境変数 `FILE_GUARD_SPEC` で上書き）の `<!-- guard:… -->` ブロックを実行時に読む。
-仕様ファイルはユーザーが用意する。無ければ Write は止めない（検証していないことだけ注入する）。
+**このスクリプトは持たない。** 仕様ファイルの `<!-- guard:… -->` ブロックを実行時に読む。
+仕様ファイルは上から順に最初に見つかったものを使う:
+  1. 環境変数 `FILE_GUARD_SPEC`（設定されていればこれだけを見る。無ければ何もしない）
+  2. `~/.claude/rules/repo-structure.md`（ユーザーの規約）
+  3. プラグイン同梱の `repo-structure.md`（既定）
 
 なぜそうするか（2026-09-23）:
   以前は散文（rules）と実装（このファイル）に同じ規約が別表現で存在していた。そして
@@ -22,7 +24,7 @@
 matcher は Write のみ（Edit は既存ファイル対象なので登録しない）。
 
 設計上の約束:
-  - **SPEC が無ければ何もしない。** ルールファイルを用意していない利用者には関係が無い。
+  - **`FILE_GUARD_SPEC` が指す SPEC が無ければ何もしない。** 明示的に外した利用者には関係が無い。
   - **SPEC があるのに読めなければ Write を止めない。** ガードの不調で作業を止めるのは過剰。
     ただし黙って通すと「規約チェック済み」と誤認させるので、通らなかったことを注入する
     （design-lint.py と同じ方針）。
@@ -32,7 +34,17 @@ import os
 import re
 import sys
 
-SPEC = os.path.expanduser(os.environ.get("FILE_GUARD_SPEC") or "~/.claude/rules/repo-structure.md")
+def resolve_spec() -> str:
+    env = os.environ.get("FILE_GUARD_SPEC")
+    if env:
+        return os.path.expanduser(env)
+    user = os.path.expanduser("~/.claude/rules/repo-structure.md")
+    if os.path.exists(user):
+        return user
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "repo-structure.md")
+
+
+SPEC = resolve_spec()
 
 
 def read_block(spec_text: str, tag: str) -> list:
@@ -58,6 +70,22 @@ def split_kv(entries: list) -> list:
         k, sep, v = e.partition(":")
         out.append((k.strip(), v.strip() if sep else ""))
     return out
+
+
+def repo_parts(path: str) -> list:
+    """path をリポのルート（.git を持つ最も近い祖先）からの相対パスに割る。
+
+    チェックアウト先のパス（例: /work/skills/proj）に含まれる要素で例外を誤発動させないため。
+    リポの外なら絶対パスのまま割る。
+    """
+    d = os.path.dirname(path)
+    while True:
+        if os.path.exists(os.path.join(d, ".git")):
+            return os.path.relpath(path, d).split(os.sep)
+        up = os.path.dirname(d)
+        if up == d:
+            return path.split(os.sep)
+        d = up
 
 
 def allow_with_notice(text: str) -> None:
@@ -95,7 +123,7 @@ def main() -> None:
     try:
         spec_text = open(SPEC, encoding="utf-8", errors="replace").read()
     except FileNotFoundError:
-        sys.exit(0)  # ルールファイルを用意していない利用者には何もしない
+        sys.exit(0)  # FILE_GUARD_SPEC で存在しないパスを指した＝明示的に外している
     except OSError as e:
         allow_with_notice(
             f"【repo-structure ガード 未実行】{fp}\n"
@@ -117,7 +145,7 @@ def main() -> None:
 
     # ---- 例外（有効・無効は SPEC の ID で決まる）
     # skill は `<skill>/scripts/` 直下にスクリプトを置くのが正しい形なので対象外にする。
-    if "path-component-skills" in exemptions and "skills" in parts:
+    if "path-component-skills" in exemptions and parent == "scripts" and "skills" in repo_parts(norm):
         sys.exit(0)
     if "sibling-skill-md" in exemptions:
         parent_dir = os.path.dirname(norm)
