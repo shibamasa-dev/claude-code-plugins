@@ -1032,8 +1032,30 @@ def _split_top_commas(body: str) -> list:
     return parts + [cur]
 
 
+_SEQ_RE = re.compile(r"^(-?\d+|[A-Za-z])\.\.(-?\d+|[A-Za-z])(?:\.\.(-?\d+))?$")
+
+
+def _brace_seq(body: str):
+    """`{1..3}`・`{a..c}`・`{01..10..2}` の中身を並べる。範囲の形でなければ None。"""
+    m = _SEQ_RE.match(body)
+    if not m:
+        return None
+    a, b, step = m.group(1), m.group(2), abs(int(m.group(3) or 1)) or 1
+    if a.lstrip("-").isdigit() and b.lstrip("-").isdigit():
+        x, y = int(a), int(b)
+        width = max(len(a), len(b)) if (a.lstrip("-").startswith("0") or b.lstrip("-").startswith("0")) else 0
+        rng = range(x, y + 1, step) if x <= y else range(x, y - 1, -step)
+        return [str(n).zfill(width) if width else str(n) for n in rng]
+    if a.isalpha() and b.isalpha():
+        x, y = ord(a), ord(b)
+        rng = range(x, y + 1, step) if x <= y else range(x, y - 1, -step)
+        return [chr(n) for n in rng]
+    return None
+
+
 def _brace_expand(s: str, limit: int = 256) -> list:
-    """bash のブレース展開（`a{b,c}d` → abd acd、入れ子も可）。`{a..b}` の範囲は展開しない。"""
+    """bash のブレース展開（`a{b,c}d` → abd acd、入れ子も可、`{1..3}` などの範囲も）。
+    展開の数が limit を超えたら limit + 1 個で打ち切る（呼ぶ側は「確かめきれない」として扱う）。"""
     depth, start = 0, None
     for i, c in enumerate(s):
         if c == "{" and not (i and s[i - 1] == "$"):
@@ -1043,25 +1065,32 @@ def _brace_expand(s: str, limit: int = 256) -> list:
         elif c == "}" and depth:
             depth -= 1
             if depth == 0 and start is not None:
-                parts = _split_top_commas(s[start + 1:i])
+                body = s[start + 1:i]
+                parts = _split_top_commas(body)
+                if len(parts) == 1:
+                    parts = _brace_seq(body) or parts
                 if len(parts) > 1:
                     out = []
                     for part in parts:
                         out.extend(_brace_expand(s[:start] + part + s[i + 1:], limit))
-                        if len(out) >= limit:
+                        if len(out) > limit:
                             break
-                    return out[:limit]
+                    return out[:limit + 1]
                 start = None
     return [s]
 
 
-def _worktrees_in_target(p: str) -> list:
+def _worktrees_in_target(p: str, limit: int = 256) -> list:
     """消す先 p が消しうる linked worktree（None は確かめきれなかった印）。
-    ブレース展開と glob（`*` など）はシェルと同じく展開してから見る。"""
+    ブレース展開と glob（`*` など）はシェルと同じく展開してから見る。引用符で囲んだ `[` などは
+    シェルでは文字どおりに渡るが、ここには引用符が外れて届くので、文字どおりのパスも合わせて見る。"""
+    expanded = _brace_expand(p, limit)
+    found = [None] if len(expanded) > limit else []
     paths = []
-    for b in _brace_expand(p):
-        paths.extend(glob.glob(b) if glob.has_magic(b) else [b])
-    return list(dict.fromkeys(w for q in paths for w in _linked_worktrees_under(os.path.normpath(q))))
+    for b in expanded[:limit]:
+        paths.extend(glob.glob(b) + ([b] if os.path.lexists(b) else []) if glob.has_magic(b) else [b])
+    found += [w for q in dict.fromkeys(paths) for w in _linked_worktrees_under(os.path.normpath(q))]
+    return list(dict.fromkeys(found))
 
 
 def _inside_worktree(p: str) -> bool:
@@ -1109,7 +1138,12 @@ def rule_worktree_guard(command: str):
         starts = _find_delete_starts(tokens)
         # 条件付きの `find … -delete`（`-name '*.pyc'` など）は開始パスを丸ごと消さない。
         # -delete は中身のあるフォルダを消せないので、~/.worktrees の外では worktree の root を消す心配がない
-        filtered_delete_only = starts is not None and _find_filtered(tokens) and not _find_exec_deletes(tokens)
+        filtered = starts is not None and _find_filtered(tokens)
+        filtered_delete_only = filtered and not _find_exec_deletes(tokens)
+        # 条件付きの `find … -exec rm` は条件に合うものしか消さないので、開始パスが大きくて
+        # 走査しきれない（None）だけでは止めない。見つかった worktree は従来どおり判定する。
+        # このルールが守るのは worktree の丸ごとの削除。worktree の中のファイルを条件で消す
+        # （`find . -type f -delete` など）のは、サブパスの削除と同じく対象外（メインの作業ツリーでも同じ危険がある）
         if starts is not None:
             paths = starts
         elif base == "trash" or (base == "rm" and _is_recursive_rm(tokens)):
@@ -1129,7 +1163,7 @@ def rule_worktree_guard(command: str):
                 if _under_worktrees(exp):
                     targets.append((t, exp))
                 elif not filtered_delete_only:
-                    targets.extend((t, w) for w in _worktrees_in_target(exp))
+                    targets.extend((t, w) for w in _worktrees_in_target(exp) if w is not None or not filtered)
                 continue
             # 相対パス: 実行される cwd で解決する（`cd ~/.worktrees && rm -rf name` 等）。
             # worktree の中のサブパス（build/ 等の掃除）は対象外
@@ -1142,7 +1176,7 @@ def rule_worktree_guard(command: str):
                 if not _inside_worktree(exp):
                     targets.append((t, exp))
             elif not filtered_delete_only:
-                targets.extend((t, w) for w in _worktrees_in_target(exp))
+                targets.extend((t, w) for w in _worktrees_in_target(exp) if w is not None or not filtered)
     bad = list(dict.fromkeys(t for t, p in targets if p is None or _worktree_state(p) != "merged_clean"))
     if not bad:
         return None

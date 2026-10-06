@@ -184,9 +184,18 @@ git -C "$FH/repo" worktree add -q -b feat/deep "$FH/deep/a/b/c/d/e/feat"
 git -C "$FH/deep/a/b/c/d/e/feat" commit -q --allow-empty -m work
 K "rm -rf $FH/deep"                               '6 段下にある未マージの worktree'          'deny'
 # 見るフォルダの数の上限で打ち切ったら、見ていない所に worktree が無いとは言えないので止める
+# （一時領域が /tmp でない macOS でも rm-guard に止められないよう、相対パスで見る）
 mkdir -p "$FH/wide/1" "$FH/wide/2" "$FH/wide/3" "$FH/wide/4"
-GUARDS_SCAN_LIMIT=3 K "rm -rf $FH/wide"           '走査が上限で打ち切られた（判定不能）'      'deny'
-K "rm -rf $FH/wide"                               '上限内で worktree が無いと確かめられた'    'allow'
+KCWD="$FH" GUARDS_SCAN_LIMIT=3 K 'rm -rf wide'    '走査が上限で打ち切られた（判定不能）'      'deny'
+KCWD="$FH" K 'rm -rf wide'                        '上限内で worktree が無いと確かめられた'    'allow'
+KCWD="$FH" GUARDS_SCAN_LIMIT=3 K "find wide -name x -exec rm -rf {} +" '条件付きの find -exec rm は打ち切りだけでは止めない' 'allow'
+# 範囲のブレース展開・展開の数の上限・引用符で囲んだ glob の文字
+K 'rm -rf .claude/worktrees/{done,fea{s..u}}'      '範囲のブレース展開で未マージの worktree'   'deny'
+K "rm -rf .claude/{$(printf 'x%s,' $(seq 1 300))worktrees}" 'ブレース展開が上限を超えた（判定不能）' 'deny'
+mkdir -p "$FH/repo/bk"
+git -C "$FH/repo" worktree add -q -b feat/bk "$FH/repo/bk/b[1]"
+git -C "$FH/repo/bk/b[1]" commit -q --allow-empty -m work
+K "rm -rf 'bk/b[1]'"                               '引用符で囲んだ [ ] は文字どおりのパス'     'deny'
 # フックが別の worktree の GIT_DIR を受け継いでいても、消す先のリポで判定する
 GIT_DIR="$FH/repo/.git/worktrees/done" GIT_WORK_TREE="$FH/repo/.claude/worktrees/done" \
   K 'rm -rf .claude/worktrees/feat'               'GIT_DIR が別の worktree を指していても'    'deny'
