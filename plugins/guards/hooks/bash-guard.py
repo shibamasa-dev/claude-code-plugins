@@ -748,9 +748,15 @@ def _effective_cwd(command: str):
             return cur
     return cur
 
+# git はどれも「cwd のリポ」を見る前提。フックが GIT_DIR などを受け継いでいると別のリポを見てしまうので外す
+_GIT_LOCAL_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
+                   "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_PREFIX")
+GIT_ENV = {k: v for k, v in os.environ.items() if k not in _GIT_LOCAL_VARS}
+
+
 def _git(args, cwd, timeout=8):
     return subprocess.run(
-        ["git", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout,
+        ["git", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout, env=GIT_ENV,
     )
 
 
@@ -759,7 +765,7 @@ def _remote_default(cwd):
     繋がらない・認証が要るときは None（待たせない）。"""
     try:
         r = subprocess.run(["git", "ls-remote", "--symref", "origin", "HEAD"], cwd=cwd, capture_output=True, stdin=subprocess.DEVNULL,
-                           text=True, timeout=5, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+                           text=True, timeout=5, env={**GIT_ENV, "GIT_TERMINAL_PROMPT": "0"})
     except (subprocess.TimeoutExpired, OSError):
         return None
     m = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", r.stdout, re.M) if r.returncode == 0 else None
@@ -934,7 +940,7 @@ def _squash_merged(p: str) -> bool:
         r = subprocess.run(
             ["gh", "pr", "list", "--head", branch, "--state", "merged",
              "--json", "headRefOid", "--jq", ".[].headRefOid"],
-            cwd=p, capture_output=True, text=True, timeout=8,
+            cwd=p, capture_output=True, text=True, timeout=8, env=GIT_ENV,
         )
     except (subprocess.TimeoutExpired, OSError):
         return False
@@ -954,6 +960,7 @@ def _under_worktrees(p: str) -> bool:
 def _linked_worktrees_under(p: str) -> list:
     """p 自身か p の下にある linked worktree の実パス（メインの作業ツリーは除く）。
     p の属するリポの `git worktree list` と、p の中の `.git` ファイルの走査を合わせる。
+    走査が上限で打ち切られたときは None を混ぜる（判定不能として止める側）。
     p が無い・読めないときは []（rm-guard の判定に任せる）。"""
     if not os.path.isdir(p) or os.path.islink(p):
         return []
@@ -968,24 +975,34 @@ def _linked_worktrees_under(p: str) -> list:
         found = [w for w in (os.path.realpath(x) for x in paths[1:])
                  if w == rp or w.startswith(rp.rstrip("/") + "/")]
     # 別のリポの worktree が中にある場合（git の管理下でない上位フォルダ・関係ないリポの中）も拾う
-    return list(dict.fromkeys(found + _scan_worktree_roots(p)))
+    scanned, complete = _scan_worktree_roots(p)
+    return list(dict.fromkeys(found + scanned + ([] if complete else [None])))
 
 
-def _scan_worktree_roots(p: str, depth: int = 3, limit: int = 5000) -> list:
-    """p から depth 段下までにある linked worktree の root（`.git` が gitdir: …/worktrees/… を指す
-    ファイルのフォルダ）。サブモジュールの `.git` ファイルは modules/ を指すので数えない。
-    見るエントリ数は limit まで（巨大なフォルダの削除で待たせない）。"""
-    found, stack, seen = [], [(p, 0)], 0
+# worktree を置く場所ではないので潜らない（中身が多く、走査の上限をすぐ使い切る）
+_SCAN_SKIP = {".git", "node_modules"}
+
+
+def _scan_worktree_roots(p: str, limit: int = None):
+    """p の下にある linked worktree の root（`.git` が gitdir: …/worktrees/… を指すファイルのフォルダ）と、
+    最後まで見られたか。サブモジュールの `.git` ファイルは modules/ を指すので数えない。
+    深さは決めず、見るフォルダの数を limit までにする（巨大なフォルダの削除で待たせない）。
+    limit で打ち切ったら complete=False（見ていない所に worktree が無いとは言えない）。"""
+    if limit is None:
+        limit = int(os.environ.get("GUARDS_SCAN_LIMIT") or 20000)   # 環境変数はテスト用
+    if os.path.basename(p.rstrip("/")) in _SCAN_SKIP:
+        return [], True
+    found, stack, seen = [], [p], 0
     while stack:
-        d, k = stack.pop()
+        d = stack.pop()
+        seen += 1
+        if seen > limit:
+            return found, False
         try:
             entries = list(os.scandir(d))
         except OSError:
             continue
         for e in entries:
-            seen += 1
-            if seen > limit:
-                return found
             if e.name == ".git":
                 if e.is_file(follow_symlinks=False):
                     try:
@@ -996,9 +1013,9 @@ def _scan_worktree_roots(p: str, depth: int = 3, limit: int = 5000) -> list:
                     if "/worktrees/" in head.replace("\\", "/"):
                         found.append(os.path.realpath(d))
                 continue
-            if k < depth and e.name != "node_modules" and e.is_dir(follow_symlinks=False):
-                stack.append((e.path, k + 1))
-    return found
+            if e.name not in _SCAN_SKIP and e.is_dir(follow_symlinks=False):
+                stack.append(e.path)
+    return found, True
 
 
 def _split_top_commas(body: str) -> list:
@@ -1039,7 +1056,8 @@ def _brace_expand(s: str, limit: int = 256) -> list:
 
 
 def _worktrees_in_target(p: str) -> list:
-    """消す先 p が消しうる linked worktree。ブレース展開と glob（`*` など）はシェルと同じく展開してから見る。"""
+    """消す先 p が消しうる linked worktree（None は確かめきれなかった印）。
+    ブレース展開と glob（`*` など）はシェルと同じく展開してから見る。"""
     paths = []
     for b in _brace_expand(p):
         paths.extend(glob.glob(b) if glob.has_magic(b) else [b])
@@ -1131,6 +1149,7 @@ def rule_worktree_guard(command: str):
     return deny(
         f"🛑 worktree-guard: 未マージか判定不能の worktree を削除しようとしている: {', '.join(bad[:3])}\n"
         "未マージ worktree の削除は禁止(未回収の作業が消える)。既定ブランチに取り込み済みでクリーンなら自動で通る。"
+        "中身が多すぎて worktree が無いと確かめきれないフォルダも、判定不能として止める。"
         "本当に消すならユーザー明示OKを取り、削除コマンド自身の先頭に `WORKTREE_RM_OK=1 ` を付けて再実行"
         "（例: `WORKTREE_RM_OK=1 git worktree remove <path>`）。"
     )

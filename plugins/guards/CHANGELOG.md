@@ -5,7 +5,8 @@ guards プラグインの変更履歴。書式は [Keep a Changelog](https://kee
 ## [0.2.2] - 2026-10-06
 
 ### Fixed
-- bash-guard（worktree-guard）：`~/.worktrees/` の外にある worktree（Claude Code 標準の `<repo>/.claude/worktrees/` など）も、未マージなら `rm -rf`・`trash`・`find -delete` での削除を止める。消す先が linked worktree そのものか、それを含む上位のフォルダかを `git worktree list` で見る。worktree の中のサブパスの掃除はこれまでどおり通す。`*` などの glob と `{a,b}` のブレース展開はシェルと同じく展開してから見る。消す先の中も3段下まで `.git` ファイルを探す（git の管理下でないフォルダや、関係ないリポの中にある worktree も拾う）。条件付きの `find … -delete`（`-name '*.pyc'` など）は worktree を丸ごと消せないので対象にしない
+- bash-guard（worktree-guard）：`~/.worktrees/` の外にある worktree（Claude Code 標準の `<repo>/.claude/worktrees/` など）も、未マージなら `rm -rf`・`trash`・`find -delete` での削除を止める。消す先が linked worktree そのものか、それを含む上位のフォルダかを `git worktree list` で見る。worktree の中のサブパスの掃除はこれまでどおり通す。`*` などの glob と `{a,b}` のブレース展開はシェルと同じく展開してから見る。消す先の中の `.git` ファイルも探す（git の管理下でないフォルダや、関係ないリポの中にある worktree も拾う）。深さでは打ち切らず、見るフォルダが 20000 を超えたら確かめきれないとして止める（`.git` と `node_modules` の中は見ない）。条件付きの `find … -delete`（`-name '*.pyc'` など）は worktree を丸ごと消せないので対象にしない
+- bash-guard の git の呼び出しは、フックが受け継いだ `GIT_DIR`・`GIT_WORK_TREE` などを外して、見たいフォルダのリポで動かす（別のリポの値で未マージ worktree を見逃さない）
 - worktree-guard のメッセージの「main 取り込み済みなら」を「既定ブランチに取り込み済みでクリーンなら」にした
 
 ## [0.2.1] - 2026-10-06

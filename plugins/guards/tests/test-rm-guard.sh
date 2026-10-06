@@ -179,5 +179,16 @@ git -C "$FH" init -q -b main outer && git -C "$FH/outer" commit -q --allow-empty
 git -C "$FH/repo" worktree add -q -b feat/nested "$FH/outer/bucket/feat"
 git -C "$FH/outer/bucket/feat" commit -q --allow-empty -m work
 KCWD="$FH/outer" K 'rm -rf bucket'                '別のリポの中にある未マージの worktree'    'deny'
+# 深い所にある worktree も拾う（深さで打ち切らない）
+git -C "$FH/repo" worktree add -q -b feat/deep "$FH/deep/a/b/c/d/e/feat"
+git -C "$FH/deep/a/b/c/d/e/feat" commit -q --allow-empty -m work
+K "rm -rf $FH/deep"                               '6 段下にある未マージの worktree'          'deny'
+# 見るフォルダの数の上限で打ち切ったら、見ていない所に worktree が無いとは言えないので止める
+mkdir -p "$FH/wide/1" "$FH/wide/2" "$FH/wide/3" "$FH/wide/4"
+GUARDS_SCAN_LIMIT=3 K "rm -rf $FH/wide"           '走査が上限で打ち切られた（判定不能）'      'deny'
+K "rm -rf $FH/wide"                               '上限内で worktree が無いと確かめられた'    'allow'
+# フックが別の worktree の GIT_DIR を受け継いでいても、消す先のリポで判定する
+GIT_DIR="$FH/repo/.git/worktrees/done" GIT_WORK_TREE="$FH/repo/.claude/worktrees/done" \
+  K 'rm -rf .claude/worktrees/feat'               'GIT_DIR が別の worktree を指していても'    'deny'
 
 rm -rf "$FH"
