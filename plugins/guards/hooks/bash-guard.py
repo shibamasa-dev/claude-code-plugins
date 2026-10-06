@@ -748,42 +748,44 @@ def _effective_cwd(command: str):
             return cur
     return cur
 
-# git はどれも「cwd のリポ」を見る前提。フックが GIT_DIR などを受け継いでいると別のリポを見てしまうので外す
+# 消す先のパスを調べる git（worktree-guard）は「そのパスのリポ」を見たいので、フックが受け継いだ
+# GIT_DIR などを外した環境で動かす。push・commit の鮮度チェックは、実行されるコマンドと同じ環境
+# （受け継いだ値をそのまま）で見る
 _GIT_LOCAL_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
                    "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_PREFIX")
 GIT_ENV = {k: v for k, v in os.environ.items() if k not in _GIT_LOCAL_VARS}
 
 
-def _git(args, cwd, timeout=8):
+def _git(args, cwd, timeout=8, env=None):
     return subprocess.run(
-        ["git", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout, env=GIT_ENV,
+        ["git", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout, env=env,
     )
 
 
-def _remote_default(cwd):
+def _remote_default(cwd, env=None):
     """origin が今いう既定ブランチ（ls-remote、読むだけ）。手元の origin/HEAD は fetch で更新されないため先に聞く。
     繋がらない・認証が要るときは None（待たせない）。"""
     try:
         r = subprocess.run(["git", "ls-remote", "--symref", "origin", "HEAD"], cwd=cwd, capture_output=True, stdin=subprocess.DEVNULL,
-                           text=True, timeout=5, env={**GIT_ENV, "GIT_TERMINAL_PROMPT": "0"})
+                           text=True, timeout=5, env={**(env or os.environ), "GIT_TERMINAL_PROMPT": "0"})
     except (subprocess.TimeoutExpired, OSError):
         return None
     m = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", r.stdout, re.M) if r.returncode == 0 else None
     return m.group(1) if m else None
 
 
-def _default_branch(cwd, online=True):
+def _default_branch(cwd, online=True, env=None):
     """リポの既定ブランチ。origin に聞き、繋がらなければ手元の origin/HEAD、それも無ければ origin/main・origin/master の有る方。
     online=False は origin に聞かない（commit のたびに通信させないため）。"""
-    name = _remote_default(cwd) if online else None
+    name = _remote_default(cwd, env) if online else None
     if name:
         return name
-    r = _git(["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"], cwd, timeout=5)
+    r = _git(["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"], cwd, timeout=5, env=env)
     name = r.stdout.strip() if r.returncode == 0 else ""
     if name.startswith("origin/"):
         return name[len("origin/"):]
     for cand in ("main", "master"):
-        if _git(["rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{cand}"], cwd, timeout=5).returncode == 0:
+        if _git(["rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{cand}"], cwd, timeout=5, env=env).returncode == 0:
             return cand
     return None
 
@@ -906,17 +908,17 @@ def _worktree_state(path: str):
     if not os.path.isdir(p):
         return "unknown"
     try:
-        if _git(["status", "--porcelain"], p).stdout.strip():
+        if _git(["status", "--porcelain"], p, env=GIT_ENV).stdout.strip():
             return "unmerged"  # dirty＝未回収の作業がある
         # どれか1つの base に HEAD が完全包含されていればマージ済み。
         # 最初に解決できた base だけで判定しない — origin/main がローカル main より
         # 古い repo では「ローカル main へ取り込み済み」を見逃して deny する（実測21コミット差）。
         resolved = False
-        default = _default_branch(p)
+        default = _default_branch(p, env=GIT_ENV)
         bases = ([f"origin/{default}", default] if default not in (None, "main", "master") else []) \
             + ["origin/main", "main", "origin/master", "master"]
         for base in bases:
-            r = _git(["rev-list", "--count", "HEAD", "^" + base], p)
+            r = _git(["rev-list", "--count", "HEAD", "^" + base], p, env=GIT_ENV)
             if r.returncode == 0:
                 resolved = True
                 if int(r.stdout.strip() or "0") == 0:
@@ -932,8 +934,8 @@ def _worktree_state(path: str):
 
 
 def _squash_merged(p: str) -> bool:
-    branch = _git(["symbolic-ref", "--short", "-q", "HEAD"], p).stdout.strip()
-    head = _git(["rev-parse", "HEAD"], p).stdout.strip()
+    branch = _git(["symbolic-ref", "--short", "-q", "HEAD"], p, env=GIT_ENV).stdout.strip()
+    head = _git(["rev-parse", "HEAD"], p, env=GIT_ENV).stdout.strip()
     if not branch or not head:
         return False
     try:
@@ -965,7 +967,7 @@ def _linked_worktrees_under(p: str) -> list:
     if not os.path.isdir(p) or os.path.islink(p):
         return []
     try:
-        r = _git(["worktree", "list", "--porcelain"], p)
+        r = _git(["worktree", "list", "--porcelain"], p, env=GIT_ENV)
     except (subprocess.TimeoutExpired, OSError):
         r = subprocess.CompletedProcess([], 1, "", "")
     found = []
@@ -1101,7 +1103,7 @@ def _inside_worktree(p: str) -> bool:
     if not d:
         return False
     try:
-        r = _git(["rev-parse", "--show-toplevel"], d)
+        r = _git(["rev-parse", "--show-toplevel"], d, env=GIT_ENV)
     except (subprocess.TimeoutExpired, OSError):
         return False
     if r.returncode != 0 or not r.stdout.strip():

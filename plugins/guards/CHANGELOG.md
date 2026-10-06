@@ -6,7 +6,7 @@ guards プラグインの変更履歴。書式は [Keep a Changelog](https://kee
 
 ### Fixed
 - bash-guard（worktree-guard）：`~/.worktrees/` の外にある worktree（Claude Code 標準の `<repo>/.claude/worktrees/` など）も、未マージなら `rm -rf`・`trash`・`find -delete` での削除を止める。消す先が linked worktree そのものか、それを含む上位のフォルダかを `git worktree list` で見る。worktree の中のサブパスの掃除はこれまでどおり通す。`*` などの glob と `{a,b}`・`{1..3}` のブレース展開はシェルと同じく展開してから見る（引用符で囲んだ `[` などの文字どおりのパスも見る。展開が 256 を超えたら確かめきれないとして止める）。消す先の中の `.git` ファイルも探す（git の管理下でないフォルダや、関係ないリポの中にある worktree も拾う）。深さでは打ち切らず、見るフォルダが 20000 を超えたら確かめきれないとして止める（`.git` と `node_modules` の中は見ない）。条件付きの `find … -delete`（`-name '*.pyc'` など）は worktree を丸ごと消せないので対象にしない。条件付きの `find … -exec rm` は、開始パスが大きくて走査しきれないだけでは止めない。守るのは worktree の丸ごとの削除で、worktree の中のファイルを消すこと（サブパスの削除・条件付きの find）は対象外
-- bash-guard の git の呼び出しは、フックが受け継いだ `GIT_DIR`・`GIT_WORK_TREE` などを外して、見たいフォルダのリポで動かす（別のリポの値で未マージ worktree を見逃さない）
+- worktree-guard が消す先を調べる git は、フックが受け継いだ `GIT_DIR`・`GIT_WORK_TREE` などを外して、そのフォルダのリポで動かす（別のリポの値で未マージ worktree を見逃さない）。push・commit 前の鮮度チェックは、実行されるコマンドと同じく受け継いだ値のまま見る
 - worktree-guard のメッセージの「main 取り込み済みなら」を「既定ブランチに取り込み済みでクリーンなら」にした
 
 ## [0.2.1] - 2026-10-06
