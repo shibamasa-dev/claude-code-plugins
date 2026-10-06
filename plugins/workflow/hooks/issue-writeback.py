@@ -4,6 +4,7 @@
 セッション内で GitHub issue を読んだ（issue_read / gh issue view）のに、その後
 書いていない（issue_write update / add_issue_comment / sub_issue_write /
 gh issue edit|comment|close）issue を追跡し、
+（PR は追わない。読んだ結果が /pull/N なら記録せず、gh pr edit|comment 等は番号なし・ブランチ指定も含めて書き込みに数える）
   - Stop            : 未反映のまま K ターン経ったら 1 回 block して書き戻しを促す（issue ごと最大 MAX_NAGS 回）
   - UserPromptSubmit: 未反映がある間だけ 1 行リマインドを注入（無ければ無出力）
   - SessionStart    : compact/resume 後に未反映を再注入。clear 後は「未反映のまま clear された」を 1 回通知
@@ -74,10 +75,85 @@ def refs_from_mcp(tool_name, ti):
     if base == "sub_issue_write": return "write", ref
     return None, None
 
-_GH_REPO = r"(?:-R|--repo)\s+([\w.-]+/[\w.-]+)"
-def refs_from_bash(cmd, cwd):
+def is_pr_response(ref, tr):
+    """読んだ結果に `github.com/OWNER/REPO/pull/N` が出ていれば、その番号は PR。
+    issue_read や `gh api repos/.../issues/N`（PR のコメントもこの API）は PR も読めるが、
+    PR の書き戻し先は本文の対応表で issue-writeback の対象ではない。"""
+    repo, n = ref.rsplit("#", 1)
+    text = tr if isinstance(tr, str) else json.dumps(tr, ensure_ascii=False)
+    return re.search(rf"github\.com/{re.escape(repo)}/pull/{n}(?!\d)", text, re.I) is not None
+
+_GH_REPO = r"(?:-R\s*=?\s*|--repo(?:\s+|=))([\w.-]+/[\w.-]+)"  # -R o/r・-Ro/r・--repo o/r・--repo=o/r
+# gh pr の書き込み系サブコマンドで、次の引数を値に取るオプション（-R/--repo は共通）。
+# 同じ短いオプションでもサブコマンドで意味が違う（close の -c は値つき、review の -c は値なし）ので分けて持つ
+_PR_VALUE_FLAGS = {
+    "edit": {"-b", "--body", "-F", "--body-file", "--attach", "-t", "--title", "-B", "--base", "-m", "--milestone",
+             "--add-assignee", "--remove-assignee", "--add-label", "--remove-label",
+             "--add-project", "--remove-project", "--add-reviewer", "--remove-reviewer"},
+    "comment": {"-b", "--body", "-F", "--body-file", "--attach"},
+    "close": {"-c", "--comment"},
+    "reopen": {"-c", "--comment"},
+    "merge": {"-b", "--body", "-F", "--body-file", "-t", "--subject", "-A", "--author-email", "--match-head-commit"},
+    "review": {"-b", "--body", "-F", "--body-file"},
+    "ready": set(),
+}
+
+def _pr_selector(sub, rest):
+    """`gh pr <sub>` の後ろから PR の指定（番号・URL・ブランチ）を取り出す。無ければ None（今のブランチの PR）。"""
+    import shlex
+    try:
+        toks = shlex.split(rest)
+    except ValueError:
+        toks = rest.split()
+    flags = _PR_VALUE_FLAGS[sub] | {"-R", "--repo"}
+    i = 0
+    while i < len(toks):
+        t = toks[i]
+        if t == "--":
+            return toks[i + 1] if i + 1 < len(toks) else None
+        if t.startswith("-") and len(t) > 1:
+            i += 2 if (t in flags and "=" not in t) else 1
+            continue
+        return t
+    return None
+
+def _resolve_pr(sel, repo, cwd, tr):
+    """番号や URL で指していない PR（今のブランチ・ブランチ名）の番号を、出力 → `gh pr view` の順で引く。"""
+    out = (tr.get("stdout") or "") if isinstance(tr, dict) else (tr if isinstance(tr, str) else "")
+    if repo:
+        m = re.search(rf"github\.com/{re.escape(repo)}/pull/(\d+)|\b{re.escape(repo)}#(\d+)\b", out, re.I)
+        if m: return f"{repo}#{m.group(1) or m.group(2)}"
+    try:
+        import subprocess
+        args = ["gh", "pr", "view"] + ([sel] if sel else []) + (["-R", repo] if repo else []) + \
+               ["--json", "number,url", "--jq", ".url"]
+        r = subprocess.run(args, cwd=cwd or None, capture_output=True, text=True, timeout=5)
+        m = re.search(r"github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)", r.stdout)
+        if m: return f"{m.group(1)}#{m.group(2)}"
+    except Exception:
+        pass
+    return None
+
+def refs_from_bash(cmd, cwd, tr=None):
     out = []
     for seg in re.split(r"[|;&]+|\n", cmd):
+        # PR は追わない（PR の書き戻し先は本文の対応表で、pr-review-wait が担う）。
+        # ただし issues API 経由で PR を読んだ記録が残っていても、PR への書き込みで解消する。
+        # PR はオプションの後ろの番号・URL・ブランチ名でも、指定なし（今のブランチ）でも指せる
+        m = re.search(r"\bgh\s+pr\s+(edit|comment|close|reopen|merge|review|ready)\b(.*)", seg)
+        if m:
+            sel = _pr_selector(m.group(1), m.group(2))
+            um = re.fullmatch(r"https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)(?:[/?#].*)?", sel or "")
+            if um:
+                out.append(("write", f"{um.group(1)}#{um.group(2)}")); continue
+            rm = re.search(_GH_REPO, seg); repo = rm.group(1) if rm else repo_from_cwd(cwd)
+            nm = re.fullmatch(r"#?(\d+)", sel or "")
+            if nm:
+                if repo: out.append(("write", f"{repo}#{nm.group(1)}"))
+            else:
+                ref = _resolve_pr(sel, repo, cwd, tr)
+                if ref: out.append(("write", ref))
+            continue
         m = re.search(r"\bgh\s+issue\s+(view|edit|comment|close|reopen)\s+(?:#?(\d+)|(https://github\.com/([\w.-]+/[\w.-]+)/issues/(\d+)))", seg)
         if m:
             kind = "read" if m.group(1) == "view" else "write"
@@ -97,15 +173,18 @@ def on_post_tool_use(inp):
     tn = inp.get("tool_name", ""); ti = inp.get("tool_input") or {}
     refs = []
     if tn == "Bash":
-        refs = refs_from_bash(ti.get("command", ""), inp.get("cwd", ""))
-        # gh の書き込みが失敗していたら「書いた」にしない（誤って nag を抑止する方向の誤検知だけ防ぐ。read の誤検知は無害）
         tr = inp.get("tool_response") or {}
+        refs = refs_from_bash(ti.get("command", ""), inp.get("cwd", ""), tr)
+        # gh の書き込みが失敗していたら「書いた」にしない（誤って nag を抑止する方向の誤検知だけ防ぐ。read の誤検知は無害）
         err = (tr.get("stderr") or "") if isinstance(tr, dict) else ""
         if err and re.search(r"(?i)\b(error|failed|could not|HTTP [45]\d\d|GraphQL)\b", err):
             refs = [(k, r) for k, r in refs if k != "write"]
     elif tn.startswith("mcp__") and tn.rsplit("__", 1)[-1] in ("issue_read", "issue_write", "add_issue_comment", "sub_issue_write"):
         k, ref = refs_from_mcp(tn, ti)
         if k: refs = [(k, ref)]
+    tr = inp.get("tool_response")
+    if tr:
+        refs = [(k, r) for k, r in refs if k != "read" or not is_pr_response(r, tr)]
     if not refs: return
     with State(inp["session_id"]) as st:
         st.d["cwd"] = inp.get("cwd")

@@ -2,6 +2,11 @@
 
 workflow プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.1.6] - 2026-10-06
+
+### Fixed
+- issue-writeback：PR への読み取り（`gh issue view` に PR 番号を渡した場合など）を issue の書き戻し対象から外す。番号なしやブランチ指定の `gh pr` 書き込みも、出力か `gh pr view` で PR を特定して追跡する
+
 ## [0.1.5] - 2026-10-06
 
 ### Added
