@@ -24,7 +24,7 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 | full-test-gate | セッション開始・Bash の前 | 全体テストを最後に通してからの変更量を知らせ、リリース等のコマンドを未検証の変更があれば止める。対象はリポに `.claude/full-test.json` を置いたプロジェクトだけ |
 | git-freshness | Bash の後 | マージや push の後、ローカル main を最新にするよう知らせる（止めはしない） |
 
-設定（`/plugin configure guards`）:
+設定（`/plugin configure guards@shibamasa-plugins`、または `/config`）:
 - `merge_allowed_repos` — Claude の判断でマージしてよいリポ（`owner/repo` をカンマ区切り）。既定は空で、すべてのマージをユーザーの確認に回す
 
 ### workflow — issue・PR・セッション運用
@@ -59,7 +59,6 @@ bash .githooks/install.sh
 `origin/main` のフックと検査スクリプトを `.git/hooks/` にコピーして使う（作業ツリーのファイルを直接実行しないので、外部の PR ブランチを checkout してもそのコードは走らない）。`install.sh` 自体は作業ツリーから実行されるので、main を checkout した状態で中身を確認してから実行する。既に別の場所のフック（グローバルの `core.hooksPath` 等）を使っていれば、そこには書き込まず、検査のあとに続けて呼ぶ。
 
 追加で止めたい固有名があれば `~/.config/claude-code-plugins/blocked-patterns` に 1 行 1 正規表現で書く（リポには置かない）。同じ検査は CI（`.github/workflows/`）でも走る。
-
 
 ## ライセンス
 
