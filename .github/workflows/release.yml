@@ -14,9 +14,8 @@ on:
 permissions:
   contents: write # タグの push
 
-concurrency:
-  group: release
-  cancel-in-progress: false
+# concurrency は付けない。同じ group だと待ち行列に 1 件しか残らず、間のコミットで上げた version が
+# タグ無しで飛ばされる。実行ごとに自分のコミットの version だけを扱い、同じタグの取り合いは下で吸収する。
 
 jobs:
   tag:
@@ -48,5 +47,9 @@ jobs:
               echo "$p--v$v はもうある"
               continue
             fi
-            claude plugin tag "$d" --push
+            if ! claude plugin tag "$d" --push; then
+              # 並行する別の実行が同じタグを先に push していれば成功扱い（ローカルのタグではなく origin を見る）
+              git ls-remote --exit-code --tags origin "refs/tags/$p--v$v" >/dev/null || exit 1
+              echo "$p--v$v は別の実行が打った"
+            fi
           done
