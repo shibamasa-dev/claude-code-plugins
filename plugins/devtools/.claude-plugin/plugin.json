@@ -1,0 +1,15 @@
+{
+  "name": "devtools",
+  "version": "0.1.0",
+  "description": "リポの立ち上げと道具づくりのスキル（基本設定の点検・クラウド環境のセットアップ）",
+  "author": {
+    "name": "shibamasa-dev"
+  },
+  "homepage": "https://github.com/shibamasa-dev/claude-code-plugins/tree/main/plugins/devtools",
+  "repository": "https://github.com/shibamasa-dev/claude-code-plugins",
+  "license": "MIT",
+  "keywords": [
+    "setup",
+    "scaffold"
+  ]
+}

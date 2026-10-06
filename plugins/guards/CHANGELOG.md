@@ -2,6 +2,11 @@
 
 guards プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.1.5] - 2026-10-06
+
+### Removed
+- `full-test-gate` を testing プラグインへ移した。引き続き使うには testing プラグインを入れる
+
 ## [0.1.4] - 2026-10-06
 
 ### Added

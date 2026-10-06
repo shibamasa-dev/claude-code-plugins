@@ -196,9 +196,11 @@ that half is present. **Only presence — never judge the contents.**
 | `ui-terms.md` | only when the project has a UI — internal names ↔ on-screen labels |
 | `playbook.md` | when tests exist, or the phase is `test` — the preconditions a run needs |
 
-**Do not define the paths here.** `${CLAUDE_PLUGIN_ROOT}/skills/testcase-generator/references/perspectives-common.md`
-(section "プロジェクト固有の観点") is the single source for where these live. Read it and use
-what it says. A second copy of the layout here would drift from the first one.
+**Do not define the paths here.** `references/perspectives-common.md` of the `testcase-generator`
+skill (testing plugin; section "プロジェクト固有の観点") is the single source for where these live.
+Read it and use what it says. A second copy of the layout here would drift from the first one.
+If the testing plugin is not installed, rate this check **SKIP** (excluded from the score) and say
+the testing plugin is missing.
 
 **Which files apply**: `perspectives.md` always. `ui-terms.md` only when the project has a
 UI — that is, the detected stack renders something a person operates in a browser or a
@@ -209,7 +211,8 @@ client). A backend-only API, a batch job, an ETL, a CLI, or a library has no UI.
 Rate in this order — the four buckets are exhaustive, so every run lands in exactly one:
 
 - **SKIP**: the phase is `setup` (there is nothing to design against yet), or the
-  repository has no test target at all (docs-only, config-only)
+  repository has no test target at all (docs-only, config-only), or the testing plugin is not
+  installed (the layout cannot be read)
 - **PASS**: every file that applies is present
 - **WARN**: at least one applies and is present, but not all of them are
 - **FAIL**: none of the files that apply are present

@@ -155,7 +155,7 @@ testcase: true
 
 ## 検証 Hook が本当に効いているかを確かめる
 
-スタイルガイドの禁止語を機械的に守らせるには、workflow プラグインの hook `testcase-lint` が有効になっている必要がある（プラグインの `hooks/hooks.json` で `Edit|Write` に配線される）。**プラグインを無効にしている・スキルだけを別の場所へコピーした場合は配線されない。**
+スタイルガイドの禁止語を機械的に守らせるには、testing プラグインの hook `testcase-lint` が有効になっている必要がある（プラグインの `hooks/hooks.json` で `Edit|Write` に配線される）。**プラグインを無効にしている・スキルだけを別の場所へコピーした場合は配線されない。**
 
 ```bash
 command -v testcase-lint >/dev/null && echo 配線済み || echo 未配線   # プラグインの bin が PATH に無い＝プラグイン無効
