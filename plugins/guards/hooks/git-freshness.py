@@ -266,7 +266,11 @@ def _pull_branch(base):
             return None  # マージ先以外のブランチに origin/<base> を引き込まない
         state = _repo_state(cwd, base)
         if state is None:
-            return None
+            return inject(
+                f"[git-freshness] origin/{base} と比べられず、ローカル {base} が最新か確かめられませんでした"
+                "（オフライン・認証切れ・リモートにブランチが無いなど）。"
+                f"必要なら `git pull --ff-only origin {base}` で追従してください。"
+            )
         behind, dirty = state
         if behind == 0:
             return None  # 既に最新＝silent
