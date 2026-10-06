@@ -21,6 +21,7 @@ BOTS='{bots_regex}'
 # ただし指摘ゼロのとき CodeRabbit は review を作らず、完了をこの walkthrough の中に書くだけなので、
 # 「No actionable comments」と、未レビューの合図（rate limited・plan limit）だけは状態行として出す
 # （前者を出さないと完了を検知できない。後者は「終わり」ではなく待ち直しの合図）。
+# 未レビューの合図は summarize とは別のコメントで来ることもあるので、$NOISE に当たらなくても状態行に回す。
 NOISE='auto-generated comment: summarize|review in progress'
 get() { curl -sf -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" "$1"; }
 while true; do
@@ -38,7 +39,7 @@ while true; do
     i=$(get "$API/issues/$pr/comments?since=$last&per_page=100") || { echo "FETCH_FAILED PR#$pr issue_comments"; i='[]'; }
     printf '%s' "$i" | jq -r --arg b "$BOTS" --arg n "$NOISE" --arg p "$pr" \
       '.[] | select(.user.login | test($b; "i"))
-        | if (.body | test($n)) then
+        | if ((.body | test($n)) or (.body | test("rate limited|plan limit"; "i"))) then
             (if (.body | test("No actionable comments|rate limited|plan limit"; "i")) then "[PR#\($p) coderabbit-status] actionable_none=\(.body | test("No actionable comments")) not_reviewed_limit=\(.body | test("rate limited|plan limit"; "i"))" else empty end)
           else "[PR#\($p) issue-comment] \(.user.login): \(.body[0:250] | gsub("\n";" "))" end' \
       || echo "PARSE_FAILED PR#$pr issue_comments"
