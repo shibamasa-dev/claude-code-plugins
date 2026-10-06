@@ -69,14 +69,15 @@ def _has_remote_ref(top, name):
     if git(top, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{name}")[0] == 0:
         return True
     try:
-        git(top, "fetch", "origin", name, "--quiet")
+        subprocess.run(["git", "-C", top, "fetch", "origin", name, "--quiet"], capture_output=True, stdin=subprocess.DEVNULL,
+                       timeout=5, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
     except (subprocess.TimeoutExpired, OSError):
         return False
     return git(top, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{name}")[0] == 0
 
 
 def default_base(top):
-    """設定に base が無いときの比較先。origin に聞き、繋がらなければ手元の origin/HEAD、それも無ければ origin/main。
+    """設定に base が無いときの比較先。origin に聞き、繋がらなければ手元の origin/HEAD、それも無ければ origin/main（無くて origin/master があればそちら）。
     1回のフックの中では最初の結果を使い回す（問い合わせは1回だけ）。"""
     if top not in _DEFAULT_BASE:
         name = _remote_default(top)
@@ -84,7 +85,13 @@ def default_base(top):
             _DEFAULT_BASE[top] = f"origin/{name}"
         else:
             rc, ref = git(top, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
-            _DEFAULT_BASE[top] = ref if rc == 0 and ref.startswith("origin/") else "origin/main"
+            if rc == 0 and ref.startswith("origin/"):
+                _DEFAULT_BASE[top] = ref
+            elif git(top, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/main")[0] != 0 \
+                    and git(top, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/master")[0] == 0:
+                _DEFAULT_BASE[top] = "origin/master"
+            else:
+                _DEFAULT_BASE[top] = "origin/main"
     return _DEFAULT_BASE[top]
 
 
