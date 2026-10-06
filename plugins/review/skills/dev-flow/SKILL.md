@@ -68,7 +68,7 @@ review_after: 2027-04-06
 
 - **`Closes #N` か `Refs #N`**（別リポなら `owner/repo#N`）
   - `Closes`：issue の受け入れ基準がすべて ✅ になる見込みの PR。マージで issue が閉じるので、7 段の `## 結果` をマージ前に必ず書く。
-  - `Refs`：受け入れ基準の一部だけ。PR 本文に「未達の項目」と「残件の行き先（層 / issue 番号 / やらない）」を書く。マージ後に issue を閉じるのは依頼元のセッション。
+  - `Refs`：受け入れ基準の一部だけ。PR 本文に「未達の項目」と「残件の行き先（層 / issue 番号 / やらない）」を書く。マージで issue は閉じない。マージ後の始末（下の 9 段）は依頼元のセッションが持つ。
   - 口頭の依頼で issue が無い：`Refs: none (verbal request)`
 - **`Arch-Review:`** の1行
   - 構造変更でない：`Arch-Review: not-needed — <理由>`
@@ -108,7 +108,7 @@ review_after: 2027-04-06
   - 破壊的な変更・後戻りしにくい変更（データの移行、公開 API の削除など）
   - Claude が作っていない PR
 - **自動マージを有効にする**：ユーザーが「このリポは自動でマージして」と言ったら、`.claude/dev-flow.json` に `{"autoMerge": true}` を足す PR を出す。その PR をユーザーがマージした時点で有効になる。止めるときは `false` にするかファイルを消す。guards の設定 `merge_allowed_repos`（非推奨）に書いたリポは、このファイルに移す。移すまでは自動マージのリポとして扱う。
-- マージの後：`Refs` にした issue は、依頼元のセッションが `## 結果` を書いて閉じる。手元の clone は main に追従させる（guards の git-freshness が入っていれば自動）。
+- マージの後：`Refs` にした issue は、依頼元のセッションが `## 結果` に今回の分を書く。未達の受け入れ基準がその issue に残る間は閉じない。残件を終えたか、別の issue に移したか、やらないと決めた後に閉じる。実環境でしか確かめられない項目だけが残るなら、`## 結果` にそう書き、Issue Fields があれば `Verification: Pending` にして閉じてよい。手元の clone は main に追従させる（guards の git-freshness が入っていれば自動）。
 
 ## GitHub の操作（コネクタが第一）
 
