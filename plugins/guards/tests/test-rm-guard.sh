@@ -162,5 +162,13 @@ K 'git worktree remove .claude/worktrees/done'    'マージ済みを git worktr
 K 'rm -rf .claude/worktrees/feat/build'           'worktree の中のサブディレクトリ掃除'      'allow'
 KCWD="$FH/repo/.claude/worktrees/feat" K 'rm -rf build' 'cwd が worktree の中で相対パス rm -rf' 'allow'
 K 'rm -rf build'                                  'worktree を含まないフォルダ'              'allow'
+K 'rm -rf .claude/worktrees/*'                    'glob で未マージの worktree を含む'        'deny'
+K 'rm -rf .claude/worktrees/f*'                   'glob の前方一致で未マージの worktree'     'deny'
+K 'rm -rf .claude/worktrees/d*'                   'glob がマージ済みの worktree だけに当たる' 'allow'
+# git の管理下でないフォルダに worktree をまとめて置いている場合
+git -C "$FH/repo" worktree add -q -b feat/ext "$FH/ext/feat"
+git -C "$FH/ext/feat" commit -q --allow-empty -m work
+K "rm -rf $FH/ext"                                'git 管理外の上位フォルダごと（絶対パス）' 'deny'
+KCWD="$FH" K 'rm -rf ext'                         'git 管理外の上位フォルダごと（相対パス）' 'deny'
 
 rm -rf "$FH"

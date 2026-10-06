@@ -34,6 +34,7 @@ matcher は "Bash"（ツール名しかマッチできない）なので全 Bash
                    再計算するので、「取り込んだ」という申告を信じる必要がない。
                    マーカー方式は Claude が文字列を足すだけで検証ゼロで通過できた。
 """
+import glob
 import json
 import os
 import re
@@ -946,11 +947,48 @@ def _linked_worktrees_under(p: str) -> list:
     except (subprocess.TimeoutExpired, OSError):
         return []
     if r.returncode != 0:
-        return []
+        # git の管理下でない上位フォルダ（worktree をまとめて置くフォルダなど）は中を見る
+        return _scan_worktree_roots(p)
     paths = [line[len("worktree "):] for line in r.stdout.splitlines() if line.startswith("worktree ")]
     rp = os.path.realpath(p)
     return [w for w in (os.path.realpath(x) for x in paths[1:])
             if w == rp or w.startswith(rp.rstrip("/") + "/")]
+
+
+def _scan_worktree_roots(p: str, depth: int = 3, limit: int = 5000) -> list:
+    """p から depth 段下までにある linked worktree の root（`.git` が gitdir: …/worktrees/… を指す
+    ファイルのフォルダ）。サブモジュールの `.git` ファイルは modules/ を指すので数えない。
+    見るエントリ数は limit まで（巨大なフォルダの削除で待たせない）。"""
+    found, stack, seen = [], [(p, 0)], 0
+    while stack:
+        d, k = stack.pop()
+        try:
+            entries = list(os.scandir(d))
+        except OSError:
+            continue
+        for e in entries:
+            seen += 1
+            if seen > limit:
+                return found
+            if e.name == ".git":
+                if e.is_file(follow_symlinks=False):
+                    try:
+                        with open(e.path, errors="replace") as f:
+                            head = f.read(4096)
+                    except OSError:
+                        head = ""
+                    if "/worktrees/" in head.replace("\\", "/"):
+                        found.append(os.path.realpath(d))
+                continue
+            if k < depth and e.name != "node_modules" and e.is_dir(follow_symlinks=False):
+                stack.append((e.path, k + 1))
+    return found
+
+
+def _worktrees_in_target(p: str) -> list:
+    """消す先 p が消しうる linked worktree。glob（`*` など）はシェルと同じく展開してから見る。"""
+    paths = glob.glob(p) if glob.has_magic(p) else [p]
+    return [w for q in paths for w in _linked_worktrees_under(os.path.normpath(q))]
 
 
 def _inside_worktree(p: str) -> bool:
@@ -1015,7 +1053,7 @@ def rule_worktree_guard(command: str):
                 if _under_worktrees(exp):
                     targets.append((t, exp))
                 else:
-                    targets.extend((t, w) for w in _linked_worktrees_under(exp))
+                    targets.extend((t, w) for w in _worktrees_in_target(exp))
                 continue
             # 相対パス: 実行される cwd で解決する（`cd ~/.worktrees && rm -rf name` 等）。
             # worktree の中のサブパス（build/ 等の掃除）は対象外
@@ -1028,7 +1066,7 @@ def rule_worktree_guard(command: str):
                 if not _inside_worktree(exp):
                     targets.append((t, exp))
             else:
-                targets.extend((t, w) for w in _linked_worktrees_under(exp))
+                targets.extend((t, w) for w in _worktrees_in_target(exp))
     bad = list(dict.fromkeys(t for t, p in targets if p is None or _worktree_state(p) != "merged_clean"))
     if not bad:
         return None
