@@ -36,6 +36,7 @@ REFS_RE = re.compile(r"\brefs?\s*:?\s+(?:(?:[\w.-]+/[\w.-]+)?#\d+|none\s*\(verba
 ARCH_RE = re.compile(r"^[ \t]*Arch-Review:[ \t]*(?:not-needed|approved)[ \t]*[\u2014\u2013-]+[ \t]*\S", re.I | re.M)
 RESULT_RE = re.compile(r"^##[ \t]*(?:結果|次回への引き継ぎ|Results?)[ \t]*$", re.M)
 HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
+FENCE_RE = re.compile(r"^[ \t]*(```|~~~).*?^[ \t]*\1[ \t]*$", re.S | re.M)
 # ヒアドキュメント: <<[-]['"]DELIM['"] の行の残り（group 4）、本文（group 5）、終わりの DELIM 行
 HEREDOC_RE = re.compile(r"(?<!<)<<(?!<)(-?)[ \t]*(['\"]?)(\w+)\2([^\n]*)\n(.*?)\n[ \t]*\3[ \t]*(?=\n|$)", re.S)
 HEREDOC_MARK_RE = re.compile(r"<<__HEREDOC_(\d+)__")
@@ -155,6 +156,11 @@ def body_missing(body):
     return missing
 
 
+def has_result(text):
+    """`## 結果` の見出しがあるか。テンプレートの HTML コメントやコードブロックの中の見本は数えない。"""
+    return bool(RESULT_RE.search(FENCE_RE.sub("", HTML_COMMENT_RE.sub("", text or ""))))
+
+
 def closes_of(body, repo):
     text = HTML_COMMENT_RE.sub("", body or "")
     out = []
@@ -250,11 +256,26 @@ def unwrap(c):
     return env, c[i:]
 
 
-def gh_commands(command, _depth=0):
+def resolve_cd(args, cur):
+    """`cd` の行き先。分からないとき（変数・`cd -`・行き先が分からない所からの相対）は None。"""
+    dests = [a for a in args if not (a.startswith("-") and a != "-")]
+    if not dests:
+        return os.path.expanduser("~")
+    d = dests[0]
+    if d == "-" or "$" in d or "`" in d:
+        return None
+    d = os.path.expanduser(d)
+    if os.path.isabs(d):
+        return os.path.normpath(d)
+    return os.path.normpath(os.path.join(cur, d)) if cur else None
+
+
+def gh_commands(command, cwd=None, _depth=0):
     """Bash コマンドから gh の呼び出しを [{"args", "env", "stdin", "docs"}] で返す。
 
     ヒアドキュメントの本文は字句解析の前に取り出す（本文の ' や # で崩さない）。stdin はその gh に
-    `<<` で渡したヒアドキュメントの番号。env・command・timeout などのラッパーと `sh -c '…'` の中も見る。
+    `<<` で渡したヒアドキュメントの番号。cwd はその gh が走るディレクトリ（前の `cd` を辿る。分からなければ None）。
+    env・command・timeout などのラッパーと `sh -c '…'` の中も見る。
     shlex で読めないコマンドは空（止めない側に倒す。PR の本文にあり得る記号で誤爆させない）。"""
     command, docs = split_heredocs(command)
     command = command.replace("\\\n", " ")  # 行末の \ は行の継続
@@ -276,6 +297,9 @@ def gh_commands(command, _depth=0):
     cmds.append(cur)
     out, exported = [], {}
     for c in cmds:
+        if c and c[0] in ("cd", "pushd"):
+            cwd = resolve_cd(c[1:], cwd)
+            continue
         if c and c[0] == "export":
             for t in c[1:]:
                 m = ASSIGN_RE.match(t)
@@ -291,7 +315,7 @@ def gh_commands(command, _depth=0):
         if exe in ("sh", "bash", "zsh", "dash") and "-c" in rest[1:] and _depth < 3:
             k = rest.index("-c")
             if k + 1 < len(rest):
-                for call in gh_commands(rest[k + 1], _depth + 1):
+                for call in gh_commands(rest[k + 1], cwd, _depth + 1):
                     call["env"] = {**env, **call["env"]}
                     out.append(call)
             continue
@@ -304,7 +328,7 @@ def gh_commands(command, _depth=0):
                 stdin = int(m.group(1))
             else:
                 args.append(a)
-        out.append({"args": args, "env": env, "stdin": stdin, "docs": docs})
+        out.append({"args": args, "env": env, "stdin": stdin, "docs": docs, "cwd": cwd})
     return out
 
 
@@ -378,19 +402,22 @@ def gh_body(opts, cwd, call):
 
 
 def gh_calls(command, cwd):
-    """[(kind, info)] kind ∈ pr_create / pr_merge / issue_edit / issue_view"""
+    """[(kind, info)] kind ∈ pr_create / pr_merge / issue_edit / issue_view
+
+    リポは gh と同じ順で決める：-R → この gh の前の GH_REPO → 引き継いだ環境の GH_REPO → gh が走るディレクトリの origin。"""
     out = []
-    for call in gh_commands(command):
+    for call in gh_commands(command, cwd):
         pos, opts = parse_args(call["args"])
         if len(pos) < 2:
             continue
-        # GH_REPO はこの gh の前の代入・env だけを見る（フック自身の環境は Bash の環境と別物）
-        repo = opt(opts, "-R", "--repo") or call["env"].get("GH_REPO") or None
+        here = call["cwd"]
+        repo = (opt(opts, "-R", "--repo") or call["env"].get("GH_REPO") or os.environ.get("GH_REPO")
+                or (repo_from_cwd(here) if here else None))
         if pos[0] == "pr" and pos[1] == "create":
-            out.append(("pr_create", {"repo": repo or repo_from_cwd(cwd), "body": gh_body(opts, cwd, call),
-                                      "head": opt(opts, "-H", "--head") or branch_from_cwd(cwd)}))
+            out.append(("pr_create", {"repo": repo, "body": gh_body(opts, here or cwd, call),
+                                      "head": opt(opts, "-H", "--head") or (branch_from_cwd(here) if here else None)}))
         elif pos[0] == "pr" and pos[1] == "merge":
-            out.append(("pr_merge", {"repo": repo, "selector": pos[2] if len(pos) > 2 else None}))
+            out.append(("pr_merge", {"repo": repo, "selector": pos[2] if len(pos) > 2 else None, "cwd": here}))
         elif pos[0] == "issue" and pos[1] in ("edit", "view") and len(pos) > 2:
             sel = pos[2]
             um = re.fullmatch(r"https://github\.com/([\w.-]+/[\w.-]+)/issues/(\d+)", sel)
@@ -398,30 +425,40 @@ def gh_calls(command, cwd):
                 ref = f"{um.group(1)}#{um.group(2)}".lower()
             else:
                 nm = re.fullmatch(r"#?(\d+)", sel)
-                r = repo or repo_from_cwd(cwd)
-                ref = f"{r}#{nm.group(1)}".lower() if (nm and r) else None
+                ref = f"{repo}#{nm.group(1)}".lower() if (nm and repo) else None
             if ref:
-                out.append(("issue_" + pos[1], {"ref": ref, "body": gh_body(opts, cwd, call)}))
+                out.append(("issue_" + pos[1], {"ref": ref, "body": gh_body(opts, here or cwd, call)}))
     return out
 
 
-def merge_ref_from_gh(info, st_prs, cwd):
+def merge_refs_from_gh(info, st_prs):
+    """gh pr merge が指す PR の候補。リポが決まらない番号指定は、記録した PR のうち同じ番号のものすべて。"""
     sel = info.get("selector")
     um = re.fullmatch(r"https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)(?:[/?#].*)?", sel or "")
     if um:
-        return f"{um.group(1)}#{um.group(2)}".lower()
-    repo = info.get("repo") or repo_from_cwd(cwd)
+        return [f"{um.group(1)}#{um.group(2)}".lower()]
+    repo = (info.get("repo") or "").lower() or None
     nm = re.fullmatch(r"#?(\d+)", sel or "")
     if nm:
-        return f"{repo}#{nm.group(1)}".lower() if repo else None
-    head = sel or branch_from_cwd(cwd)
-    for ref, pr in st_prs.items():
-        if head and pr.get("head") == head and (not repo or ref.startswith(repo.lower() + "#")):
-            return ref
-    return None
+        if repo:
+            return [f"{repo}#{nm.group(1)}"]
+        return [ref for ref in st_prs if ref.endswith("#" + nm.group(1))]
+    head = sel or (branch_from_cwd(info["cwd"]) if info.get("cwd") else None)
+    return [ref for ref, pr in st_prs.items()
+            if head and pr.get("head") == head and (not repo or ref.startswith(repo + "#"))]
 
 
 FORM_RE = re.compile(r"(?i)interactive form|form has been shown|waiting for the user|pending (?:user )?(?:approval|confirmation)")
+
+
+# Monitor のコマンドで PR を指す書き方。番号だけ（sleep 30 など）は数えない
+MONITOR_PR_RE = re.compile(
+    r"(?:pulls?|issues)/(?P<n>\d+)(?!\d)"
+    r"|(?<![\w&])#(?P<n2>\d+)(?!\d)"
+    r"|\bpr\s+(?:view|checks|status|diff|comment|review|merge|ready|edit)\b(?P<args>[^;&|\n]*)"
+    r"|\b(?:pullnumber|pull_number|pr_number)\W{0,3}(?P<n3>\d+)"
+    r"|\bfor\s+\w+\s+in\b(?P<list>[^;\n]*)")
+VALUE_FLAG_RE = re.compile(r"(?:^|\s)(?:-i|--interval|-l|--limit|-q|--jq|-t|--template|--json)(?:[\s=]+\S+)")
 
 
 def wait_targets(tool_name, tool_input, prs):
@@ -436,16 +473,26 @@ def wait_targets(tool_name, tool_input, prs):
         except (TypeError, ValueError):
             return []
         return [ref] if ref in prs else []
-    text = json.dumps(tool_input, ensure_ascii=False).lower()
+    text = json.dumps(tool_input, ensure_ascii=False).lower().replace("\\n", "\n")
     names_repo = re.search(r"repos/|github\.com/|\s(?:-r|--repo)[\s=]", text)
+    nums = set()
+    for m in MONITOR_PR_RE.finditer(text):
+        if m.group("list") is not None:
+            nums.update(re.findall(r"(?<![\w.$-])(\d+)(?![\w.])", m.group("list")))
+        elif m.group("args") is not None:
+            args = VALUE_FLAG_RE.sub(" ", m.group("args"))
+            nums.update(re.findall(r"(?<![\w./$-])(\d+)(?![\w./])", args))
+        else:
+            nums.add(m.group("n") or m.group("n2") or m.group("n3"))
     out = []
-    for ref in prs:
-        slug, n = ref.rsplit("#", 1)
-        if not re.search(rf"(?<![\w.]){n}(?![\w.])", text):
-            continue
-        if slug in text or not names_repo:
-            out.append(ref)
-    return out
+    for n in nums:
+        cands = [ref for ref in prs if ref.rsplit("#", 1)[1] == n]
+        named = [ref for ref in cands if ref.rsplit("#", 1)[0] in text]
+        if named:
+            out += named
+        elif not names_repo and len(cands) == 1:
+            out += cands
+    return sorted(set(out))
 
 
 def base(tool_name):
@@ -523,10 +570,10 @@ def on_pre_tool_use(inp):
                     return res
             elif kind == "pr_merge":
                 st = st or read_state(inp["session_id"])
-                ref = merge_ref_from_gh(info, st["prs"], cwd)
-                res = pre_merge_check(ref, st) if ref else None
-                if res:
-                    return res
+                for ref in merge_refs_from_gh(info, st["prs"]):
+                    res = pre_merge_check(ref, st)
+                    if res:
+                        return res
     return None
 
 
@@ -570,7 +617,7 @@ def on_post_tool_use(inp):
             text = (ti.get("body") or "") if ti.get("method") == "update" and done else ""
         else:
             text = text_of(tr) if ti.get("method", "get") == "get" else ""
-        if RESULT_RE.search(text):
+        if has_result(text):
             with State(sid) as st:
                 ref = f"{o}/{r}#{int(n)}".lower()
                 if ref not in st.d["results"]:
@@ -603,14 +650,13 @@ def on_post_tool_use(inp):
                     text = info["body"] if re.search(rf"/issues/{num}(?!\d)", text_of(tr)) else ""
                 else:
                     text = text_of(tr)
-                if text and RESULT_RE.search(text):
+                if has_result(text):
                     with State(sid) as st:
                         if info["ref"] not in st.d["results"]:
                             st.d["results"].append(info["ref"])
             elif kind == "pr_merge":
                 st = read_state(sid)
-                ref = merge_ref_from_gh(info, st["prs"], cwd)
-                if not ref or ref not in st["prs"]:
+                if not any(r in st["prs"] for r in merge_refs_from_gh(info, st["prs"])):
                     out = inject(f"{TAG} このセッションで作っていない PR をマージした。Closes 先の issue に"
                                  " `## 結果` があるか確かめ、無ければ書く（dev-flow の 7 段）。")
         return out

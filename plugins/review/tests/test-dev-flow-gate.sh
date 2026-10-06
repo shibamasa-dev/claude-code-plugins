@@ -114,6 +114,13 @@ row 'Monitor のコマンドに両方の番号があれば止めない' "$(stop 
 post b9 $CREATE "$(pr_in "$OK_BODY")" "$(pr_out 16)" >/dev/null
 post b9 Monitor '{"command":"API=https://api.github.com/repos/other/x\nfor pr in 16; do :; done"}' '"started"' >/dev/null
 row '別リポを見る Monitor では待ちに数えない' "$(stop b9)" block
+post b10 $CREATE "$(pr_in "$OK_BODY")" "$(pr_out 30)" >/dev/null
+post b10 Monitor '{"command":"sleep 30; echo done"}' '"started"' >/dev/null
+row 'PR の書き方が無い番号（sleep 30）は待ちに数えない' "$(stop b10)" block
+post b11 $CREATE "$(pr_in "$OK_BODY")" "$(pr_out 18)" >/dev/null
+post b11 Bash "$(bash_in "gh pr create -R other/x -t t -b '$OK_BODY'")" "$(bash_out 'https://github.com/other/x/pull/18')" >/dev/null
+post b11 Monitor '{"command":"gh pr checks 18 --watch"}' '"started"' >/dev/null
+row '同じ番号の PR が 2 リポにあり、リポを書かない Monitor' "$(stop b11)" block
 post b6 Bash "$(bash_in "gh pr create -R O/R -t t -b '$OK_BODY'")" '{"stdout":"","stderr":"GraphQL: was submitted too quickly"}' >/dev/null
 row 'gh pr create が失敗したら記録しない' "$(stop b6)" allow
 
@@ -169,6 +176,17 @@ row '( … ) の中' "$(pre c7 Bash "$(bash_in '(cd . && gh pr merge 26 -R O/R)'
 row '行末の \\ で続けた gh pr merge' "$(pre c7 Bash "$(bash_in $'gh pr merge 26 \\\n  -R O/R')")" deny
 row '改行の後の gh pr merge' "$(pre c7 Bash "$(bash_in $'git fetch\ngh pr merge 26 -R O/R')")" deny
 row 'command -v gh は実行しない' "$(pre c7 Bash "$(bash_in 'command -v gh && echo ok')")" allow
+
+mk c8 "$OK_BODY" 27
+for d in or:O/R ox:other/x; do
+  git init -q "repo-${d%%:*}" && git -C "repo-${d%%:*}" remote add origin "https://github.com/${d#*:}.git"
+done
+row 'cd 先のリポで解決する（別リポの同じ番号は止めない）' "$(pre c8 Bash "$(bash_in 'cd repo-ox && gh pr merge 27 --squash')")" allow
+row 'cd 先のリポで解決する（作った PR のリポ）' "$(pre c8 Bash "$(bash_in 'cd repo-or && gh pr merge 27 --squash')")" deny
+row '引き継いだ環境変数 GH_REPO で解決する' "$(GH_REPO=other/x pre c8 Bash "$(bash_in 'gh pr merge 27')")" allow
+post c8 mcp__github__issue_write '{"method":"update","owner":"O","repo":"R","issue_number":5,"body":"x\n<!--\n## 結果\n-->"}' "$(iw_out O R 5)" >/dev/null
+post c8 mcp__github__issue_write '{"method":"update","owner":"O","repo":"R","issue_number":5,"body":"x\n```md\n## 結果\n```"}' "$(iw_out O R 5)" >/dev/null
+row 'HTML コメントやコードブロックの中の `## 結果` は数えない' "$(pre c8 $MERGE "$(mi 27)")" deny
 
 echo
 echo '=== D: 掃除（SessionStart） ==='
