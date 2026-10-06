@@ -4,6 +4,7 @@
 セッション内で GitHub issue を読んだ（issue_read / gh issue view）のに、その後
 書いていない（issue_write update / add_issue_comment / sub_issue_write /
 gh issue edit|comment|close）issue を追跡し、
+（PR は追わない。読んだ結果が /pull/N なら記録せず、gh pr edit|comment 等は書き込みに数える）
   - Stop            : 未反映のまま K ターン経ったら 1 回 block して書き戻しを促す（issue ごと最大 MAX_NAGS 回）
   - UserPromptSubmit: 未反映がある間だけ 1 行リマインドを注入（無ければ無出力）
   - SessionStart    : compact/resume 後に未反映を再注入。clear 後は「未反映のまま clear された」を 1 回通知
@@ -74,10 +75,27 @@ def refs_from_mcp(tool_name, ti):
     if base == "sub_issue_write": return "write", ref
     return None, None
 
+def is_pr_response(ref, tr):
+    """読んだ結果に `github.com/OWNER/REPO/pull/N` が出ていれば、その番号は PR。
+    issue_read や `gh api repos/.../issues/N`（PR のコメントもこの API）は PR も読めるが、
+    PR の書き戻し先は本文の対応表で issue-writeback の対象ではない。"""
+    repo, n = ref.rsplit("#", 1)
+    text = tr if isinstance(tr, str) else json.dumps(tr, ensure_ascii=False)
+    return re.search(rf"github\.com/{re.escape(repo)}/pull/{n}(?!\d)", text, re.I) is not None
+
 _GH_REPO = r"(?:-R|--repo)\s+([\w.-]+/[\w.-]+)"
 def refs_from_bash(cmd, cwd):
     out = []
     for seg in re.split(r"[|;&]+|\n", cmd):
+        # PR は追わない（PR の書き戻し先は本文の対応表で、pr-review-wait が担う）。
+        # ただし issues API 経由で PR を読んだ記録が残っていても、PR への書き込みで解消する
+        m = re.search(r"\bgh\s+pr\s+(edit|comment|close|reopen|merge|review|ready)\s+(?:#?(\d+)|(https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)))", seg)
+        if m:
+            if m.group(3):
+                out.append(("write", f"{m.group(4)}#{m.group(5)}")); continue
+            rm = re.search(_GH_REPO, seg); repo = rm.group(1) if rm else repo_from_cwd(cwd)
+            if repo: out.append(("write", f"{repo}#{m.group(2)}"))
+            continue
         m = re.search(r"\bgh\s+issue\s+(view|edit|comment|close|reopen)\s+(?:#?(\d+)|(https://github\.com/([\w.-]+/[\w.-]+)/issues/(\d+)))", seg)
         if m:
             kind = "read" if m.group(1) == "view" else "write"
@@ -106,6 +124,9 @@ def on_post_tool_use(inp):
     elif tn.startswith("mcp__") and tn.rsplit("__", 1)[-1] in ("issue_read", "issue_write", "add_issue_comment", "sub_issue_write"):
         k, ref = refs_from_mcp(tn, ti)
         if k: refs = [(k, ref)]
+    tr = inp.get("tool_response")
+    if tr:
+        refs = [(k, r) for k, r in refs if k != "read" or not is_pr_response(r, tr)]
     if not refs: return
     with State(inp["session_id"]) as st:
         st.d["cwd"] = inp.get("cwd")
