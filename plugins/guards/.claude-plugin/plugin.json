@@ -1,6 +1,6 @@
 {
   "name": "guards",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "破壊的な Bash 操作・古い main からの push・未検証マージ・リポ構造違反の書き込みを止めるフック",
   "author": {
     "name": "shibamasa-dev"
