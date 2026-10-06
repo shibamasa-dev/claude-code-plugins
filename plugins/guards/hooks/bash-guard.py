@@ -1030,8 +1030,11 @@ def _scan_worktree_roots(p: str, follow_links: bool = False):
             visited.add(rd)
         try:
             entries = list(os.scandir(d))
-        except OSError:
+        except FileNotFoundError:
             continue
+        except OSError:
+            # 読めないフォルダの中は確かめられない（sudo rm なら消せる）
+            return found, False
         for e in entries:
             if e.name == ".git":
                 if e.is_file(follow_symlinks=False):

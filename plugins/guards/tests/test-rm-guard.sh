@@ -202,6 +202,12 @@ KCWD="$FH" GUARDS_SCAN_LIMIT=3 K 'rm -rf wide'    '走査が上限で打ち切�
 KCWD="$FH" K 'rm -rf wide'                        '上限内で worktree が無いと確かめられた'    'allow'
 KCWD="$FH" GUARDS_SCAN_LIMIT=3 K 'rm -rf wide/*'  'glob の一致ごとでなく全体で上限を数える'   'deny'
 KCWD="$FH" K 'rm -rf wide/*'                      'glob の一致を上限内で確かめられた'         'allow'
+# 読めないフォルダの中は確かめられない（root で動く CI では読めてしまうので飛ばす）
+if [ "$(id -u)" != 0 ]; then
+  mkdir -p "$FH/locked/in" && chmod 000 "$FH/locked/in"
+  KCWD="$FH" K 'sudo rm -rf locked'               '読めないフォルダを含む（判定不能）'        'deny'
+  chmod 755 "$FH/locked/in"
+fi
 KCWD="$FH" GUARDS_SCAN_LIMIT=3 K "find wide -name x -exec rm -rf {} +" '条件付きの find -exec rm でも走査しきれなければ止める' 'deny'
 K 'rm -rf .claude/worktrees/x{1..1000000000}'      '巨大な範囲でも固まらずに判定不能で止める'  'deny'
 # find -L・-H はシンボリックリンクの先もたどる（rm はリンク自体しか消さない）
