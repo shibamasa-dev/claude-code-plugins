@@ -118,6 +118,14 @@ row 'find -delete'                                 '開始パスを省いた fin
 row 'find . -delete'                               '条件なしでカレントから find -delete'   'deny'
 row 'find -L . -mindepth 1 -delete'                '大域オプションだけの find -delete'     'deny'
 row "find -name '*.pyc' -delete"                   '開始パス省略でも条件付きなら allow'    'allow'
+row 'find /tmp -maxdepth 0 -exec rm -rf ~/data ;'   'find -exec rm の中の別パス'            'deny'
+row "find . -name x -exec sh -c 'rm -rf ~' ;"       'find -exec sh -c の中の削除'           'deny'
+row "find . -type d -name build -exec rm -rf {} +"  'find -exec rm {} は開始パスの判定'     'allow'
+row "X=/tmp/a; bash -c 'rm -rf \$X/*'"                '子シェルには export していない変数が見えない' 'deny'
+row "export X=/tmp/a; bash -c 'rm -rf \$X/x'"         'export しても静的には決めない（安全側）'   'deny'
+row 'if false; then T=/tmp/a; fi; rm -rf $T'        'if の中の代入は実行されるとは限らない'     'deny'
+row 'T=; rm -rf ${T:-/}'                            '演算子つきの変数展開'                  'deny'
+row 'T=/tmp/a; rm -rf ${T}/x'                       '${VAR} の形は従来どおり解決'           'allow'
 
 echo
 echo '=== J: worktree の削除マーカーは削除コマンド自身の先頭でだけ効く・相対パスも解決する ==='

@@ -553,7 +553,9 @@ def _split_segments(command: str):
     return [seg["text"] for seg in _parse_segments(command)]
 
 
-VAR_REF_RE = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?")
+# `$NAME` と `${NAME}` だけ。`${NAME:-word}` のような演算子つきの展開は解決しない（＝$ が残り判定不能になる）。
+# 以前は `${NAME` の部分だけ置き換えて `:-/}` が残り、`T=; rm -rf ${T:-/}` が相対パスに見えていた
+VAR_REF_RE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))")
 ASSIGN_TOKEN_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", re.S)
 
 
@@ -563,7 +565,7 @@ def _resolve(raw: str, assigns: dict) -> str:
         return raw
 
     def sub(m):
-        v = assigns.get(m.group(1))
+        v = assigns.get(m.group(1) or m.group(2))
         return v if v is not None else m.group(0)
     return VAR_REF_RE.sub(sub, raw)
 
@@ -781,6 +783,7 @@ def _walk(command: str, cwd, assigns: dict, level: int):
         return
     cur, assigns = cwd, dict(assigns)
     funcs = False   # 関数が定義された（cd 等が上書きされうる）
+    compound = 0    # if/while/until/for/select/case の中（中の cd・代入は実行されるとは限らない）
     for seg in _parse_segments(command):
         text = seg["text"].strip()
         if not text:
@@ -797,13 +800,25 @@ def _walk(command: str, cwd, assigns: dict, level: int):
             cur, funcs = None, True
             assigns = {k: None for k in assigns}
             continue
+        head = raw_tokens[0] if raw_tokens else ""
+        if head in ("if", "while", "until", "for", "select", "case"):
+            compound += 1   # 条件部の cd も失敗しうるので、開いた行から不確定にする
         env, tokens, nested, flags = _unwrap(raw_tokens)
-        certain = _certain(seg)
+        certain = _certain(seg) and compound == 0
         b = os.path.basename(tokens[0]) if tokens else ""
         here = None if flags["chdir"] else cur
         yield Cmd(env, tokens, here, text, opaque, flags["xargs"], dict(assigns))
+        # `sh -c` 等は子シェルなので、export していない変数は見えない（`X=/tmp/a; bash -c 'rm -rf $X/*'`
+        # の $X は空）。export 済みかは静的に決めきれないので不明にする。eval は今のシェルで動く
+        child = assigns if flags["shell_state"] else {k: None for k in assigns}
         for n in nested:
-            yield from _walk(n, here, assigns, level + 1)
+            yield from _walk(n, here, child, level + 1)
+        if b == "find":
+            # `-exec rm <パス> ;` の中のコマンドも単純コマンドとして評価する（開始パスだけ見ると、
+            # 開始パスと無関係なパスを消す action を見落とす）。`{}` は見つかった開始パス配下の
+            # エントリで、開始パスの判定がそれを受け持つので相対名のまま残す
+            for action in _find_action_cmds(tokens):
+                yield from _walk(shlex.join(action), here, assigns, level + 1)
         # ---- このセグメントが今のシェルの状態（変数・cwd）をどう変えるか
         if not tokens and env:                      # 純粋な代入 `T=/tmp/x`
             for k, v in env.items():
@@ -824,6 +839,8 @@ def _walk(command: str, cwd, assigns: dict, level: int):
             cur = _resolve_cd(tokens, cur, assigns) if (certain and b == "cd" and not funcs) else None
         elif b == "popd":
             cur = None
+        if head in ("fi", "done", "esac") and compound:
+            compound -= 1
 
 
 def _git_parse(tokens: list, cwd, assigns: dict):
@@ -891,6 +908,21 @@ def _classify_target(raw: str, assigns: dict = None) -> str:
 
 _RECURSIVE_FLAG_RE = re.compile(r"^-[a-zA-Z]*[rR]")
 _FIND_ACTIONS = ("-exec", "-execdir", "-ok", "-okdir")
+
+
+def _find_action_cmds(tokens: list) -> list:
+    """find の `-exec`/`-execdir`/`-ok`/`-okdir` が実行するコマンド（トークン列）のリスト。"""
+    out, i = [], 1
+    while i < len(tokens):
+        if tokens[i] in _FIND_ACTIONS:
+            j = i + 1
+            while j < len(tokens) and tokens[j] not in (";", "+"):
+                j += 1
+            if j > i + 1:
+                out.append(tokens[i + 1:j])
+            i = j
+        i += 1
+    return out
 
 
 def _is_recursive_rm(tokens: list) -> bool:

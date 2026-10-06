@@ -56,6 +56,9 @@ row "git -C $ALLOWED status; gh pr merge 1 -R victim/repo"   "$VICTIM"  '許可�
 row "false && cd $NOREMOTE; gh pr merge 1"                   "$VICTIM"  '実行されない条件付き cd をおとりにマージ'        'ask'
 row "cd() { :; }; cd $NOREMOTE; gh pr merge 1"                 "$VICTIM"  'cd を関数で無効化してからおとりの cd'          'ask'
 row "function cd { :; }; cd $NOREMOTE; git merge feature"        "$VICTIM"  'function 構文で cd を無効化'                    'ask'
+row "if false; then cd $NOREMOTE; fi; git merge feature"      "$VICTIM"  'if の中の cd をおとりにマージ'                  'ask'
+row "while false; do cd $NOREMOTE; done; gh pr merge 1"       "$VICTIM"  'while の中の cd をおとりにマージ'               'ask'
+row "for d in x; do cd $NOREMOTE; done; git merge feature"    "$VICTIM"  'for の中の cd をおとりにマージ'                 'ask'
 row "(cd $NOREMOTE); git merge feature"                     "$VICTIM"  'サブシェル内の cd（cd 追跡の退行防止）'              'ask'
 
 echo
