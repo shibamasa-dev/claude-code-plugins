@@ -537,7 +537,7 @@ function loadFeedback(proj) {
     const m = /^v(\d+)\.json$/.exec(name);
     if (!m) continue;
     let j;
-    try { j = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')); } catch (e) { die(`feedback/${name} が JSON として読めない: ${e.message}`); }
+    try { j = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')); } catch (e) { throw new Error(`feedback/${name} が JSON として読めない: ${e.message}`); }
     out[+m[1]] = {
       file: `feedback/${name}`,
       summary: j.summary || '',
@@ -583,10 +583,10 @@ const br = (s) => esc(s).replace(/\n/g, '<br>');
 const clock = (t) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
 const num = (x) => String(+x.toFixed(2));
 
-// 秒 → 小節・拍（1始まり）。拍の格子から外れていれば拍数を小数で出す
-function beatPos(t, B) {
-  const b = (t - B.offset) / B.secondsPerBeat;
-  const on = Math.abs(b - Math.round(b)) < 1e-6;
+// 秒 → 小節・拍（1始まり）。拍の格子から外れていれば拍数を小数で出す（半コマ以内は拍の上とみなす）
+function beatPos(t, B, fps) {
+  const b = ((t - B.offset) * B.bpm) / 60;
+  const on = Math.abs(b - Math.round(b)) <= (0.5 / fps) * (B.bpm / 60);
   const n = on ? Math.round(b) : b;
   return on ? `小節${Math.floor(n / B.beatsPerBar) + 1} 拍${(n % B.beatsPerBar) + 1}（${n}拍）` : `${num(n)}拍`;
 }
@@ -598,7 +598,8 @@ function cutsheetHtml(sb, dir, P, B, meta, brand) {
   const others = sb.aspects.slice(1);
   const prevFb = sb.feedback;
   const v = sb.version;
-  const barSec = B.secondsPerBeat * B.beatsPerBar;
+  const spb = 60 / B.bpm;
+  const barSec = spb * B.beatsPerBar;
   const bars = Math.ceil((meta.duration - B.offset) / barSec - 1e-9);
   const assets = Object.keys(meta.assets || {}).length + Object.keys(meta.clips || {}).length;
   const [w, h] = SIZES[a0];
@@ -690,8 +691,8 @@ button{font:inherit;padding:6px 14px;border:1px solid var(--ink);background:var(
     const other = others.map((a) => { const oc = sb.per[a].cuts[i]; return `<div class="sm">${a}</div><img src="${esc(rel(oc.startPng))}" alt="${a} はじめ">`; }).join('');
     L.push(`<tr id="cut-${esc(c.id)}">`
       + `<td class="no">${String(i + 1).padStart(2, '0')}<div class="sm">${esc(c.id)}</div></td>`
-      + `<td>${clock(s.start)}–${clock(s.end)}<div class="sm">${beatPos(s.start, B)}</div></td>`
-      + `<td>${num(len)}秒<div class="sm">${num(len / B.secondsPerBeat)}拍</div></td>`
+      + `<td>${clock(s.start)}–${clock(s.end)}<div class="sm">${beatPos(s.start, B, sb.fps)}</div></td>`
+      + `<td>${num(len)}秒<div class="sm">${num(len / spb)}拍</div></td>`
       + `<td class="img"><img src="${esc(rel(c.startPng))}" alt="はじめ ${num(c.start)}s"><div class="sm">${num(c.start)}s</div></td>`
       + `<td class="img"><img src="${esc(rel(c.endPng))}" alt="おわり ${num(c.end)}s"><div class="sm">${num(c.end)}s</div></td>`
       + (others.length ? `<td class="other">${other}</td>` : '')
