@@ -162,6 +162,73 @@ async function runRenderCase(c) {
   return R;
 }
 
+// カット表と FB の往復: storyboard → FB を置いて再実行 → v2 と「v1 の FB への対応」・比較画像・未対応の警告
+async function runCutsheetCase(c) {
+  const R = [];
+  const add = (text, passed, evidence) => R.push({ text, passed: !!passed, evidence: String(evidence) });
+  const e = c.expect;
+  const dir = copyFixture(c.fixture, c.name);
+  const P = path.relative(WORK, dir);
+  const sbDir = path.join(dir, 'out/storyboard');
+  const sbJson = () => json(fs.existsSync(path.join(sbDir, 'storyboard.json')) ? fs.readFileSync(path.join(sbDir, 'storyboard.json'), 'utf8') : 'null');
+  const html = () => (fs.existsSync(path.join(sbDir, 'cutsheet.html')) ? fs.readFileSync(path.join(sbDir, 'cutsheet.html'), 'utf8') : '');
+  const row = (h, id) => (h.split(`<tr id="cut-${id}">`)[1] || '').split('</tr>')[0];
+  const tag = e.aspect.replace(':', 'x');
+
+  // 1. v1
+  const s1 = render('storyboard', P);
+  const j1 = sbJson();
+  const h1 = html();
+  add('storyboard が成功し cutsheet.html を出す（版 v1）', s1.code === 0 && h1 && j1?.version === 1, `exit=${s1.code} version=${j1?.version} ${s1.err.slice(-200)}`);
+  const heads = [...h1.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1]);
+  const missing = e.columns.filter((col) => !heads.includes(col));
+  add(`カット表の列に ${e.columns.join(' / ')} がある`, !missing.length, `足りない列=${missing.join(',') || 'なし'} 見出し=${heads.join(',')}`);
+  const pngs = e.cuts.flatMap((id) => ['start', 'end'].map((w) => path.join(sbDir, tag, 'cuts', `${id}-${w}.png`)));
+  const differ = e.cuts.filter((id) => !fs.readFileSync(path.join(sbDir, tag, 'cuts', `${id}-start.png`)).equals(fs.readFileSync(path.join(sbDir, tag, 'cuts', `${id}-end.png`))));
+  add(`カット ${e.cuts.length} 本それぞれに「はじめ」「おわり」の画像があり、2コマが別の画`, pngs.every((p) => fs.existsSync(p)) && differ.length === e.cuts.length, `存在=${pngs.filter((p) => fs.existsSync(p)).length}/${pngs.length} 別の画=${differ.join(',')}`);
+  const cutPng = (id, w) => fs.readFileSync(path.join(sbDir, tag, 'cuts', `${id}-${w}.png`));
+  const sameAsNext = e.cuts.slice(0, -1).filter((id, i) => cutPng(id, 'end').equals(cutPng(e.cuts[i + 1], 'start')));
+  add('「おわり」はそのカットの最後のコマ（次のカットの「はじめ」と同じ画になっていない）', !sameAsNext.length, `次のはじめと同じ=${sameAsNext.join(',') || 'なし'}`);
+  const srcs = [...h1.matchAll(/<img src="([^"]+)"/g)].map((m) => m[1]);
+  add('cutsheet.html の画像は相対パスで、全部 cutsheet.html から開ける', srcs.length >= e.cuts.length * 2 && srcs.every((s) => !path.isAbsolute(s) && fs.existsSync(path.join(sbDir, s))), `img=${srcs.length} 例=${srcs[0]}`);
+  const r4 = row(h1, e.beatRow.id);
+  add(`開始と尺が秒と拍の両方で出る（${e.beatRow.id}: ${e.beatRow.texts.join(' / ')}）`, e.beatRow.texts.every((x) => r4.includes(x)), r4.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 200));
+  const s1b = render('storyboard', P);
+  add('FB が無いまま再実行しても版は v1 のまま（v2/ を作らない）', s1b.code === 0 && sbJson()?.version === 1 && !fs.existsSync(path.join(sbDir, 'v2')), `version=${sbJson()?.version} v2=${fs.existsSync(path.join(sbDir, 'v2'))}`);
+
+  // 2. FB を置いて v2
+  const fbFile = path.join(dir, 'feedback', 'v1.json');
+  fs.mkdirSync(path.dirname(fbFile), { recursive: true });
+  fs.writeFileSync(fbFile, JSON.stringify(e.feedback, null, 2));
+  const s2 = render('storyboard', P);
+  const j2 = sbJson();
+  const h2 = html();
+  add('FB を置いて再実行すると版が v2 に進み、v1/ が残る', s2.code === 0 && j2?.version === 2 && fs.existsSync(path.join(sbDir, 'v1', 'cutsheet.html')) && fs.existsSync(path.join(sbDir, 'v1', tag, 'cuts', `${e.cuts[0]}-start.png`)), `exit=${s2.code} version=${j2?.version} v1=${fs.readdirSync(sbDir).filter((x) => /^v\d+$/.test(x))}`);
+  const fbTexts = [e.feedback.overall, ...Object.values(e.feedback.cuts).map((x) => (typeof x === 'string' ? x : x.fb))];
+  add('カット表に「v1 の FB への対応」表が出て、FB の文面が全部載る', h2.includes('v1 の FB への対応') && fbTexts.every((t) => h2.includes(t)), `見出し=${h2.includes('v1 の FB への対応')} 載っていない=${fbTexts.filter((t) => !h2.includes(t))}`);
+  const unans = e.unanswered.map((id) => j2?.warnings?.find((w) => w.includes('対応が書かれていない') && w.includes(`${id}「`)));
+  const wrongly = e.answered.filter((id) => j2?.warnings?.some((w) => w.includes('対応が書かれていない') && w.includes(`${id}「`)));
+  add(`対応未記入の FB（${e.unanswered.join('・')}）が警告になり、対応済み（${e.answered.join('・')}）は警告にならない`, unans.every(Boolean) && !wrongly.length && s2.out.includes('対応が書かれていない'), `警告=${JSON.stringify(j2?.warnings)}`);
+  const fbCuts = Object.keys(e.feedback.cuts);
+  const cmp = fs.existsSync(path.join(sbDir, 'compare')) ? fs.readdirSync(path.join(sbDir, 'compare')) : [];
+  const dims = cmp.map((f) => sh('ffprobe', ['-v', 'error', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', path.join(sbDir, 'compare', f)]).out.trim().split(',').map(Number));
+  add(`FB の付いたカット（${fbCuts.join('・')}）だけに v1 と v2 の比較画像（はじめ・おわり × 2版の 2×2）が出る`, cmp.length === fbCuts.length && fbCuts.every((id) => cmp.some((f) => f.startsWith(`${id}-`))) && dims.every(([w, h]) => w / h > 1.5 && w / h < 2.1), `compare=${cmp.join(',')} 縦横=${dims.map((d) => d.join('x')).join(',')}`);
+
+  // 3. 対応を書いて再実行 → 警告が消え、版は v2 のまま
+  const answered = { ...e.feedback, overall: { fb: e.feedback.overall, response: '余白を 1.2 倍にした' }, cuts: Object.fromEntries(Object.entries(e.feedback.cuts).map(([k, v]) => [k, typeof v === 'string' ? { fb: v, response: '対応した' } : v])) };
+  fs.writeFileSync(fbFile, JSON.stringify(answered, null, 2));
+  const s3 = render('storyboard', P);
+  const j3 = sbJson();
+  add('対応を書いて再実行すると未対応の警告が消え、版は v2 のまま（v1/ も残る）', s3.code === 0 && j3?.version === 2 && !j3.warnings.some((w) => w.includes('対応が書かれていない')) && fs.existsSync(path.join(sbDir, 'v1')) && !fs.existsSync(path.join(sbDir, 'v3')), `version=${j3?.version} warnings=${JSON.stringify(j3?.warnings)}`);
+
+  // 4. 承認ハッシュ: FB ファイルもソースに入る
+  const ap = render('approve', P, '--by', 'eval', '--note', 'eval の自動承認');
+  fs.writeFileSync(path.join(dir, 'feedback', 'v2.json'), JSON.stringify({ cuts: { [e.cuts[0]]: '新しい FB' } }));
+  const ap2 = render('final', P);
+  add('storyboard 後の approve は通り、その後に FB を足すと final は exit 3 で止まる（FB は承認ハッシュに入る）', ap.code === 0 && ap2.code === 3, `approve=${ap.code} final=${ap2.code} ${ap2.err.trim().slice(0, 120)}`);
+  return R;
+}
+
 async function runContracts() {
   const R = [];
   const add = (text, passed, evidence) => R.push({ text, passed: !!passed, evidence: String(evidence) });
@@ -217,7 +284,7 @@ for (const c of spec.evals) {
   const t0 = Date.now();
   let res;
   try {
-    res = c.kind === 'contracts' ? await runContracts() : await runRenderCase(c);
+    res = c.kind === 'contracts' ? await runContracts() : c.kind === 'cutsheet' ? await runCutsheetCase(c) : await runRenderCase(c);
   } catch (err) {
     res = [{ text: 'ケースが例外なく完走する', passed: false, evidence: err.stack }];
   }

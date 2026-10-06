@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // render.mjs — motion-video の実行本体（依存ゼロ: node 22+（グローバル WebSocket）/ system Chrome / ffmpeg）
 //
-//   node render.mjs storyboard <project> [--aspect 9:16|all] [--brand brand.json] [--out dir]
+//   node render.mjs storyboard <project> [--aspect 9:16|all] [--brand brand.json] [--out dir]  （カット表 cutsheet.html。feedback/v<N>.json があれば版を進める）
 //   node render.mjs check      <project> [--frame 300]
 //   node render.mjs approve    <project> --by "<OK を出した人>" --note "<OK の発言>"
 //   node render.mjs final      <project> [--aspect all|16:9,9:16] [--keep-frames]
@@ -336,9 +336,12 @@ async function cmdStoryboard(P, f) {
     const { meta } = S;
     const aspects = f.aspect === 'all' ? meta.aspects : f.aspect ? f.aspect.split(',') : [meta.aspects[0]];
     const dir = path.join(P.out, 'storyboard');
-    fs.rmSync(dir, { recursive: true, force: true });
+    // 最新の版はトップに作り直す。前の版（v<N>/）は残す
     fs.mkdirSync(dir, { recursive: true });
-    const warnings = [...sceneWarnings(meta), ...audioWarnings(meta.audio, meta.duration, meta.fps)];
+    for (const e of fs.readdirSync(dir)) if (!VERSION_DIR.test(e)) fs.rmSync(path.join(dir, e), { recursive: true, force: true });
+    const fb = loadFeedback(P.proj);
+    const version = 1 + Math.max(0, ...Object.keys(fb).map(Number));
+    const warnings = [...sceneWarnings(meta), ...audioWarnings(meta.audio, meta.duration, meta.fps), ...feedbackWarnings(fb[version - 1], version - 1, meta.scenes)];
     const beats = beatsInfo(meta.audio, meta.duration);
     fs.writeFileSync(path.join(dir, 'beats.json'), JSON.stringify(beats, null, 2));
     const sound = hasAudio(meta) ? audioPreview(S, P, dir, warnings) : null;
@@ -356,6 +359,16 @@ async function cmdStoryboard(P, f) {
           fs.writeFileSync(p, await S.frame(t));
           stills.push({ scene: s.id, t, path: p });
         }
+      }
+      // カット表: カットごとに「はじめ」（最初のコマ）と「おわり」（最後のコマ）
+      const cutDir = path.join(ad, 'cuts');
+      fs.mkdirSync(cutDir, { recursive: true });
+      const cuts = [];
+      for (const s of meta.scenes) {
+        const c = { id: s.id, start: s.start, end: Math.max(s.start, s.end - 1 / meta.fps), startPng: cutPng(cutDir, s.id, 'start'), endPng: cutPng(cutDir, s.id, 'end') };
+        fs.writeFileSync(c.startPng, await S.frame(c.start));
+        fs.writeFileSync(c.endPng, await S.frame(c.end));
+        cuts.push(c);
       }
       // contact: 1拍に1コマ（多すぎるときは間引いて最大 48 コマ）
       let bt = beats.beats;
@@ -402,6 +415,7 @@ async function cmdStoryboard(P, f) {
       }
       per[asp] = {
         stills,
+        cuts,
         contact: path.join(ad, 'contact.png'),
         strip: path.join(ad, 'strip.png'), stripFrom: +(s0 / meta.fps).toFixed(3), fastestAt: +(fast / meta.fps).toFixed(3),
         phone: path.join(ad, 'phone.png'),
@@ -411,10 +425,17 @@ async function cmdStoryboard(P, f) {
     }
     const manifest = await S.manifest();
     for (const [fam, ok] of Object.entries(manifest.fonts)) if (!ok) warnings.push(`フォント「${fam}」がこのマシンに無い（fallback で描いている）。brand.json の fonts.*.file にフォントファイルを渡す`);
-    const sb = { source_hash: S.hash, title: meta.title, duration: meta.duration, fps: meta.fps, frames: S.N, aspects, check, warnings, beats: path.join(dir, 'beats.json'), sound, per, manifest, scenes: meta.scenes };
+    const compare = compareCuts(dir, version, fb[version - 1], per[aspects[0]].cuts, aspects[0], warnings);
+    const sb = { source_hash: S.hash, version, title: meta.title, duration: meta.duration, fps: meta.fps, frames: S.N, aspects, check, warnings, beats: path.join(dir, 'beats.json'), sound, per, manifest, scenes: meta.scenes, feedback: fb[version - 1] || null, compare };
     fs.writeFileSync(path.join(dir, 'storyboard.json'), JSON.stringify(sb, null, 2));
     fs.writeFileSync(path.join(dir, 'storyboard.md'), storyboardMd(sb, dir, P));
-    console.log(JSON.stringify({ storyboard: path.join(dir, 'storyboard.md'), source_hash: S.hash, check: check.ok, warnings, sound: sound && { preview: sound.preview, spectrogram: sound.spectrogram, lufs: sound.lufs, truePeakDb: sound.truePeakDb }, per: Object.fromEntries(Object.entries(per).map(([k, v]) => [k, { contact: v.contact, strip: v.strip, phone: v.phone, seam: v.seam, stills: v.stills.map((x) => x.path) }])) }, null, 2));
+    fs.writeFileSync(path.join(dir, 'cutsheet.html'), cutsheetHtml(sb, dir, P, beats, meta, S.brandJson));
+    // この版の写しを v<N>/ に残す（同じ版での再実行は上書き）
+    const snap = path.join(dir, `v${version}`);
+    fs.rmSync(snap, { recursive: true, force: true });
+    fs.mkdirSync(snap);
+    for (const e of fs.readdirSync(dir)) if (!VERSION_DIR.test(e)) fs.cpSync(path.join(dir, e), path.join(snap, e), { recursive: true });
+    console.log(JSON.stringify({ storyboard: path.join(dir, 'storyboard.md'), cutsheet: path.join(dir, 'cutsheet.html'), version, source_hash: S.hash, check: check.ok, warnings, compare, sound: sound && { preview: sound.preview, spectrogram: sound.spectrogram, lufs: sound.lufs, truePeakDb: sound.truePeakDb }, per: Object.fromEntries(Object.entries(per).map(([k, v]) => [k, { contact: v.contact, strip: v.strip, phone: v.phone, seam: v.seam, stills: v.stills.map((x) => x.path) }])) }, null, 2));
   } finally {
     await S.close();
   }
@@ -455,6 +476,7 @@ function storyboardMd(sb, dir, P) {
   const a0 = sb.aspects[0];
   const L = [];
   L.push(`# 絵コンテ: ${sb.title || path.basename(P.proj)}`, '');
+  L.push(`- 版 v${sb.version} / カット表: [cutsheet.html](cutsheet.html)（前の版は v<N>/ に残る）`);
   L.push(`- 尺 ${sb.duration}s / ${sb.fps}fps（${sb.frames} コマ） / ${sb.aspects.join(', ')} / source_hash \`${sb.source_hash.slice(0, 12)}\``);
   L.push(`- 決定論チェック（フレーム ${sb.check.frame} を2回描いて比較）: ${sb.check.ok ? 'OK' : '**NG**'}${sb.check.loop ? ` / ループ継ぎ目: ${sb.check.loop.ok ? 'OK' : '**NG**'}（継ぎ目の差 ${sb.check.loop.seam} / 隣接コマの差 ${sb.check.loop.neighbor}）` : ''}`);
   L.push('');
@@ -491,9 +513,218 @@ function storyboardMd(sb, dir, P) {
     L.push('');
   }
   L.push('## 次の手順', '');
-  L.push('1. 自己採点（7項目 1〜10）を済ませ、最悪の3件を直してから人に見せる');
-  L.push('2. **人の OK を得てから** `node render.mjs approve <project> --by "<名前>" --note "<OK の発言>"`');
-  L.push('3. `node render.mjs final <project>`（承認後にソースが変わると拒否される）');
+  L.push('1. 自己採点（9項目 1〜10）を済ませ、最悪の3件を直してから人に見せる');
+  L.push(`2. カット表 [cutsheet.html](cutsheet.html) を見せ、FB があれば \`feedback/v${sb.version}.json\` に書いてもらう（対応を書いて storyboard を回すと v${sb.version + 1} になる）`);
+  L.push('3. **人の OK を得てから** `node render.mjs approve <project> --by "<名前>" --note "<OK の発言>"`');
+  L.push('4. `node render.mjs final <project>`（承認後にソースが変わると拒否される）');
+  return L.join('\n') + '\n';
+}
+
+// ── カット表と FB の往復 ───────────────────────────────────────
+// 人は feedback/v<N>.json に版 N へのフィードバックを書き、エージェントは同じファイルの response に対応を書く。
+// 次の storyboard は v<N+1> になる（版番号 = FB の付いた最新の版 + 1。FB が無ければ 1）
+const VERSION_DIR = /^v\d+$/;
+const cutPng = (dir, id, which) => path.join(dir, `${String(id).replace(/[^\w.-]/g, '_')}-${which}.png`);
+
+function loadFeedback(proj) {
+  const dir = path.join(proj, 'feedback');
+  const out = {};
+  if (!fs.existsSync(dir)) return out;
+  const items = (x) => (Array.isArray(x) ? x : x == null ? [] : [x])
+    .map((v) => (typeof v === 'string' ? { fb: v, response: '' } : { fb: String(v.fb ?? ''), response: String(v.response ?? '') }))
+    .filter((v) => v.fb.trim());
+  for (const name of fs.readdirSync(dir)) {
+    const m = /^v(\d+)\.json$/.exec(name);
+    if (!m) continue;
+    let j;
+    try { j = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')); } catch (e) { die(`feedback/${name} が JSON として読めない: ${e.message}`); }
+    out[+m[1]] = {
+      file: `feedback/${name}`,
+      summary: j.summary || '',
+      overall: items(j.overall),
+      cuts: Object.fromEntries(Object.entries(j.cuts || {}).map(([k, v]) => [k, items(v)]).filter(([, v]) => v.length)),
+    };
+  }
+  return out;
+}
+
+function feedbackWarnings(fb, v, scenes) {
+  if (!fb) return [];
+  const w = [];
+  const ids = new Set(scenes.map((s) => s.id));
+  for (const id of Object.keys(fb.cuts)) if (!ids.has(id)) w.push(`${fb.file}: カット ${id} が今のシーン表に無い（ID を変えたなら FB の側も直す）`);
+  const open = [...fb.overall.map((x) => ['全体', x]), ...Object.entries(fb.cuts).flatMap(([id, xs]) => xs.map((x) => [id, x]))].filter(([, x]) => !x.response.trim());
+  for (const [id, x] of open) w.push(`v${v} の FB に対応が書かれていない（${fb.file} の response）: ${id}「${x.fb.slice(0, 40)}」`);
+  return w;
+}
+
+// FB の付いたカットについて、前の版と今の版の「はじめ / おわり」を並べる（上段=前の版・下段=今の版）
+function compareCuts(dir, version, fb, cuts, asp, warnings) {
+  if (!fb || !Object.keys(fb.cuts).length) return [];
+  const prev = path.join(dir, `v${version - 1}`, tag(asp), 'cuts');
+  const cd = path.join(dir, 'compare');
+  const out = [];
+  for (const c of cuts.filter((x) => fb.cuts[x.id])) {
+    const before = [cutPng(prev, c.id, 'start'), cutPng(prev, c.id, 'end')];
+    if (!before.every((p) => fs.existsSync(p))) {
+      warnings.push(`${c.id}: 前の版（v${version - 1}/${tag(asp)}）のコマが無いので比較画像を作れない`);
+      continue;
+    }
+    fs.mkdirSync(cd, { recursive: true });
+    const p = cutPng(cd, c.id, `v${version - 1}-v${version}`);
+    tile([...before, c.startPng, c.endPng], p, 2, 480);
+    out.push({ cut: c.id, path: p });
+  }
+  return out;
+}
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const br = (s) => esc(s).replace(/\n/g, '<br>');
+const clock = (t) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
+const num = (x) => String(+x.toFixed(2));
+
+// 秒 → 小節・拍（1始まり）。拍の格子から外れていれば拍数を小数で出す
+function beatPos(t, B) {
+  const b = (t - B.offset) / B.secondsPerBeat;
+  const on = Math.abs(b - Math.round(b)) < 1e-6;
+  const n = on ? Math.round(b) : b;
+  return on ? `小節${Math.floor(n / B.beatsPerBar) + 1} 拍${(n % B.beatsPerBar) + 1}（${n}拍）` : `${num(n)}拍`;
+}
+
+function cutsheetHtml(sb, dir, P, B, meta, brand) {
+  const rel = (p) => path.relative(dir, p).split(path.sep).join('/');
+  const a0 = sb.aspects[0];
+  const cuts = sb.per[a0].cuts;
+  const others = sb.aspects.slice(1);
+  const prevFb = sb.feedback;
+  const v = sb.version;
+  const barSec = B.secondsPerBeat * B.beatsPerBar;
+  const bars = Math.ceil((meta.duration - B.offset) / barSec - 1e-9);
+  const assets = Object.keys(meta.assets || {}).length + Object.keys(meta.clips || {}).length;
+  const [w, h] = SIZES[a0];
+  const PAL = ['#DCE6F0', '#F3E3D3', '#E2EEDD', '#EEE0EC', '#F4EDCF', '#DDEBEA'];
+  const sceneAt = (t) => meta.scenes.findIndex((s) => t >= s.start - 1e-9 && t < s.end - 1e-9);
+  const verify = (x) => (Array.isArray(x) ? x : x ? String(x).split('\n') : []).map((l) => {
+    const k = { '●': 'ok', '▲': 'risk', '◆': 'next', '✓': 'done', '○': 'todo' }[String(l).trim()[0]] || '';
+    return `<div class="vf ${k}">${esc(l)}</div>`;
+  }).join('');
+  const L = [];
+  L.push(`<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">`);
+  L.push(`<title>カット表 v${v}: ${esc(sb.title || path.basename(P.proj))}</title>`);
+  L.push(`<style>
+:root{--ink:#1d1f22;--mute:#666b72;--line:#d9dce0;--paper:#fff;--bg:#f5f6f7;--fb:#fff4b8;--fbline:#e8d675}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 -apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
+main{max-width:2200px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:13px;letter-spacing:.12em;color:var(--mute);margin:0 0 4px}h2{font-size:22px;margin:0 0 12px}h3{font-size:16px;margin:32px 0 8px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 16px}.chips span{background:var(--paper);border:1px solid var(--line);border-radius:99px;padding:2px 10px;font-size:12px}
+.summary{background:var(--paper);border-left:4px solid var(--ink);padding:8px 12px;margin:0 0 16px;max-width:960px}
+dl.info{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;background:var(--paper);border:1px solid var(--line);padding:12px 16px;max-width:960px;margin:0}
+dl.info dt{color:var(--mute)}dl.info dd{margin:0}.sw{display:inline-block;width:14px;height:14px;border:1px solid var(--line);vertical-align:-2px;margin-right:4px}
+.guide{color:var(--mute);font-size:12px;max-width:960px}
+.tl{background:var(--paper);border:1px solid var(--line);padding:8px;overflow-x:auto}
+.tl .row{display:flex;min-width:640px}.tl .bar{flex:1;border-right:1px solid var(--paper);font-size:10px;padding:2px 3px;white-space:nowrap;overflow:hidden}
+.tl .cuts{position:relative;height:22px;min-width:640px;margin-top:2px}.tl .cuts a{position:absolute;top:0;height:20px;border-left:2px solid var(--ink);padding-left:3px;font-size:11px;color:var(--ink);text-decoration:none;white-space:nowrap;overflow:hidden}
+.wrap{overflow-x:auto;background:var(--paper);border:1px solid var(--line)}
+table{border-collapse:collapse;width:100%}th,td{border:1px solid var(--line);padding:6px 8px;vertical-align:top;text-align:left}
+th{background:#eceef0;font-size:12px;white-space:nowrap;position:sticky;top:0}
+table.cut td{min-width:120px}table.cut td.img{min-width:0;width:248px}table.cut td.no{min-width:0;white-space:nowrap;font-weight:700}
+table.cut img{width:240px;display:block;border:1px solid var(--line)}table.cut td.other img{width:120px}
+td.fb,th.fb{background:var(--fb);border-color:var(--fbline);min-width:220px}td.fb textarea{width:100%;min-height:96px;border:1px solid var(--fbline);background:#fffbe0;font:inherit;padding:4px}
+.vf{font-size:12px}.vf.ok{color:#1a7f37}.vf.risk{color:#b45309}.vf.next{color:#1d4ed8}.vf.done{color:#555}.vf.todo{color:#888}
+.sm{font-size:12px;color:var(--mute)}table.resp img{width:360px;display:block}
+.warn{background:#fff1f0;border:1px solid #f3c1bd;padding:8px 12px;max-width:960px}.warn li{font-size:12px}
+.overall textarea{width:100%;max-width:960px;min-height:80px;background:var(--fb);border:1px solid var(--fbline);font:inherit;padding:6px}
+button{font:inherit;padding:6px 14px;border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:4px;cursor:pointer}
+</style></head><body><main>`);
+  L.push(`<h1>CUT SHEET v${v} · ${new Date().toISOString().slice(0, 10)} · PROPOSAL BY CLAUDE</h1>`);
+  L.push(`<h2>${esc(sb.title || path.basename(P.proj))}</h2>`);
+  L.push(`<p class="guide">1行＝1カット。画は「はじめ」と「おわり」の2コマ、動きは文章で。</p>`);
+  if (prevFb?.summary) L.push(`<p class="summary">${br(prevFb.summary)}</p>`);
+  L.push(`<div class="chips"><span>${num(B.bpm)} BPM</span><span>${num(meta.duration / barSec)} 小節 = ${num(meta.duration)} 秒</span><span>${cuts.length} カット</span><span>${w}×${h}·${sb.fps}fps</span><span>素材 ${assets} 点</span><span>source ${sb.source_hash.slice(0, 12)}</span></div>`);
+  if (sb.warnings.length) L.push(`<div class="warn"><b>警告 ${sb.warnings.length} 件</b><ul>${sb.warnings.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`);
+  // プロジェクト情報
+  const colors = brand?.colors ? Object.entries(brand.colors).map(([k, c]) => `<span class="sw" style="background:${esc(c)}"></span>${esc(k)} ${esc(c)}`).join('　') : '—';
+  const fonts = brand?.fonts ? Object.entries(brand.fonts).map(([k, x]) => `${esc(k)}: ${esc(x.family || x.file || '')}`).join(' / ') : '—';
+  L.push('<h3>プロジェクト情報</h3><dl class="info">');
+  for (const [k, val] of [
+    ['プロジェクト名', esc(sb.title || path.basename(P.proj))],
+    ['全体の尺', `${num(meta.duration)} 秒（${sb.frames} コマ）`],
+    ['テンポ・BPM', `${num(B.bpm)} BPM・${B.beatsPerBar} 拍子${B.offset ? `・頭出し ${B.offset}s` : ''}`],
+    ['画面比', sb.aspects.map((a) => `${a}（${SIZES[a].join('×')}）`).join(' / ') + ` · ${sb.fps}fps`],
+    ['納品物', `final.mp4 / poster.png / contact.png（${(meta.aspects || []).join(' · ')}）`],
+    ['参考', br(meta.reference || '—')],
+    ['カラー', colors],
+    ['フォント', fonts],
+  ]) L.push(`<dt>${k}</dt><dd>${val}</dd>`);
+  L.push('</dl>');
+  // タイムライン帯: 1マス＝1小節、シーンを色帯で、その下にカット番号
+  L.push('<h3>タイムライン</h3><div class="tl"><div class="row">');
+  for (let i = 0; i < bars; i++) {
+    const k = sceneAt(B.offset + i * barSec);
+    L.push(`<div class="bar" style="background:${k < 0 ? '#eee' : PAL[k % PAL.length]}">${i + 1}${k >= 0 ? ` ${esc(meta.scenes[k].id)}` : ''}</div>`);
+  }
+  L.push('</div><div class="cuts">');
+  cuts.forEach((c, i) => {
+    const s = meta.scenes[i];
+    L.push(`<a href="#cut-${esc(c.id)}" style="left:${(s.start / meta.duration) * 100}%;width:${((s.end - s.start) / meta.duration) * 100}%">${String(i + 1).padStart(2, '0')} ${esc(c.id)}</a>`);
+  });
+  L.push('</div></div>');
+  // 前の版の FB への対応
+  if (prevFb) {
+    const rows = [...prevFb.overall.map((x) => ['全体', x, null]), ...Object.entries(prevFb.cuts).flatMap(([id, xs]) => xs.map((x) => [id, x, id]))];
+    L.push(`<h3>v${v - 1} の FB への対応</h3><div class="wrap"><table class="resp"><tr><th>対象</th><th>FB</th><th>v${v} での対応</th><th>カット</th></tr>`);
+    for (const [target, x, id] of rows) {
+      const cmp = id && sb.compare.find((c) => c.cut === id);
+      const cell = cmp ? `<a href="${esc(rel(cmp.path))}"><img src="${esc(rel(cmp.path))}" alt="v${v - 1} と v${v} の比較"></a><div class="sm">上段 v${v - 1} / 下段 v${v}（はじめ・おわり）</div>` : id ? `<a href="#cut-${esc(id)}">${esc(id)}</a>` : '—';
+      L.push(`<tr><td>${esc(target)}</td><td>${br(x.fb)}</td><td>${x.response.trim() ? br(x.response) : '<b style="color:#b42318">未記入</b>'}</td><td>${cell}</td></tr>`);
+    }
+    L.push(`</table></div><p class="sm">FB の原本: ${esc(prevFb.file)}（前の版は <a href="v${v - 1}/cutsheet.html">v${v - 1}/cutsheet.html</a>）</p>`);
+  }
+  // カット表
+  L.push('<h3>カット表</h3><div class="wrap"><table class="cut"><tr>');
+  const head = ['No.', '開始（秒・拍）', '尺', 'はじめ', 'おわり', ...(others.length ? ['他の画角（はじめ）'] : []), '画の内容', '動き', '次へのつなぎ', 'テキスト', '音', '検証'];
+  L.push(head.map((x) => `<th>${x}</th>`).join('') + '<th class="fb">FB</th></tr>');
+  cuts.forEach((c, i) => {
+    const s = meta.scenes[i];
+    const len = s.end - s.start;
+    const other = others.map((a) => { const oc = sb.per[a].cuts[i]; return `<div class="sm">${a}</div><img src="${esc(rel(oc.startPng))}" alt="${a} はじめ">`; }).join('');
+    L.push(`<tr id="cut-${esc(c.id)}">`
+      + `<td class="no">${String(i + 1).padStart(2, '0')}<div class="sm">${esc(c.id)}</div></td>`
+      + `<td>${clock(s.start)}–${clock(s.end)}<div class="sm">${beatPos(s.start, B)}</div></td>`
+      + `<td>${num(len)}秒<div class="sm">${num(len / B.secondsPerBeat)}拍</div></td>`
+      + `<td class="img"><img src="${esc(rel(c.startPng))}" alt="はじめ ${num(c.start)}s"><div class="sm">${num(c.start)}s</div></td>`
+      + `<td class="img"><img src="${esc(rel(c.endPng))}" alt="おわり ${num(c.end)}s"><div class="sm">${num(c.end)}s</div></td>`
+      + (others.length ? `<td class="other">${other}</td>` : '')
+      + `<td>${s.message ? `<b>${br(s.message)}</b><br>` : ''}${br(s.screen)}</td>`
+      + `<td>${br(fmtMotion(s.motion))}</td>`
+      + `<td>${br(s.transition)}</td>`
+      + `<td>${br(s.text ?? s.narration)}</td>`
+      + `<td>${br(s.sound)}</td>`
+      + `<td>${verify(s.verify)}</td>`
+      + `<td class="fb"><textarea data-cut="${esc(c.id)}" placeholder="このカットへの FB"></textarea></td></tr>`);
+  });
+  L.push('</table></div>');
+  L.push(`<h3>全体への FB</h3><div class="overall"><textarea id="overall" placeholder="カットに紐づかない FB"></textarea></div>`);
+  L.push(`<p><button id="save">FB を保存（v${v}.json）</button></p>`);
+  L.push(`<h3>フィードバックの書き方</h3><ul class="guide">
+<li>各行右端の黄色い FB 欄に書く。全体への FB は表の下の欄に書く。</li>
+<li>書いたら「FB を保存」で <code>v${v}.json</code> を保存し、プロジェクトの <code>feedback/v${v}.json</code> に置く（手で書くなら <code>{"cuts":{"${esc(cuts[0]?.id ?? 's1')}":"…"},"overall":"…"}</code>）。</li>
+<li>エージェントが同じファイルの <code>response</code> に対応を書き、次の版（v${v + 1}）のカット表の冒頭に「v${v} の FB への対応」として出す。</li>
+<li>検証欄はエージェントのメモ: ● できたこと ▲ リスク・未解決 ◆ 素材・次の予定 ✓ 確認済み。</li>
+</ul>`);
+  L.push(`<script>
+document.getElementById('save').onclick = () => {
+  const cuts = {};
+  document.querySelectorAll('textarea[data-cut]').forEach((t) => { if (t.value.trim()) cuts[t.dataset.cut] = { fb: t.value.trim(), response: '' }; });
+  const data = { cuts };
+  const o = document.getElementById('overall').value.trim();
+  if (o) data.overall = { fb: o, response: '' };
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2) + '\\n'], { type: 'application/json' }));
+  a.download = 'v${v}.json';
+  a.click();
+};
+</script></main></body></html>`);
   return L.join('\n') + '\n';
 }
 
