@@ -23,6 +23,7 @@ matcher は "Bash"（ツール名しかマッチできない）なので全 Bash
                    fallback はコマンド位置でしか判定しない(文字列リテラル誤爆の修正)。
                    **作用するリポはマージコマンド自身から決める**(2026-10-04): git は自分の
                    -C と、それより前の確実な cd だけ。gh は -R/--repo・GH_REPO・PR の URL。
+                   GH_REPO は前のセグメントの export・継承した値も見る(2026-10-06)。
                    決められない(cd -・変数・条件付き cd 等)ときは例外を与えない。
   2. rm-guard    : 再帰 rm (-r/-rf) の破壊事故防止。
                    - 壊滅的ターゲット(/, ~, $HOME, システムdir, 裸の* 等) → 無条件 deny
@@ -37,6 +38,9 @@ matcher は "Bash"（ツール名しかマッチできない）なので全 Bash
                    判定する(解決できたぶんだけ誤爆が減る)。
                    sudo/env/command/nohup/xargs 等のラッパー・`sh -c`・eval・( )・$( )・
                    `find -delete`/`-exec rm` も中を展開して同じ判定にかける(2026-10-04)。
+                   ラッパーの長いオプション・短いオプションの束の値も読み飛ばす。開始パスを
+                   省いた find はカレントから、条件なしの `find . -delete` は `rm -rf .` と
+                   同じ扱い(2026-10-06)。
   3. push-freshness : git push 前に origin/main より behind でないことを検証。
                    spinoff 等で古い main から切ったブランチを最新に追従させ、
                    テキスト競合だけでなく意味的ドリフト(シグネチャ変更等)を
@@ -302,7 +306,7 @@ def _merge_target(cmd):
         return None
     toks = cmd.tokens
     if os.path.basename(toks[0]) == "git":
-        if any(k in cmd.env for k in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR")):
+        if any(_env_in_effect(cmd, k) for k in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR")):
             return None
         gcwd, _, subargs = _git_parse(toks, cmd.cwd, cmd.assigns)
         if gcwd is None or not os.path.isdir(gcwd):
@@ -311,8 +315,6 @@ def _merge_target(cmd):
                 "sources": _merge_sources(subargs)}
     # gh: 操作対象のリポは -R/--repo・GH_REPO・PR の URL のどれかで上書きされうる
     slugs = set()
-    if "GH_REPO" in cmd.env:
-        slugs.add(_norm_slug(_resolve(cmd.env["GH_REPO"], cmd.assigns)))
     i = 1
     while i < len(toks):
         a = toks[i]
@@ -329,6 +331,19 @@ def _merge_target(cmd):
             if m:
                 slugs.add(m.group(1))
         i += 1
+    if "GH_REPO" in cmd.env:
+        slugs.add(_norm_slug(_resolve(cmd.env["GH_REPO"], cmd.assigns)))
+    elif not slugs and ("GH_REPO" in cmd.assigns or os.environ.get("GH_REPO")):
+        # 前のセグメントの `export GH_REPO=…` や継承した GH_REPO も gh の対象リポを変える
+        # （見ていなかったので `export GH_REPO=<他リポ>; gh pr merge 1` が許可リポの cwd で通った）。
+        # 前のセグメントの代入は export 済みかどうか静的に決めきれないので、cwd のリポとも
+        # 一致するときだけ特定できたとみなす。値が判定不能（条件付き・unset 等）なら None
+        if "GH_REPO" in cmd.assigns:
+            v = cmd.assigns["GH_REPO"]
+            slugs.add(_repo_slug(cmd.cwd, sole_origin=True) if cmd.cwd else None)
+        else:
+            v = os.environ.get("GH_REPO")
+        slugs.add(_norm_slug(v) if v else None)
     if slugs:
         if None in slugs or len(slugs) != 1 or _gh_positional(toks)[0] != "pr":
             return None            # 解決できない・食い違う・gh stack での上書き
@@ -337,6 +352,13 @@ def _merge_target(cmd):
         return None
     return {"kind": "gh", "cwd": cmd.cwd, "slug": _repo_slug(cmd.cwd, sole_origin=True),
             "sources": []}
+
+
+def _env_in_effect(cmd, name: str) -> bool:
+    """環境変数 name がこのコマンドに効きうるか。コマンド先頭の `NAME=… cmd` だけでなく、
+    前のセグメントの `export NAME=…`（素の代入も `set -a` 下なら効く）と、hook が継承した
+    環境変数も見る（`export GIT_DIR=…; git merge x` でリポをすり替えられないように）。"""
+    return name in cmd.env or name in cmd.assigns or bool(os.environ.get(name))
 
 
 def _merge_exempt(t) -> bool:
@@ -558,7 +580,9 @@ def _resolved_value(raw: str, assigns: dict):
 # 実行を別コマンドへ渡すだけのラッパー。読み飛ばして中のコマンドを評価する。
 # 値を取るオプションは次のトークンも読み飛ばす。
 _WRAPPER_OPTS_WITH_VALUE = {
-    "sudo": {"-u", "-g", "-h", "-p", "-C", "-D", "-R", "-r", "-t", "-T", "-U"},
+    "sudo": {"-u", "-g", "-h", "-p", "-C", "-D", "-R", "-r", "-t", "-T", "-U",
+             "--user", "--group", "--host", "--prompt", "--close-from", "--chdir", "--chroot",
+             "--role", "--type", "--command-timeout", "--other-user"},
     "doas": {"-u", "-C"},
     "nice": {"-n", "--adjustment"},
     "exec": {"-a"},
@@ -574,6 +598,27 @@ _WRAPPER_OPTS_WITH_VALUE = {
               "--max-lines", "--max-chars", "--eof", "--delimiter", "--arg-file", "--replace"},
 }
 _SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
+
+
+def _short_valued(a: str, with_val: set):
+    """短いオプションの束（`-nu root` / `-uroot`）を getopt と同じに読む。
+    returns (値を取る文字, 束に続けて書かれた値 or None)。値を取る文字が無ければ (None, None)。"""
+    for j, c in enumerate(a[1:], 1):
+        if "-" + c in with_val:
+            return c, (a[j + 1:] or None)
+    return None, None
+
+
+def _takes_next(a: str, with_val: set) -> bool:
+    """オプション a が次のトークンを値として取るか。
+
+    `--user root` の長い形と、`-nu root` のように値を取る短いオプションが束の最後に来る形も
+    見る。読み落とすと値が実行コマンドに化ける（`sudo --user root rm -rf /` が
+    `root rm -rf /` になってガードを素通りした）。"""
+    if a.startswith("--"):
+        return "=" not in a and a in with_val
+    c, attached = _short_valued(a, with_val)
+    return c is not None and attached is None
 _KEYWORDS = {"{", "}", "!", "if", "then", "else", "elif", "do", "while", "until", "fi", "done", "coproc"}
 
 
@@ -611,22 +656,32 @@ def _unwrap(tokens: list):
                 a = t[0]
                 if ASSIGN_TOKEN_RE.match(a):
                     k, v = a.split("=", 1); env[k] = v; t.pop(0)
-                elif a in ("-u", "--unset"):
-                    del t[:2]
-                elif a in ("-C", "--chdir") or a.startswith("--chdir="):
+                    continue
+                if a == "--":
+                    t.pop(0)
+                    break
+                if not a.startswith("-") or a == "-":
+                    if a == "-":    # `env -` は -i と同じ
+                        t.pop(0)
+                        continue
+                    break
+                t.pop(0)
+                if a.startswith("--"):
+                    name, eq, attached = a.partition("=")
+                    opt = {"--unset": "u", "--chdir": "C", "--split-string": "S"}.get(name)
+                    attached = attached if eq else None
+                else:   # `-iu FOO` のような束も読む
+                    opt, attached = _short_valued(a, {"-u", "-C", "-S"})
+                if opt is None:
+                    continue
+                val = attached if attached is not None else (t.pop(0) if t else "")
+                if opt == "C":
                     flags["chdir"] = True
-                    del t[:1 if "=" in a else 2]
-                elif a in ("-S", "--split-string") or a.startswith("--split-string="):
-                    val = a.split("=", 1)[1] if "=" in a else (t[1] if len(t) > 1 else "")
-                    rest = t[1:] if "=" in a else t[2:]
+                elif opt == "S":
                     try:
-                        t = shlex.split(val) + rest
+                        t = shlex.split(val) + t
                     except ValueError:
                         nested.append(val); t = []
-                    break
-                elif a.startswith("-"):
-                    t.pop(0)
-                else:
                     break
             continue
         if b in _WRAPPER_OPTS_WITH_VALUE:
@@ -638,7 +693,10 @@ def _unwrap(tokens: list):
                 a = t.pop(0)
                 if a == "--":
                     break
-                if a in with_val and t:
+                if b == "sudo" and (a.startswith("--chdir") or
+                                    (not a.startswith("--") and _short_valued(a, with_val)[0] == "D")):
+                    flags["chdir"] = True   # sudo -D/--chdir DIR で cwd が変わる
+                if _takes_next(a, with_val) and t:
                     t.pop(0)
             if b in ("timeout", "gtimeout") and t:
                 t.pop(0)   # DURATION
@@ -863,7 +921,37 @@ def _find_delete_starts(tokens: list):
         i += 1
     while i < len(tokens) and not tokens[i].startswith(("-", "(", "!", ")")):
         starts.append(tokens[i]); i += 1
-    return starts
+    # 開始パスを省くと GNU find はカレント（.）からたどる（`find -delete` が素通りしていた）
+    return starts or ["."]
+
+
+# 条件で絞らない find の要素（大域オプション・アクション・演算子）。値を取るものは値の数
+_FIND_NOFILTER = {"-depth": 0, "-d": 0, "-maxdepth": 1, "-mindepth": 1, "-xdev": 0, "-mount": 0,
+                  "-follow": 0, "-noleaf": 0, "-ignore_readdir_race": 0,
+                  "-noignore_readdir_race": 0, "-daystart": 0, "-regextype": 1, "-warn": 0,
+                  "-nowarn": 0, "-true": 0, "-delete": 0, "-print": 0, "-print0": 0, "-ls": 0,
+                  "(": 0, ")": 0, "!": 0, ",": 0, "-a": 0, "-o": 0, "-and": 0, "-or": 0, "-not": 0}
+
+
+def _find_filtered(tokens: list) -> bool:
+    """find に名前・種類などの条件が付いているか。`find . -name '*.pyc' -delete` は普通の掃除だが、
+    条件なしの `find . -delete` はカレントを丸ごと消す（`rm -rf .` と同じ）。"""
+    i = 1
+    while i < len(tokens) and tokens[i] in ("-H", "-L", "-P", "-E", "-X", "-d", "-s", "-x"):
+        i += 1
+    while i < len(tokens) and not tokens[i].startswith(("-", "(", "!", ")")):
+        i += 1   # 開始パス
+    while i < len(tokens):
+        a = tokens[i]
+        if a in _FIND_ACTIONS:
+            while i < len(tokens) and tokens[i] not in (";", "+"):
+                i += 1
+            i += 1
+            continue
+        if a not in _FIND_NOFILTER:
+            return True
+        i += 1 + _FIND_NOFILTER[a]
+    return False
 
 
 _OPAQUE_DELETE_RE = re.compile(r"(^|[\s;&|(`/])(rm|find|trash)\s")
@@ -903,9 +991,11 @@ def rule_rm_guard(command: str):
             continue
         starts = _find_delete_starts(tokens)
         if starts is not None:
+            filtered = _find_filtered(tokens)
             for t in starts:
-                # `find . -name x -delete` のように条件で絞るのが普通なので、カレントの . は相対扱い
-                note("safe" if t in (".", "./") else _classify_target(t, assigns))
+                # `find . -name x -delete` のように条件で絞るのが普通なので、カレントの . は相対扱い。
+                # 条件なしなら `rm -rf .` と同じく壊滅的
+                note("safe" if t in (".", "./") and filtered else _classify_target(t, assigns))
             continue
         if cmd_name != "rm" or not _is_recursive_rm(tokens):
             continue

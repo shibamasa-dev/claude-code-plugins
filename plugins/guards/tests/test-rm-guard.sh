@@ -110,6 +110,14 @@ row "bash -c 'rm -rf ./build'"                     'bash -c でも相対パス�
 row "find . -name '*.pyc' -delete"                 'カレントからの find -delete'          'allow'
 row 'find /tmp/x -exec rm {} +'                    '/tmp からの find -exec rm'            'allow'
 row 'echo "(rm -rf ~)"'                            '引用符内の括弧はデータ'               'allow'
+row 'sudo --user root rm -rf /'                    'sudo の値を取る長いオプション'        'deny'
+row 'sudo -nu root rm -rf /'                       'sudo の短いオプションの束'            'deny'
+row 'env -iu FOO rm -rf ~'                         'env の短いオプションの束'             'deny'
+row 'timeout --signal KILL 5 rm -rf ~'             'timeout の値を取る長いオプション'     'deny'
+row 'find -delete'                                 '開始パスを省いた find -delete'        'deny'
+row 'find . -delete'                               '条件なしでカレントから find -delete'   'deny'
+row 'find -L . -mindepth 1 -delete'                '大域オプションだけの find -delete'     'deny'
+row "find -name '*.pyc' -delete"                   '開始パス省略でも条件付きなら allow'    'allow'
 
 echo
 echo '=== J: worktree の削除マーカーは削除コマンド自身の先頭でだけ効く・相対パスも解決する ==='

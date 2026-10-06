@@ -65,6 +65,12 @@ row "gh pr merge 1 --repo=victim/repo"                         "$ALLOWED" '許�
 row "gh pr -R victim/repo merge 1"                             "$ALLOWED" 'pr と merge の間に -R を挟む'                    'ask'
 row "GH_REPO=victim/repo gh pr merge 1"                        "$ALLOWED" '許可リポの cwd から GH_REPO で別リポをマージ'     'ask'
 row "gh pr merge https://github.com/victim/repo/pull/1"        "$ALLOWED" '許可リポの cwd から PR の URL で別リポをマージ'   'ask'
+row "export GH_REPO=victim/repo; gh pr merge 1"                "$ALLOWED" '前のセグメントで export した GH_REPO'             'ask'
+row "GH_REPO=victim/repo; gh pr merge 1"                       "$ALLOWED" '前のセグメントで代入した GH_REPO'                 'ask'
+row "export GH_REPO=allowed/repo; gh pr merge 1"               "$VICTIM"  'export が許可リポでも cwd が別リポ'               'ask'
+row "export GH_REPO=allowed/repo; gh pr merge 1"               "$ALLOWED" 'export と cwd がどちらも許可リポ'                 'allow'
+GH_REPO=victim/repo row "gh pr merge 1"                        "$ALLOWED" '継承した GH_REPO'                                 'ask'
+row "export GIT_DIR=$VICTIM/.git; git merge feature"         "$ALLOWED" '前のセグメントで export した GIT_DIR'             'ask'
 row "gh pr merge 1 -R victim/repo"                             "$ALLOWED" 'bypassPermissions では deny'                    'deny' bypassPermissions
 
 echo

@@ -8,7 +8,7 @@ rm -rf /tmp/gtest
 mkdir -p /tmp/gtest
 cd /tmp/gtest || exit 1
 
-git init -q .
+git init -q -b main .   # 既定ブランチ名（init.defaultBranch）に左右されないよう固定する
 git commit -q --allow-empty -m base
 MAINB=$(git rev-parse --abbrev-ref HEAD)
 git checkout -q -b feat/x
