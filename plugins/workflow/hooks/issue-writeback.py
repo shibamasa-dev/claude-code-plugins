@@ -83,14 +83,14 @@ def is_pr_response(ref, tr):
     text = tr if isinstance(tr, str) else json.dumps(tr, ensure_ascii=False)
     return re.search(rf"github\.com/{re.escape(repo)}/pull/{n}(?!\d)", text, re.I) is not None
 
-_GH_REPO = r"(?:-R|--repo)\s+([\w.-]+/[\w.-]+)"
+_GH_REPO = r"(?:-R\s*=?\s*|--repo(?:\s+|=))([\w.-]+/[\w.-]+)"  # -R o/r・-Ro/r・--repo o/r・--repo=o/r
 # gh pr の書き込み系サブコマンドで、次の引数を値に取るオプション（-R/--repo は共通）。
 # 同じ短いオプションでもサブコマンドで意味が違う（close の -c は値つき、review の -c は値なし）ので分けて持つ
 _PR_VALUE_FLAGS = {
-    "edit": {"-b", "--body", "-F", "--body-file", "-t", "--title", "-B", "--base", "-m", "--milestone",
+    "edit": {"-b", "--body", "-F", "--body-file", "--attach", "-t", "--title", "-B", "--base", "-m", "--milestone",
              "--add-assignee", "--remove-assignee", "--add-label", "--remove-label",
              "--add-project", "--remove-project", "--add-reviewer", "--remove-reviewer"},
-    "comment": {"-b", "--body", "-F", "--body-file"},
+    "comment": {"-b", "--body", "-F", "--body-file", "--attach"},
     "close": {"-c", "--comment"},
     "reopen": {"-c", "--comment"},
     "merge": {"-b", "--body", "-F", "--body-file", "-t", "--subject", "-A", "--author-email", "--match-head-commit"},

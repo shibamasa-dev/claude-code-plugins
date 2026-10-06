@@ -5,9 +5,10 @@ set -u
 HOOK="$(cd "$(dirname "$0")/.." && pwd)/hooks/issue-writeback.py"
 T=$(mktemp -d "${TMPDIR:-/tmp}/iwb.XXXX")
 export HOME="$T"
-# 偽の gh: `gh pr view`（番号で指していない PR の解決）だけに答え、今のブランチの PR を o/r#455 とする
+# 偽の gh: `gh pr view`（番号で指していない PR の解決）だけに答える。今のブランチと my-branch の PR を o/r#455 とし、
+# それ以外の指定（ファイル名を取り違えた等）には答えない
 mkdir -p "$T/bin"
-printf '#!/bin/bash\n[ "$1 $2" = "pr view" ] && echo https://github.com/o/r/pull/455\n' > "$T/bin/gh"
+printf '#!/bin/bash\n[ "$1 $2" = "pr view" ] && case "$3" in -R|--json|my-branch) echo https://github.com/o/r/pull/455 ;; esac\n' > "$T/bin/gh"
 chmod +x "$T/bin/gh"
 export PATH="$T/bin:$PATH"
 
@@ -66,6 +67,14 @@ row 'ブランチ名で指した gh pr edit でも解消' "$(stops a7)" 'allow'
 bash_post a8 'gh api repos/o/r/issues/455 --jq .title' 'x'
 bash_post a8 "gh pr close -c 'done' 455 -R o/r" ''
 row 'close の -c の値を飛ばして番号を拾う' "$(stops a8)" 'allow'
+
+bash_post a9 'gh api repos/o/r/issues/455 --jq .title' 'x'
+bash_post a9 'gh pr edit --attach ./image.png 455 -R o/r' ''
+row 'edit の --attach の値を飛ばして番号を拾う' "$(stops a9)" 'allow'
+
+bash_post a10 'gh api repos/o/r/issues/77 --jq .title' 'x'
+bash_post a10 'gh pr review 77 --repo=o/r --approve' ''
+row '--repo=o/r の形でもリポを取り違えない' "$(stops a10)" 'allow'
 
 echo
 echo '=== B: issue は従来どおり ==='
