@@ -1,6 +1,6 @@
 {
   "name": "workflow",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "description": "issue 運用・PR レビュー待ち・セッションの引き継ぎ・runbook 記録・テスト設計などのスキルとフック",
   "author": { "name": "shibamasa-dev" },
   "license": "MIT"

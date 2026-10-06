@@ -8,7 +8,7 @@ rm -rf /tmp/gtest
 mkdir -p /tmp/gtest
 cd /tmp/gtest || exit 1
 
-git init -q .
+git init -q -b main .   # 既定ブランチ名（init.defaultBranch）に左右されないよう固定する
 git commit -q --allow-empty -m base
 MAINB=$(git rev-parse --abbrev-ref HEAD)
 git checkout -q -b feat/x
@@ -48,5 +48,15 @@ echo '=== 対象外のケース（従来どおり素通り） ==='
 git checkout -q "$MAINB"
 printf '  %-46s -> %s  (allow 期待: main 系は対象外)\n' 'main で push' "$(probe "git push -u origin $MAINB")"
 printf '  %-46s -> %s  (allow 期待: push 以外)\n' 'git status' "$(probe 'git status')"
+
+echo
+echo '=== main-freshness: main が origin/main より遅れている状態のマーカー ==='
+git checkout -q -b ahead "$MAINB" && git commit -q --allow-empty -m ahead
+git update-ref refs/remotes/origin/main ahead
+git checkout -q "$MAINB"
+printf '  %-46s -> %s  (deny 期待)\n' '素の commit' "$(probe 'git commit -m x')"
+printf '  %-46s -> %s  (allow 期待)\n' 'commit 自身の先頭にマーカー' "$(probe 'MAIN_FRESHNESS_OK=1 git commit -m x')"
+printf '  %-46s -> %s  (deny 期待)\n' 'マーカーを echo の引数に' "$(probe 'echo MAIN_FRESHNESS_OK=1; git commit -m x')"
+printf '  %-46s -> %s  (deny 期待)\n' 'マーカーをコメントに' "$(probe 'git commit -m x # MAIN_FRESHNESS_OK=1')"
 
 rm -rf /tmp/gtest

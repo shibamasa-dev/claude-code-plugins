@@ -18,30 +18,30 @@ store_secret() {
     esac
 }
 
-SKILL_SERVICE="skill:{{ skill_name }}"
+SKILL_SERVICE={{ ("skill:" ~ skill_name) | sh_quote }}
 
-echo "=== {{ skill_name }} Credential Setup ==="
+echo {{ ("=== " ~ skill_name ~ " Credential Setup ===") | sh_quote }}
 echo "Credentials will be stored in your OS keychain."
 echo
 {% for scheme in schemes %}
-# --- {{ scheme.name }} ({{ scheme.type }}) ---
-echo "Setting up: {{ scheme.name }} ({{ scheme.type }})"
+# --- {{ scheme.name | replace("\n", " ") }} ({{ scheme.type | replace("\n", " ") }}) ---
+echo {{ ("Setting up: " ~ scheme.name ~ " (" ~ scheme.type ~ ")") | sh_quote }}
 {% if scheme.type == "apiKey" %}
 read -rsp "  Enter API key: " _val; echo
-store_secret "$SKILL_SERVICE" "{{ scheme.name }}:api_key" "$_val"
+store_secret "$SKILL_SERVICE" {{ (scheme.name ~ ":api_key") | sh_quote }} "$_val"
 {% elif scheme.type == "http" and scheme.scheme == "basic" %}
 read -rp "  Enter username: " _user
 read -rsp "  Enter password: " _pass; echo
-store_secret "$SKILL_SERVICE" "{{ scheme.name }}:username" "$_user"
-store_secret "$SKILL_SERVICE" "{{ scheme.name }}:password" "$_pass"
+store_secret "$SKILL_SERVICE" {{ (scheme.name ~ ":username") | sh_quote }} "$_user"
+store_secret "$SKILL_SERVICE" {{ (scheme.name ~ ":password") | sh_quote }} "$_pass"
 {% elif scheme.type == "http" %}
 read -rsp "  Enter token: " _val; echo
-store_secret "$SKILL_SERVICE" "{{ scheme.name }}:token" "$_val"
+store_secret "$SKILL_SERVICE" {{ (scheme.name ~ ":token") | sh_quote }} "$_val"
 {% elif scheme.type == "oauth2" or scheme.type == "openIdConnect" %}
 read -rp "  Enter client_id: " _cid
 read -rsp "  Enter client_secret: " _csec; echo
-store_secret "$SKILL_SERVICE" "{{ scheme.name }}:client_id" "$_cid"
-store_secret "$SKILL_SERVICE" "{{ scheme.name }}:client_secret" "$_csec"
+store_secret "$SKILL_SERVICE" {{ (scheme.name ~ ":client_id") | sh_quote }} "$_cid"
+store_secret "$SKILL_SERVICE" {{ (scheme.name ~ ":client_secret") | sh_quote }} "$_csec"
 {% endif %}
 echo "  Done."
 echo
