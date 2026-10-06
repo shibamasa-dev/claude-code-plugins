@@ -1,0 +1,61 @@
+# main に入った version に、まだタグが無いプラグインだけ <plugin>--v<version> のタグを打つ。
+# 中身は claude plugin tag --push（plugin.json と marketplace.json の version の食い違いもそこで止まる）。
+# 依存の semver 範囲はこのタグに対して解決される（公式 plugins/dependencies）。
+# タグは取り消せないので、main への push で ci が通ったコミットにだけ打つ（ci と並行に走らせない）。
+# leak-scan の検査もタグの前にここでかけ直す。
+name: release
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+# 手動実行（workflow_dispatch）は置かない。ci の結果を確かめずにタグが打ててしまうため。
+# 手で打つときは手元で claude plugin tag --push（CONTRIBUTING.md）。
+
+permissions:
+  contents: write # タグの push
+
+# concurrency は付けない。同じ group だと待ち行列に 1 件しか残らず、間のコミットで上げた version が
+# タグ無しで飛ばされる。実行ごとに自分のコミットの version だけを扱い、同じタグの取り合いは下で吸収する。
+
+jobs:
+  tag:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }} # ci が通ったコミットそのもの
+          fetch-depth: 0
+          fetch-tags: true
+      # ci は secret BLOCKED_PATTERNS を見ない（leak-scan.yml が別に見る）。workflow_run は複数の
+      # ワークフローを AND で待てないので、タグの前に同じ検査をここでもかける
+      - name: 社内の固有名の混入（leak-scan と同じ検査）
+        env:
+          BLOCKED_PATTERNS: ${{ secrets.BLOCKED_PATTERNS }}
+          HIDE_BLOCKED_LOCATIONS: "1"  # 公開ログに一致した場所を出さない（check-repo.py 参照）
+        run: python3 .github/scripts/check-repo.py
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: 新しい version にタグを打つ
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for d in plugins/*/; do
+            p=$(basename "$d")
+            v=$(jq -r '.version // empty' "$d.claude-plugin/plugin.json")
+            [ -n "$v" ] || continue
+            if git rev-parse -q --verify "refs/tags/$p--v$v" >/dev/null; then
+              echo "$p--v$v はもうある"
+              continue
+            fi
+            if ! claude plugin tag "$d" --push; then
+              # 並行する別の実行が同じタグを先に push していれば成功扱い（ローカルのタグではなく origin を見る）
+              git ls-remote --exit-code --tags origin "refs/tags/$p--v$v" >/dev/null || exit 1
+              echo "$p--v$v は別の実行が打った"
+            fi
+          done

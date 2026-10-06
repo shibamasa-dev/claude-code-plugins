@@ -1,0 +1,22 @@
+name: 要望
+description: 新しいフック・スキルや、今あるものの改善
+labels: [enhancement]
+body:
+  - type: dropdown
+    id: plugin
+    attributes:
+      label: プラグイン
+      options: [guards, workflow, docs, 新しいプラグイン, マーケットプレイス全体]
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: 困っていること
+      description: いま何が起きていて、何ができるとよいか
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: 案
