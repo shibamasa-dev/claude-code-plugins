@@ -2,6 +2,13 @@
 
 review プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.3.1] - 2026-10-06
+
+### Changed
+- dev-flow：ユーザーに決めてもらうこと（issue 化、アーキレビューの GO、マージの提案など）は、文章に埋めずに選択肢として出すようにした。Claude Code の `AskUserQuestion` やプロジェクトのスレッドの選択カードなど、セッションに選択肢を出すツールがあればそれを使い、無ければ文章で選択肢を並べる
+- dev-flow：マージの提案に PR へのリンク、レビューツールごとの状況、CI の結果、`## 結果` を書いた issue（口頭の依頼なら PR 本文）を載せるようにした。自動マージのリポでは提案を出さずにマージへ進む。構造変更の GO 待ちの間は、推奨の選択肢でも実装を始めない
+- dev-flow：自動マージのリポでも、client / product のリポの PR はユーザーに回す（pr-review-wait の例外の範囲とそろえた）
+
 ## [0.3.0] - 2026-10-06
 
 ### Added
