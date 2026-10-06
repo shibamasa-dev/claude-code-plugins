@@ -170,5 +170,14 @@ git -C "$FH/repo" worktree add -q -b feat/ext "$FH/ext/feat"
 git -C "$FH/ext/feat" commit -q --allow-empty -m work
 K "rm -rf $FH/ext"                                'git 管理外の上位フォルダごと（絶対パス）' 'deny'
 KCWD="$FH" K 'rm -rf ext'                         'git 管理外の上位フォルダごと（相対パス）' 'deny'
+K 'rm -rf .claude/{worktrees,cache}'              'ブレース展開で未マージの worktree を含む'  'deny'
+K 'rm -rf .claude/{cache,tmp}'                    'ブレース展開が worktree に当たらない'      'allow'
+K "find . -name '*.pyc' -delete"                  '条件付きの find -delete（掃除）'          'allow'
+K 'find . -name feat -exec rm -rf {} +'           '条件付きでも -exec rm は止める側'          'deny'
+# 関係ないリポの中に、別のリポの未マージ worktree がある場合
+git -C "$FH" init -q -b main outer && git -C "$FH/outer" commit -q --allow-empty -m base
+git -C "$FH/repo" worktree add -q -b feat/nested "$FH/outer/bucket/feat"
+git -C "$FH/outer/bucket/feat" commit -q --allow-empty -m work
+KCWD="$FH/outer" K 'rm -rf bucket'                '別のリポの中にある未マージの worktree'    'deny'
 
 rm -rf "$FH"

@@ -615,6 +615,20 @@ _FIND_NOFILTER = {"-depth": 0, "-d": 0, "-maxdepth": 1, "-mindepth": 1, "-xdev":
                   "(": 0, ")": 0, "!": 0, ",": 0, "-a": 0, "-o": 0, "-and": 0, "-or": 0, "-not": 0}
 
 
+def _find_exec_deletes(tokens: list) -> bool:
+    """find の -exec / -execdir などで rm・unlink・trash を呼んでいるか。"""
+    for i, a in enumerate(tokens):
+        if a in _FIND_ACTIONS:
+            action = []
+            for b in tokens[i + 1:]:
+                if b in (";", "+"):
+                    break
+                action.append(b)
+            if re.search(r"(^|[\s/;&|(`])(rm|unlink|trash)(\s|$)", " ".join(action)):
+                return True
+    return False
+
+
 def _find_filtered(tokens: list) -> bool:
     """find に名前・種類などの条件が付いているか。`find . -name '*.pyc' -delete` は普通の掃除だが、
     条件なしの `find . -delete` はカレントを丸ごと消す（`rm -rf .` と同じ）。"""
@@ -939,20 +953,22 @@ def _under_worktrees(p: str) -> bool:
 
 def _linked_worktrees_under(p: str) -> list:
     """p 自身か p の下にある linked worktree の実パス（メインの作業ツリーは除く）。
-    p が無い・git の管理下でない・読めないときは []（rm-guard の判定に任せる）。"""
+    p の属するリポの `git worktree list` と、p の中の `.git` ファイルの走査を合わせる。
+    p が無い・読めないときは []（rm-guard の判定に任せる）。"""
     if not os.path.isdir(p) or os.path.islink(p):
         return []
     try:
         r = _git(["worktree", "list", "--porcelain"], p)
     except (subprocess.TimeoutExpired, OSError):
-        return []
-    if r.returncode != 0:
-        # git の管理下でない上位フォルダ（worktree をまとめて置くフォルダなど）は中を見る
-        return _scan_worktree_roots(p)
-    paths = [line[len("worktree "):] for line in r.stdout.splitlines() if line.startswith("worktree ")]
-    rp = os.path.realpath(p)
-    return [w for w in (os.path.realpath(x) for x in paths[1:])
-            if w == rp or w.startswith(rp.rstrip("/") + "/")]
+        r = subprocess.CompletedProcess([], 1, "", "")
+    found = []
+    if r.returncode == 0:
+        paths = [line[len("worktree "):] for line in r.stdout.splitlines() if line.startswith("worktree ")]
+        rp = os.path.realpath(p)
+        found = [w for w in (os.path.realpath(x) for x in paths[1:])
+                 if w == rp or w.startswith(rp.rstrip("/") + "/")]
+    # 別のリポの worktree が中にある場合（git の管理下でない上位フォルダ・関係ないリポの中）も拾う
+    return list(dict.fromkeys(found + _scan_worktree_roots(p)))
 
 
 def _scan_worktree_roots(p: str, depth: int = 3, limit: int = 5000) -> list:
@@ -985,10 +1001,49 @@ def _scan_worktree_roots(p: str, depth: int = 3, limit: int = 5000) -> list:
     return found
 
 
+def _split_top_commas(body: str) -> list:
+    parts, depth, cur = [], 0, ""
+    for c in body:
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+        if c == "," and depth == 0:
+            parts.append(cur); cur = ""
+        else:
+            cur += c
+    return parts + [cur]
+
+
+def _brace_expand(s: str, limit: int = 256) -> list:
+    """bash のブレース展開（`a{b,c}d` → abd acd、入れ子も可）。`{a..b}` の範囲は展開しない。"""
+    depth, start = 0, None
+    for i, c in enumerate(s):
+        if c == "{" and not (i and s[i - 1] == "$"):
+            if depth == 0:
+                start = i
+            depth += 1
+        elif c == "}" and depth:
+            depth -= 1
+            if depth == 0 and start is not None:
+                parts = _split_top_commas(s[start + 1:i])
+                if len(parts) > 1:
+                    out = []
+                    for part in parts:
+                        out.extend(_brace_expand(s[:start] + part + s[i + 1:], limit))
+                        if len(out) >= limit:
+                            break
+                    return out[:limit]
+                start = None
+    return [s]
+
+
 def _worktrees_in_target(p: str) -> list:
-    """消す先 p が消しうる linked worktree。glob（`*` など）はシェルと同じく展開してから見る。"""
-    paths = glob.glob(p) if glob.has_magic(p) else [p]
-    return [w for q in paths for w in _linked_worktrees_under(os.path.normpath(q))]
+    """消す先 p が消しうる linked worktree。ブレース展開と glob（`*` など）はシェルと同じく展開してから見る。"""
+    paths = []
+    for b in _brace_expand(p):
+        paths.extend(glob.glob(b) if glob.has_magic(b) else [b])
+    return list(dict.fromkeys(w for q in paths for w in _linked_worktrees_under(os.path.normpath(q))))
 
 
 def _inside_worktree(p: str) -> bool:
@@ -1034,6 +1089,9 @@ def rule_worktree_guard(command: str):
                     targets.append((t, os.path.normpath(v) if v else None))
             continue
         starts = _find_delete_starts(tokens)
+        # 条件付きの `find … -delete`（`-name '*.pyc'` など）は開始パスを丸ごと消さない。
+        # -delete は中身のあるフォルダを消せないので、~/.worktrees の外では worktree の root を消す心配がない
+        filtered_delete_only = starts is not None and _find_filtered(tokens) and not _find_exec_deletes(tokens)
         if starts is not None:
             paths = starts
         elif base == "trash" or (base == "rm" and _is_recursive_rm(tokens)):
@@ -1052,7 +1110,7 @@ def rule_worktree_guard(command: str):
                 exp = os.path.normpath(v)
                 if _under_worktrees(exp):
                     targets.append((t, exp))
-                else:
+                elif not filtered_delete_only:
                     targets.extend((t, w) for w in _worktrees_in_target(exp))
                 continue
             # 相対パス: 実行される cwd で解決する（`cd ~/.worktrees && rm -rf name` 等）。
@@ -1065,7 +1123,7 @@ def rule_worktree_guard(command: str):
             if _under_worktrees(exp):
                 if not _inside_worktree(exp):
                     targets.append((t, exp))
-            else:
+            elif not filtered_delete_only:
                 targets.extend((t, w) for w in _worktrees_in_target(exp))
     bad = list(dict.fromkeys(t for t, p in targets if p is None or _worktree_state(p) != "merged_clean"))
     if not bad:
