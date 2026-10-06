@@ -24,10 +24,11 @@ matcher は "Bash"（ツール名しかマッチできない）なので全 Bash
                    ラッパーの長いオプション・短いオプションの束の値も読み飛ばす。開始パスを
                    省いた find はカレントから、条件なしの `find . -delete` は `rm -rf .` と
                    同じ扱い(2026-10-06)。
-  2. push-freshness : git push 前に origin/main より behind でないことを検証。
-                   spinoff 等で古い main から切ったブランチを最新に追従させ、
+  2. push-freshness : git push 前に origin/<既定ブランチ> より behind でないことを検証。
+                   既定ブランチは origin/HEAD（無ければ origin/main・origin/master）。
+                   spinoff 等で古い既定ブランチから切ったブランチを最新に追従させ、
                    テキスト競合だけでなく意味的ドリフト(シグネチャ変更等)を
-                   merge+test で拾わせる。fetch できない(offline)/main 上/behind=0
+                   merge+test で拾わせる。fetch できない(offline)/既定ブランチ上/behind=0
                    なら素通り。behind>0 のみ deny。
                    **通過マーカーは無い**(2026-09-22 廃止)。hook 自身が behind を
                    再計算するので、「取り込んだ」という申告を信じる必要がない。
@@ -738,6 +739,18 @@ def _git(args, cwd, timeout=8):
     )
 
 
+def _default_branch(cwd):
+    """リポの既定ブランチ。origin/HEAD が無ければ origin/main・origin/master の有る方。"""
+    r = _git(["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"], cwd, timeout=5)
+    name = r.stdout.strip() if r.returncode == 0 else ""
+    if name.startswith("origin/"):
+        return name[len("origin/"):]
+    for cand in ("main", "master"):
+        if _git(["rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{cand}"], cwd, timeout=5).returncode == 0:
+            return cand
+    return None
+
+
 def rule_push_freshness(command: str):
     # **通過マーカーは持たない。** 以前は特定の環境変数を command の先頭に付ければ
     # 検証の中身を一切見ずに素通りさせていたが、それは Claude 自身が文字列を足すだけで
@@ -755,11 +768,12 @@ def rule_push_freshness(command: str):
         if r.returncode != 0:
             return None
         branch = r.stdout.strip()
-        if branch in ("main", "master", "HEAD"):
-            return None  # main 系を push するときは対象外
-        # origin/main を取得 (network。offline/slow は素通りさせる=push は元々 network 前提)
-        _git(["fetch", "origin", "main", "--quiet"], cwd)
-        r = _git(["rev-list", "--count", "HEAD..origin/main"], cwd)
+        base = _default_branch(cwd)
+        if base is None or branch in (base, "main", "master", "HEAD"):
+            return None  # 既定ブランチ自体を push するときは対象外
+        # origin/<既定ブランチ> を取得 (network。offline/slow は素通りさせる=push は元々 network 前提)
+        _git(["fetch", "origin", base, "--quiet"], cwd)
+        r = _git(["rev-list", "--count", f"HEAD..origin/{base}"], cwd)
         if r.returncode != 0:
             return None
         behind = int(r.stdout.strip() or "0")
@@ -769,14 +783,14 @@ def rule_push_freshness(command: str):
         return None
     return deny(
         f"🛑 push-freshness ゲート(グローバルhook): 現ブランチ '{branch}' は "
-        f"origin/main より {behind} commits 遅れています。\n"
-        "古い main から切ったまま push すると、テキスト競合だけでなく "
+        f"origin/{base} より {behind} commits 遅れています。\n"
+        f"古い {base} から切ったまま push すると、テキスト競合だけでなく "
         "意味的ドリフト(関数シグネチャ変更等・自動マージは通るが実行時に壊れる)を "
         "見落とします。push 前に最新を取り込み、テストで両立を確認すること:\n"
-        "  (1) git merge origin/main   (競合は解消)\n"
+        f"  (1) git merge origin/{base}   (競合は解消)\n"
         "  (2) プロジェクトのテスト/ビルドをフル実行し pass を確認\n"
         "  (3) そのまま push を再実行する\n"
-        "(rebase 運用なら merge の代わりに git rebase origin/main でも可)。\n"
+        f"(rebase 運用なら merge の代わりに git rebase origin/{base} でも可)。\n"
         "**このゲートを黙らせる環境変数やマーカーは無い。** behind が 0 になれば自動的に通る。\n"
         "古い base を意図して push する必要がある場合(backport 等)は、Claude ではなく"
         "ユーザーが直接実行すること。"
@@ -816,7 +830,7 @@ def rule_main_commit_freshness(command: str):
         if r.returncode != 0:
             return None
         branch = r.stdout.strip()
-        if branch not in ("main", "master"):
+        if branch not in ("main", "master", _default_branch(cwd)):
             return None  # feature ブランチは rule_push_freshness が push 時に見る
         # fetch は best-effort（offline なら素通り＝commit を邪魔しない）
         _git(["fetch", "origin", branch, "--quiet"], cwd)
@@ -832,12 +846,12 @@ def rule_main_commit_freshness(command: str):
         f"🛑 main-freshness ゲート(グローバルhook): ローカル '{branch}' は "
         f"origin/{branch} より {behind} commits 遅れています。\n"
         "このまま commit すると push が non-fast-forward で弾かれ、積み直しになります。"
-        "さらに scheduler の shell ジョブは main チェックアウトを直に実行するため、"
-        "古い main のままだと**マージ済みのコードが live にならない**穴もあります。\n"
-        "  (1) git pull --ff-only origin main   (未コミット変更があり衝突するなら先に commit/stash。"
+        "さらに、このチェックアウトを直に実行しているジョブがあれば、"
+        "古いままだと**マージ済みのコードが動かない**穴もあります。\n"
+        f"  (1) git pull --ff-only origin {branch}   (未コミット変更があり衝突するなら先に commit/stash。"
         "自動 stash は事故るので手動で判断すること)\n"
         "  (2) 問題なければ commit を再実行\n"
-        "意図的に古い main の上に積む場合のみ、先頭に `MAIN_FRESHNESS_OK=1 ` を付けて再実行。"
+        f"意図的に古い {branch} の上に積む場合のみ、先頭に `MAIN_FRESHNESS_OK=1 ` を付けて再実行。"
     )
 
 
@@ -859,7 +873,10 @@ def _worktree_state(path: str):
         # 最初に解決できた base だけで判定しない — origin/main がローカル main より
         # 古い repo では「ローカル main へ取り込み済み」を見逃して deny する（実測21コミット差）。
         resolved = False
-        for base in ("origin/main", "main", "origin/master", "master"):
+        default = _default_branch(p)
+        bases = ([f"origin/{default}", default] if default not in (None, "main", "master") else []) \
+            + ["origin/main", "main", "origin/master", "master"]
+        for base in bases:
             r = _git(["rev-list", "--count", "HEAD", "^" + base], p)
             if r.returncode == 0:
                 resolved = True

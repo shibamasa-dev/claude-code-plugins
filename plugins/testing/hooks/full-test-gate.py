@@ -6,7 +6,7 @@
   {
     "command": "cd etl/database/stored_procedures && python -m pytest tests/ -q",  # 全体テスト（リポジトリ直下で実行）
     "paths": ["etl/database"],            # 変更量を数える対象パス
-    "base": "origin/main",                # 既定 origin/main
+    "base": "origin/main",                # 省略時はリポの既定ブランチ（origin/HEAD。無ければ origin/main）
     "thresholds": {"lines": 500, "commits": 10, "days": 14},   # どれかを超えたら通知
     "skipped_regex": "(\\d+) skipped",   # 出力から skip 件数を拾う（任意）
     "max_skipped": 20,                    # これを超えたら記録しない（任意）
@@ -49,6 +49,16 @@ def load_project(cwd):
     return cfg, top, os.path.join(STATE_DIR, key + ".json")
 
 
+def default_base(top):
+    """設定に base が無いときの比較先。origin/HEAD の指す先、無ければ origin/main。"""
+    rc, ref = git(top, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+    return ref if rc == 0 and ref.startswith("origin/") else "origin/main"
+
+
+def base_of(top, cfg):
+    return cfg.get("base") or default_base(top)
+
+
 def load_state(path):
     try:
         with open(path) as f:
@@ -85,7 +95,7 @@ def cmd_status(cwd):
     state = load_state(sp)
     if not state:
         print("全体テストの記録なし。full-test-gate run"); return 0
-    text, _ = describe(state, measure(top, cfg, state["sha"], cfg.get("base", "origin/main")))
+    text, _ = describe(state, measure(top, cfg, state["sha"], base_of(top, cfg)))
     print(text + f"（skip {state.get('skipped')}）")
     return 0
 
@@ -94,7 +104,7 @@ def cmd_run(cwd):
     cfg, top, sp = load_project(cwd)
     if not cfg:
         print("対象外（.claude/full-test.json が無い）"); return 1
-    base, paths = cfg.get("base", "origin/main"), cfg.get("paths") or ["."]
+    base, paths = base_of(top, cfg), cfg.get("paths") or ["."]
     rc_same, _ = git(top, "diff", "--quiet", base, "--", *paths)
     p = subprocess.Popen(cfg["command"], shell=True, cwd=top, stdout=subprocess.PIPE,
                          stderr=subprocess.STDOUT, text=True)
@@ -127,10 +137,10 @@ def hook_session_start(cwd):
         return
     state = load_state(sp)
     if not state:
-        print("[full-test] 全体テストの記録がありません。main の状態で "
+        print(f"[full-test] 全体テストの記録がありません。{base_of(top, cfg)} と同じ状態で "
               "`full-test-gate run` を 1 回実行すると、以後は変更量で通知します。")
         return
-    m = measure(top, cfg, state["sha"], cfg.get("base", "origin/main"))
+    m = measure(top, cfg, state["sha"], base_of(top, cfg))
     text, days = describe(state, m)
     th = {**DEFAULT_THRESHOLDS, **(cfg.get("thresholds") or {})}
     over = [k for k, v in (("lines", m["lines"]), ("commits", m["commits"])) if v >= th[k]]

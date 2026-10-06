@@ -2,6 +2,11 @@
 
 testing プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.1.1] - 2026-10-06
+
+### Fixed
+- full-test-gate：`base` を設定していないときの比較先を `origin/main` 固定から既定ブランチ（origin/HEAD、無ければ `origin/main`）にした
+
 ## [0.1.0] - 2026-10-06
 
 ### Added
