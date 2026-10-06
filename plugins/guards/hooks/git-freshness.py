@@ -96,7 +96,7 @@ def _default_branch(cwd):
 def _repo_state(cwd, branch):
     """(behind, dirty_files) を返す。判定不能なら None。"""
     # fetch は best-effort（offline なら素通り＝邪魔しない）
-    _git(["fetch", "origin", branch, "--quiet"], cwd)
+    _git(["fetch", "--quiet", "origin", "--", branch], cwd)
     r = _git(["rev-list", "--count", f"HEAD..origin/{branch}"], cwd)
     if r.returncode != 0:
         return None
@@ -248,7 +248,7 @@ def rule_post_merge_pull_mcp(tool_input: dict):
         branch = _current_branch(cwd)
         if not branch or branch == "HEAD":
             return None
-        _git(["fetch", "origin", branch, "--quiet"], cwd)
+        _git(["fetch", "--quiet", "origin", "--", branch], cwd)
         if _git(["merge-base", "--is-ancestor", sha, f"origin/{branch}"], cwd).returncode != 0:
             return None  # マージ先は手元のブランチではない
     except (subprocess.TimeoutExpired, OSError):

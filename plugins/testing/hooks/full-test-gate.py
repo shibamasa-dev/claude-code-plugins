@@ -69,7 +69,7 @@ def _has_remote_ref(top, name):
     if git(top, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{name}")[0] == 0:
         return True
     try:
-        subprocess.run(["git", "-C", top, "fetch", "origin", name, "--quiet"], capture_output=True, stdin=subprocess.DEVNULL,
+        subprocess.run(["git", "-C", top, "fetch", "--quiet", "origin", "--", name], capture_output=True, stdin=subprocess.DEVNULL,
                        timeout=5, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
     except (subprocess.TimeoutExpired, OSError):
         return False

@@ -788,7 +788,7 @@ def rule_push_freshness(command: str):
         if base is None or branch in (base, "main", "master", "HEAD"):
             return None  # 既定ブランチ自体を push するときは対象外
         # origin/<既定ブランチ> を取得 (network。offline/slow は素通りさせる=push は元々 network 前提)
-        _git(["fetch", "origin", base, "--quiet"], cwd)
+        _git(["fetch", "--quiet", "origin", "--", base], cwd)
         r = _git(["rev-list", "--count", f"HEAD..origin/{base}"], cwd)
         if r.returncode != 0:
             return None
@@ -849,7 +849,7 @@ def rule_main_commit_freshness(command: str):
         if branch not in ("main", "master", _default_branch(cwd, online=False)):
             return None  # feature ブランチは rule_push_freshness が push 時に見る
         # fetch は best-effort（offline なら素通り＝commit を邪魔しない）
-        _git(["fetch", "origin", branch, "--quiet"], cwd)
+        _git(["fetch", "--quiet", "origin", "--", branch], cwd)
         r = _git(["rev-list", "--count", f"HEAD..origin/{branch}"], cwd)
         if r.returncode != 0:
             return None

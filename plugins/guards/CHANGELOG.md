@@ -10,6 +10,7 @@ guards プラグインの変更履歴。書式は [Keep a Changelog](https://kee
 - フックのメッセージから特定の運用（スケジューラ）を前提にした書き方を外した
 - 既定ブランチは origin に問い合わせて決める（`git ls-remote --symref`、読むだけ）。繋がらなければ手元の origin/HEAD、それも無ければ main / master。手元の origin/HEAD は fetch で更新されず、origin 側で既定を変えると古いままになるため。commit 前のチェックだけは通信せず手元の値を使う
 - git-freshness：`gh pr merge` の `-R` のホスト付きの形（`github.com/OWNER/REPO`）と、PR の URL を指定したときも、手元の origin と同じリポかを確かめる。ホストを省いた `-R OWNER/REPO` は owner/repo だけで比べる（GitHub Enterprise の clone でも動く）
+- `git fetch` に渡すブランチ名の前に `--` を置き、`-` で始まる名前がオプションとして読まれないようにした
 
 ## [0.2.0] - 2026-10-06
 
