@@ -35,6 +35,7 @@ matcher は "Bash"（ツール名しかマッチできない）なので全 Bash
                    マーカー方式は Claude が文字列を足すだけで検証ゼロで通過できた。
 """
 import glob
+import itertools
 import json
 import os
 import re
@@ -1037,8 +1038,9 @@ def _split_top_commas(body: str) -> list:
 _SEQ_RE = re.compile(r"^(-?\d+|[A-Za-z])\.\.(-?\d+|[A-Za-z])(?:\.\.(-?\d+))?$")
 
 
-def _brace_seq(body: str):
-    """`{1..3}`・`{a..c}`・`{01..10..2}` の中身を並べる。範囲の形でなければ None。"""
+def _brace_seq(body: str, limit: int = 256):
+    """`{1..3}`・`{a..c}`・`{01..10..2}` の中身を並べる（limit + 1 個まで。`{1..1000000000}` で
+    固まらないように）。範囲の形でなければ None。"""
     m = _SEQ_RE.match(body)
     if not m:
         return None
@@ -1047,11 +1049,11 @@ def _brace_seq(body: str):
         x, y = int(a), int(b)
         width = max(len(a), len(b)) if (a.lstrip("-").startswith("0") or b.lstrip("-").startswith("0")) else 0
         rng = range(x, y + 1, step) if x <= y else range(x, y - 1, -step)
-        return [str(n).zfill(width) if width else str(n) for n in rng]
+        return [str(n).zfill(width) if width else str(n) for n in itertools.islice(rng, limit + 1)]
     if a.isalpha() and b.isalpha():
         x, y = ord(a), ord(b)
         rng = range(x, y + 1, step) if x <= y else range(x, y - 1, -step)
-        return [chr(n) for n in rng]
+        return [chr(n) for n in itertools.islice(rng, limit + 1)]
     return None
 
 
@@ -1070,7 +1072,7 @@ def _brace_expand(s: str, limit: int = 256) -> list:
                 body = s[start + 1:i]
                 parts = _split_top_commas(body)
                 if len(parts) == 1:
-                    parts = _brace_seq(body) or parts
+                    parts = _brace_seq(body, limit) or parts
                 if len(parts) > 1:
                     out = []
                     for part in parts:
@@ -1088,11 +1090,25 @@ def _worktrees_in_target(p: str, limit: int = 256) -> list:
     シェルでは文字どおりに渡るが、ここには引用符が外れて届くので、文字どおりのパスも合わせて見る。"""
     expanded = _brace_expand(p, limit)
     found = [None] if len(expanded) > limit else []
-    paths = []
+    # 引用符で囲んだ `{a,b}` もシェルでは文字どおりに渡る
+    paths = [p] if expanded != [p] and os.path.lexists(p) else []
     for b in expanded[:limit]:
         paths.extend(glob.glob(b) + ([b] if os.path.lexists(b) else []) if glob.has_magic(b) else [b])
     found += [w for q in dict.fromkeys(paths) for w in _linked_worktrees_under(os.path.normpath(q))]
     return list(dict.fromkeys(found))
+
+
+_TMPDIR_RE = re.compile(r"^\$(?:TMPDIR\b|\{TMPDIR\}|\{TMPDIR:?-([^}$`]*)\})(.*)$", re.S)
+
+
+def _tmpdir_value(s: str):
+    """`$TMPDIR/x`・`${TMPDIR}/x`・`${TMPDIR:-/tmp}/x` を、フックが受け継いだ TMPDIR で解決する。
+    解決できなければ None。"""
+    m = _TMPDIR_RE.match(s)
+    if not m or "$" in m.group(2) or "`" in m.group(2):
+        return None
+    base = os.environ.get("TMPDIR") or m.group(1)
+    return os.path.normpath(base + m.group(2)) if base else None
 
 
 def _inside_worktree(p: str) -> bool:
@@ -1142,8 +1158,6 @@ def rule_worktree_guard(command: str):
         # -delete は中身のあるフォルダを消せないので、~/.worktrees の外では worktree の root を消す心配がない
         filtered = starts is not None and _find_filtered(tokens)
         filtered_delete_only = filtered and not _find_exec_deletes(tokens)
-        # 条件付きの `find … -exec rm` は条件に合うものしか消さないので、開始パスが大きくて
-        # 走査しきれない（None）だけでは止めない。見つかった worktree は従来どおり判定する。
         # このルールが守るのは worktree の丸ごとの削除。worktree の中のファイルを条件で消す
         # （`find . -type f -delete` など）のは、サブパスの削除と同じく対象外（メインの作業ツリーでも同じ危険がある）
         if starts is not None:
@@ -1155,7 +1169,14 @@ def rule_worktree_guard(command: str):
         if cmd.xargs and (risky_unknown or cwd_in_wt):
             targets.append(("(xargs の入力)", None))
         for t in paths:
-            v = _resolved_value(t.strip('"').strip("'"), cmd.assigns)
+            raw = t.strip('"').strip("'")
+            v = _resolved_value(raw, cmd.assigns)
+            if v is None and raw.startswith(SAFE_VAR_PREFIXES):
+                # rm-guard は $TMPDIR の下を安全扱いにするので、ここで行き先を確かめる（分からなければ止める）
+                v = _tmpdir_value(_resolve(raw, cmd.assigns))
+                if v is None:
+                    targets.append((t, None))
+                    continue
             if v is None:
                 if risky_unknown:
                     targets.append((t, None))
@@ -1165,7 +1186,7 @@ def rule_worktree_guard(command: str):
                 if _under_worktrees(exp):
                     targets.append((t, exp))
                 elif not filtered_delete_only:
-                    targets.extend((t, w) for w in _worktrees_in_target(exp) if w is not None or not filtered)
+                    targets.extend((t, w) for w in _worktrees_in_target(exp))
                 continue
             # 相対パス: 実行される cwd で解決する（`cd ~/.worktrees && rm -rf name` 等）。
             # worktree の中のサブパス（build/ 等の掃除）は対象外
@@ -1178,7 +1199,7 @@ def rule_worktree_guard(command: str):
                 if not _inside_worktree(exp):
                     targets.append((t, exp))
             elif not filtered_delete_only:
-                targets.extend((t, w) for w in _worktrees_in_target(exp) if w is not None or not filtered)
+                targets.extend((t, w) for w in _worktrees_in_target(exp))
     bad = list(dict.fromkeys(t for t, p in targets if p is None or _worktree_state(p) != "merged_clean"))
     if not bad:
         return None
