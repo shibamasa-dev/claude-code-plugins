@@ -272,6 +272,8 @@ function sceneWarnings(m) {
   if (Math.abs(sc[0].start) > 1e-6) w.push(`最初のシーンが 0 秒から始まっていない（${sc[0].start}）`);
   for (let i = 1; i < sc.length; i++) if (Math.abs(sc[i].start - sc[i - 1].end) > 1e-6) w.push(`${sc[i - 1].id}→${sc[i].id} の間に隙間か重なり（${sc[i - 1].end}→${sc[i].start}）`);
   if (Math.abs(sc[sc.length - 1].end - m.duration) > 1e-6) w.push(`最後のシーンの終わり（${sc[sc.length - 1].end}）が尺（${m.duration}）と合わない`);
+  const dup = sc.map((s) => s.id).filter((id, i, a) => a.indexOf(id) !== i);
+  if (dup.length) w.push(`シーンの id が重複している（${[...new Set(dup)].join(', ')}）。カット表の画像と FB は id で引くので一意にする`);
   for (const s of sc) {
     const miss = ['message', 'screen', 'motion', 'sound', 'transition'].filter((k) => !s[k]);
     if (miss.length) w.push(`${s.id}: シーン契約の欄が空（${miss.join(', ')}）`);
@@ -524,7 +526,11 @@ function storyboardMd(sb, dir, P) {
 // 人は feedback/v<N>.json に版 N へのフィードバックを書き、エージェントは同じファイルの response に対応を書く。
 // 次の storyboard は v<N+1> になる（版番号 = FB の付いた最新の版 + 1。FB が無ければ 1）
 const VERSION_DIR = /^v\d+$/;
-const cutPng = (dir, id, which) => path.join(dir, `${String(id).replace(/[^\w.-]/g, '_')}-${which}.png`);
+// ファイル名に使えない文字（日本語の ID を含む）は _ にし、元の ID のハッシュを足して衝突させない
+const cutPng = (dir, id, which) => {
+  const safe = String(id).replace(/[^\w.-]/g, '_');
+  return path.join(dir, `${safe === String(id) ? safe : `${safe}-${sha(String(id)).slice(0, 8)}`}-${which}.png`);
+};
 
 function loadFeedback(proj) {
   const dir = path.join(proj, 'feedback');
@@ -588,6 +594,7 @@ function beatPos(t, B, fps) {
   const b = ((t - B.offset) * B.bpm) / 60;
   const on = Math.abs(b - Math.round(b)) <= (0.5 / fps) * (B.bpm / 60);
   const n = on ? Math.round(b) : b;
+  if (n < 0) return `${num(n)}拍（頭出し ${num(B.offset)}s より前）`;
   return on ? `小節${Math.floor(n / B.beatsPerBar) + 1} 拍${(n % B.beatsPerBar) + 1}（${n}拍）` : `${num(n)}拍`;
 }
 

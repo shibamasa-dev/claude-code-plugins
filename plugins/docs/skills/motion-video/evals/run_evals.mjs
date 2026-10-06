@@ -196,6 +196,21 @@ async function runCutsheetCase(c) {
   const s1b = render('storyboard', P);
   add('FB が無いまま再実行しても版は v1 のまま（v2/ を作らない）', s1b.code === 0 && sbJson()?.version === 1 && !fs.existsSync(path.join(sbDir, 'v2')), `version=${sbJson()?.version} v2=${fs.existsSync(path.join(sbDir, 'v2'))}`);
 
+  // 1b. 日本語のカット ID（ASCII 以外は _ になる）と、頭出し（audio.offset）より前に始まるカット
+  const jd = copyFixture(c.fixture, `${c.name}-ja`);
+  const jsrc = path.join(jd, 'video.js');
+  let js = fs.readFileSync(jsrc, 'utf8');
+  for (const [from, to] of Object.entries(e.jaIds)) js = js.replace(`{ id: '${from}',`, `{ id: '${to}',`);
+  fs.writeFileSync(jsrc, js.replace('bpm: 120,', `bpm: 120, offset: ${e.offset.value},`));
+  const sj = render('storyboard', path.relative(WORK, jd));
+  const hj = fs.existsSync(path.join(jd, 'out/storyboard/cutsheet.html')) ? fs.readFileSync(path.join(jd, 'out/storyboard/cutsheet.html'), 'utf8') : '';
+  const jaSrc = Object.values(e.jaIds).map((id) => [...row(hj, id).matchAll(/<img src="([^"]+)"/g)].map((m) => m[1]));
+  const jaFiles = jaSrc.flat();
+  add(`同じ長さの日本語のカット ID（${Object.values(e.jaIds).join('・')}）でも はじめ / おわり の画像が別のファイルになる`, sj.code === 0 && jaFiles.length === 4 && new Set(jaFiles).size === 4 && jaFiles.every((f) => fs.existsSync(path.join(jd, 'out/storyboard', f))), `exit=${sj.code} img=${jaFiles.join(',')}`);
+  const pre = row(hj, Object.values(e.jaIds)[0]).replace(/<[^>]+>/g, ' ');
+  const post = row(hj, Object.values(e.jaIds)[1]).replace(/<[^>]+>/g, ' ');
+  add(`頭出し ${e.offset.value}s より前に始まるカットは負の拍で出て、小節0・拍0 にならない（${e.offset.pre} / ${e.offset.post}）`, pre.includes(e.offset.pre) && !/小節0|拍0/.test(pre) && post.includes(e.offset.post), `${pre.replace(/\s+/g, ' ').slice(0, 80)} | ${post.replace(/\s+/g, ' ').slice(0, 80)}`);
+
   // 2. FB を置いて v2
   const fbFile = path.join(dir, 'feedback', 'v1.json');
   fs.mkdirSync(path.dirname(fbFile), { recursive: true });
