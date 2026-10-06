@@ -5,7 +5,8 @@ workflow プラグインの変更履歴。書式は [Keep a Changelog](https://k
 ## [0.1.7] - 2026-10-06
 
 ### Removed
-- `pr-review-wait`・`pr-rereview`・コマンド `review-and-fix` を review プラグインへ、`testcase-generator`・`testcase-lint` を testing プラグインへ、`codebase-doctor`・`remote-setup`・`openapi-to-skills` を devtools プラグインへ移した。引き続き使うにはそれぞれのプラグインを入れる
+- `pr-review-wait`・`pr-rereview`・コマンド `review-and-fix` を review プラグインへ、`testcase-generator`・`testcase-lint` を testing プラグインへ、`codebase-doctor`・`remote-setup` を devtools プラグインへ移した。引き続き使うにはそれぞれのプラグインを入れる
+- `openapi-to-skills` を削除した（使われていないため）
 
 ## [0.1.6] - 2026-10-06
 

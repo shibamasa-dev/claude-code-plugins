@@ -27,7 +27,7 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 | [workflow](plugins/workflow/README.md) | issue 運用・セッションの引き継ぎ・runbook 記録などのスキルとフック |
 | [review](plugins/review/README.md) | PR のレビューを回す。レビュー bot の結果待ち・再レビュー依頼・AI レビューから修正まで |
 | [testing](plugins/testing/README.md) | テストを設計して回す。Gherkin のテストケース作成・成果物の検証・全体テストのゲート |
-| [devtools](plugins/devtools/README.md) | リポの立ち上げと道具づくり。基本設定の点検・クラウド環境のセットアップ・OpenAPI からのスキル生成 |
+| [devtools](plugins/devtools/README.md) | リポの立ち上げと道具づくり。基本設定の点検・クラウド環境のセットアップ |
 | [docs](plugins/docs/README.md) | 画像生成プロンプト・コードで描くモーション動画のスキル |
 
 スキル・フックの一覧と設定は、各プラグインの README にある。
@@ -35,7 +35,7 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 ## 前提
 
 - macOS / Linux、`python3`、`git`、`gh`
-- `motion-video` は Node.js・Chrome・ffmpeg、`openapi-to-skills` は `uv`
+- `motion-video` は Node.js・Chrome・ffmpeg
 
 ## コントリビュート
 

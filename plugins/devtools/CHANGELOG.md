@@ -5,4 +5,4 @@ devtools プラグインの変更履歴。書式は [Keep a Changelog](https://k
 ## [0.1.0] - 2026-10-06
 
 ### Added
-- workflow プラグインから `codebase-doctor`・`remote-setup`・`openapi-to-skills` を移した。`codebase-doctor` は testing プラグインの `testcase-generator` を名前で参照し、testing が無ければテスト設計の点検を「未実施」と報告する
+- workflow プラグインから `codebase-doctor`・`remote-setup` を移した。`codebase-doctor` は testing プラグインの `testcase-generator` を名前で参照し、testing が無ければテスト設計の点検を「未実施」と報告する

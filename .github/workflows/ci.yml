@@ -40,8 +40,6 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: uv（openapi-to-skills のテストが変換スクリプトを uv で動かす）
-        run: brew install uv
       - name: hooks の回帰スイープ（食い違いが 1 件でもあれば失敗）
         run: |
           git config --global user.name ci
