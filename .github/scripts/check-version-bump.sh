@@ -2,7 +2,7 @@
 # プラグインの中身を変えたのに plugin.json の version が base のままなら落とす。
 # version が同じだと `claude plugin update` が「最新」と判断して中身を入れ替えない（実測 2026-10-04）。
 # テスト（tests/）・README・CHANGELOG は利用者の動作に関係しないので対象外。base に無い新しいプラグインも対象外。
-# version を上げたプラグインに CHANGELOG.md があれば、同じ版の見出し（## [x.y.z]）が無いと落とす。
+# version を上げたプラグインは、CHANGELOG.md に同じ版の見出し（行頭の ## [x.y.z]）が無いと落とす（ファイルが無くても落とす）。
 # 使い方: check-version-bump.sh <base の ref>（例: origin/main）
 set -u
 base=$1
@@ -20,7 +20,8 @@ for d in plugins/*/; do
     echo "::error file=$p/.claude-plugin/plugin.json::$p の中身が変わったのに version が上がっていない（$old -> $new。上げないと plugin update で入らない）"
     printf '%s\n' "$changed" | sed 's/^/  変更: /'
     fail=1
-  elif [ -f "$p/CHANGELOG.md" ] && ! grep -qF "## [$new]" "$p/CHANGELOG.md"; then
+  elif ! awk -v h="## [$new]" 'index($0, h) == 1 { found = 1 } END { exit !found }' "$p/CHANGELOG.md" 2>/dev/null; then
+    # 行頭の見出しだけを数える（本文中の文字列や、CHANGELOG.md を消した場合で通さない）
     echo "::error file=$p/CHANGELOG.md::$p の version を $new に上げたのに CHANGELOG.md に「## [$new]」の見出しが無い"
     fail=1
   else
