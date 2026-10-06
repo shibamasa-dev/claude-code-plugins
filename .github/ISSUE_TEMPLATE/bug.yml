@@ -1,0 +1,36 @@
+name: 不具合
+description: フックやスキルが期待どおりに動かない
+labels: [bug]
+body:
+  - type: dropdown
+    id: plugin
+    attributes:
+      label: プラグイン
+      options: [guards, workflow, docs, マーケットプレイス全体]
+    validations:
+      required: true
+  - type: input
+    id: component
+    attributes:
+      label: フック・スキル・コマンドの名前
+      placeholder: bash-guard / issue-ops など
+  - type: textarea
+    id: what
+    attributes:
+      label: 何が起きたか
+      description: 期待した動きと実際の動き。止められたならそのメッセージも
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 再現手順
+      description: 実行したコマンドやプロンプト。個人のパスやトークンは伏せる
+  - type: input
+    id: versions
+    attributes:
+      label: 環境
+      description: プラグインの version、`claude --version`、OS
+      placeholder: guards 0.1.3 / Claude Code 2.1.290 / macOS 26
+    validations:
+      required: true

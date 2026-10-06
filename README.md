@@ -1,5 +1,8 @@
 # claude-code-plugins
 
+[![ci](https://github.com/shibamasa-dev/claude-code-plugins/actions/workflows/ci.yml/badge.svg)](https://github.com/shibamasa-dev/claude-code-plugins/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Claude Code 用のプラグインマーケットプレイス。日々の開発で使っているガード・運用スキルを、汎用にして公開したもの。スキルの本文とメッセージは日本語。
 
 ## 導入
@@ -28,18 +31,10 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 - macOS / Linux、`python3`、`git`、`gh`
 - `motion-video` は Node.js・Chrome・ffmpeg、`openapi-to-skills` は `uv`
 
-## コントリビュート前の確認
+## コントリビュート
 
-コミット前に、個人環境（ホームの絶対パス・メールアドレス）の混入とコミット作者のメールを検査するフックを同梱している。clone ごとに 1 回（フックを更新したときも）、中身を確認してから入れる:
-
-```bash
-bash .githooks/install.sh
-```
-
-`origin/main` のフックと検査スクリプトを `.git/hooks/` にコピーして使う（作業ツリーのファイルを直接実行しないので、外部の PR ブランチを checkout してもそのコードは走らない）。`install.sh` 自体は作業ツリーから実行されるので、main を checkout した状態で中身を確認してから実行する。既に別の場所のフック（グローバルの `core.hooksPath` 等）を使っていれば、そこには書き込まず、検査のあとに続けて呼ぶ。
-
-追加で止めたい固有名があれば `~/.config/claude-code-plugins/blocked-patterns` に 1 行 1 正規表現で書く（リポには置かない）。同じ検査は CI（`.github/workflows/`）でも走る。
+コミット前の検査フックの入れ方、version の上げ方、リリースの手順は [CONTRIBUTING.md](CONTRIBUTING.md)。脆弱性の報告は [SECURITY.md](SECURITY.md)。
 
 ## ライセンス
 
-MIT
+[MIT](LICENSE)

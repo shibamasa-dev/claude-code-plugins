@@ -1,0 +1,44 @@
+# main に入った version に、まだタグが無いプラグインだけ <plugin>--v<version> のタグを打つ。
+# 中身は claude plugin tag --push（plugin.json と marketplace.json の version の食い違いもそこで止まる）。
+# 依存の semver 範囲はこのタグに対して解決される（公式 plugins/dependencies）。
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write # タグの push
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: 新しい version にタグを打つ
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for d in plugins/*/; do
+            p=$(basename "$d")
+            v=$(jq -r '.version // empty' "$d.claude-plugin/plugin.json")
+            [ -n "$v" ] || continue
+            if git rev-parse -q --verify "refs/tags/$p--v$v" >/dev/null; then
+              echo "$p--v$v はもうある"
+              continue
+            fi
+            claude plugin tag "$d" --push
+          done

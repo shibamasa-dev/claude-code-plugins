@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 脆弱性の報告
+    url: https://github.com/shibamasa-dev/claude-code-plugins/security/advisories/new
+    about: フックのすり抜けなどは公開の issue にせず、ここから非公開で
