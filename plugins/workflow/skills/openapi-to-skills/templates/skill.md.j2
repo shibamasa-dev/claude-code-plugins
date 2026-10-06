@@ -1,14 +1,15 @@
 ---
-name: {{ meta.name }}
-description: {{ meta.description }}. Use when working with the {{ meta.title }} or when the user needs to interact with this API.
+{#- frontmatter の値はすべて JSON 文字列（＝YAML の二重引用スカラー）で出す。spec の改行やコロンで任意のキー（allowed-tools 等）を差し込ませない #}
+name: {{ meta.name | tojson }}
+description: {{ (meta.description ~ ". Use when working with the " ~ meta.title ~ " or when the user needs to interact with this API.") | tojson }}
 {% if meta.license -%}
-license: {{ meta.license.name }}{{ " (" ~ meta.license.url ~ ")" if meta.license.url else "" }}
+license: {{ (meta.license.name ~ (" (" ~ meta.license.url ~ ")" if meta.license.url else "")) | tojson }}
 {% endif -%}
 metadata:
-  api-version: "{{ meta.version }}"
-  openapi-version: "{{ meta.openapi_version }}"
+  api-version: {{ meta.version | string | tojson }}
+  openapi-version: {{ meta.openapi_version | string | tojson }}
 {%- if meta.contact %}
-  contact: "{{ meta.contact }}"
+  contact: {{ meta.contact | string | tojson }}
 {%- endif %}
 ---
 
