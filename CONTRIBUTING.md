@@ -33,7 +33,7 @@ for t in plugins/*/tests/run-all.sh; do bash "$t"; done   # テストは macOS �
 
 ## リリース
 
-main にマージすると、`release.yml` が version の上がったプラグインに `<plugin>--v<version>`（例: `guards--v0.1.3`）のタグを打つ。中身は `claude plugin tag --push` で、plugin.json と marketplace.json の version の食い違いもそこで止まる。CHANGELOG の「未リリース」は、次に version を上げる PR でリリース日に直す。
+main にマージして ci が通ると、`release.yml` が version の上がったプラグインに `<plugin>--v<version>`（例: `guards--v0.1.3`）のタグを打つ。中身は `claude plugin tag --push` で、plugin.json と marketplace.json の version の食い違いもそこで止まる。
 
 手で打つときは:
 

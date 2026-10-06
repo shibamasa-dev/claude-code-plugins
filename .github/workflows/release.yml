@@ -1,10 +1,13 @@
 # main に入った version に、まだタグが無いプラグインだけ <plugin>--v<version> のタグを打つ。
 # 中身は claude plugin tag --push（plugin.json と marketplace.json の version の食い違いもそこで止まる）。
 # 依存の semver 範囲はこのタグに対して解決される（公式 plugins/dependencies）。
+# タグは取り消せないので、main への push で ci が通ったコミットにだけ打つ（ci と並行に走らせない）。
 name: release
 
 on:
-  push:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -17,11 +20,16 @@ concurrency:
 
 jobs:
   tag:
+    # 手動実行は main を選んだときだけ（ci の結果は見ないので、緑を確かめてから回す）
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }} # ci が通ったコミットそのもの
           fetch-depth: 0
           fetch-tags: true
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
