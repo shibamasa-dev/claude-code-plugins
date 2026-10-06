@@ -561,6 +561,10 @@ def parse_auth_schemes(spec: dict) -> list[AuthSchemeDocument]:
             for flow in doc.flows:
                 validate_auth_url(name, "authorizationUrl", flow.authorization_url)
                 validate_auth_url(name, "tokenUrl", flow.token_url)
+                if flow.name == "clientCredentials" and flow.token_url is None:
+                    raise ValueError(
+                        f"securitySchemes.{name} の clientCredentials に tokenUrl がありません"
+                    )
         elif scheme["type"] == "openIdConnect":
             doc.openid_connect_url = scheme.get("openIdConnectUrl")
             validate_auth_url(name, "openIdConnectUrl", doc.openid_connect_url)
@@ -582,8 +586,8 @@ def parse_oauth_flows(flows: dict | None) -> list[OAuthFlowDocument]:
 
         result.append(OAuthFlowDocument(
             name=flow_name,
-            authorization_url=flow.get("authorizationUrl") if isinstance(flow.get("authorizationUrl"), str) else None,
-            token_url=flow.get("tokenUrl") if isinstance(flow.get("tokenUrl"), str) else None,
+            authorization_url=flow.get("authorizationUrl"),
+            token_url=flow.get("tokenUrl"),
             scopes=flow.get("scopes", {}),
         ))
 
@@ -798,6 +802,7 @@ def render(doc: SkillDocument, env: Environment) -> dict[str, str]:
             tmpl = env.get_template("token-manager.sh.j2")
             files[f"{skill_name}/auth/token-manager.sh"] = tmpl.render(
                 skill_name=skill_name,
+                auth_url_re=AUTH_URL_RE.pattern,
                 schemes=token_scheme_info,
             )
 

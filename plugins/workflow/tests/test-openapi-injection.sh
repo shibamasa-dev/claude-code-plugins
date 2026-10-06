@@ -91,6 +91,30 @@ components:
           scopes: {}
 YAML
 row '認証情報を平文の http:// に送る spec を拒否する' "$(conv "$T/http-url.yaml" -o "$T/out-http")" refuse
+sed 's#tokenUrl: http://auth.example.com/token#tokenUrl: 123#' "$T/http-url.yaml" > "$T/num-url.yaml"
+row 'tokenUrl が文字列でない spec を拒否する' "$(conv "$T/num-url.yaml" -o "$T/out-num")" refuse
+sed '/tokenUrl:/d' "$T/http-url.yaml" > "$T/no-url.yaml"
+row 'clientCredentials に tokenUrl が無い spec を拒否する' "$(conv "$T/no-url.yaml" -o "$T/out-nourl")" refuse
+
+echo '=== discovery が返す token_endpoint も平文の http:// なら使わない ==='
+cat > "$T/oidc.yaml" <<'YAML'
+openapi: 3.0.3
+info: {title: Oidc, version: "1"}
+paths: {}
+components:
+  securitySchemes:
+    oidc:
+      type: openIdConnect
+      openIdConnectUrl: https://auth.example.com/.well-known/openid-configuration
+YAML
+conv "$T/oidc.yaml" -o "$T/out-oidc" >/dev/null
+f=$(ls "$T"/out-oidc/*/auth/token-manager.sh 2>/dev/null | head -1)
+# curl を差し替えて discovery の応答だけを与え、resolve_token_url の出力を見る
+disc() { [ -n "$f" ] || { echo nofile; return; }
+  bash -c "set -euo pipefail; curl() { printf '%s' '$1'; }; $(sed -n '/^resolve_token_url()/,/^}/p' "$f"); SCHEME=oidc; resolve_token_url" 2>/dev/null || echo refuse; }
+row 'token_endpoint が http:// なら拒否する' "$(disc '{"token_endpoint":"http://evil.example.com/token"}')" refuse
+row 'token_endpoint が無ければ拒否する' "$(disc '{}')" refuse
+row 'token_endpoint が https:// なら使う' "$([ "$(disc '{"token_endpoint":"https://auth.example.com/token"}')" = https://auth.example.com/token ] && echo used || echo ng)" used
 
 echo '=== 検証をすり抜けた値もテンプレート側で引用される（二重の防御） ==='
 # 検証を通さずテンプレートを直接描画し、生成された resolve_token_url だけを実行する

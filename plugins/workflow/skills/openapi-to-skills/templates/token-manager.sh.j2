@@ -56,7 +56,8 @@ resolve_token_url() {
 {% for s in schemes %}
         {{ s.name | sh_quote }})
 {% if s.openid_connect_url %}
-            curl -sf {{ s.openid_connect_url | sh_quote }} | python3 -c "import sys,json; print(json.load(sys.stdin)['token_endpoint'])"
+            # discovery が返す token_endpoint も https のみ（http は localhost / 127.0.0.1 だけ）。認証情報を平文で送らない
+            curl -sf {{ s.openid_connect_url | sh_quote }} | python3 -c 'import sys,json,re; u=json.load(sys.stdin).get("token_endpoint"); ok=isinstance(u,str) and re.fullmatch(sys.argv[1],u); print(u) if ok else sys.exit("Error: discovery の token_endpoint は使えません: %r" % (u,))' {{ auth_url_re | sh_quote }}
 {% elif s.token_url %}
             echo {{ s.token_url | sh_quote }}
 {% endif %}
