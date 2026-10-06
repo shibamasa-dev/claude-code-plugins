@@ -196,9 +196,10 @@ that half is present. **Only presence — never judge the contents.**
 | `ui-terms.md` | only when the project has a UI — internal names ↔ on-screen labels |
 | `playbook.md` | when tests exist, or the phase is `test` — the preconditions a run needs |
 
-**Do not define the paths here.** `${CLAUDE_PLUGIN_ROOT}/skills/testcase-generator/references/perspectives-common.md`
-(section "プロジェクト固有の観点") is the single source for where these live. Read it and use
-what it says. A second copy of the layout here would drift from the first one.
+**Do not define the paths here.** `references/perspectives-common.md` of the `testcase-generator`
+skill (testing plugin; section "プロジェクト固有の観点") is the single source for where these live.
+Read it and use what it says. A second copy of the layout here would drift from the first one.
+If the testing plugin is not installed, report this check as not run and say why.
 
 **Which files apply**: `perspectives.md` always. `ui-terms.md` only when the project has a
 UI — that is, the detected stack renders something a person operates in a browser or a

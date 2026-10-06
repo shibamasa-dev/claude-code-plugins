@@ -1,0 +1,23 @@
+# devtools
+
+リポの立ち上げと道具づくりのスキル。
+
+## スキル
+
+| スキル | 使いどころ |
+|---|---|
+| `codebase-doctor` | リポに必要な基本（テスト・CI・lint・セキュリティの初期設定など）がそろっているかの点検 |
+| `remote-setup` | claude.ai/code や Cowork のクラウド環境用のセットアップ scaffold を作る |
+| `openapi-to-skills` | OpenAPI 定義から API 操作のスキルを生成する（`uv` が要る） |
+
+`codebase-doctor` のテスト設計の点検（Check 6b）は、[testing](../testing/README.md) の `testcase-generator` が持つ置き場の定義を読む。testing が入っていなければその点検は「未実施」と報告する。
+
+## 前提
+
+macOS / Linux、`python3`、`git`、`gh`。`openapi-to-skills` は `uv`
+
+## テスト
+
+```bash
+bash plugins/devtools/tests/run-all.sh
+```

@@ -1,0 +1,16 @@
+{
+  "name": "review",
+  "version": "0.1.0",
+  "description": "PR のレビューを回すスキルとコマンド（レビュー bot の結果待ち・再レビュー依頼・AI レビューから修正まで）",
+  "author": {
+    "name": "shibamasa-dev"
+  },
+  "homepage": "https://github.com/shibamasa-dev/claude-code-plugins/tree/main/plugins/review",
+  "repository": "https://github.com/shibamasa-dev/claude-code-plugins",
+  "license": "MIT",
+  "keywords": [
+    "github",
+    "pull-requests",
+    "code-review"
+  ]
+}

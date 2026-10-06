@@ -1,0 +1,16 @@
+{
+  "name": "testing",
+  "version": "0.1.0",
+  "description": "テストを設計して回すスキルとフック（Gherkin のテストケース作成・成果物の検証・全体テストのゲート）",
+  "author": {
+    "name": "shibamasa-dev"
+  },
+  "homepage": "https://github.com/shibamasa-dev/claude-code-plugins/tree/main/plugins/testing",
+  "repository": "https://github.com/shibamasa-dev/claude-code-plugins",
+  "license": "MIT",
+  "keywords": [
+    "testing",
+    "test-design",
+    "gherkin"
+  ]
+}

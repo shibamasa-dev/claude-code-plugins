@@ -2,6 +2,11 @@
 
 workflow プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.1.7] - 2026-10-06
+
+### Removed
+- `pr-review-wait`・`pr-rereview`・コマンド `review-and-fix` を review プラグインへ、`testcase-generator`・`testcase-lint` を testing プラグインへ、`codebase-doctor`・`remote-setup`・`openapi-to-skills` を devtools プラグインへ移した。引き続き使うにはそれぞれのプラグインを入れる
+
 ## [0.1.6] - 2026-10-06
 
 ### Fixed
