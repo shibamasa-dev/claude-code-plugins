@@ -2,6 +2,12 @@
 
 guards プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.2.2] - 2026-10-06
+
+### Fixed
+- bash-guard（worktree-guard）：`~/.worktrees/` の外にある worktree（Claude Code 標準の `<repo>/.claude/worktrees/` など）も、未マージなら `rm -rf`・`trash`・`find -delete` での削除を止める。消す先が linked worktree そのものか、それを含む上位のフォルダかを `git worktree list` で見る。worktree の中のサブパスの掃除はこれまでどおり通す
+- worktree-guard のメッセージの「main 取り込み済みなら」を「既定ブランチに取り込み済みでクリーンなら」にした
+
 ## [0.2.1] - 2026-10-06
 
 ### Fixed

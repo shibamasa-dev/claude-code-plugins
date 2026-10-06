@@ -1,6 +1,6 @@
 {
   "name": "guards",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "破壊的な Bash 操作・古い既定ブランチからの push・リポ構造違反の書き込みを止め、マージの後にローカルのマージ先ブランチを追従させるフック",
   "author": {
     "name": "shibamasa-dev"

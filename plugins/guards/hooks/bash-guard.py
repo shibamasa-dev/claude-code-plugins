@@ -14,7 +14,7 @@ matcher は "Bash"（ツール名しかマッチできない）なので全 Bash
                    - それ以外(絶対パス・解決できない変数展開) → deny
                    - `trash`(macOS のゴミ箱移動) は壊滅的ターゲット以外 allow。取り消せるので、
                      ユーザーが承認した片付けを Claude が完了できる(2026-10-03 承認)。
-                     未マージ worktree は worktree-guard が止める
+                     未マージ worktree は worktree-guard が止める（置き場は問わない）
                    **通過マーカーは無い**(2026-09-23 廃止)。目的は「人に確認させる」
                    ことなので、Claude が自己申告で通せるなら確認が起きない。
                    同一コマンド内の単純な変数代入(`T=/tmp/x; rm -rf $T`)は解決してから
@@ -873,7 +873,9 @@ def rule_main_commit_freshness(command: str):
 
 # ------------------------------------------------------------- worktree-guard
 # 未マージ worktree の削除禁止（グローバル CLAUDE.md「⚠️ 未マージ worktree は絶対に削除しない」の強制点。
-# rm-guard は ~/.worktrees/ を SAFE 扱いするため、このルールが rm-guard より先に立つ必要がある）
+# rm-guard は ~/.worktrees/ を SAFE 扱いするため、このルールが rm-guard より先に立つ必要がある）。
+# ~/.worktrees/ の外（Claude Code 標準の <repo>/.claude/worktrees/ など）は、消す先が linked worktree
+# そのものか、それを含む上位のフォルダかを `git worktree list` で見て判定する（2026-10-06）
 WORKTREES_PREFIX = HOME + "/.worktrees/"
 
 
@@ -934,6 +936,23 @@ def _under_worktrees(p: str) -> bool:
     return p == WORKTREES_PREFIX.rstrip("/") or p.startswith(WORKTREES_PREFIX)
 
 
+def _linked_worktrees_under(p: str) -> list:
+    """p 自身か p の下にある linked worktree の実パス（メインの作業ツリーは除く）。
+    p が無い・git の管理下でない・読めないときは []（rm-guard の判定に任せる）。"""
+    if not os.path.isdir(p) or os.path.islink(p):
+        return []
+    try:
+        r = _git(["worktree", "list", "--porcelain"], p)
+    except (subprocess.TimeoutExpired, OSError):
+        return []
+    if r.returncode != 0:
+        return []
+    paths = [line[len("worktree "):] for line in r.stdout.splitlines() if line.startswith("worktree ")]
+    rp = os.path.realpath(p)
+    return [w for w in (os.path.realpath(x) for x in paths[1:])
+            if w == rp or w.startswith(rp.rstrip("/") + "/")]
+
+
 def _inside_worktree(p: str) -> bool:
     """p が worktree の中のサブパス（worktree の root そのものでも、root を含む上位でもない）か。"""
     d = p
@@ -957,7 +976,7 @@ def rule_worktree_guard(command: str):
     root = WORKTREES_PREFIX.rstrip("/")
     cwd0 = os.path.normpath(_CWD) if _CWD else ""
     cwd_in_wt = bool(cwd0) and _under_worktrees(cwd0)
-    if ".worktrees" not in command and "worktree" not in command and not cwd_in_wt:
+    if not cwd_in_wt and not any(w in command for w in ("worktree", "rm", "trash", "find")):
         return None  # 高速素通し
     # 相対パス・変数の行き先が分からないとき、worktree を巻き込みうる文脈かどうか
     risky_unknown = ".worktrees" in command or cwd0 == root
@@ -995,6 +1014,8 @@ def rule_worktree_guard(command: str):
                 exp = os.path.normpath(v)
                 if _under_worktrees(exp):
                     targets.append((t, exp))
+                else:
+                    targets.extend((t, w) for w in _linked_worktrees_under(exp))
                 continue
             # 相対パス: 実行される cwd で解決する（`cd ~/.worktrees && rm -rf name` 等）。
             # worktree の中のサブパス（build/ 等の掃除）は対象外
@@ -1003,14 +1024,17 @@ def rule_worktree_guard(command: str):
                     targets.append((t, None))
                 continue
             exp = os.path.normpath(os.path.join(cmd.cwd, v))
-            if _under_worktrees(exp) and not _inside_worktree(exp):
-                targets.append((t, exp))
-    bad = [t for t, p in targets if p is None or _worktree_state(p) != "merged_clean"]
+            if _under_worktrees(exp):
+                if not _inside_worktree(exp):
+                    targets.append((t, exp))
+            else:
+                targets.extend((t, w) for w in _linked_worktrees_under(exp))
+    bad = list(dict.fromkeys(t for t, p in targets if p is None or _worktree_state(p) != "merged_clean"))
     if not bad:
         return None
     return deny(
         f"🛑 worktree-guard: 未マージか判定不能の worktree を削除しようとしている: {', '.join(bad[:3])}\n"
-        "未マージ worktree の削除は禁止(未回収の作業が消える)。main 取り込み済みなら自動で通る。"
+        "未マージ worktree の削除は禁止(未回収の作業が消える)。既定ブランチに取り込み済みでクリーンなら自動で通る。"
         "本当に消すならユーザー明示OKを取り、削除コマンド自身の先頭に `WORKTREE_RM_OK=1 ` を付けて再実行"
         "（例: `WORKTREE_RM_OK=1 git worktree remove <path>`）。"
     )

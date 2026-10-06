@@ -142,4 +142,25 @@ HOME="$FH" PATH="$FH/bin-other:$PATH" row 'rm -rf ~/.worktrees'                 
 HOME="$FH" PATH="$FH/bin-other:$PATH" row 'sudo trash ~/.worktrees/sq'                          'sudo 経由の trash'                      'deny'
 HOME="$FH" PATH="$FH/bin-other:$PATH" row 'cd ~/.worktrees/sq && rm -rf build'                  'worktree の中のサブディレクトリ掃除'    'allow'
 HOME="$FH" PATH="$FH/bin-other:$PATH" PROBE_CWD="$FH/.worktrees/sq" row 'rm -rf node_modules'  'cwd が worktree の中で相対パス rm -rf'  'allow'
+echo
+echo '=== K: ~/.worktrees の外にある worktree（<repo>/.claude/worktrees など）も同じ判定 ==='
+# feat は main より 1 コミット進んだ未マージ、done は main と同じでクリーン
+git -C "$FH/repo" worktree add -q -b feat/cc "$FH/repo/.claude/worktrees/feat"
+git -C "$FH/repo/.claude/worktrees/feat" commit -q --allow-empty -m work
+git -C "$FH/repo" worktree add -q -b done/cc "$FH/repo/.claude/worktrees/done"
+mkdir -p "$FH/repo/.claude/worktrees/feat/build" "$FH/repo/build"
+K() { HOME="$FH" PATH="$FH/bin-other:$PATH" PROBE_CWD="${KCWD:-$FH/repo}" row "$@"; }
+K 'rm -rf .claude/worktrees/feat'                 '未マージの worktree を相対パスで rm -rf'   'deny'
+K "rm -rf $FH/repo/.claude/worktrees/feat"        '未マージの worktree を絶対パスで rm -rf'   'deny'
+K 'trash .claude/worktrees/feat'                  '未マージの worktree を trash'             'deny'
+K 'find .claude/worktrees/feat -delete'           '未マージの worktree を find -delete'      'deny'
+K 'rm -rf .claude/worktrees'                      '未マージの worktree を含むフォルダごと'     'deny'
+K 'rm -rf .claude'                                'さらに上のフォルダごと'                    'deny'
+K 'WORKTREE_RM_OK=1 rm -rf .claude/worktrees/feat' 'マーカーを削除コマンドの先頭に'           'allow'
+K 'rm -rf .claude/worktrees/done'                 'マージ済みでクリーンな worktree'          'allow'
+K 'git worktree remove .claude/worktrees/done'    'マージ済みを git worktree remove'        'allow'
+K 'rm -rf .claude/worktrees/feat/build'           'worktree の中のサブディレクトリ掃除'      'allow'
+KCWD="$FH/repo/.claude/worktrees/feat" K 'rm -rf build' 'cwd が worktree の中で相対パス rm -rf' 'allow'
+K 'rm -rf build'                                  'worktree を含まないフォルダ'              'allow'
+
 rm -rf "$FH"
