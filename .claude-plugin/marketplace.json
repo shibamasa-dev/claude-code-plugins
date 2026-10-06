@@ -1,10 +1,10 @@
 {
   "name": "shibamasa-plugins",
   "owner": { "name": "shibamasa-dev" },
-  "metadata": { "description": "Claude Code の作業を止めるガード・issue/PR/セッション運用・文書と動画のスキル" },
+  "metadata": { "description": "Claude Code の作業を止めるガード・issue/PR/セッション運用・画像と動画のスキル" },
   "plugins": [
-    { "name": "guards", "source": "./plugins/guards", "description": "破壊的な Bash 操作・古い main からの push・未検証マージ・リポ構造違反の書き込みを止めるフック" },
-    { "name": "workflow", "source": "./plugins/workflow", "description": "issue 運用・PR レビュー待ち・セッションの引き継ぎ・runbook 記録・テスト設計などのスキルとフック" },
-    { "name": "docs", "source": "./plugins/docs", "description": "画像生成プロンプト・コードで描くモーション動画のスキル" }
+    { "name": "guards", "source": "./plugins/guards", "description": "破壊的な Bash 操作・古い main からの push・未検証マージ・リポ構造違反の書き込みを止めるフック", "category": "security" },
+    { "name": "workflow", "source": "./plugins/workflow", "description": "issue 運用・PR レビュー待ち・セッションの引き継ぎ・runbook 記録・テスト設計などのスキルとフック", "category": "productivity" },
+    { "name": "docs", "source": "./plugins/docs", "description": "画像生成プロンプト・コードで描くモーション動画のスキル", "category": "design" }
   ]
 }
