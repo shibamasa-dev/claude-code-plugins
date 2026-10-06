@@ -990,21 +990,27 @@ def _linked_worktrees_under(p: str, follow: str = "") -> list:
 _SCAN_SKIP = {".git", "node_modules"}
 
 
-def _scan_worktree_roots(p: str, limit: int = None, follow_links: bool = False):
+# 1回のフック呼び出しで見るフォルダの数の残り（glob の一致ごと・消す先ごとに戻さない）
+_scan_budget = None
+
+
+def _scan_worktree_roots(p: str, follow_links: bool = False):
     """p の下にある linked worktree の root（`.git` が gitdir: …/worktrees/… を指すファイルのフォルダ）と、
     最後まで見られたか。サブモジュールの `.git` ファイルは modules/ を指すので数えない。
-    深さは決めず、見るフォルダの数を limit までにする（巨大なフォルダの削除で待たせない）。
-    limit で打ち切ったら complete=False（見ていない所に worktree が無いとは言えない）。
+    深さは決めず、見るフォルダの数をコマンド全体で 20000 までにする（巨大なフォルダや、
+    たくさん一致する glob の削除で待たせない）。
+    上限で打ち切ったら complete=False（見ていない所に worktree が無いとは言えない）。
     follow_links は `find -L` 用で、フォルダへのリンクもたどる（同じ実体は1回だけ見る）。"""
-    if limit is None:
-        limit = int(os.environ.get("GUARDS_SCAN_LIMIT") or 20000)   # 環境変数はテスト用
+    global _scan_budget
+    if _scan_budget is None:
+        _scan_budget = int(os.environ.get("GUARDS_SCAN_LIMIT") or 20000)   # 環境変数はテスト用
     if os.path.basename(p.rstrip("/")) in _SCAN_SKIP:
         return [], True
-    found, stack, seen, visited = [], [p], 0, set()
+    found, stack, visited = [], [p], set()
     while stack:
         d = stack.pop()
-        seen += 1
-        if seen > limit:
+        _scan_budget -= 1
+        if _scan_budget < 0:
             return found, False
         if follow_links:
             rd = os.path.realpath(d)
@@ -1118,7 +1124,11 @@ def _worktrees_in_target(p: str, limit: int = 256, follow: str = "") -> list:
         paths.extend(_globstar_base(b) if "**" in b else glob.glob(b))
         if os.path.lexists(b):
             paths.append(b)
-    found += [w for q in dict.fromkeys(paths) for w in _linked_worktrees_under(os.path.normpath(q), follow)]
+    paths = list(dict.fromkeys(os.path.normpath(q) for q in paths))
+    if len(paths) > limit:   # 一致が多すぎる glob は、ひとつずつ git に聞かずに確かめきれないとする
+        found.append(None)
+        paths = paths[:limit]
+    found += [w for q in paths for w in _linked_worktrees_under(q, follow)]
     return list(dict.fromkeys(found))
 
 

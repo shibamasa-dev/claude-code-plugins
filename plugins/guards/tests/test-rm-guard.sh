@@ -194,6 +194,8 @@ KCWD="$FH" K 'rm -rf wide/**/x'                   '** の手前のフォルダ�
 mkdir -p "$FH/wide/1" "$FH/wide/2" "$FH/wide/3" "$FH/wide/4"
 KCWD="$FH" GUARDS_SCAN_LIMIT=3 K 'rm -rf wide'    '走査が上限で打ち切られた（判定不能）'      'deny'
 KCWD="$FH" K 'rm -rf wide'                        '上限内で worktree が無いと確かめられた'    'allow'
+KCWD="$FH" GUARDS_SCAN_LIMIT=3 K 'rm -rf wide/*'  'glob の一致ごとでなく全体で上限を数える'   'deny'
+KCWD="$FH" K 'rm -rf wide/*'                      'glob の一致を上限内で確かめられた'         'allow'
 KCWD="$FH" GUARDS_SCAN_LIMIT=3 K "find wide -name x -exec rm -rf {} +" '条件付きの find -exec rm でも走査しきれなければ止める' 'deny'
 K 'rm -rf .claude/worktrees/x{1..1000000000}'      '巨大な範囲でも固まらずに判定不能で止める'  'deny'
 # find -L・-H はシンボリックリンクの先もたどる（rm はリンク自体しか消さない）
