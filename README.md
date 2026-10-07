@@ -23,7 +23,7 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 
 | プラグイン | 中身 |
 |---|---|
-| [guards](plugins/guards/README.md) | 作業を止めるフック。破壊的な削除・古い既定ブランチからの push・リポ構造違反の書き込み。マージの後のローカルのマージ先ブランチの追従 |
+| [guards](plugins/guards/README.md) | 作業を止めるフック。破壊的な削除・未マージ worktree の削除・古い既定ブランチからの push。リポ構成のルール（ルールファイルを置いたときだけ）。マージの後のローカルのマージ先ブランチの追従 |
 | [workflow](plugins/workflow/README.md) | issue 運用・セッションの引き継ぎ・runbook 記録などのスキルとフック |
 | [review](plugins/review/README.md) | 依頼からマージまでの開発フローと PR のレビューを回す。フローの入口・飛ばすと事故になる段を止めるフック・レビュー bot の結果待ち・再レビュー依頼・AI レビューから修正まで |
 | [testing](plugins/testing/README.md) | テストを設計して回す。Gherkin のテストケース作成・成果物の検証・全体テストのゲート |
