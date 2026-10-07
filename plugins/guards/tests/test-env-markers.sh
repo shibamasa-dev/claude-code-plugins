@@ -35,6 +35,7 @@ row 'uv pip install --python ~/.venvs/x requests'                     'install�
 row "uv pip sync --python $HOME/.venvs/x req.txt"                     '置き場を絶対パスで指す'          'deny'
 row 'uv pip sync --python ~/.venvs-backup/x req.txt'                  '名前が似ているだけの別のフォルダ' 'allow'
 row 'uv pip sync --python ~/.venvs req.txt'                            '置き場そのもの'                  'deny'
+row 'uv pip sync --python ~/.venvs>log req.txt'                        '置き場の直後にリダイレクト'      'deny'
 row 'uv pip sync --python .venv req.txt'                              '置き場の外の venv'               'allow'
 
 echo

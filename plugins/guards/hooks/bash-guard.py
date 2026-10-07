@@ -1378,7 +1378,7 @@ def _mentions_shared_venv(command: str) -> bool:
             rest = d[len(HOME):]
             forms |= {"~" + rest, "$HOME" + rest, "${HOME}" + rest}
         # フォルダ名の境目で見る（`~/.venvs-backup` は `~/.venvs` の配下ではない）
-        if any(re.search(re.escape(f.rstrip("/")) + r"(?=/|$|[\s'\";&|)])", command) for f in forms):
+        if any(re.search(re.escape(f.rstrip("/")) + r"(?=/|$|[\s'\";&|)<>])", command) for f in forms):
             return True
     return False
 

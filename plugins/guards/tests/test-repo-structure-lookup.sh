@@ -11,7 +11,8 @@ probe() {   # $1 = 書き込み先、残りは env に渡す（環境変数の�
         | env -u REPO_STRUCTURE_SPEC -u FILE_GUARD_SPEC HOME="$R/home" "$@" python3 "$H") || { echo error; return; }
   case "$out" in *'"deny"'*) echo deny ;; '') echo silent ;; *) echo other ;; esac
 }
-row() { printf '  %-56s -> %-6s (%s 期待)\n' "$1" "$2" "$3"; }
+FAIL=0
+row() { printf '  %-56s -> %-6s (%s 期待)\n' "$1" "$2" "$3"; [ "$2" = "$3" ] || FAIL=1; }
 # docs/ 直下に許す .md を1つだけ書いたルールを作る（どのルールが使われたかを許すファイル名で見分ける）
 spec() {
   mkdir -p "$(dirname "$1")"
@@ -49,3 +50,4 @@ row 'REPO_STRUCTURE_SPEC があるとリポのルールは見ない' "$(probe "$
 row '旧名 FILE_GUARD_SPEC も読む'           "$(probe "$R/repo/docs/env.md" FILE_GUARD_SPEC="$R/env.md")" silent
 row '環境変数が無いパスを指す＝外す'        "$(probe "$R/repo/docs/new.md" REPO_STRUCTURE_SPEC=/nonexistent/x.md)" silent
 rm -rf "$R"
+exit $FAIL
