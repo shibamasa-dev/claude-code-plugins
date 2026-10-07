@@ -634,7 +634,7 @@ dl.info{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;backgrou
 dl.info dt{color:var(--mute)}dl.info dd{margin:0}.sw{display:inline-block;width:14px;height:14px;border:1px solid var(--line);vertical-align:-2px;margin-right:4px}
 .guide{color:var(--mute);font-size:12px;max-width:960px}
 .tl{background:var(--paper);border:1px solid var(--line);padding:8px;overflow-x:auto}
-.tl .row{display:flex;min-width:640px}.tl .bar{flex:1;border-right:1px solid var(--paper);font-size:10px;padding:2px 3px;white-space:nowrap;overflow:hidden}
+.tl .row{position:relative;height:18px;min-width:640px}.tl .bar,.tl .pre{position:absolute;top:0;height:18px;border-right:1px solid var(--paper);font-size:10px;padding:2px 3px;white-space:nowrap;overflow:hidden}.tl .pre{background:repeating-linear-gradient(45deg,#eee 0 4px,#f8f8f8 4px 8px);color:var(--mute)}
 .tl .cuts{position:relative;height:22px;min-width:640px;margin-top:2px}.tl .cuts a{position:absolute;top:0;height:20px;border-left:2px solid var(--ink);padding-left:3px;font-size:11px;color:var(--ink);text-decoration:none;white-space:nowrap;overflow:hidden}
 .wrap{overflow-x:auto;background:var(--paper);border:1px solid var(--line)}
 table{border-collapse:collapse;width:100%}th,td{border:1px solid var(--line);padding:6px 8px;vertical-align:top;text-align:left}
@@ -648,7 +648,8 @@ td.fb,th.fb{background:var(--fb);border-color:var(--fbline);min-width:220px}td.f
 .overall textarea{width:100%;max-width:960px;min-height:80px;background:var(--fb);border:1px solid var(--fbline);font:inherit;padding:6px}
 button{font:inherit;padding:6px 14px;border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:4px;cursor:pointer}
 </style></head><body><main>`);
-  L.push(`<h1>CUT SHEET v${v} · ${new Date().toISOString().slice(0, 10)} · PROPOSAL BY CLAUDE</h1>`);
+  const d = new Date();  // 見る人の暦に合わせてローカル日付（toISOString は UTC なので JST の 0〜9 時に前日になる）
+  L.push(`<h1>CUT SHEET v${v} · ${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} · PROPOSAL BY CLAUDE</h1>`);
   L.push(`<h2>${esc(sb.title || path.basename(P.proj))}</h2>`);
   L.push(`<p class="guide">1行＝1カット。画は「はじめ」と「おわり」の2コマ、動きは文章で。</p>`);
   if (prevFb?.summary) L.push(`<p class="summary">${br(prevFb.summary)}</p>`);
@@ -669,16 +670,19 @@ button{font:inherit;padding:6px 14px;border:1px solid var(--ink);background:var(
     ['フォント', fonts],
   ]) L.push(`<dt>${k}</dt><dd>${val}</dd>`);
   L.push('</dl>');
-  // タイムライン帯: 1マス＝1小節、シーンを色帯で、その下にカット番号
+  // タイムライン帯: 1マス＝1小節、シーンを色帯で、その下にカット番号。小節もカットも 0 秒〜尺の同じ軸に置く
+  const pct = (t) => +((Math.min(t, meta.duration) / meta.duration) * 100).toFixed(4);
   L.push('<h3>タイムライン</h3><div class="tl"><div class="row">');
+  if (B.offset > 0) L.push(`<div class="pre" style="left:0%;width:${pct(B.offset)}%">頭出し</div>`);
   for (let i = 0; i < bars; i++) {
-    const k = sceneAt(B.offset + i * barSec);
-    L.push(`<div class="bar" style="background:${k < 0 ? '#eee' : PAL[k % PAL.length]}">${i + 1}${k >= 0 ? ` ${esc(meta.scenes[k].id)}` : ''}</div>`);
+    const t0 = B.offset + i * barSec;
+    const k = sceneAt(t0);
+    L.push(`<div class="bar" style="left:${pct(t0)}%;width:${+(pct(t0 + barSec) - pct(t0)).toFixed(4)}%;background:${k < 0 ? '#eee' : PAL[k % PAL.length]}">${i + 1}${k >= 0 ? ` ${esc(meta.scenes[k].id)}` : ''}</div>`);
   }
   L.push('</div><div class="cuts">');
   cuts.forEach((c, i) => {
     const s = meta.scenes[i];
-    L.push(`<a href="#cut-${esc(c.id)}" style="left:${(s.start / meta.duration) * 100}%;width:${((s.end - s.start) / meta.duration) * 100}%">${String(i + 1).padStart(2, '0')} ${esc(c.id)}</a>`);
+    L.push(`<a href="#cut-${esc(c.id)}" style="left:${pct(s.start)}%;width:${+(pct(s.end) - pct(s.start)).toFixed(4)}%">${String(i + 1).padStart(2, '0')} ${esc(c.id)}</a>`);
   });
   L.push('</div></div>');
   // 前の版の FB への対応

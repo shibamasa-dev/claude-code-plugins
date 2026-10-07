@@ -19,9 +19,9 @@ const WORK = path.resolve(opt('--work') || path.join(os.tmpdir(), `motion-video-
 fs.mkdirSync(WORK, { recursive: true });
 const spec = JSON.parse(fs.readFileSync(path.join(EVALS, 'evals.json'), 'utf8'));
 
-function sh(bin, a, cwd = WORK) {
+function sh(bin, a, cwd = WORK, env = process.env) {
   const t0 = Date.now();
-  const r = spawnSync(bin, a, { cwd, encoding: 'utf8', maxBuffer: 1 << 28 });
+  const r = spawnSync(bin, a, { cwd, env, encoding: 'utf8', maxBuffer: 1 << 28 });
   return { code: r.status, out: r.stdout || '', err: r.stderr || '', sec: (Date.now() - t0) / 1000 };
 }
 const render = (...a) => sh('node', [RENDER, ...a]);
@@ -206,11 +206,22 @@ async function runCutsheetCase(c) {
   const lookalike = `${'_'.repeat(Object.values(e.jaIds)[0].length)}-${crypto.createHash('sha256').update(Object.values(e.jaIds)[0]).digest('hex').slice(0, 8)}`;
   js = js.replace(`{ id: '${e.lookalikeOf}',`, `{ id: '${lookalike}',`);
   fs.writeFileSync(jsrc, js.replace('bpm: 120,', `bpm: 120, offset: ${e.offset.value},`));
-  const sj = render('storyboard', path.relative(WORK, jd));
+  // UTC と日付が必ず違うタイムゾーンで作る（UTC の午前は UTC-12、午後は UTC+14）
+  const tz = new Date().getUTCHours() < 12 ? 'Etc/GMT+12' : 'Pacific/Kiritimati';
+  const sj = sh('node', [RENDER, 'storyboard', path.relative(WORK, jd)], WORK, { ...process.env, TZ: tz });
+  const localDate = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const hj = fs.existsSync(path.join(jd, 'out/storyboard/cutsheet.html')) ? fs.readFileSync(path.join(jd, 'out/storyboard/cutsheet.html'), 'utf8') : '';
   const jaSrc = [...Object.values(e.jaIds), lookalike].map((id) => [...row(hj, id).matchAll(/<img src="([^"]+)"/g)].map((m) => m[1]));
   const jaFiles = jaSrc.flat();
   add(`同じ長さの日本語のカット ID（${Object.values(e.jaIds).join('・')}）と、置き換え後の名前に似た ASCII の ID（${lookalike}）でも はじめ / おわり の画像が別のファイルになる`, sj.code === 0 && jaFiles.length === 6 && new Set(jaFiles).size === 6 && jaFiles.every((f) => fs.existsSync(path.join(jd, 'out/storyboard', f))), `exit=${sj.code} img=${jaFiles.join(',')}`);
+  const h1Date = (/CUT SHEET v\d+ · (\d{4}-\d{2}-\d{2})/.exec(hj) || [])[1];
+  add(`カット表の見出しの日付は作ったマシンのローカル日付（TZ=${tz} で ${localDate}。UTC は ${new Date().toISOString().slice(0, 10)}）`, h1Date === localDate, `見出し=${h1Date}`);
+  const tl = (hj.split('<div class="tl">')[1] || '').split('</div></div>')[0];
+  const barLeft = [...tl.matchAll(/<div class="bar" style="left:([\d.]+)%/g)].map((m) => +m[1]);
+  const cutLeft = [...tl.matchAll(/<a href="#cut-[^"]*" style="left:([\d.]+)%/g)].map((m) => +m[1]);
+  const T = e.timeline;
+  const near = (a, b) => a.length === b.length && a.every((x, i) => Math.abs(x - (b[i] / T.duration) * 100) < 0.01);
+  add(`タイムライン帯の小節とカットが同じ 0〜${T.duration} 秒の軸に並ぶ（小節頭 ${T.barStarts.join('/')}s・カット頭 ${T.cutStarts.join('/')}s）`, near(barLeft, T.barStarts) && near(cutLeft, T.cutStarts), `小節 left%=${barLeft.join(',')} カット left%=${cutLeft.join(',')}`);
   const pre = row(hj, Object.values(e.jaIds)[0]).replace(/<[^>]+>/g, ' ');
   const post = row(hj, Object.values(e.jaIds)[1]).replace(/<[^>]+>/g, ' ');
   add(`頭出し ${e.offset.value}s より前に始まるカットは負の拍で出て、小節0・拍0 にならない（${e.offset.pre} / ${e.offset.post}）`, pre.includes(e.offset.pre) && !/小節0|拍0/.test(pre) && post.includes(e.offset.post), `${pre.replace(/\s+/g, ' ').slice(0, 80)} | ${post.replace(/\s+/g, ' ').slice(0, 80)}`);
