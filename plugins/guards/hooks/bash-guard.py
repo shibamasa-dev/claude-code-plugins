@@ -14,7 +14,7 @@ matcher は "Bash"（ツール名しかマッチできない）なので全 Bash
                    - それ以外(絶対パス・解決できない変数展開) → deny
                    - `trash`(macOS のゴミ箱移動) は壊滅的ターゲット以外 allow。取り消せるので、
                      ユーザーが承認した片付けを Claude が完了できる(2026-10-03 承認)。
-                     未マージ worktree は worktree-guard が止める
+                     未マージ worktree は worktree-guard が止める（置き場は問わない）
                    **通過マーカーは無い**(2026-09-23 廃止)。目的は「人に確認させる」
                    ことなので、Claude が自己申告で通せるなら確認が起きない。
                    同一コマンド内の単純な変数代入(`T=/tmp/x; rm -rf $T`)は解決してから
@@ -34,6 +34,9 @@ matcher は "Bash"（ツール名しかマッチできない）なので全 Bash
                    再計算するので、「取り込んだ」という申告を信じる必要がない。
                    マーカー方式は Claude が文字列を足すだけで検証ゼロで通過できた。
 """
+import fnmatch
+import glob
+import itertools
 import json
 import os
 import re
@@ -170,6 +173,16 @@ def _parse_segments(command: str) -> list:
             else:
                 flush(")")          # case のパターン等。区切りとして扱う
             i += 1
+            continue
+        if c == "(" and st["buf"] and st["buf"][-1] in "?*+@!":
+            # extglob（`@(a|b)` など）は語の一部。中の `|` で区切らない
+            j, d = i, 0
+            while j < len(s):
+                d += {"(": 1, ")": -1}.get(s[j], 0)
+                j += 1
+                if d == 0:
+                    break
+            st["buf"].append(s[i:j]); i = j
             continue
         if c == "(":
             flush("(")
@@ -614,6 +627,20 @@ _FIND_NOFILTER = {"-depth": 0, "-d": 0, "-maxdepth": 1, "-mindepth": 1, "-xdev":
                   "(": 0, ")": 0, "!": 0, ",": 0, "-a": 0, "-o": 0, "-and": 0, "-or": 0, "-not": 0}
 
 
+def _find_exec_deletes(tokens: list) -> bool:
+    """find の -exec / -execdir などで rm・unlink・trash を呼んでいるか。"""
+    for i, a in enumerate(tokens):
+        if a in _FIND_ACTIONS:
+            action = []
+            for b in tokens[i + 1:]:
+                if b in (";", "+"):
+                    break
+                action.append(b)
+            if re.search(r"(^|[\s/;&|(`])(rm|unlink|trash)(\s|$)", " ".join(action)):
+                return True
+    return False
+
+
 def _find_filtered(tokens: list) -> bool:
     """find に名前・種類などの条件が付いているか。`find . -name '*.pyc' -delete` は普通の掃除だが、
     条件なしの `find . -delete` はカレントを丸ごと消す（`rm -rf .` と同じ）。"""
@@ -733,36 +760,44 @@ def _effective_cwd(command: str):
             return cur
     return cur
 
-def _git(args, cwd, timeout=8):
+# 消す先のパスを調べる git（worktree-guard）は「そのパスのリポ」を見たいので、フックが受け継いだ
+# GIT_DIR などを外した環境で動かす。push・commit の鮮度チェックは、実行されるコマンドと同じ環境
+# （受け継いだ値をそのまま）で見る
+_GIT_LOCAL_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
+                   "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_PREFIX")
+GIT_ENV = {k: v for k, v in os.environ.items() if k not in _GIT_LOCAL_VARS}
+
+
+def _git(args, cwd, timeout=8, env=None):
     return subprocess.run(
-        ["git", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout,
+        ["git", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout, env=env,
     )
 
 
-def _remote_default(cwd):
+def _remote_default(cwd, env=None):
     """origin が今いう既定ブランチ（ls-remote、読むだけ）。手元の origin/HEAD は fetch で更新されないため先に聞く。
     繋がらない・認証が要るときは None（待たせない）。"""
     try:
         r = subprocess.run(["git", "ls-remote", "--symref", "origin", "HEAD"], cwd=cwd, capture_output=True, stdin=subprocess.DEVNULL,
-                           text=True, timeout=5, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+                           text=True, timeout=5, env={**(env or os.environ), "GIT_TERMINAL_PROMPT": "0"})
     except (subprocess.TimeoutExpired, OSError):
         return None
     m = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", r.stdout, re.M) if r.returncode == 0 else None
     return m.group(1) if m else None
 
 
-def _default_branch(cwd, online=True):
+def _default_branch(cwd, online=True, env=None):
     """リポの既定ブランチ。origin に聞き、繋がらなければ手元の origin/HEAD、それも無ければ origin/main・origin/master の有る方。
     online=False は origin に聞かない（commit のたびに通信させないため）。"""
-    name = _remote_default(cwd) if online else None
+    name = _remote_default(cwd, env) if online else None
     if name:
         return name
-    r = _git(["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"], cwd, timeout=5)
+    r = _git(["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"], cwd, timeout=5, env=env)
     name = r.stdout.strip() if r.returncode == 0 else ""
     if name.startswith("origin/"):
         return name[len("origin/"):]
     for cand in ("main", "master"):
-        if _git(["rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{cand}"], cwd, timeout=5).returncode == 0:
+        if _git(["rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{cand}"], cwd, timeout=5, env=env).returncode == 0:
             return cand
     return None
 
@@ -873,7 +908,9 @@ def rule_main_commit_freshness(command: str):
 
 # ------------------------------------------------------------- worktree-guard
 # 未マージ worktree の削除禁止（グローバル CLAUDE.md「⚠️ 未マージ worktree は絶対に削除しない」の強制点。
-# rm-guard は ~/.worktrees/ を SAFE 扱いするため、このルールが rm-guard より先に立つ必要がある）
+# rm-guard は ~/.worktrees/ を SAFE 扱いするため、このルールが rm-guard より先に立つ必要がある）。
+# ~/.worktrees/ の外（Claude Code 標準の <repo>/.claude/worktrees/ など）は、消す先が linked worktree
+# そのものか、それを含む上位のフォルダかを `git worktree list` で見て判定する（2026-10-06）
 WORKTREES_PREFIX = HOME + "/.worktrees/"
 
 
@@ -883,17 +920,17 @@ def _worktree_state(path: str):
     if not os.path.isdir(p):
         return "unknown"
     try:
-        if _git(["status", "--porcelain"], p).stdout.strip():
+        if _git(["status", "--porcelain"], p, env=GIT_ENV).stdout.strip():
             return "unmerged"  # dirty＝未回収の作業がある
         # どれか1つの base に HEAD が完全包含されていればマージ済み。
         # 最初に解決できた base だけで判定しない — origin/main がローカル main より
         # 古い repo では「ローカル main へ取り込み済み」を見逃して deny する（実測21コミット差）。
         resolved = False
-        default = _default_branch(p)
+        default = _default_branch(p, env=GIT_ENV)
         bases = ([f"origin/{default}", default] if default not in (None, "main", "master") else []) \
             + ["origin/main", "main", "origin/master", "master"]
         for base in bases:
-            r = _git(["rev-list", "--count", "HEAD", "^" + base], p)
+            r = _git(["rev-list", "--count", "HEAD", "^" + base], p, env=GIT_ENV)
             if r.returncode == 0:
                 resolved = True
                 if int(r.stdout.strip() or "0") == 0:
@@ -909,15 +946,15 @@ def _worktree_state(path: str):
 
 
 def _squash_merged(p: str) -> bool:
-    branch = _git(["symbolic-ref", "--short", "-q", "HEAD"], p).stdout.strip()
-    head = _git(["rev-parse", "HEAD"], p).stdout.strip()
+    branch = _git(["symbolic-ref", "--short", "-q", "HEAD"], p, env=GIT_ENV).stdout.strip()
+    head = _git(["rev-parse", "HEAD"], p, env=GIT_ENV).stdout.strip()
     if not branch or not head:
         return False
     try:
         r = subprocess.run(
             ["gh", "pr", "list", "--head", branch, "--state", "merged",
              "--json", "headRefOid", "--jq", ".[].headRefOid"],
-            cwd=p, capture_output=True, text=True, timeout=8,
+            cwd=p, capture_output=True, text=True, timeout=8, env=GIT_ENV,
         )
     except (subprocess.TimeoutExpired, OSError):
         return False
@@ -934,6 +971,230 @@ def _under_worktrees(p: str) -> bool:
     return p == WORKTREES_PREFIX.rstrip("/") or p.startswith(WORKTREES_PREFIX)
 
 
+def _linked_worktrees_under(p: str, follow: str = "") -> list:
+    """p 自身か p の下にある linked worktree の実パス（メインの作業ツリーは除く）。
+    p の属するリポの `git worktree list` と、p の中の `.git` ファイルの走査を合わせる。
+    走査が上限で打ち切られたときは None を混ぜる（判定不能として止める側）。
+    p が無い・読めないときは []（rm-guard の判定に任せる）。
+    follow は find のシンボリックリンクの扱い（"H" は開始パスだけ、"L" は中もたどる）。
+    rm はリンク自体しか消さないので、follow が無ければリンクの先は見ない。"""
+    if not os.path.isdir(p) or (os.path.islink(p) and not follow):
+        return []
+    if follow:
+        p = os.path.realpath(p)
+    try:
+        r = _git(["worktree", "list", "--porcelain"], p, env=GIT_ENV)
+    except (subprocess.TimeoutExpired, OSError):
+        r = subprocess.CompletedProcess([], 1, "", "")
+    found = []
+    if r.returncode == 0:
+        paths = [line[len("worktree "):] for line in r.stdout.splitlines() if line.startswith("worktree ")]
+        rp = os.path.realpath(p)
+        found = [w for w in (os.path.realpath(x) for x in paths[1:])
+                 if w == rp or w.startswith(rp.rstrip("/") + "/")]
+    # 別のリポの worktree が中にある場合（git の管理下でない上位フォルダ・関係ないリポの中）も拾う
+    scanned, complete = _scan_worktree_roots(p, follow_links=follow == "L")
+    return list(dict.fromkeys(found + scanned + ([] if complete else [None])))
+
+
+# worktree を置く場所ではないので潜らない（中身が多く、走査の上限をすぐ使い切る）
+_SCAN_SKIP = {".git", "node_modules"}
+
+
+# 1回のフック呼び出しで見るフォルダの数の残り（glob の一致ごと・消す先ごとに戻さない）
+_scan_budget = None
+
+
+def _scan_worktree_roots(p: str, follow_links: bool = False):
+    """p の下にある linked worktree の root（`.git` が gitdir: …/worktrees/… を指すファイルのフォルダ）と、
+    最後まで見られたか。サブモジュールの `.git` ファイルは modules/ を指すので数えない。
+    深さは決めず、見るフォルダの数をコマンド全体で 20000 までにする（巨大なフォルダや、
+    たくさん一致する glob の削除で待たせない）。
+    上限で打ち切ったら complete=False（見ていない所に worktree が無いとは言えない）。
+    follow_links は `find -L` 用で、フォルダへのリンクもたどる（同じ実体は1回だけ見る）。"""
+    global _scan_budget
+    if _scan_budget is None:
+        _scan_budget = int(os.environ.get("GUARDS_SCAN_LIMIT") or 20000)   # 環境変数はテスト用
+    if os.path.basename(p.rstrip("/")) in _SCAN_SKIP:
+        return [], True
+    found, stack, visited = [], [p], set()
+    while stack:
+        d = stack.pop()
+        _scan_budget -= 1
+        if _scan_budget < 0:
+            return found, False
+        if follow_links:
+            rd = os.path.realpath(d)
+            if rd in visited:
+                continue
+            visited.add(rd)
+        try:
+            entries = list(os.scandir(d))
+        except FileNotFoundError:
+            continue
+        except OSError:
+            # 読めないフォルダの中は確かめられない（sudo rm なら消せる）
+            return found, False
+        for e in entries:
+            if e.name == ".git":
+                if e.is_file(follow_symlinks=False):
+                    try:
+                        with open(e.path, errors="replace") as f:
+                            head = f.read(4096)
+                    except OSError:
+                        head = ""
+                    if "/worktrees/" in head.replace("\\", "/"):
+                        found.append(os.path.realpath(d))
+                continue
+            if e.name not in _SCAN_SKIP and e.is_dir(follow_symlinks=follow_links):
+                stack.append(e.path)
+    return found, True
+
+
+def _split_top_commas(body: str) -> list:
+    parts, depth, cur = [], 0, ""
+    for c in body:
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+        if c == "," and depth == 0:
+            parts.append(cur); cur = ""
+        else:
+            cur += c
+    return parts + [cur]
+
+
+_SEQ_RE = re.compile(r"^(-?\d+|[A-Za-z])\.\.(-?\d+|[A-Za-z])(?:\.\.(-?\d+))?$")
+
+
+def _brace_seq(body: str, limit: int = 256):
+    """`{1..3}`・`{a..c}`・`{01..10..2}` の中身を並べる（limit + 1 個まで。`{1..1000000000}` で
+    固まらないように）。範囲の形でなければ None。"""
+    m = _SEQ_RE.match(body)
+    if not m:
+        return None
+    a, b, step = m.group(1), m.group(2), abs(int(m.group(3) or 1)) or 1
+    if a.lstrip("-").isdigit() and b.lstrip("-").isdigit():
+        x, y = int(a), int(b)
+        width = max(len(a), len(b)) if (a.lstrip("-").startswith("0") or b.lstrip("-").startswith("0")) else 0
+        rng = range(x, y + 1, step) if x <= y else range(x, y - 1, -step)
+        return [str(n).zfill(width) if width else str(n) for n in itertools.islice(rng, limit + 1)]
+    if a.isalpha() and b.isalpha():
+        x, y = ord(a), ord(b)
+        rng = range(x, y + 1, step) if x <= y else range(x, y - 1, -step)
+        return [chr(n) for n in itertools.islice(rng, limit + 1)]
+    return None
+
+
+def _brace_expand(s: str, limit: int = 256) -> list:
+    """bash のブレース展開（`a{b,c}d` → abd acd、入れ子も可、`{1..3}` などの範囲も）。
+    展開の数が limit を超えたら limit + 1 個で打ち切る（呼ぶ側は「確かめきれない」として扱う）。"""
+    depth, start = 0, None
+    for i, c in enumerate(s):
+        if c == "{" and not (i and s[i - 1] == "$"):
+            if depth == 0:
+                start = i
+            depth += 1
+        elif c == "}" and depth:
+            depth -= 1
+            if depth == 0 and start is not None:
+                body = s[start + 1:i]
+                parts = _split_top_commas(body)
+                if len(parts) == 1:
+                    parts = _brace_seq(body, limit) or parts
+                if len(parts) > 1:
+                    out = []
+                    for part in parts:
+                        out.extend(_brace_expand(s[:start] + part + s[i + 1:], limit))
+                        if len(out) > limit:
+                            break
+                    return out[:limit + 1]
+                start = None
+    return [s]
+
+
+# extglob（`@(a|b)`・`!(x)` など）。中身は解釈せず、その階層を `*` として扱う
+_EXTGLOB_RE = re.compile(r"[?*+@!]\(")
+
+
+def _has_glob(s: str) -> bool:
+    return glob.has_magic(s) or bool(_EXTGLOB_RE.search(s))
+
+
+def _glob_superset(b: str, limit: int = 256) -> list:
+    """glob b がシェルで当たりうるパスを、少なめにならない側で集める。
+    シェルの設定（dotglob・nocaseglob・extglob・globstar）で当たり方が変わるので、
+    `.` で始まる名前も含め、大文字小文字を区別せず、extglob の階層は何にでも当てる。
+    `**` は何階層でもたどるので、その手前のフォルダを丸ごと見る（下は worktree の走査が見る）。
+    当たりが limit を超えたら limit + 1 個で打ち切る（呼ぶ側は確かめきれないとする）。"""
+    absolute = b.startswith("/")
+    cur = ["/" if absolute else "."]
+    for c in (c for c in b.split("/") if c):
+        if "**" in c:
+            return cur
+        if not _has_glob(c):
+            cur = [q for q in (os.path.join(d, c) for d in cur) if os.path.lexists(q)]
+            continue
+        pat = "*" if _EXTGLOB_RE.search(c) else c.lower()
+        nxt = []
+        for d in cur:
+            try:
+                names = os.listdir(d)
+            except OSError:
+                continue
+            nxt += [os.path.join(d, n) for n in names if fnmatch.fnmatchcase(n.lower(), pat)]
+            if len(nxt) > limit:
+                return nxt[:limit + 1]
+        cur = nxt
+    return cur
+
+
+def _worktrees_in_target(p: str, limit: int = 256, follow: str = "") -> list:
+    """消す先 p が消しうる linked worktree（None は確かめきれなかった印）。
+    ブレース展開はシェルと同じく、glob（`*` など）は当たりうるものを広めに展開してから見る。引用符で囲んだ `[` などは
+    シェルでは文字どおりに渡るが、ここには引用符が外れて届くので、文字どおりのパスも合わせて見る。"""
+    expanded = _brace_expand(p, limit)
+    found = [None] if len(expanded) > limit else []
+    # 引用符で囲んだ `{a,b}` もシェルでは文字どおりに渡る
+    paths = [p] if expanded != [p] and os.path.lexists(p) else []
+    for b in expanded[:limit]:
+        if not _has_glob(b):
+            paths.append(b)
+            continue
+        paths.extend(_glob_superset(b, limit))
+        if os.path.lexists(b):
+            paths.append(b)
+    paths = list(dict.fromkeys(os.path.normpath(q) for q in paths))
+    if len(paths) > limit:   # 一致が多すぎる glob は、ひとつずつ git に聞かずに確かめきれないとする
+        found.append(None)
+        paths = paths[:limit]
+    found += [w for q in paths for w in _linked_worktrees_under(q, follow)]
+    return list(dict.fromkeys(found))
+
+
+def _find_follow(tokens: list) -> str:
+    """find がシンボリックリンクをたどるか。"L"（-L・-follow）は中も、"H" は開始パスだけ、"" はたどらない。"""
+    mode, i = "", 1
+    while i < len(tokens) and tokens[i] in ("-H", "-L", "-P", "-E", "-X", "-d", "-s", "-x"):
+        mode = {"-H": "H", "-L": "L", "-P": ""}.get(tokens[i], mode)
+        i += 1
+    return "L" if "-follow" in tokens[i:] else mode
+
+
+_TMPDIR_RE = re.compile(r"^\$(?:TMPDIR\b|\{TMPDIR\}|\{TMPDIR:?-([^}$`]*)\})(.*)$", re.S)
+
+
+def _tmpdir_value(s: str):
+    """`$TMPDIR/x`・`${TMPDIR}/x`・`${TMPDIR:-/tmp}/x` を、フックが受け継いだ TMPDIR で解決する。
+    解決できなければ None。"""
+    m = _TMPDIR_RE.match(s)
+    if not m or "$" in m.group(2) or "`" in m.group(2):
+        return None
+    base = os.environ.get("TMPDIR") or m.group(1)
+    return os.path.normpath(base + m.group(2)) if base else None
+
+
 def _inside_worktree(p: str) -> bool:
     """p が worktree の中のサブパス（worktree の root そのものでも、root を含む上位でもない）か。"""
     d = p
@@ -942,7 +1203,7 @@ def _inside_worktree(p: str) -> bool:
     if not d:
         return False
     try:
-        r = _git(["rev-parse", "--show-toplevel"], d)
+        r = _git(["rev-parse", "--show-toplevel"], d, env=GIT_ENV)
     except (subprocess.TimeoutExpired, OSError):
         return False
     if r.returncode != 0 or not r.stdout.strip():
@@ -957,7 +1218,7 @@ def rule_worktree_guard(command: str):
     root = WORKTREES_PREFIX.rstrip("/")
     cwd0 = os.path.normpath(_CWD) if _CWD else ""
     cwd_in_wt = bool(cwd0) and _under_worktrees(cwd0)
-    if ".worktrees" not in command and "worktree" not in command and not cwd_in_wt:
+    if not cwd_in_wt and not any(w in command for w in ("worktree", "rm", "trash", "find")):
         return None  # 高速素通し
     # 相対パス・変数の行き先が分からないとき、worktree を巻き込みうる文脈かどうか
     risky_unknown = ".worktrees" in command or cwd0 == root
@@ -977,6 +1238,13 @@ def rule_worktree_guard(command: str):
                     targets.append((t, os.path.normpath(v) if v else None))
             continue
         starts = _find_delete_starts(tokens)
+        # 条件付きの `find … -delete`（`-name '*.pyc'` など）は開始パスを丸ごと消さない。
+        # -delete は中身のあるフォルダを消せないので、~/.worktrees の外では worktree の root を消す心配がない
+        filtered = starts is not None and _find_filtered(tokens)
+        filtered_delete_only = filtered and not _find_exec_deletes(tokens)
+        follow = _find_follow(tokens) if starts is not None else ""
+        # このルールが守るのは worktree の丸ごとの削除。worktree の中のファイルを条件で消す
+        # （`find . -type f -delete` など）のは、サブパスの削除と同じく対象外（メインの作業ツリーでも同じ危険がある）
         if starts is not None:
             paths = starts
         elif base == "trash" or (base == "rm" and _is_recursive_rm(tokens)):
@@ -986,7 +1254,14 @@ def rule_worktree_guard(command: str):
         if cmd.xargs and (risky_unknown or cwd_in_wt):
             targets.append(("(xargs の入力)", None))
         for t in paths:
-            v = _resolved_value(t.strip('"').strip("'"), cmd.assigns)
+            raw = t.strip('"').strip("'")
+            v = _resolved_value(raw, cmd.assigns)
+            if v is None and raw.startswith(SAFE_VAR_PREFIXES):
+                # rm-guard は $TMPDIR の下を安全扱いにするので、ここで行き先を確かめる（分からなければ止める）
+                v = _tmpdir_value(_resolve(raw, cmd.assigns))
+                if v is None:
+                    targets.append((t, None))
+                    continue
             if v is None:
                 if risky_unknown:
                     targets.append((t, None))
@@ -995,6 +1270,8 @@ def rule_worktree_guard(command: str):
                 exp = os.path.normpath(v)
                 if _under_worktrees(exp):
                     targets.append((t, exp))
+                elif not filtered_delete_only:
+                    targets.extend((t, w) for w in _worktrees_in_target(exp, follow=follow))
                 continue
             # 相対パス: 実行される cwd で解決する（`cd ~/.worktrees && rm -rf name` 等）。
             # worktree の中のサブパス（build/ 等の掃除）は対象外
@@ -1003,14 +1280,18 @@ def rule_worktree_guard(command: str):
                     targets.append((t, None))
                 continue
             exp = os.path.normpath(os.path.join(cmd.cwd, v))
-            if _under_worktrees(exp) and not _inside_worktree(exp):
-                targets.append((t, exp))
-    bad = [t for t, p in targets if p is None or _worktree_state(p) != "merged_clean"]
+            if _under_worktrees(exp):
+                if not _inside_worktree(exp):
+                    targets.append((t, exp))
+            elif not filtered_delete_only:
+                targets.extend((t, w) for w in _worktrees_in_target(exp, follow=follow))
+    bad = list(dict.fromkeys(t for t, p in targets if p is None or _worktree_state(p) != "merged_clean"))
     if not bad:
         return None
     return deny(
         f"🛑 worktree-guard: 未マージか判定不能の worktree を削除しようとしている: {', '.join(bad[:3])}\n"
-        "未マージ worktree の削除は禁止(未回収の作業が消える)。main 取り込み済みなら自動で通る。"
+        "未マージ worktree の削除は禁止(未回収の作業が消える)。既定ブランチに取り込み済みでクリーンなら自動で通る。"
+        "中身が多すぎて worktree が無いと確かめきれないフォルダも、判定不能として止める。"
         "本当に消すならユーザー明示OKを取り、削除コマンド自身の先頭に `WORKTREE_RM_OK=1 ` を付けて再実行"
         "（例: `WORKTREE_RM_OK=1 git worktree remove <path>`）。"
     )

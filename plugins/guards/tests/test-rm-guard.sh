@@ -120,7 +120,10 @@ row 'find -L . -mindepth 1 -delete'                '大域オプションだけ�
 row "find -name '*.pyc' -delete"                   '開始パス省略でも条件付きなら allow'    'allow'
 row 'find /tmp -maxdepth 0 -exec rm -rf ~/data ;'   'find -exec rm の中の別パス'            'deny'
 row "find . -name x -exec sh -c 'rm -rf ~' ;"       'find -exec sh -c の中の削除'           'deny'
-row "find . -type d -name build -exec rm -rf {} +"  'find -exec rm {} は開始パスの判定'     'allow'
+# 開始パスの中は worktree-guard が走査するので、ホーム（CI では大きい）ではなく小さいフォルダで見る
+SMALL=$(mktemp -d "${TMPDIR:-/tmp}/rmguard-small.XXXX")
+PROBE_CWD="$SMALL" row "find . -type d -name build -exec rm -rf {} +"  'find -exec rm {} は開始パスの判定'     'allow'
+rm -rf "$SMALL"
 row "X=/tmp/a; bash -c 'rm -rf \$X/*'"                '子シェルには export していない変数が見えない' 'deny'
 row "export X=/tmp/a; bash -c 'rm -rf \$X/x'"         'export しても静的には決めない（安全側）'   'deny'
 row 'if false; then T=/tmp/a; fi; rm -rf $T'        'if の中の代入は実行されるとは限らない'     'deny'
@@ -142,4 +145,99 @@ HOME="$FH" PATH="$FH/bin-other:$PATH" row 'rm -rf ~/.worktrees'                 
 HOME="$FH" PATH="$FH/bin-other:$PATH" row 'sudo trash ~/.worktrees/sq'                          'sudo 経由の trash'                      'deny'
 HOME="$FH" PATH="$FH/bin-other:$PATH" row 'cd ~/.worktrees/sq && rm -rf build'                  'worktree の中のサブディレクトリ掃除'    'allow'
 HOME="$FH" PATH="$FH/bin-other:$PATH" PROBE_CWD="$FH/.worktrees/sq" row 'rm -rf node_modules'  'cwd が worktree の中で相対パス rm -rf'  'allow'
+echo
+echo '=== K: ~/.worktrees の外にある worktree（<repo>/.claude/worktrees など）も同じ判定 ==='
+# feat は main より 1 コミット進んだ未マージ、done は main と同じでクリーン
+git -C "$FH/repo" worktree add -q -b feat/cc "$FH/repo/.claude/worktrees/feat"
+git -C "$FH/repo/.claude/worktrees/feat" commit -q --allow-empty -m work
+git -C "$FH/repo" worktree add -q -b done/cc "$FH/repo/.claude/worktrees/done"
+mkdir -p "$FH/repo/.claude/worktrees/feat/build" "$FH/repo/build"
+K() { HOME="$FH" PATH="$FH/bin-other:$PATH" PROBE_CWD="${KCWD:-$FH/repo}" row "$@"; }
+K 'rm -rf .claude/worktrees/feat'                 '未マージの worktree を相対パスで rm -rf'   'deny'
+K "rm -rf $FH/repo/.claude/worktrees/feat"        '未マージの worktree を絶対パスで rm -rf'   'deny'
+K 'trash .claude/worktrees/feat'                  '未マージの worktree を trash'             'deny'
+K 'find .claude/worktrees/feat -delete'           '未マージの worktree を find -delete'      'deny'
+K 'rm -rf .claude/worktrees'                      '未マージの worktree を含むフォルダごと'     'deny'
+K 'rm -rf .claude'                                'さらに上のフォルダごと'                    'deny'
+K 'WORKTREE_RM_OK=1 rm -rf .claude/worktrees/feat' 'マーカーを削除コマンドの先頭に'           'allow'
+K 'rm -rf .claude/worktrees/done'                 'マージ済みでクリーンな worktree'          'allow'
+K 'git worktree remove .claude/worktrees/done'    'マージ済みを git worktree remove'        'allow'
+K 'rm -rf .claude/worktrees/feat/build'           'worktree の中のサブディレクトリ掃除'      'allow'
+KCWD="$FH/repo/.claude/worktrees/feat" K 'rm -rf build' 'cwd が worktree の中で相対パス rm -rf' 'allow'
+K 'rm -rf build'                                  'worktree を含まないフォルダ'              'allow'
+K 'rm -rf .claude/worktrees/*'                    'glob で未マージの worktree を含む'        'deny'
+K 'rm -rf .claude/worktrees/f*'                   'glob の前方一致で未マージの worktree'     'deny'
+K 'rm -rf .claude/worktrees/d*'                   'glob がマージ済みの worktree だけに当たる' 'allow'
+# git の管理下でないフォルダに worktree をまとめて置いている場合
+git -C "$FH/repo" worktree add -q -b feat/ext "$FH/ext/feat"
+git -C "$FH/ext/feat" commit -q --allow-empty -m work
+K "rm -rf $FH/ext"                                'git 管理外の上位フォルダごと（絶対パス）' 'deny'
+KCWD="$FH" K 'rm -rf ext'                         'git 管理外の上位フォルダごと（相対パス）' 'deny'
+K 'rm -rf .claude/{worktrees,cache}'              'ブレース展開で未マージの worktree を含む'  'deny'
+K 'rm -rf .claude/{cache,tmp}'                    'ブレース展開が worktree に当たらない'      'allow'
+K "find . -name '*.pyc' -delete"                  '条件付きの find -delete（掃除）'          'allow'
+K 'find . -name feat -exec rm -rf {} +'           '条件付きでも -exec rm は止める側'          'deny'
+# 関係ないリポの中に、別のリポの未マージ worktree がある場合
+git -C "$FH" init -q -b main outer && git -C "$FH/outer" commit -q --allow-empty -m base
+git -C "$FH/repo" worktree add -q -b feat/nested "$FH/outer/bucket/feat"
+git -C "$FH/outer/bucket/feat" commit -q --allow-empty -m work
+KCWD="$FH/outer" K 'rm -rf bucket'                '別のリポの中にある未マージの worktree'    'deny'
+# シェルの設定で glob の当たり方が変わる（dotglob・nocaseglob・extglob）ので、当たりうる側で見る
+git -C "$FH/repo" worktree add -q -b feat/hidden "$FH/outer/hb/.hidden/feat"
+git -C "$FH/outer/hb/.hidden/feat" commit -q --allow-empty -m work
+KCWD="$FH/outer" K 'shopt -s dotglob; rm -rf hb/*' 'dotglob で . で始まるフォルダに当たる'     'deny'
+KCWD="$FH/outer" K 'shopt -s nocaseglob; rm -rf B*' 'nocaseglob で大文字小文字を無視して当たる' 'deny'
+KCWD="$FH/outer" K 'shopt -s extglob; rm -rf @(bucket|x)' 'extglob で当たる'                 'deny'
+# 深い所にある worktree も拾う（深さで打ち切らない）
+git -C "$FH/repo" worktree add -q -b feat/deep "$FH/deep/a/b/c/d/e/feat"
+git -C "$FH/deep/a/b/c/d/e/feat" commit -q --allow-empty -m work
+K "rm -rf $FH/deep"                               '6 段下にある未マージの worktree'          'deny'
+# globstar の `**` は何階層でもたどるので、`**` の手前のフォルダから下を見る
+KCWD="$FH" K 'shopt -s globstar; rm -rf deep/**/feat' 'globstar の ** で深い worktree に届く'      'deny'
+KCWD="$FH" K 'rm -rf wide/**/x'                   '** の手前のフォルダに worktree が無い'     'allow'
+# 見るフォルダの数の上限で打ち切ったら、見ていない所に worktree が無いとは言えないので止める
+# （一時領域が /tmp でない macOS でも rm-guard に止められないよう、相対パスで見る）
+mkdir -p "$FH/wide/1" "$FH/wide/2" "$FH/wide/3" "$FH/wide/4"
+KCWD="$FH" GUARDS_SCAN_LIMIT=3 K 'rm -rf wide'    '走査が上限で打ち切られた（判定不能）'      'deny'
+KCWD="$FH" K 'rm -rf wide'                        '上限内で worktree が無いと確かめられた'    'allow'
+KCWD="$FH" GUARDS_SCAN_LIMIT=3 K 'rm -rf wide/*'  'glob の一致ごとでなく全体で上限を数える'   'deny'
+KCWD="$FH" K 'rm -rf wide/*'                      'glob の一致を上限内で確かめられた'         'allow'
+# 読めないフォルダの中は確かめられない（root で動く CI では読めてしまうので飛ばす）
+if [ "$(id -u)" != 0 ]; then
+  mkdir -p "$FH/locked/in" && chmod 000 "$FH/locked/in"
+  KCWD="$FH" K 'sudo rm -rf locked'               '読めないフォルダを含む（判定不能）'        'deny'
+  chmod 755 "$FH/locked/in"
+fi
+KCWD="$FH" GUARDS_SCAN_LIMIT=3 K "find wide -name x -exec rm -rf {} +" '条件付きの find -exec rm でも走査しきれなければ止める' 'deny'
+K 'rm -rf .claude/worktrees/x{1..1000000000}'      '巨大な範囲でも固まらずに判定不能で止める'  'deny'
+# find -L・-H はシンボリックリンクの先もたどる（rm はリンク自体しか消さない）
+ln -s "$FH/ext" "$FH/alias"
+mkdir -p "$FH/lk" && ln -s "$FH/ext" "$FH/lk/in"
+KCWD="$FH" K 'find -L alias -name feat -exec rm -rf {} +' 'find -L で開始パスのリンクの先'     'deny'
+KCWD="$FH" K 'find -H alias -name feat -exec rm -rf {} +' 'find -H で開始パスのリンクの先'     'deny'
+KCWD="$FH" K 'find alias -name feat -exec rm -rf {} +'    'リンクをたどらない find'            'allow'
+KCWD="$FH" K 'find -L lk -name feat -exec rm -rf {} +'    'find -L で中のリンクの先'           'deny'
+KCWD="$FH" K 'find lk -follow -name feat -exec rm -rf {} +' '-follow でも中のリンクの先'       'deny'
+KCWD="$FH" K 'find -H lk -name feat -exec rm -rf {} +'    'find -H は中のリンクをたどらない'   'allow'
+KCWD="$FH" K 'rm -rf alias'                               'rm はリンク自体を消すだけ'          'allow'
+# 範囲のブレース展開・展開の数の上限・引用符で囲んだ glob の文字
+K 'rm -rf .claude/worktrees/{done,fea{s..u}}'      '範囲のブレース展開で未マージの worktree'   'deny'
+K "rm -rf .claude/{$(printf 'x%s,' $(seq 1 300))worktrees}" 'ブレース展開が上限を超えた（判定不能）' 'deny'
+mkdir -p "$FH/repo/bk"
+git -C "$FH/repo" worktree add -q -b feat/bk "$FH/repo/bk/b[1]"
+git -C "$FH/repo/bk/b[1]" commit -q --allow-empty -m work
+K "rm -rf 'bk/b[1]'"                               '引用符で囲んだ [ ] は文字どおりのパス'     'deny'
+git -C "$FH/repo" worktree add -q -b feat/bk2 "$FH/repo/bk/{done,feat}"
+git -C "$FH/repo/bk/{done,feat}" commit -q --allow-empty -m work
+K "rm -rf 'bk/{done,feat}'"                        '引用符で囲んだ { } は文字どおりのパス'     'deny'
+# $TMPDIR の下の worktree（rm-guard は $TMPDIR を安全扱いにする）
+git -C "$FH/repo" worktree add -q -b feat/tmp "$FH/tmpd/feat"
+git -C "$FH/repo/../tmpd/feat" commit -q --allow-empty -m work
+TMPDIR="$FH/tmpd" K 'rm -rf "$TMPDIR/feat"'        '$TMPDIR の下の未マージの worktree'         'deny'
+TMPDIR="$FH/tmpd" K 'rm -rf ${TMPDIR:-/tmp}/feat'  '${TMPDIR:-…} の形でも'                    'deny'
+TMPDIR="$FH/tmpd" K 'rm -rf "$TMPDIR/other"'       '$TMPDIR の下の worktree でないパス'        'allow'
+# フックが別の worktree の GIT_DIR を受け継いでいても、消す先のリポで判定する
+GIT_DIR="$FH/repo/.git/worktrees/done" GIT_WORK_TREE="$FH/repo/.claude/worktrees/done" \
+  K 'rm -rf .claude/worktrees/feat'               'GIT_DIR が別の worktree を指していても'    'deny'
+
 rm -rf "$FH"
