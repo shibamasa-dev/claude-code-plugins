@@ -1,6 +1,6 @@
 {
   "name": "docs",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "画像生成プロンプト・コードで描くモーション動画のスキル",
   "author": {
     "name": "shibamasa-dev"
