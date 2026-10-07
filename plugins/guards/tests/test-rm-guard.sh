@@ -185,17 +185,44 @@ git -C "$FH" init -q -b main outer && git -C "$FH/outer" commit -q --allow-empty
 git -C "$FH/repo" worktree add -q -b feat/nested "$FH/outer/bucket/feat"
 git -C "$FH/outer/bucket/feat" commit -q --allow-empty -m work
 KCWD="$FH/outer" K 'rm -rf bucket'                '別のリポの中にある未マージの worktree'    'deny'
+# シェルの設定で glob の当たり方が変わる（dotglob・nocaseglob・extglob）ので、当たりうる側で見る
+git -C "$FH/repo" worktree add -q -b feat/hidden "$FH/outer/hb/.hidden/feat"
+git -C "$FH/outer/hb/.hidden/feat" commit -q --allow-empty -m work
+KCWD="$FH/outer" K 'shopt -s dotglob; rm -rf hb/*' 'dotglob で . で始まるフォルダに当たる'     'deny'
+KCWD="$FH/outer" K 'shopt -s nocaseglob; rm -rf B*' 'nocaseglob で大文字小文字を無視して当たる' 'deny'
+KCWD="$FH/outer" K 'shopt -s extglob; rm -rf @(bucket|x)' 'extglob で当たる'                 'deny'
 # 深い所にある worktree も拾う（深さで打ち切らない）
 git -C "$FH/repo" worktree add -q -b feat/deep "$FH/deep/a/b/c/d/e/feat"
 git -C "$FH/deep/a/b/c/d/e/feat" commit -q --allow-empty -m work
 K "rm -rf $FH/deep"                               '6 段下にある未マージの worktree'          'deny'
+# globstar の `**` は何階層でもたどるので、`**` の手前のフォルダから下を見る
+KCWD="$FH" K 'shopt -s globstar; rm -rf deep/**/feat' 'globstar の ** で深い worktree に届く'      'deny'
+KCWD="$FH" K 'rm -rf wide/**/x'                   '** の手前のフォルダに worktree が無い'     'allow'
 # 見るフォルダの数の上限で打ち切ったら、見ていない所に worktree が無いとは言えないので止める
 # （一時領域が /tmp でない macOS でも rm-guard に止められないよう、相対パスで見る）
 mkdir -p "$FH/wide/1" "$FH/wide/2" "$FH/wide/3" "$FH/wide/4"
 KCWD="$FH" GUARDS_SCAN_LIMIT=3 K 'rm -rf wide'    '走査が上限で打ち切られた（判定不能）'      'deny'
 KCWD="$FH" K 'rm -rf wide'                        '上限内で worktree が無いと確かめられた'    'allow'
+KCWD="$FH" GUARDS_SCAN_LIMIT=3 K 'rm -rf wide/*'  'glob の一致ごとでなく全体で上限を数える'   'deny'
+KCWD="$FH" K 'rm -rf wide/*'                      'glob の一致を上限内で確かめられた'         'allow'
+# 読めないフォルダの中は確かめられない（root で動く CI では読めてしまうので飛ばす）
+if [ "$(id -u)" != 0 ]; then
+  mkdir -p "$FH/locked/in" && chmod 000 "$FH/locked/in"
+  KCWD="$FH" K 'sudo rm -rf locked'               '読めないフォルダを含む（判定不能）'        'deny'
+  chmod 755 "$FH/locked/in"
+fi
 KCWD="$FH" GUARDS_SCAN_LIMIT=3 K "find wide -name x -exec rm -rf {} +" '条件付きの find -exec rm でも走査しきれなければ止める' 'deny'
 K 'rm -rf .claude/worktrees/x{1..1000000000}'      '巨大な範囲でも固まらずに判定不能で止める'  'deny'
+# find -L・-H はシンボリックリンクの先もたどる（rm はリンク自体しか消さない）
+ln -s "$FH/ext" "$FH/alias"
+mkdir -p "$FH/lk" && ln -s "$FH/ext" "$FH/lk/in"
+KCWD="$FH" K 'find -L alias -name feat -exec rm -rf {} +' 'find -L で開始パスのリンクの先'     'deny'
+KCWD="$FH" K 'find -H alias -name feat -exec rm -rf {} +' 'find -H で開始パスのリンクの先'     'deny'
+KCWD="$FH" K 'find alias -name feat -exec rm -rf {} +'    'リンクをたどらない find'            'allow'
+KCWD="$FH" K 'find -L lk -name feat -exec rm -rf {} +'    'find -L で中のリンクの先'           'deny'
+KCWD="$FH" K 'find lk -follow -name feat -exec rm -rf {} +' '-follow でも中のリンクの先'       'deny'
+KCWD="$FH" K 'find -H lk -name feat -exec rm -rf {} +'    'find -H は中のリンクをたどらない'   'allow'
+KCWD="$FH" K 'rm -rf alias'                               'rm はリンク自体を消すだけ'          'allow'
 # 範囲のブレース展開・展開の数の上限・引用符で囲んだ glob の文字
 K 'rm -rf .claude/worktrees/{done,fea{s..u}}'      '範囲のブレース展開で未マージの worktree'   'deny'
 K "rm -rf .claude/{$(printf 'x%s,' $(seq 1 300))worktrees}" 'ブレース展開が上限を超えた（判定不能）' 'deny'
