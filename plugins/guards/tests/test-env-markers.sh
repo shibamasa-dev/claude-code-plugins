@@ -46,6 +46,10 @@ row 'cd ~/.venvs/x && cd /tmp && uv pip sync req.txt'                 'cd で共
 row 'cd ~/.venvs/x && uv pip sync --python /tmp/.venv/bin/python r'  '--python で共有 venv の外を明示' 'allow'
 row 'source ~/.venvs/x/bin/activate && deactivate && uv pip sync r'  'deactivate した後'               'allow'
 row 'source ~/.venvs/x/bin/activate && cd /tmp && uv pip sync r'     'activate 中は cd しても対象'      'deny'
+row 'uv pip sync --python /tmp/.venv/bin/python ~/.venvs/req.txt'   '共有 venv は入力ファイルだけ'     'allow'
+row 'cd ~/.venvs/x && cd project && uv pip sync req.txt'             '共有 venv の中で相対パスの cd'    'deny'
+row 'source ~/.venvs/x/bin/activate && source /tmp/s.sh && uv pip sync r' 'activate 後に別のスクリプト' 'deny'
+row 'source ~/.venvs/x/bin/activate && source /p/.venv/bin/activate && uv pip sync r' '別の venv を activate' 'allow'
 
 echo
 echo '=== shared-venv-guard: 設定 shared_venv_dirs が空のとき（既定） ==='

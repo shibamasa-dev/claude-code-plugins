@@ -1386,35 +1386,55 @@ def _mentions_shared_venv(command: str) -> bool:
 _VENV_VARS_RE = re.compile(r"\b(?:VIRTUAL_ENV|UV_PROJECT_ENVIRONMENT)=")
 
 
+def _python_arg(tokens: list):
+    """`uv pip` の `--python` / `-p` の値（無ければ None）。"""
+    for i, t in enumerate(tokens):
+        if t.startswith("--python="):
+            return t.split("=", 1)[1]
+        if t in ("--python", "-p") and i + 1 < len(tokens):
+            return tokens[i + 1]
+    return None
+
+
 def _targets_shared_venv(cmd, cwd_shared: bool, venv_shared) -> bool:
-    """`uv pip` が共有 venv を対象にするか。`--python` を明示したらその値で、無ければ有効な venv、次に今いるフォルダで決める。"""
-    tk = cmd.tokens
+    """`uv pip` が共有 venv を対象にするか。`--python` を明示したらその値だけで、無ければ有効な venv、次に今いるフォルダで決める。"""
+    py = _python_arg(cmd.tokens)
+    if py is not None:
+        return _mentions_shared_venv(py)
     if _mentions_shared_venv(cmd.raw):
         return True
-    if any(t in ("--python", "-p") or t.startswith("--python=") for t in tk):
-        return False  # 明示した interpreter が共有 venv の外
     if "VIRTUAL_ENV" in cmd.env:
         return False
     return venv_shared if venv_shared is not None else cwd_shared
+
+
+def _is_absolute_dir(arg: str) -> bool:
+    a = arg.strip('"').strip("'")
+    return a.startswith(("/", "~", "$HOME", "${HOME}"))
 
 
 def rule_shared_venv_guard(command: str):
     if not SHARED_VENV_DIRS or not _mentions_shared_venv(command):
         return None  # 高速素通し（設定 shared_venv_dirs が空か、そこに言及しないコマンドは対象外）
     # 前のコマンドが決めた文脈（`cd` で今いるフォルダ、`source …/activate`・`export VIRTUAL_ENV=…` で有効な venv）を
-    # 順に追い、変わるたびに置き直す（`cd ~/.venvs/x && cd /tmp` の後は共有 venv の中ではない）
+    # 順に追う。置き直すのは文脈が確かに変わるときだけで、分からないときは前の状態を残す（止める側に倒す）
     cwd_shared, venv_shared = False, None
     for cmd in _commands(command):
         tk = cmd.tokens
         head = os.path.basename(tk[0]) if tk else ""
         if head in ("cd", "pushd"):
-            cwd_shared = _mentions_shared_venv(cmd.raw)
-            continue
-        if head == "popd":
-            cwd_shared = False
+            # 絶対パス（`/`・`~`・`$HOME`）の移動だけ置き直す。相対パスの移動は今いる場所の下なので前の状態のまま
+            if len(tk) > 1 and _is_absolute_dir(tk[1]):
+                cwd_shared = _mentions_shared_venv(cmd.raw)
+            elif _mentions_shared_venv(cmd.raw):
+                cwd_shared = True
             continue
         if head in ("source", "."):
-            venv_shared = _mentions_shared_venv(cmd.raw)
+            # activate を読んだときだけ venv を置き直す（ほかのスクリプトは venv を変えない前提で前の状態のまま）
+            if _mentions_shared_venv(cmd.raw):
+                venv_shared = True
+            elif len(tk) > 1 and os.path.basename(tk[1].strip('"').strip("'")).startswith("activate"):
+                venv_shared = False
             continue
         if head == "deactivate":
             venv_shared = None
