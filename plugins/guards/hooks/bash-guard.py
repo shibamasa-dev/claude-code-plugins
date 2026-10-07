@@ -1383,21 +1383,46 @@ def _mentions_shared_venv(command: str) -> bool:
     return False
 
 
-# 後ろのコマンドの対象 venv を決める前置き（`cd`、`source …/activate`、`export VIRTUAL_ENV=…`、代入だけの行）
-_VENV_CONTEXT_CMDS = ("cd", "pushd", "source", ".", "export")
+_VENV_VARS_RE = re.compile(r"\b(?:VIRTUAL_ENV|UV_PROJECT_ENVIRONMENT)=")
+
+
+def _targets_shared_venv(cmd, cwd_shared: bool, venv_shared) -> bool:
+    """`uv pip` が共有 venv を対象にするか。`--python` を明示したらその値で、無ければ有効な venv、次に今いるフォルダで決める。"""
+    tk = cmd.tokens
+    if _mentions_shared_venv(cmd.raw):
+        return True
+    if any(t in ("--python", "-p") or t.startswith("--python=") for t in tk):
+        return False  # 明示した interpreter が共有 venv の外
+    if "VIRTUAL_ENV" in cmd.env:
+        return False
+    return venv_shared if venv_shared is not None else cwd_shared
 
 
 def rule_shared_venv_guard(command: str):
     if not SHARED_VENV_DIRS or not _mentions_shared_venv(command):
         return None  # 高速素通し（設定 shared_venv_dirs が空か、そこに言及しないコマンドは対象外）
-    in_shared = False  # 前置きで共有 venv に入ったか
+    # 前のコマンドが決めた文脈（`cd` で今いるフォルダ、`source …/activate`・`export VIRTUAL_ENV=…` で有効な venv）を
+    # 順に追い、変わるたびに置き直す（`cd ~/.venvs/x && cd /tmp` の後は共有 venv の中ではない）
+    cwd_shared, venv_shared = False, None
     for cmd in _commands(command):
         tk = cmd.tokens
-        if not tk or os.path.basename(tk[0]) in _VENV_CONTEXT_CMDS:
-            in_shared = in_shared or _mentions_shared_venv(cmd.raw)
+        head = os.path.basename(tk[0]) if tk else ""
+        if head in ("cd", "pushd"):
+            cwd_shared = _mentions_shared_venv(cmd.raw)
             continue
-        # 同じコマンドか前置きで共有 venv を指すときだけ見る（別のコマンドが言及しているだけなら対象外）
-        if not (in_shared or _mentions_shared_venv(cmd.raw)):
+        if head == "popd":
+            cwd_shared = False
+            continue
+        if head in ("source", "."):
+            venv_shared = _mentions_shared_venv(cmd.raw)
+            continue
+        if head == "deactivate":
+            venv_shared = None
+            continue
+        if head in ("export", "") and _VENV_VARS_RE.search(cmd.raw):
+            venv_shared = _mentions_shared_venv(cmd.raw)
+            continue
+        if not _targets_shared_venv(cmd, cwd_shared, venv_shared):
             continue
         if _marker(cmd, "SHARED_VENV_OK") or len(tk) < 3:
             continue

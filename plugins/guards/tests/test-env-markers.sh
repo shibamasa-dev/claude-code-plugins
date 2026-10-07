@@ -42,6 +42,10 @@ row 'cd ~/.venvs/x && uv pip sync req.txt'                            'cd で共
 row 'export VIRTUAL_ENV=~/.venvs/x; uv pip sync req.txt'              'export で共有 venv を指してから' 'deny'
 row 'VIRTUAL_ENV=~/.venvs/x uv pip sync req.txt'                      '同じコマンドの環境変数で指す'    'deny'
 row 'ls ~/.venvs && uv pip sync --python .venv req.txt'               '別のコマンドが言及しているだけ'  'allow'
+row 'cd ~/.venvs/x && cd /tmp && uv pip sync req.txt'                 'cd で共有 venv を出た後'         'allow'
+row 'cd ~/.venvs/x && uv pip sync --python /tmp/.venv/bin/python r'  '--python で共有 venv の外を明示' 'allow'
+row 'source ~/.venvs/x/bin/activate && deactivate && uv pip sync r'  'deactivate した後'               'allow'
+row 'source ~/.venvs/x/bin/activate && cd /tmp && uv pip sync r'     'activate 中は cd しても対象'      'deny'
 
 echo
 echo '=== shared-venv-guard: 設定 shared_venv_dirs が空のとき（既定） ==='
