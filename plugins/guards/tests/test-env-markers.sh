@@ -37,6 +37,11 @@ row 'uv pip sync --python ~/.venvs-backup/x req.txt'                  '名前が
 row 'uv pip sync --python ~/.venvs req.txt'                            '置き場そのもの'                  'deny'
 row 'uv pip sync --python ~/.venvs>log req.txt'                        '置き場の直後にリダイレクト'      'deny'
 row 'uv pip sync --python .venv req.txt'                              '置き場の外の venv'               'allow'
+row 'source ~/.venvs/x/bin/activate && uv pip sync req.txt'           'activate で共有 venv に入ってから' 'deny'
+row 'cd ~/.venvs/x && uv pip sync req.txt'                            'cd で共有 venv に入ってから'     'deny'
+row 'export VIRTUAL_ENV=~/.venvs/x; uv pip sync req.txt'              'export で共有 venv を指してから' 'deny'
+row 'VIRTUAL_ENV=~/.venvs/x uv pip sync req.txt'                      '同じコマンドの環境変数で指す'    'deny'
+row 'ls ~/.venvs && uv pip sync --python .venv req.txt'               '別のコマンドが言及しているだけ'  'allow'
 
 echo
 echo '=== shared-venv-guard: 設定 shared_venv_dirs が空のとき（既定） ==='

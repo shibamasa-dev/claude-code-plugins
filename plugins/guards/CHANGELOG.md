@@ -11,7 +11,7 @@ guards プラグインの変更履歴。書式は [Keep a Changelog](https://kee
 - 同梱のルール `repo-structure.md` は `examples/repo-structure.md` に移した。見本としてだけ置き、フックは読まない
 - `~/.worktrees` の特別扱いを外し、設定 `worktree_dirs`（既定は空）にした。書いたフォルダは今までの `~/.worktrees` と同じ扱い（配下の再帰削除を通し、未マージか判定できないパスは止める）
 - rm-guard は、マージ済みでクリーンな linked worktree の root の削除を置き場に関係なく通す（`worktree_dirs` が空でも、片付けのたびに確認が出ないように）
-- shared-venv-guard は設定 `shared_venv_dirs`（既定は空）に書いた置き場にだけ効く。空なら止めない。`~` の形・`$HOME` の形・絶対パスのどれで書いたコマンドも見る
+- shared-venv-guard は設定 `shared_venv_dirs`（既定は空）に書いた置き場にだけ効く。空なら止めない。`~` の形・`$HOME` の形・絶対パスのどれで書いたコマンドも見る。`uv pip` 自身か、その前の `cd`・`source …/activate`・`export VIRTUAL_ENV=…` が置き場を指すときだけ止める
 - 設定値はフックが環境変数 `CLAUDE_PLUGIN_OPTION_<KEY>` から読む（シェル形式のフックのコマンドには `${user_config.KEY}` を書けないため）
 
 ### 戻し方

@@ -1383,11 +1383,22 @@ def _mentions_shared_venv(command: str) -> bool:
     return False
 
 
+# 後ろのコマンドの対象 venv を決める前置き（`cd`、`source …/activate`、`export VIRTUAL_ENV=…`、代入だけの行）
+_VENV_CONTEXT_CMDS = ("cd", "pushd", "source", ".", "export")
+
+
 def rule_shared_venv_guard(command: str):
     if not SHARED_VENV_DIRS or not _mentions_shared_venv(command):
         return None  # 高速素通し（設定 shared_venv_dirs が空か、そこに言及しないコマンドは対象外）
+    in_shared = False  # 前置きで共有 venv に入ったか
     for cmd in _commands(command):
         tk = cmd.tokens
+        if not tk or os.path.basename(tk[0]) in _VENV_CONTEXT_CMDS:
+            in_shared = in_shared or _mentions_shared_venv(cmd.raw)
+            continue
+        # 同じコマンドか前置きで共有 venv を指すときだけ見る（別のコマンドが言及しているだけなら対象外）
+        if not (in_shared or _mentions_shared_venv(cmd.raw)):
+            continue
         if _marker(cmd, "SHARED_VENV_OK") or len(tk) < 3:
             continue
         if os.path.basename(tk[0]) == "uv" and tk[1] == "pip" and \
