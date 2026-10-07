@@ -8,7 +8,7 @@ git -C "$R/repo" init -q
 probe() {   # $1 = 書き込み先、残りは env に渡す（環境変数の上書き）
   f=$1; shift
   out=$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$f" \
-        | env -u REPO_STRUCTURE_SPEC -u FILE_GUARD_SPEC HOME="$R/home" "$@" python3 "$H")
+        | env -u REPO_STRUCTURE_SPEC -u FILE_GUARD_SPEC HOME="$R/home" "$@" python3 "$H") || { echo error; return; }
   case "$out" in *'"deny"'*) echo deny ;; '') echo silent ;; *) echo other ;; esac
 }
 row() { printf '  %-56s -> %-6s (%s 期待)\n' "$1" "$2" "$3"; }

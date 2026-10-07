@@ -33,6 +33,8 @@ row 'SHARED_VENV_OK=1 uv pip sync --python ~/.venvs/x req.txt'        'uv 自身
 row 'echo SHARED_VENV_OK=1; uv pip sync --python ~/.venvs/x req.txt'  'マーカーを echo の引数に'        'deny'
 row 'uv pip install --python ~/.venvs/x requests'                     'install（追加のみ）は対象外'     'allow'
 row "uv pip sync --python $HOME/.venvs/x req.txt"                     '置き場を絶対パスで指す'          'deny'
+row 'uv pip sync --python ~/.venvs-backup/x req.txt'                  '名前が似ているだけの別のフォルダ' 'allow'
+row 'uv pip sync --python ~/.venvs req.txt'                            '置き場そのもの'                  'deny'
 row 'uv pip sync --python .venv req.txt'                              '置き場の外の venv'               'allow'
 
 echo
