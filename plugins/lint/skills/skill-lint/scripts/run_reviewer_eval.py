@@ -5,8 +5,10 @@ validate_findings.py で quote を検証してから、reviewer だけが拾え�
   python3 scripts/run_reviewer_eval.py [--runs 1] [--workers 3] [--timeout 600] [--keep DIR]
 
 モデルは指定しない（claude の既定）。フィクスチャの内容は行番号つきで prompt に入れ、ヒントとして
-lint.py の結果と eval 用 denylist を添える（本番の手順と同じ材料）。
-採点: 陽性（reviewer_keywords あり）は同じ file・line に quote が keyword を含む有効な指摘があれば命中。
+lint.py の結果を添える。フィクスチャの作者はこの実行環境の人ではないので、reviewer-prompt の
+「実行環境から固有名のヒントを集める」手順はこの評価では行わせない（固有名は本文だけから判定させる）。
+採点: 陽性の reviewer_expect の各要素（期待する指摘 1 件）は、同じ file・line に、要素内の語のどれかを
+quote に含む有効な指摘があれば命中。
 陰性は同じ行への有効な指摘を誤検知に数える（reviewer_forbid_quote があるケースは quote がそれを含むものだけ）。
 合格の目安: recall ≥ 0.8 かつ各回の誤検知 ≤ 1。exit 0 = 目安を満たす / 1 = 満たさない。
 """
@@ -20,7 +22,7 @@ import validate_findings as vf  # noqa: E402
 from run_evals import locate, materialize  # noqa: E402
 
 
-def build_prompt(fixture, denylist_path):
+def build_prompt(fixture):
     parts = [open(os.path.join(SKILL_DIR, "references", "reviewer-prompt.md"), encoding="utf-8").read()]
     parts.append("\n## 対象スキル（ファイル内容・行番号つき。ツールは使わずこれを読む）\n")
     for rel, ab, _ in lint.iter_files(fixture):
@@ -30,10 +32,10 @@ def build_prompt(fixture, denylist_path):
         parts.append("### %s\n```" % rel)
         parts += ["%d: %s" % (i, l) for i, l in enumerate(text.splitlines(), 1)]
         parts.append("```")
-    res = lint.lint(fixture, denylist_path, use_gitleaks=False)
+    res = lint.lint(fixture, use_gitleaks=False)
     hints = [{k: f[k] for k in ("file", "line", "category", "match")} for f in res["findings"]]
     parts.append("\n## ヒント: linter の結果\n```json\n%s\n```" % json.dumps(hints, ensure_ascii=False))
-    parts.append("\n## ヒント: denylist\n```json\n%s\n```" % open(denylist_path, encoding="utf-8").read().strip())
+    parts.append("\n## 実行環境のヒント\nこの評価では実行環境からヒントを集めない（コマンドは実行しない）。固有名は対象スキルの本文だけから判定する。")
     parts.append("\n上の指示どおり、JSON 配列だけを出力してください。")
     return "\n".join(parts)
 
@@ -63,10 +65,11 @@ def score(spec, fixture, valid):
     for c in spec["cases"]:
         line = locate(fixture, c)
         at = [f for f in valid if f["file"] == c["file"] and f["line"] == line]
-        if c["kind"] == "positive" and c.get("reviewer_keywords"):
-            pos_total += 1
-            if any(any(k in f["quote"] for k in c["reviewer_keywords"]) for f in at):
-                pos_hits.append(c["id"])
+        if c["kind"] == "positive":
+            for n, group in enumerate(c.get("reviewer_expect", []), 1):
+                pos_total += 1
+                if any(any(k in f["quote"] for k in group) for f in at):
+                    pos_hits.append("%s-%d" % (c["id"], n))
         elif c["kind"] == "negative":
             if c.get("reviewer_forbid_quote"):
                 at = [f for f in at if any(k in f["quote"] for k in c["reviewer_forbid_quote"])]
@@ -88,7 +91,7 @@ def main():
 
 
 def evaluate(spec, fixture, a):
-    prompt = build_prompt(fixture, os.path.join(SKILL_DIR, spec["denylist"]))
+    prompt = build_prompt(fixture)
     with ThreadPoolExecutor(a.workers) as ex:
         outs = list(ex.map(lambda _: run_claude(prompt, a.timeout), range(a.runs)))
     keep = a.keep or tempfile.mkdtemp(prefix="skill-lint-eval-out-")

@@ -1,7 +1,6 @@
 {
- "description": "skill-lint の評価。fixtures/leaky-skill/ の各行は 2026-10-09 に実在のスキル群とルールファイルを grep した行を、人名・組織・リポ・取引先・ホストだけ一貫した仮名に置き換えたもの（作り物は無し）。行の並べ替えと、ファイルの区切り（frontmatter の --- と空行、リポの検査が求める frontmatter の name 行）だけを足した。P12 のメールアドレスと P13 のホーム配下の絶対パスは、このリポ自身の漏れ検査（check-repo.py）に当たるため、当たる部分だけを {{AT}}・{{USERS_DIR}} のトークンにして置き、runner が一時ディレクトリへ展開してから流す（展開後は逐語どおり）。fixtures/denylist.json は仮名のうち 6 語だけを入れ、取引先名と私的ボット名は reviewer が自力で拾えるかを測るため入れていない。グループ A（scripts/run_evals.py）は lint.py の結果を lint_expect ⊆ 実測・lint_forbid ∩ 実測 = ∅ で採点する。グループ B（scripts/run_reviewer_eval.py）は reviewer_keywords を持つ陽性の recall と、陰性行への指摘（N7 は reviewer_forbid_quote を含む指摘だけ）を誤検知として数える。行は file と anchor（行内の一意な断片）で特定し、漏れ文字列そのものは evals.json に書かない。 lint_expect_match は、その行の指摘の match に含まれるべき文字列（どの規則で拾ったかまで確かめる）。",
+ "description": "skill-lint の評価。fixtures/leaky-skill/ の各行は 2026-10-09 に実在のスキル群とルールファイルを grep した行を、人名・組織・リポ・取引先・ホストだけ一貫した仮名に置き換えたもの（作り物は無し）。行の並べ替えと、ファイルの区切り（frontmatter の --- と空行、リポの検査が求める frontmatter の name 行）だけを足した。P12 のメールアドレスと P13 のホーム配下の絶対パスは、このリポ自身の漏れ検査（check-repo.py）に当たるため、当たる部分だけを {{AT}}・{{USERS_DIR}} のトークンにして置き、runner が一時ディレクトリへ展開してから流す（展開後は逐語どおり）。lint は汎用の正規表現だけで、人名・組織名・取引先・私的ボットのような固有名は reviewer が判定する（denylist は持たない）。グループ A（scripts/run_evals.py）は lint.py の結果を lint_expect ⊆ 実測・lint_forbid ∩ 実測 = ∅ で採点する。グループ B（scripts/run_reviewer_eval.py）は reviewer_expect（1 要素＝期待する指摘 1 件。中の語のどれかを quote に含めば命中）の recall と、陰性行への指摘（N7 は reviewer_forbid_quote を含む指摘だけ）を誤検知として数える。行は file と anchor（行内の一意な断片）で特定し、漏れ文字列そのものは evals.json に書かない。 lint_expect_match は、その行の指摘の match に含まれるべき文字列（どの規則で拾ったかまで確かめる）。",
  "fixture_dir": "evals/fixtures/leaky-skill",
- "denylist": "evals/fixtures/denylist.json",
  "cases": [
   {
    "id": "P1",
@@ -9,10 +8,15 @@
    "file": "SKILL.md",
    "anchor": "完了報告の型に次の1行を必ず入れる",
    "lint_expect": [
-    "identity",
     "provenance"
    ],
-   "lint_forbid": []
+   "lint_forbid": [],
+   "reviewer_expect": [
+    [
+     "たろう"
+    ]
+   ],
+   "note": "人名は reviewer、日付つきの決定の経緯は lint"
   },
   {
    "id": "P2",
@@ -20,10 +24,18 @@
    "file": "SKILL.md",
    "anchor": "からの導出＋isdir 検証のみ",
    "lint_expect": [
-    "path",
-    "identity"
+    "path"
    ],
-   "lint_forbid": []
+   "lint_forbid": [],
+   "reviewer_expect": [
+    [
+     "たろう"
+    ],
+    [
+     "ACMECO"
+    ]
+   ],
+   "note": "個人ディレクトリのパスは lint（warn）、人名と組織名は reviewer"
   },
   {
    "id": "P3",
@@ -34,10 +46,12 @@
     "tracker"
    ],
    "lint_forbid": [],
-   "reviewer_keywords": [
-    "マルヤマ"
-   ],
-   "note": "取引先名は denylist に入れていない。reviewer だけが拾える"
+   "note": "取引先名は denylist に入れていない。reviewer だけが拾える",
+   "reviewer_expect": [
+    [
+     "マルヤマ"
+    ]
+   ]
   },
   {
    "id": "P4",
@@ -68,12 +82,14 @@
     "path"
    ],
    "lint_forbid": [],
-   "reviewer_keywords": [
-    "TARO-BOT-CC",
-    "signal-inbox",
-    "signals.py"
-   ],
-   "note": "私的リポへの依存は reviewer が拾う"
+   "note": "私的リポへの依存は reviewer が拾う",
+   "reviewer_expect": [
+    [
+     "TARO-BOT-CC",
+     "signal-inbox",
+     "signals.py"
+    ]
+   ]
   },
   {
    "id": "P7",
@@ -100,14 +116,17 @@
    "kind": "positive",
    "file": "SKILL.md",
    "anchor": "Slack push",
-   "lint_expect": [
-    "identity"
-   ],
+   "lint_expect": [],
    "lint_forbid": [],
-   "reviewer_keywords": [
-    "taro-bot"
-   ],
-   "note": "私的ボットへの依存は reviewer が拾う"
+   "note": "人名と私的ボットへの依存は reviewer",
+   "reviewer_expect": [
+    [
+     "たろう"
+    ],
+    [
+     "taro-bot"
+    ]
+   ]
   },
   {
    "id": "P10",
@@ -115,14 +134,18 @@
    "file": "logs/maruyama.md",
    "anchor": "適合 44/45",
    "lint_expect": [
-    "identity",
     "provenance"
    ],
    "lint_forbid": [],
-   "reviewer_keywords": [
-    "xyz"
-   ],
-   "note": "取引先 xyz は reviewer が拾う"
+   "note": "日付つきの決定の経緯は lint、人名と取引先 xyz は reviewer",
+   "reviewer_expect": [
+    [
+     "たろう"
+    ],
+    [
+     "xyz"
+    ]
+   ]
   },
   {
    "id": "P11",
@@ -131,10 +154,12 @@
    "anchor": "が真になり、誤ったケースのまま",
    "lint_expect": [],
    "lint_forbid": [],
-   "reviewer_keywords": [
-    "maruyama"
-   ],
-   "note": "reviewer のみ"
+   "note": "reviewer のみ",
+   "reviewer_expect": [
+    [
+     "maruyama"
+    ]
+   ]
   },
   {
    "id": "P12",
@@ -148,7 +173,13 @@
    "lint_expect_match": [
     "taro.yamada"
    ],
-   "note": "メールアドレス規則そのもので拾うこと（denylist の一致だけで identity になっても合格にしない）"
+   "note": "メールアドレス規則そのもので lint が拾うこと。人名・組織名は reviewer",
+   "reviewer_expect": [
+    [
+     "ACMECO",
+     "Taro"
+    ]
+   ]
   },
   {
    "id": "P13",
@@ -169,10 +200,14 @@
    "kind": "positive",
    "file": "SKILL.md",
    "anchor": "並列セッション数が増えると",
-   "lint_expect": [
-    "identity"
+   "lint_expect": [],
+   "lint_forbid": [],
+   "reviewer_expect": [
+    [
+     "たろう"
+    ]
    ],
-   "lint_forbid": []
+   "note": "人名は reviewer"
   },
   {
    "id": "P15",

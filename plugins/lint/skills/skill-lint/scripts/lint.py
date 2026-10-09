@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """スキルに作った環境の固有情報が混ざっていないかを決定論で調べる（skill-lint の前処理層）。
 
-  python3 lint.py <スキルのディレクトリ> [--denylist PATH] [--json]
+  python3 lint.py <スキルのディレクトリ> [--json] [--no-gitleaks]
 
-denylist（具体的な名前・ホスト）は配布物に入れず、build_denylist.py が生成した
-${XDG_CONFIG_HOME:-~/.config}/skill-lint/denylist.json から読む。ここに書くのは汎用の正規表現だけ。
+ここに書くのは汎用の正規表現だけ。人名・社名・取引先などの固有名は正規表現では拾えないので、
+reviewer（エージェント）がその場で集めた実行環境のヒントをもとに判定する。
 スキル内の `.skill-lint-ignore`（1 行 1 パターン。そのファイルのあるディレクトリからの相対。末尾 `/` はディレクトリ）に
 書いたパスだけ除外する。既定では何も除外しない（実データ由来のフィクスチャこそ漏れやすいため）。
 行内に `skill-lint: ignore` がある行は調べない。
@@ -12,7 +12,6 @@ exit 0 = error なし（warn のみ含む）/ 1 = error あり / 2 = 引数エ�
 """
 import argparse, fnmatch, json, os, re, shutil, subprocess, sys, tempfile
 
-DEFAULT_DENYLIST = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "skill-lint", "denylist.json")
 IGNORE_MARK = "skill-lint: ignore"
 SKIP_DIRS = {".git", "node_modules", "__pycache__"}
 SKIP_FILES = {".DS_Store"}
@@ -39,6 +38,9 @@ RE_HOME_ABS = re.compile(r"(?:/Users/|/home/|[A-Za-z]:[\\/](?i:users)[\\/])([A-Z
 HOME_ABS_OK = {"Shared", "runner", "user", "username", "USER", "USERNAME", "you", "me", "name"}
 RE_TILDE_PATH = re.compile(r"(?:~|\$HOME|\$\{HOME\})/[^\s`'\")\]>,;{}]+")
 TILDE_OK_PREFIXES = ("/.claude/", "/.config/", "/.local/", "/.cache/")
+# 標準パス以外のホーム起点のパスは warn。実データでは道具の置き場（ホーム直下の隠しディレクトリ・OS の標準フォルダ）が
+# 個人のディレクトリ構成（自分で切った作業フォルダの階層）より多く、error にすると誤爆の方が多いため。判定は reviewer に任せる
+TILDE_SEVERITY = "warn"
 RE_TAILNET = re.compile(r"[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.ts\.net\b")  # skill-lint: ignore
 RE_TRACKER = re.compile(r"(?<![&\w#])(?:[\w.-]+/)?(?:[A-Za-z][\w.-]*)?#\d+(?![\w])")
 RE_DATE = re.compile(r"(?<!\d)(?:20\d{2}-\d{1,2}-\d{1,2}|20\d{2}/\d{1,2}/\d{1,2}|20\d{2}年\d{1,2}月\d{1,2}日)(?!\d)")
@@ -46,20 +48,6 @@ RE_DECISION = re.compile(r"確定|承認|指示|判断|確認")
 RE_FM_SKIP = re.compile(r"^\s*(?:last_reviewed|review_after)\s*:")
 STRUCT_DIRS = {"logs", ".trash"}
 STRUCT_GLOBS = ("*.db", "*.db-wal", "*.db-shm", "*.sqlite", "*.sqlite3", "*.jsonl", "*.log")
-
-
-def load_denylist(path):
-    """{"names": [...], "hosts": [...]} を auto と manual から合わせて返す。無ければ None。"""
-    if not path or not os.path.exists(path):
-        return None
-    data = json.load(open(path, encoding="utf-8"))
-    out = {"names": set(), "hosts": set()}
-    for sec in ("auto", "manual"):
-        for key in ("names", "hosts"):
-            for t in (data.get(sec) or {}).get(key) or []:
-                if isinstance(t, str) and t.strip():
-                    out[key].add(t.strip())
-    return {k: sorted(v, key=len, reverse=True) for k, v in out.items()}
 
 
 def read_ignore(d):
@@ -119,37 +107,29 @@ def read_text(ab):
     return b.decode("utf-8", errors="replace")
 
 
-def scan_line(line, deny):
-    """1 行から (category, match, message) を返す。"""
+def scan_line(line):
+    """1 行から (category, match, message, severity or None) を返す。None はカテゴリの既定の深刻度。"""
     hits = []
-    if deny:
-        for t in deny["names"]:
-            if t in line:
-                hits.append(("identity", t, "denylist の名前に一致"))
-        for t in deny["hosts"]:
-            if t in line:
-                hits.append(("network", t, "denylist のホスト名に一致"))
     for m in RE_EMAIL.finditer(line):
         if not RE_EMAIL_OK.search(m.group(0)):
-            hits.append(("identity", m.group(0), "メールアドレス"))
+            hits.append(("identity", m.group(0), "メールアドレス", None))
     for m in RE_HOME_ABS.finditer(line):
         if m.group(1) not in HOME_ABS_OK:
-            hits.append(("path", m.group(0), "ユーザーのホーム配下の絶対パス"))
+            hits.append(("path", m.group(0), "ユーザーのホーム配下の絶対パス", None))
     for m in RE_TILDE_PATH.finditer(line):
         s = m.group(0)
         rest = s[s.index("/"):]
         if rest.startswith(TILDE_OK_PREFIXES):
             continue
-        if deny and any(t in s for t in deny["names"] + deny["hosts"]):
-            hits.append(("path", s, "denylist の名前を含むホーム配下のパス"))
+        hits.append(("path", s, "標準パス以外のホーム起点のパス（個人のディレクトリ構成でないか確かめる）", TILDE_SEVERITY))
     for m in RE_TAILNET.finditer(line):
-        hits.append(("network", m.group(0), "tailnet のホスト名"))
+        hits.append(("network", m.group(0), "tailnet のホスト名", None))
     for m in RE_TRACKER.finditer(line):
-        hits.append(("tracker", m.group(0), "issue/PR 番号の参照"))
+        hits.append(("tracker", m.group(0), "issue/PR 番号の参照", None))
     d = RE_DATE.search(line)
     k = RE_DECISION.search(line)
     if d and k:
-        hits.append(("provenance", "%s … %s" % (d.group(0), k.group(0)), "日付つきの決定の経緯"))
+        hits.append(("provenance", "%s … %s" % (d.group(0), k.group(0)), "日付つきの決定の経緯", None))
     return hits
 
 
@@ -176,9 +156,8 @@ def run_gitleaks(root):
         os.unlink(rep)
 
 
-def lint(root, denylist_path, use_gitleaks=True):
+def lint(root, use_gitleaks=True):
     root = os.path.abspath(os.path.expanduser(root))
-    deny = load_denylist(denylist_path)
     findings, excluded, scanned = [], [], 0
     for rel, ab, is_excluded in iter_files(root):
         if is_excluded:
@@ -204,8 +183,9 @@ def lint(root, denylist_path, use_gitleaks=True):
                 continue
             if rel.endswith(MANIFESTS) and RE_PUBLISHER.match(line):
                 continue
-            for cat, m, msg in scan_line(line, deny):
-                findings.append({"file": rel, "line": i, "category": cat, "match": m, "message": msg, "text": line.strip()[:200]})
+            for cat, m, msg, sev in scan_line(line):
+                findings.append({"file": rel, "line": i, "category": cat, "match": m, "message": msg,
+                                 "text": line.strip()[:200], "severity": sev})
     gl = run_gitleaks(root) if use_gitleaks else {"status": "未実施", "reason": "--no-gitleaks"}
     for x in gl.get("leaks", []):
         if x["file"] not in excluded:
@@ -215,12 +195,10 @@ def lint(root, denylist_path, use_gitleaks=True):
         findings.append({"file": "", "line": 0, "category": "secret", "match": "",
                          "message": "gitleaks が失敗したので secret を調べられていない", "text": gl.get("reason", "")})
     for f in findings:
-        f["severity"] = SEVERITY[f["category"]]
+        f["severity"] = f.get("severity") or SEVERITY[f["category"]]
         f["fix"] = FIX[f["category"]]
     return {
         "root": root,
-        "denylist": {"path": denylist_path, "loaded": deny is not None,
-                     "names": len(deny["names"]) if deny else 0, "hosts": len(deny["hosts"]) if deny else 0},
         "scanned_files": scanned,
         "excluded_files": excluded,
         "gitleaks": gl,
@@ -231,23 +209,21 @@ def lint(root, denylist_path, use_gitleaks=True):
 
 
 def print_human(res):
-    d = res["denylist"]
     print("対象: %s（%d ファイル、除外 %d: .skill-lint-ignore）" % (res["root"], res["scanned_files"], len(res["excluded_files"])))
-    print("denylist: %s" % ("%s（名前 %d・ホスト %d）" % (d["path"], d["names"], d["hosts"]) if d["loaded"]
-                             else "未読込（%s が無い。build_denylist.py で作る）" % d["path"]))
+    print("固有名（人名・社名・取引先）: lint では調べない。reviewer が判定する")
     g = res["gitleaks"]
     print("gitleaks: %s" % (g["status"] + ("（%s）" % g["reason"] if g.get("reason") else "（%d 件）" % len(g.get("leaks", [])))))
     for x in g.get("leaks", []):
         print("  secret: %s:%s %s" % (x["file"], x["line"], x["rule"]))
-    order = ["identity", "path", "network", "structure", "tracker", "provenance"]
+    order = ["secret", "identity", "path", "network", "structure", "tracker", "provenance"]
     for cat in order:
         fs = [f for f in res["findings"] if f["category"] == cat]
         if not fs:
             continue
-        print("\n[%s] %s %d 件 — 直し方: %s" % (SEVERITY[cat], cat, len(fs), FIX[cat]))
+        print("\n%s %d 件 — 直し方: %s" % (cat, len(fs), FIX[cat]))
         for f in fs:
             loc = "%s:%d" % (f["file"], f["line"]) if f["line"] else f["file"]
-            print("  %s  %s「%s」" % (loc, f["message"], f["match"]))
+            print("  [%s] %s  %s「%s」" % (f["severity"], loc, f["message"], f["match"]))
     s = res["summary"]
     print("\n合計: error %d / warn %d" % (s["error"], s["warn"]))
 
@@ -255,14 +231,13 @@ def print_human(res):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("skill_dir")
-    ap.add_argument("--denylist", default=DEFAULT_DENYLIST)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--no-gitleaks", action="store_true")
     a = ap.parse_args()
     if not os.path.isdir(os.path.expanduser(a.skill_dir)):
         print("ディレクトリが無い: %s" % a.skill_dir, file=sys.stderr)
         sys.exit(2)
-    res = lint(a.skill_dir, os.path.expanduser(a.denylist), not a.no_gitleaks)
+    res = lint(a.skill_dir, not a.no_gitleaks)
     if a.json:
         json.dump(res, sys.stdout, ensure_ascii=False, indent=1)
         print()

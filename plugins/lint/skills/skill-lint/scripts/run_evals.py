@@ -57,7 +57,7 @@ def main():
 
 
 def grade(spec, fixture, only):
-    res = lint.lint(fixture, os.path.join(SKILL_DIR, spec["denylist"]), use_gitleaks=False)
+    res = lint.lint(fixture, use_gitleaks=False)
     passed = failed = 0
     for c in spec["cases"]:
         if only and c["id"] not in only:
