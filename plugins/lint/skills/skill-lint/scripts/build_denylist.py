@@ -14,6 +14,7 @@ import argparse, datetime, json, os, shutil, socket, subprocess
 
 DEFAULT_OUT = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "skill-lint", "denylist.json")
 MIN_AUTO_LEN = 3  # auto で拾う短すぎる語は誤爆するので入れない（manual は長さを問わない）
+GENERIC_ACCOUNTS = {"root", "admin", "user", "ubuntu", "runner", "home", "vagrant", "ec2-user", "debian", "node", "app"}
 
 
 def sh(*cmd):
@@ -33,11 +34,12 @@ def collect_auto():
     if os.environ.get("USER"):
         names.add(os.environ["USER"])
     for key in ("user.name", "user.email"):
-        v = sh("git", "config", "--global", key) or sh("git", "config", key)
-        if v:
-            names.add(v)
-            if "@" in v:
-                names.update([v.split("@")[0], v.split("@")[1]])
+        # グローバルと実効値（リポのローカル設定が上書きしたもの）の両方を入れる
+        for v in {sh("git", "config", "--global", key), sh("git", "config", key)}:
+            if v:
+                names.add(v)
+                if "@" in v:
+                    names.update([v.split("@")[0], v.split("@")[1]])
     login = sh("gh", "api", "user", "--jq", ".login")
     if login:
         names.add(login)
@@ -48,7 +50,8 @@ def collect_auto():
     if hn:
         hosts.add(hn)
         hosts.add(hn.split(".")[0])
-    names = sorted(x for x in names if len(x) >= MIN_AUTO_LEN)
+    # root・ubuntu など汎用のアカウント名は普通の文（project root 等）に当たるので入れない
+    names = sorted(x for x in names if len(x) >= MIN_AUTO_LEN and x.lower() not in GENERIC_ACCOUNTS)
     hosts = sorted(x for x in hosts if len(x) >= MIN_AUTO_LEN)
     return {"names": names, "hosts": hosts, "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
             "notes": notes}

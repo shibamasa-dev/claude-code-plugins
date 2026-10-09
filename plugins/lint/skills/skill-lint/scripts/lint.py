@@ -21,7 +21,7 @@ MANIFESTS = (".claude-plugin/plugin.json", ".claude-plugin/marketplace.json")
 RE_PUBLISHER = re.compile(r'^\s*"(?:name|author|owner|homepage|repository|url)"\s*:')  # manifest の公開者情報
 
 SEVERITY = {"identity": "error", "path": "error", "network": "error", "structure": "error",
-            "tracker": "warn", "provenance": "warn"}
+            "secret": "error", "tracker": "warn", "provenance": "warn"}
 FIX = {
     "identity": "人名・組織名・アカウント名は役割（「ユーザー」「起動元」等）に置き換えるか、経緯の括弧ごと消す",
     "path": "個人のディレクトリを既定値にしない。引数・環境変数で受け、例は `<project-root>` のようなプレースホルダにする",
@@ -29,12 +29,13 @@ FIX = {
     "tracker": "私的な issue/PR 番号は消し、必要なら理由を本文で書く。公開 upstream の参照なら行に `skill-lint: ignore` を付ける",
     "provenance": "日付と誰が決めたかは消し、ルールとその理由だけ残す（経緯は git log / issue に置く）",
     "structure": "実行時データはスキルの外（例: `~/.local/state/<skill>/`）へ移し、スキル配下から消す",
+    "secret": "secret を消し、漏れた値は失効させる。gitleaks が失敗したなら原因を直して再実行する",
 }
 
 # 汎用パターン（具体名は入れない）
 RE_EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
 RE_EMAIL_OK = re.compile(r"@(?:example\.(?:com|org|net)|users\.noreply\.github\.com)$")
-RE_HOME_ABS = re.compile(r"(?:/Users/|/home/|[A-Za-z]:\\Users\\)([A-Za-z0-9._-]+)[/\\]")  # skill-lint: ignore
+RE_HOME_ABS = re.compile(r"(?:/Users/|/home/|[A-Za-z]:[\\/](?i:users)[\\/])([A-Za-z0-9._-]+)[/\\]")  # skill-lint: ignore
 HOME_ABS_OK = {"Shared", "runner", "user", "username", "USER", "USERNAME", "you", "me", "name"}
 RE_TILDE_PATH = re.compile(r"(?:~|\$HOME|\$\{HOME\})/[^\s`'\")\]>,;{}]+")
 TILDE_OK_PREFIXES = ("/.claude/", "/.config/", "/.local/", "/.cache/")
@@ -205,6 +206,14 @@ def lint(root, denylist_path, use_gitleaks=True):
                 continue
             for cat, m, msg in scan_line(line, deny):
                 findings.append({"file": rel, "line": i, "category": cat, "match": m, "message": msg, "text": line.strip()[:200]})
+    gl = run_gitleaks(root) if use_gitleaks else {"status": "未実施", "reason": "--no-gitleaks"}
+    for x in gl.get("leaks", []):
+        if x["file"] not in excluded:
+            findings.append({"file": x["file"], "line": x["line"] or 0, "category": "secret", "match": x["rule"],
+                             "message": "gitleaks が secret を検出（%s）" % x["rule"], "text": ""})
+    if gl["status"] == "失敗":
+        findings.append({"file": "", "line": 0, "category": "secret", "match": "",
+                         "message": "gitleaks が失敗したので secret を調べられていない", "text": gl.get("reason", "")})
     for f in findings:
         f["severity"] = SEVERITY[f["category"]]
         f["fix"] = FIX[f["category"]]
@@ -214,7 +223,7 @@ def lint(root, denylist_path, use_gitleaks=True):
                      "names": len(deny["names"]) if deny else 0, "hosts": len(deny["hosts"]) if deny else 0},
         "scanned_files": scanned,
         "excluded_files": excluded,
-        "gitleaks": run_gitleaks(root) if use_gitleaks else {"status": "未実施", "reason": "--no-gitleaks"},
+        "gitleaks": gl,
         "summary": {"error": sum(f["severity"] == "error" for f in findings),
                     "warn": sum(f["severity"] == "warn" for f in findings)},
         "findings": findings,
