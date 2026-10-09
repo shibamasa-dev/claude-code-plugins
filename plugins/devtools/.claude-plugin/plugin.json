@@ -1,7 +1,7 @@
 {
   "name": "devtools",
-  "version": "0.1.0",
-  "description": "リポの立ち上げと道具づくりのスキル（基本設定の点検・クラウド環境のセットアップ）",
+  "version": "0.2.0",
+  "description": "リポの立ち上げと道具づくりのスキル（基本設定の点検・クラウド環境のセットアップ）と、使用枠をファイルへ書き出す mod",
   "author": {
     "name": "shibamasa-dev"
   },
