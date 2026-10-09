@@ -1,0 +1,7 @@
+2	0	.github/workflows/ci.yml
+1	1	plugins/workflow/.claude-plugin/plugin.json
+46	4	plugins/workflow/skills/openapi-to-skills/scripts/convert.py
+10	10	plugins/workflow/skills/openapi-to-skills/templates/setup.sh.j2
+7	6	plugins/workflow/skills/openapi-to-skills/templates/skill.md.j2
+7	6	plugins/workflow/skills/openapi-to-skills/templates/token-manager.sh.j2
+162	0	plugins/workflow/tests/test-openapi-injection.sh

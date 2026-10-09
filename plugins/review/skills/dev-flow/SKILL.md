@@ -17,8 +17,8 @@ review_after: 2027-04-06
 | 2. 構造変更の判定 | 構造変更ならアーキレビューで GO をもらう。GO まで実装 PR を出さない | この SKILL |
 | 3. 実装と検証 | リポのチェックを回し、自分で diff を読み直す | この SKILL |
 | 4. PR を作る | `Closes` / `Refs` と `Arch-Review:` を本文に書く | この SKILL |
-| 5. レビューと CI を待つ | そのリポで使うレビューツールすべてと CI を待つ | pr-review-wait |
-| 6. 指摘を評価して直す | 照合して判定、PR 本文に対応表。重い指摘を基準件数以上直したら再レビュー → 5 へ | pr-review-wait・pr-rereview |
+| 5. レビューと CI を待つ | 差分の重さで頼み先を振り分け（軽ければ Claude がレビュー、重ければレビューツールに頼む）、その結果と CI を待つ | pr-review-triage |
+| 6. 指摘を評価して直す | 照合して判定、PR 本文に対応表。重い指摘を基準件数以上直したら再レビュー → 5 へ | pr-review-triage |
 | 7. `## 結果` を書く | `Closes` 先の issue の body に書く | issue-ops |
 | 8. マージを提案する | 条件がそろったら1回だけ提案する | この SKILL |
 | 9. マージ | ユーザーの指示でマージ。自動マージのリポでは自分でマージ | この SKILL |
@@ -29,7 +29,7 @@ review_after: 2027-04-06
    - 組織のリポで `Arch Review` か `Verification` が無い → ユーザーに1回警告する：「組織の設定の Issue Fields に `Arch Review`（Pending / Approved）と `Verification`（Not needed / Pending / Verified）を登録すると、アーキレビューと実機確認の状態を issue に残せます」。登録されるまでは、GO はチャットでもらい、未検証の項目は `## 結果` に書く。
    - 個人アカウントのリポ（Organization として解決できない・空が返る）→ Issue Fields は組織専用で使えない旨を1回伝え、同じ代わりの方法で進める。
 2. **自動マージ**: リポの `.claude/dev-flow.json` を読む（手元に clone があればファイル、無ければ `get_file_contents`）。`{"autoMerge": true}` なら自動マージのリポ（9 段）。ファイルが無い・`false` なら既定どおりユーザーがマージする。
-3. **レビューツール**: pr-review-wait の決め方に従う（リポの CLAUDE.md / AGENTS.md の `review-bots:` 行が優先）。
+3. **レビューツール**: pr-review-triage の決め方に従う（リポの CLAUDE.md / AGENTS.md の `review-bots:` 行、無ければ userConfig `review_tools`。どちらも無ければユーザーに聞く。過去の PR からは推測しない）。
 
 ## ユーザーに決めてもらうときの出し方
 
@@ -85,11 +85,13 @@ review_after: 2027-04-06
 
 ## 5〜6. 待つ・評価する・直す
 
-手順は pr-review-wait（待ち方・到着判定・評価・対応表）と pr-rereview（再レビューの頼み方）。段をまたぐ約束だけここに置く:
+手順は pr-review-triage（振り分け・頼み方・待ち方・到着判定・評価・対応表・再レビュー）。段をまたぐ約束だけここに置く:
+
+- **差分の重さで頼み先を振り分ける。** 軽い PR（文書だけ・200 行以内）は Claude がレビューして PR 本文の `## レビュー（Claude）` に書き、CI だけ待つ。重い PR はそのリポのレビューツールにコネクタで頼み、その結果と CI を待つ。
 
 - **待ち方はクラウドとローカルで違う。** クラウドのセッションは PR イベントの購読（`subscribe_pr_activity` があればそれ）でターンを終える。イベントがターンをまたいで起こしてくれる。ローカルは Monitor を立てる。Monitor はシェルのコマンドを回す仕組みなので、中では `gh` を使う（コネクタを使えない、CLI が残る例外）。
 - **レート制限・上限で止まったツールは未レビュー**として数え、待ち時間の後にそのツールにだけ頼み直す。
-- **再レビューは、重い指摘（Critical・P1 相当）を基準件数（既定 3）以上直したときだけ**、その回に頼んだツールへ頼む。それ以外は push して CI だけ待つ。どちらでも 5 段に戻る。
+- **再レビューは、重い指摘（Critical・P1 相当）を基準件数（userConfig `rereview_threshold`、既定 3）以上直したときだけ**、その回に頼んだツールへ頼む。それ以外は push して CI だけ待つ。どちらでも 5 段に戻る。
 - 指摘への対応はスレッドに返信せず、PR 本文の対応表（指摘 / 判定 / 対応 / 根拠）に書く。
 
 ## 7. `## 結果` を書く
@@ -122,7 +124,7 @@ review_after: 2027-04-06
 - **自動マージのリポ**（0 段で `.claude/dev-flow.json` が `{"autoMerge": true}`）：8 段の条件がそろった時点で、Claude が `merge_pull_request` でマージする。リポが GitHub の auto-merge を許可していれば、`enable_pr_auto_merge` で CI 待ちを GitHub に任せてもよい。ただし次はユーザーに回す：
   - 破壊的な変更・後戻りしにくい変更（データの移行、公開 API の削除など）
   - Claude が作っていない PR
-  - client / product のリポ（他組織のリポを含む）の PR。pr-review-wait の自動マージの例外と同じ扱い
+  - client / product のリポ（他組織のリポを含む）の PR。pr-review-triage の自動マージの例外と同じ扱い
 - **自動マージを有効にする**：ユーザーが「このリポは自動でマージして」と言ったら、`.claude/dev-flow.json` に `{"autoMerge": true}` を足す PR を出す。その PR をユーザーがマージした時点で有効になる。止めるときは `false` にするかファイルを消す。guards の設定 `merge_allowed_repos`（非推奨）に書いたリポは、このファイルに移す。移すまでは自動マージのリポとして扱う。
 - マージの後：`Refs` にした issue は、依頼元のセッションが `## 結果` に今回の分を書く。未達の受け入れ基準がその issue に残る間は閉じない。残件を終えたか、別の issue に移したか、やらないと決めた後に閉じる。実環境でしか確かめられない項目だけが残るなら、`## 結果` にそう書き、Issue Fields があれば `Verification: Pending` にして閉じてよい。手元の clone は main に追従させる（guards の git-freshness が入っていれば自動）。
 

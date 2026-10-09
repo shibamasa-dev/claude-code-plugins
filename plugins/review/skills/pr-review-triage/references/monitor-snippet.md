@@ -1,6 +1,6 @@
 # PR レビュー待機の Monitor スニペット
 
-`pr-review-wait` skill の step 2 で使う実体。
+`pr-review-triage` skill の heavy の「待つ」をローカルで行うときの実体（クラウドは PR イベントの購読で待つので使わない）。
 `persistent: true` で起動し、TaskStop で明示停止するまで動く。Monitor の `allowed_domains` に `api.github.com` を入れる。
 
 ```bash

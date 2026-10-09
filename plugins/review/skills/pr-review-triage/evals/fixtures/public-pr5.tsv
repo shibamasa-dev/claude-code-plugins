@@ -1,0 +1,10 @@
+2	2	README.md
+1	1	plugins/workflow/.claude-plugin/plugin.json
+107	0	plugins/workflow/skills/spinoff-session/SKILL.md
+37	0	plugins/workflow/skills/spinoff-session/evals/evals.json
+37	0	plugins/workflow/skills/spinoff-session/scripts/list-projects.sh
+63	0	plugins/workflow/skills/spinoff-session/scripts/list.sh
+21	0	plugins/workflow/skills/spinoff-session/scripts/nudge.sh
+388	0	plugins/workflow/skills/spinoff-session/scripts/reap.sh
+197	0	plugins/workflow/skills/spinoff-session/scripts/spawn.sh
+92	0	plugins/workflow/tests/test-spinoff-spawn.sh
