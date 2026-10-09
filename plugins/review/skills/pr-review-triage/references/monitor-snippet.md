@@ -54,6 +54,29 @@ while true; do
 done
 ```
 
+## CI だけ待つ（light の PR・再レビューを頼まない push の後）
+
+Monitor の中の `gh` は sandbox で TLS 検証に失敗する（上のスニペットの注記）ので、`gh pr checks --watch` ではなく curl で取る。コマンドに `pulls/<番号>` とリポの URL が出るので、dev-flow-gate はこれを「待ちを始めた」と数える。全部の check run が終わったら 1 行出して抜ける（`persistent` は不要）。
+
+```bash
+TOKEN=$(gh auth token 2>/dev/null); [ -z "$TOKEN" ] && echo "FETCH_FAILED no_token"
+API=https://api.github.com/repos/{owner}/{repo}
+get() { curl -sf -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" "$1"; }
+while true; do
+  sha=$(get "$API/pulls/{pr}" | jq -r '.head.sha // empty')
+  runs=$([ -n "$sha" ] && get "$API/commits/$sha/check-runs?per_page=100")
+  if [ -z "$runs" ]; then echo "FETCH_FAILED PR#{pr} check-runs"; sleep 30; continue; fi
+  # push の直後は check run がまだ 0 件のことがある。0 件を「全部終わった」と読まない
+  left=$(printf '%s' "$runs" | jq '[.check_runs[] | select(.status != "completed")] | length')
+  total=$(printf '%s' "$runs" | jq '.check_runs | length')
+  if [ "$total" -gt 0 ] && [ "$left" = 0 ]; then
+    printf '%s' "$runs" | jq -r '"[PR#{pr} ci] " + ([.check_runs[] | "\(.name)=\(.conclusion)"] | join(" "))'
+    break
+  fi
+  sleep 30
+done
+```
+
 起動前のさらい（未解決スレッドの一覧。これを先に潰してから Monitor を立てる）:
 
 ```bash
