@@ -1,13 +1,14 @@
 {
   "name": "shibamasa-plugins",
   "owner": { "name": "shibamasa-dev" },
-  "metadata": { "description": "Claude Code の作業を止めるガード・issue/セッション運用・PR レビュー・テスト設計・リポの立ち上げ・画像と動画のスキル" },
+  "metadata": { "description": "Claude Code の作業を止めるガード・issue/セッション運用・PR レビュー・テスト設計・リポの立ち上げ・画像と動画のスキル・成果物の linter" },
   "plugins": [
     { "name": "guards", "source": "./plugins/guards", "description": "破壊的な Bash 操作・古い既定ブランチからの push・リポ構造違反の書き込みを止め、マージの後にローカルのマージ先ブランチを追従させるフック", "category": "security" },
     { "name": "workflow", "source": "./plugins/workflow", "description": "issue 運用・セッションの引き継ぎ・runbook 記録などのスキルとフック", "category": "productivity" },
     { "name": "review", "source": "./plugins/review", "description": "依頼からマージまでの開発フローと PR のレビューを回すスキル・フック・コマンド（フローの入口・飛ばすと事故になる段を止めるフック・レビュー bot の結果待ち・再レビュー依頼・AI レビューから修正まで）", "category": "development" },
     { "name": "testing", "source": "./plugins/testing", "description": "テストを設計して回すスキルとフック（Gherkin のテストケース作成・成果物の検証・全体テストのゲート）", "category": "testing" },
     { "name": "devtools", "source": "./plugins/devtools", "description": "リポの立ち上げと道具づくりのスキル（基本設定の点検・クラウド環境のセットアップ）", "category": "development" },
-    { "name": "docs", "source": "./plugins/docs", "description": "画像生成プロンプト・コードで描くモーション動画のスキル", "category": "design" }
+    { "name": "docs", "source": "./plugins/docs", "description": "画像生成プロンプト・コードで描くモーション動画のスキル", "category": "design" },
+    { "name": "lint", "source": "./plugins/lint", "description": "スキルなどの成果物を検査する linter 群。今は skill-lint（スキルを配布してよいかを調べる）のみ", "category": "security" }
   ]
 }

@@ -1,0 +1,7 @@
+{
+ "auto": {"names": [], "hosts": []},
+ "manual": {
+  "names": ["たろう", "Taro", "ACMECO", "acmeco", "TARO-BOT"],
+  "hosts": ["tailabc123"]
+ }
+}
