@@ -29,6 +29,7 @@ CLAUDE_PLUGIN_OPTION_REVIEW_TOOLS='${user_config.review_tools}' bash ${CLAUDE_PL
 - **id が出る**: その回に頼むツール。id は `references/tools/<id>.md` のファイル名
 - **何も出ずに exit 0**（`review-bots: none`）: ツールのいないリポ。heavy でも 3 の手順で Claude がレビューする
 - **exit 4**（行も設定も無い）: どのツールを使うかをユーザーに聞き、リポの CLAUDE.md に `review-bots:` 行を足す PR を提案する
+- **exit 5**（行か設定はあるが、知っている id が 1 つも無い。綴り違いなど）: 「ツールなし」とは扱わない。stderr に出た id をユーザーに見せて、どのツールのつもりかを聞く（`none` の書き間違いで誰もレビューしない PR が出るのを防ぐ）
 
 **過去の PR に来た bot から推測しない。** 自動レビューを止めると軽い PR が bot の痕跡を残さないので、推測は空になり、誰もレビューしない PR が出る。
 
@@ -53,10 +54,10 @@ git diff --numstat origin/<base>...HEAD | bash ${CLAUDE_PLUGIN_ROOT}/skills/pr-r
 
 ## 3. light — Claude がレビューして CI だけ待つ
 
-1. 組み込みの `code-review` skill を PR 番号つきで起動する（例: `code-review <PR番号>`）。`coderabbit:code-review` ではない（あちらは CodeRabbit の枠を使う）。`--comment` は付けない（スレッドに書かない運用のため）
+1. 組み込みの `code-review` skill を PR 番号つきで起動する（例: `code-review <PR番号>`）。`coderabbit:code-review` ではない（あちらは CodeRabbit の枠を使う）。`--comment` は付けない（スレッドに書かない運用のため）。`code-review` が無い環境では、general-purpose subagent に `git diff origin/<base>...HEAD` を渡してレビューさせる
 2. 結果を **PR 本文** の `## レビュー（Claude）` 節に、対応表（指摘 / 判定 / 対応 / 根拠）で書く。**指摘ゼロでも節を置いて「指摘なし」と書く**（後から見た人が「レビューされていない」と誤読しないため）。本文の更新はコネクタの `update_pull_request`
 3. 対応する指摘を直して push する。ツールには頼まない
-4. **CI だけ待つ**: クラウドは `subscribe_pr_activity`、ローカルは Monitor で [references/monitor-snippet.md](references/monitor-snippet.md) の「CI だけ待つ」を回す。待たずに終えると dev-flow-gate の Stop の確認に止められる
+4. **CI だけ待つ**: クラウドは `subscribe_pr_activity`、ローカルは Monitor で [references/monitor-snippet.md](references/monitor-snippet.md) の「CI だけ待つ」を回す。待たずに終えると dev-flow-gate の Stop の確認に止められる。チェックが 1 つも付かずに `NO_CHECKS` で抜けたら、CI が緑とは数えず「このリポ（この commit）にはチェックが無い」と報告する
 
 `review-bots: none` のリポで heavy だった PR も同じ手順で回し、`## レビュー（Claude）` に heavy だった理由（classify.sh の理由行）も書く。
 
@@ -64,7 +65,7 @@ git diff --numstat origin/<base>...HEAD | bash ${CLAUDE_PLUGIN_ROOT}/skills/pr-r
 
 ### 4.1 頼む
 
-頼み方は `references/tools/<id>.md` の「再レビューの頼み方」（初回も同じ）。
+頼み方は `references/tools/<id>.md` の「再レビューの頼み方」（初回も同じ）。**頼む直前に、今の head SHA（`pull_request_read` の `get` の `head.sha`）と時刻を控える**（4.4 で前の回の結果と分けるため）。
 
 - **コメントで頼むツール**は、コネクタの `add_issue_comment` で **1 コメントにまとめて**投稿する（例: `@coderabbitai review` と `@codex review` を 1 行ずつ）。本文はメンション行だけにする（focus の制約は各ツールのファイル。Codex は短い英語だけ）
 - **Copilot** はコネクタの `request_copilot_review`
@@ -90,6 +91,7 @@ git diff --numstat origin/<base>...HEAD | bash ${CLAUDE_PLUGIN_ROOT}/skills/pr-r
 ### 4.4 到着判定
 
 - **その回に頼んだツールすべて**の結果が揃ったら待機を終える。結果とは、レビュー（指摘つき）か「指摘なし」の合図（ツールごとの合図は `references/tools/<id>.md`）。一部の結果だけで待機を終えない（先に届いた方の指摘は、もう片方を待つ間に評価・実装してよい）
+- **前の commit・前の回の結果を今回に数えない**。レビューは `commit_id` が 4.1 で控えた head SHA と一致するものだけ、「指摘なし」のリアクションや状態コメント（walkthrough など）は 4.1 で控えた時刻より後のものだけ数える。前の push へのレビューや前の回の 👍 で待機を終えると、今の差分を誰も見ていないまま「揃った」と読んでしまう
 - **レート制限・上限は「未レビュー」**。結果に数えず待ち直す。これを「指摘なし」と数えると、誰もレビューしていない PR を「マージ判断に回せる」と報告してしまう（実例: rate limited の段階でマージを依頼し、その後に届いた指摘の 1 件が支払額に関わる設計判断だった）
   - 待ち時間つきのレート制限: 書かれた時間が過ぎたら、**そのツールにだけ**頼み直して待ち直す。6 の再レビュー基準の対象外（まだ 1 回もレビューが届いていないので）
   - プラン・利用の上限、オンデマンドのボタン待ち: 頼み直しても返らないので、ユーザーに「◯◯が上限で未レビュー」と伝えて解除を頼む。解除されたら待ち直す

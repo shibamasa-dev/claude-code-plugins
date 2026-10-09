@@ -6,7 +6,8 @@
 #   1. リポの CLAUDE.md / AGENTS.md / .claude/CLAUDE.md の `review-bots:` 行（`review-bots: none` は「ツールなし」）
 #   2. 環境変数 CLAUDE_PLUGIN_OPTION_REVIEW_TOOLS（userConfig `review_tools`。カンマ区切り）
 # 過去の PR に来た bot からは推測しない。自動レビューを止めると軽い PR が bot の痕跡を残さず、推測が空になるため。
-# exit: 0 = 決まった（「ツールなし」なら何も出さない）／ 4 = 行も設定も無い（呼び出し側がユーザーに聞く）
+# exit: 0 = 決まった（「ツールなし」なら何も出さない）／ 4 = 行も設定も無い ／ 5 = 書いてあるが知っている id が 1 つも無い
+#       （4・5 は呼び出し側がユーザーに聞く）
 set -u
 REGEX=0; [ "${1:-}" = "--regex" ] && REGEX=1
 # id=投稿者の login（完全一致・bot アカウントのみ）。足すときは references/tools/<id>.md と両方直す。
@@ -38,7 +39,13 @@ known() {
     esac
   done
 }
-ids=$(printf '%s\n' "$raw" | tr ',' '\n' | tr -d ' `' | tr 'A-Z' 'a-z' | grep -v -x -e '' -e none | known)
+asked=$(printf '%s\n' "$raw" | tr ',' '\n' | tr -d ' `' | tr 'A-Z' 'a-z' | grep -v -x -e '' -e none)
+ids=$(printf '%s\n' "$asked" | grep -v -x '' | known)
+# none 以外を書いたのに知っている id が 1 つも残らない（綴り違いなど）を「ツールなし」と同じ exit 0 にしない
+if [ -n "$asked" ] && [ -z "$ids" ]; then
+  echo "detect-bots: 知っている id が 1 つも無い（ツールなしにするなら review-bots: none と書く）" >&2
+  exit 5
+fi
 
 if [ "$REGEX" = 1 ]; then
   # 完全一致の正規表現（^(...)$）にする。jq の test() に渡したときも部分一致にならない

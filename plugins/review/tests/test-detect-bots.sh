@@ -12,10 +12,13 @@ trap 'rm -rf "$T"' EXIT
 repo() { mkdir -p "$T/$1" && git -C "$T/$1" init -q && { [ -z "${2:-}" ] || printf '%s\n' "$2" > "$T/$1/CLAUDE.md"; }; echo "$T/$1"; }
 # det <リポ> [REVIEW_TOOLS の値] → 「出力（カンマ区切り）/exit」。期待と一致すれば ok
 det() { (cd "$1" && CLAUDE_PLUGIN_OPTION_REVIEW_TOOLS=${2:-} bash "$D" 2>/dev/null | paste -sd, -; exit "${PIPESTATUS[0]}"); echo "/$?"; }
-row() { got=$(printf '%s' "$2" | tr -d '\n'); [ "$got" = "$3" ] && r=ok || r=ng
+fail=0
+row() { got=$(printf '%s' "$2" | tr -d '\n'); if [ "$got" = "$3" ]; then r=ok; else r=ng; fail=1; fi
         printf '  %-48s -> %s (ok 期待)  [実測 %s / 期待 %s]\n' "$1" "$r" "$got" "$3"; }
 
 row 'review-bots: 行の id を出す' "$(det "$(repo line '- review-bots: CodeRabbit, `codex`')")" 'coderabbit,codex/0'
 row '行が無ければ userConfig review_tools を使う' "$(det "$(repo cfg '# no line')" 'gemini,copilot')" 'gemini,copilot/0'
 row '行も設定も無ければ何も出さず exit 4' "$(det "$(repo nothing)")" '/4'
 row 'review-bots: none は「ツールなし」で exit 0' "$(det "$(repo none 'review-bots: none')")" '/0'
+row '知っている id が 1 つも無ければ none 扱いせず exit 5' "$(det "$(repo typo 'review-bots: coderabit')")" '/5'
+exit $fail

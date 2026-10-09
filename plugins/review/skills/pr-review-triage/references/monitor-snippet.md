@@ -56,21 +56,29 @@ done
 
 ## CI だけ待つ（light の PR・再レビューを頼まない push の後）
 
-Monitor の中の `gh` は sandbox で TLS 検証に失敗する（上のスニペットの注記）ので、`gh pr checks --watch` ではなく curl で取る。コマンドに `pulls/<番号>` とリポの URL が出るので、dev-flow-gate はこれを「待ちを始めた」と数える。全部の check run が終わったら 1 行出して抜ける（`persistent` は不要）。
+Monitor の中の `gh` は sandbox で TLS 検証に失敗する（上のスニペットの注記）ので、`gh pr checks --watch` ではなく curl で取る。コマンドに `pulls/<番号>` とリポの URL が出るので、dev-flow-gate はこれを「待ちを始めた」と数える。CI は check run（GitHub Actions など）と commit status（外部の CI が付けるもの）の 2 種類があるので、両方を見る。両方が終わったら 1 行出して抜ける（`persistent` は不要）。head の commit に 10 分たっても 1 つもチェックが付かなければ `NO_CHECKS` を出して抜ける（CI が緑とは数えない）。
 
 ```bash
 TOKEN=$(gh auth token 2>/dev/null); [ -z "$TOKEN" ] && echo "FETCH_FAILED no_token"
 API=https://api.github.com/repos/{owner}/{repo}
 get() { curl -sf -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" "$1"; }
+seen=; since=$(date +%s)
 while true; do
   sha=$(get "$API/pulls/{pr}" | jq -r '.head.sha // empty')
   runs=$([ -n "$sha" ] && get "$API/commits/$sha/check-runs?per_page=100")
-  if [ -z "$runs" ]; then echo "FETCH_FAILED PR#{pr} check-runs"; sleep 30; continue; fi
-  # push の直後は check run がまだ 0 件のことがある。0 件を「全部終わった」と読まない
+  st=$([ -n "$sha" ] && get "$API/commits/$sha/status")
+  if [ -z "$runs" ] || [ -z "$st" ]; then echo "FETCH_FAILED PR#{pr} checks"; sleep 30; continue; fi
+  [ "$sha" != "$seen" ] && { seen=$sha; since=$(date +%s); }   # push で head が変わったら数え直す
+  nrun=$(printf '%s' "$runs" | jq '.check_runs | length')
   left=$(printf '%s' "$runs" | jq '[.check_runs[] | select(.status != "completed")] | length')
-  total=$(printf '%s' "$runs" | jq '.check_runs | length')
-  if [ "$total" -gt 0 ] && [ "$left" = 0 ]; then
-    printf '%s' "$runs" | jq -r '"[PR#{pr} ci] " + ([.check_runs[] | "\(.name)=\(.conclusion)"] | join(" "))'
+  nst=$(printf '%s' "$st" | jq '.total_count')
+  state=$(printf '%s' "$st" | jq -r '.state')   # 1 件も無いときも pending になる
+  if [ $((nrun + nst)) = 0 ]; then
+    # push の直後はまだ 0 件のことがあるので、すぐには抜けない
+    [ $(($(date +%s) - since)) -ge 600 ] && { echo "[PR#{pr} ci] NO_CHECKS（10 分たってもチェックが 1 つも付かない）"; break; }
+  elif [ "$left" = 0 ] && { [ "$nst" = 0 ] || [ "$state" != pending ]; }; then
+    { printf '%s' "$runs" | jq -r '.check_runs[] | "\(.name)=\(.conclusion)"'
+      printf '%s' "$st" | jq -r '.statuses[] | "\(.context)=\(.state)"'; } | paste -sd' ' - | sed 's/^/[PR#{pr} ci] /'
     break
   fi
   sleep 30
