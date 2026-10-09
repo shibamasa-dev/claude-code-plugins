@@ -7,8 +7,16 @@
 | スキル | 使いどころ |
 |---|---|
 | `dev-flow` | 開発フローの入口。issue の対応も口頭の依頼も、構造変更の判定とアーキレビュー → 実装と自己レビュー → PR → レビュー待ち → `## 結果` → マージまでの順番と約束を持つ。自動マージはリポの `.claude/dev-flow.json` で有効にする |
-| `pr-review-wait` | PR を出した直後や push の後に、レビュー bot（CodeRabbit・Codex など）の結果を待って拾う |
-| `pr-rereview` | レビュー bot に再レビューを依頼する |
+| `pr-review-triage` | PR を出した直後や push の後に、差分の重さでレビューの頼み先を振り分ける。軽い PR（文書だけ・200 行以内）は Claude がレビューして PR 本文に書き、CI だけ待つ。重い PR はレビューツール（CodeRabbit・Codex など）にコネクタで頼み、結果を待って評価・対応する。再レビューを頼むかの判断と依頼もここ |
+
+## 設定（userConfig）
+
+| キー | 既定 | 使いどころ |
+|---|---|---|
+| `review_tools` | 空 | リポの CLAUDE.md / AGENTS.md に `review-bots:` 行が無いときに使うレビューツール（カンマ区切り。例: `coderabbit,codex`）。どちらも無ければ `pr-review-triage` がユーザーに聞く |
+| `rereview_threshold` | 3 | 重い指摘（Critical・P1 相当）をこの件数以上直したときだけ再レビューを頼む |
+
+使えるツールの id は `skills/pr-review-triage/references/tools/` のファイル名（`codex`・`coderabbit`・`copilot`・`gemini`・`cursor-bugbot`）。
 
 ## フック
 

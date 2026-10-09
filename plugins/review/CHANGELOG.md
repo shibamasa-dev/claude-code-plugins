@@ -2,6 +2,22 @@
 
 review プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.4.0] - 2026-10-09
+
+### Added
+- `pr-review-triage` スキル：PR を作った直後・push の後に、手元の `git diff --numstat` を `scripts/classify.sh` で light / heavy に振り分ける。light は Claude が組み込みの `code-review` でレビューして PR 本文の `## レビュー（Claude）` に書き、CI だけ待つ。heavy はレビューツールにコネクタ（`add_issue_comment`・`request_copilot_review`）で頼み、待って評価・対応する。再レビューを頼むかの判断と依頼もここで持つ
+- ツールごとの中身を `references/tools/<id>.md`（`codex`・`coderabbit`・`copilot`・`gemini`・`cursor-bugbot`）に 1 ツール 1 ファイルで置いた
+- userConfig `review_tools`（`review-bots:` 行が無いときに使うツール）と `rereview_threshold`（再レビューを頼む重い指摘の件数。既定 3）
+
+### Changed
+- 使うツールは `review-bots:` 行 → userConfig `review_tools` の順に決め、どちらも無ければユーザーに聞く。過去の PR に来た bot からの推測はやめた（`detect-bots.sh` は行も設定も無ければ exit 4）
+- `review-bots:` 行の Cursor Bugbot の id は `cursor` から `cursor-bugbot` に変えた
+- dev-flow-gate：PR を作った後の案内と、待ちを始めずに終えるときのメッセージの案内先を `pr-review-triage` にした
+- dev-flow：5・6 段の手順の参照先を `pr-review-triage` にした
+
+### Removed
+- `pr-review-wait`・`pr-rereview` スキル（`pr-review-triage` に統合。別名は残さない）、`references/bots.md`、`scripts/post_rereview.sh`（`gh` で投稿していた）
+
 ## [0.3.1] - 2026-10-06
 
 ### Changed

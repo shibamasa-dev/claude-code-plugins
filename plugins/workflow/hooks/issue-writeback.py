@@ -137,7 +137,7 @@ def _resolve_pr(sel, repo, cwd, tr):
 def refs_from_bash(cmd, cwd, tr=None):
     out = []
     for seg in re.split(r"[|;&]+|\n", cmd):
-        # PR は追わない（PR の書き戻し先は本文の対応表で、pr-review-wait が担う）。
+        # PR は追わない（PR の書き戻し先は本文の対応表で、pr-review-triage が担う）。
         # ただし issues API 経由で PR を読んだ記録が残っていても、PR への書き込みで解消する。
         # PR はオプションの後ろの番号・URL・ブランチ名でも、指定なし（今のブランチ）でも指せる
         m = re.search(r"\bgh\s+pr\s+(edit|comment|close|reopen|merge|review|ready)\b(.*)", seg)

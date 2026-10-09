@@ -515,7 +515,7 @@ def emit(obj):
         print(json.dumps(obj, ensure_ascii=False))
 
 
-NEXT_STEP = (f"{TAG} PR を作った。次はレビューと CI を待つ（dev-flow の 5 段・手順は pr-review-wait）。"
+NEXT_STEP = (f"{TAG} PR を作った。次はレビューと CI を待つ（dev-flow の 5 段・手順は pr-review-triage）。"
              "クラウドのセッションは PR イベントの購読（subscribe_pr_activity）、ローカルは Monitor を立てる。"
              "マージの前に Closes 先の issue の body に `## 結果` を書く。")
 
@@ -679,7 +679,7 @@ def on_stop(inp):
         return None
     reason = (f"{TAG} {', '.join(due)} を作ったが、レビューと CI の待ちを始めていない（dev-flow の 5 段）。"
               "クラウドのセッションは subscribe_pr_activity で PR イベントを購読してからターンを終える。"
-              "ローカルは pr-review-wait の手順で Monitor を立てる。"
+              "ローカルは pr-review-triage の手順で Monitor を立てる。"
               "待たない理由（ユーザーが不要と言った等）があるなら、それを返答に書いて終えてよい（この PR では二度と止めない）。")
     return {"decision": "block", "reason": reason}
 

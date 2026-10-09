@@ -1,6 +1,6 @@
 # PR レビュー待機の Monitor スニペット
 
-`pr-review-wait` skill の step 2 で使う実体。
+`pr-review-triage` skill の heavy の「待つ」をローカルで行うときの実体（クラウドは PR イベントの購読で待つので使わない）。
 `persistent: true` で起動し、TaskStop で明示停止するまで動く。Monitor の `allowed_domains` に `api.github.com` を入れる。
 
 ```bash
@@ -50,6 +50,46 @@ while true; do
       || echo "PARSE_FAILED PR#$pr reactions"
   done
   last=$now
+  sleep 30
+done
+```
+
+## CI だけ待つ（light の PR・再レビューを頼まない push の後）
+
+Monitor の中の `gh` は sandbox で TLS 検証に失敗する（上のスニペットの注記）ので、`gh pr checks --watch` ではなく curl で取る。コマンドに `pulls/<番号>` とリポの URL が出るので、dev-flow-gate はこれを「待ちを始めた」と数える。CI は check run（GitHub Actions など）と commit status（外部の CI が付けるもの）の 2 種類があるので、両方を見る。両方が終わったら 1 行出して抜ける（`persistent` は不要）。head の commit に 10 分たっても 1 つもチェックが付かなければ `NO_CHECKS` を出して抜ける（CI が緑とは数えない）。取得が 5 回続けて失敗したら（token が無効・権限が無いなど）`FETCH_GAVE_UP` を出して抜ける。
+
+```bash
+TOKEN=$(gh auth token 2>/dev/null); [ -z "$TOKEN" ] && { echo "FETCH_FAILED no_token"; exit 1; }
+API=https://api.github.com/repos/{owner}/{repo}
+get() { curl -sf -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" "$1"; }
+seen=; since=$(date +%s); fails=0
+while true; do
+  sha=$(get "$API/pulls/{pr}" | jq -r '.head.sha // empty')
+  runs=$([ -n "$sha" ] && get "$API/commits/$sha/check-runs?per_page=100")
+  st=$([ -n "$sha" ] && get "$API/commits/$sha/status")
+  if [ -z "$runs" ] || [ -z "$st" ]; then
+    # token が無効・権限が無いと何度やっても取れない。5 回（約 2.5 分）続いたら抜けて報告する
+    fails=$((fails + 1)); echo "FETCH_FAILED PR#{pr} checks ($fails/5)"
+    [ "$fails" -ge 5 ] && { echo "[PR#{pr} ci] FETCH_GAVE_UP（取得が続けて失敗した。gh auth status を確かめる）"; break; }
+    sleep 30; continue
+  fi
+  fails=0
+  [ "$sha" != "$seen" ] && { seen=$sha; since=$(date +%s); }   # push で head が変わったら数え直す
+  nrun=$(printf '%s' "$runs" | jq '.total_count')
+  # 1 ページは 100 件まで。取れていない分（total_count との差）は未完了として数える
+  left=$(printf '%s' "$runs" | jq '.total_count as $t | (.check_runs | length) as $n | ([.check_runs[] | select(.status != "completed")] | length) + (if $t > $n then $t - $n else 0 end)')
+  nst=$(printf '%s' "$st" | jq '.total_count')
+  state=$(printf '%s' "$st" | jq -r '.state')   # 1 件も無いときも pending になる
+  if [ $((nrun + nst)) = 0 ]; then
+    # push の直後はまだ 0 件のことがあるので、すぐには抜けない
+    [ $(($(date +%s) - since)) -ge 600 ] && { echo "[PR#{pr} ci] NO_CHECKS（10 分たってもチェックが 1 つも付かない）"; break; }
+  elif [ "$left" = 0 ] && { [ "$nst" = 0 ] || [ "$state" != pending ]; }; then
+    # 待っている間に push されていたら、古い commit の結果で抜けず次の回で数え直す
+    [ "$(get "$API/pulls/{pr}" | jq -r '.head.sha // empty')" != "$sha" ] && { sleep 30; continue; }
+    { printf '%s' "$runs" | jq -r '.check_runs[] | "\(.name)=\(.conclusion)"'
+      printf '%s' "$st" | jq -r '.statuses[] | "\(.context)=\(.state)"'; } | paste -sd' ' - | sed 's/^/[PR#{pr} ci] /'
+    break
+  fi
   sleep 30
 done
 ```

@@ -16,7 +16,7 @@ review_after: 2027-03-21
    python3 ${CLAUDE_PLUGIN_ROOT}/skills/session-wrap/scripts/survey.py
    ```
    session_id は Bash の親 `claude` プロセスの pid を `claude agents --json` と突き合わせて自動解決する。解決できなければ `--session <id>` を渡す。
-2. **自分の subagent / Monitor を数える**: `ListAgents` で走っているものを見る。Monitor はセッションと一緒に死ぬので、レビュー待ち中なら「閉じるとレビューを拾えない」とユーザーに伝える（`pr-review-wait` の規約）。
+2. **自分の subagent / Monitor を数える**: `ListAgents` で走っているものを見る。Monitor はセッションと一緒に死ぬので、レビュー待ち中なら「閉じるとレビューを拾えない」とユーザーに伝える（`pr-review-triage` の規約）。
 3. **旗ごとに 1 件ずつ提案**して、ユーザーの返事で実行する:
 
    | 旗 | 提案 |

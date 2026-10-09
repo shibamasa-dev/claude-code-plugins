@@ -1,7 +1,7 @@
 {
   "name": "review",
-  "version": "0.3.1",
-  "description": "依頼からマージまでの開発フローと PR のレビューを回すスキル・フック・コマンド（フローの入口・飛ばすと事故になる段を止めるフック・レビュー bot の結果待ち・再レビュー依頼・AI レビューから修正まで）",
+  "version": "0.4.0",
+  "description": "依頼からマージまでの開発フローと PR のレビューを回すスキル・フック・コマンド（フローの入口・飛ばすと事故になる段を止めるフック・差分の重さでレビューの頼み先を振り分けて結果待ちと再レビューまで回すスキル・AI レビューから修正まで）",
   "author": {
     "name": "shibamasa-dev"
   },
@@ -14,5 +14,22 @@
     "code-review",
     "workflow",
     "hooks"
-  ]
+  ],
+  "userConfig": {
+    "review_tools": {
+      "type": "string",
+      "title": "使うレビューツール",
+      "description": "リポの CLAUDE.md / AGENTS.md に review-bots: 行が無いときに使うレビューツール（カンマ区切り。例: coderabbit,codex）。使える id は codex・coderabbit・copilot・gemini・cursor-bugbot。空なら pr-review-triage がユーザーに聞く",
+      "required": false,
+      "default": ""
+    },
+    "rereview_threshold": {
+      "type": "number",
+      "title": "再レビューを頼む重い指摘の件数",
+      "description": "重い指摘（CodeRabbit=Critical / Codex=P1、ほかは Critical・High 相当）をこの件数以上直したときだけ、その回に頼んだツールへ再レビューを頼む",
+      "required": false,
+      "default": 3,
+      "min": 1
+    }
+  }
 }
