@@ -84,13 +84,23 @@ async function exportLimits($: Engine, limits: readonly SessionRateLimit[]) {
   }
   if (!changed) return
 
-  // 一時ファイルに書いて mv（同一ディレクトリの rename は原子的）。読む側が書きかけを見ない。
+  // /tmp の予測できる名前に別ユーザーが置いたシンボリックリンクを辿って書かない。
+  // $.fs.stat は path 自身の isLink を返す（lstat 相当）。対象が既にリンクなら書かない。
+  const target = await $.fs.stat(file).catch(() => undefined)
+  if (target?.isLink === true) return
+
+  // 一時ファイルに書いて mv（同じディレクトリ内の rename は原子的）。読む側が書きかけを見ない。
   const tmp = `${file}.${seenAt}.${Math.random().toString(36).slice(2, 8)}.tmp`
   const text = JSON.stringify(merged)
+  // 一時ファイルも、既にあれば（リンクでも通常ファイルでも）使わない。名前は乱数で予測しにくい
+  if (await $.fs.stat(tmp).then(() => true, () => false)) return
   await $.fs.write(tmp, text)
   const moved = await $.process.run(['mv', '-f', tmp, file]).catch(() => undefined)
   if (moved?.exitCode !== 0) {
     await $.process.run(['rm', '-f', tmp]).catch(() => undefined)
+    // 直書きに落とす前にもう一度リンクを確かめる
+    const again = await $.fs.stat(file).catch(() => undefined)
+    if (again?.isLink === true) return
     await $.fs.write(file, text) // rename できない環境では非原子的な直書きに落とす
   }
 }

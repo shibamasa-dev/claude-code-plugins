@@ -16,13 +16,18 @@ const measure = (rateLimits: SessionRateLimit[]) => ({
 
 // エンジンの代わりにメモリ上の fs と id/mv/rm を置く。files がファイルの中身、finalWrites が本番パスへの直書き回数。
 const world = (on: On, files: Record<string, string> = {}) => {
-  const state = { files, finalWrites: 0 }
+  const state = { files, finalWrites: 0, links: new Set<string>() }
   mock.clock(on, { now: NOW * 1000 })
   on('fs.read', (_$, e) => {
     const text = state.files[e.path]
     if (text === undefined) return { deny: 'ENOENT' }
     return { value: text }
   })
+  on('fs.stat', (_$, e) =>
+    state.files[e.path] === undefined && !state.links.has(e.path)
+      ? { deny: 'ENOENT' }
+      : { value: { kind: state.links.has(e.path) ? 'other' : 'file', size: 0, mtimeMs: 0, isLink: state.links.has(e.path) } },
+  )
   on('fs.write', (_$, e) => {
     if (e.path === FILE) state.finalWrites++
     state.files[e.path] = e.text
@@ -89,4 +94,11 @@ test('既存ファイルが壊れていても新しい値で書ける', async ($
   const s = world(on, { [FILE]: '{"five_hour": {"used_perc' })
   await $.session.measure(measure([limit('five_hour', 17, FIVE)]))
   expect(read(s)).toEqual({ five_hour: win(17, 1791553800) })
+})
+
+test('書き込み先がシンボリックリンクなら何も書かない', async ($, on) => {
+  const s = world(on)
+  s.links.add(FILE)
+  await $.session.measure(measure([limit('five_hour', 17, FIVE)]))
+  expect(s.files).toEqual({})
 })

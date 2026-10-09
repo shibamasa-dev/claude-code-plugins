@@ -17,7 +17,7 @@
 |---|---|
 | `rate-limits` | 使用枠（5時間・週）を `/tmp/claude-rate-limits-<uid>.json` に書き出す。`<uid>` は `id -u`。週の残り枠を外のスクリプトが見張る用 |
 
-出力は `{"five_hour": {"used_percentage": 17, "resets_at": 1791553800, "seen_at": 1791552278}, "seven_day": {...}}`（`resets_at`・`seen_at` は epoch 秒）。枠ごとに `resets_at` が大きい方、同じなら `used_percentage` が大きい方を残すので、並列セッションの古い値で戻らない。値が変わらなければ書かない。mod が動くのは Claude Code の CLI（`$.process` を使うため）。
+出力は `{"five_hour": {"used_percentage": 17, "resets_at": 1791553800, "seen_at": 1791552278}, "seven_day": {...}}`（`resets_at`・`seen_at` は epoch 秒）。枠ごとに `resets_at` が大きい方、同じなら `used_percentage` が大きい方を残すので、並列セッションの古い値で戻らない。値が変わらなければ書かない。書き込み先（と一時ファイル）がシンボリックリンクなら書かない。mod が動くのは Claude Code の CLI（`$.process` を使うため）。
 
 テストは `hooks/rate-limits.test.ts`（`claude plugin test plugins/devtools`）。
 
