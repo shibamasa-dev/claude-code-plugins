@@ -7,7 +7,7 @@
     { "name": "workflow", "source": "./plugins/workflow", "description": "issue 運用・セッションの引き継ぎ・runbook 記録などのスキルとフック", "category": "productivity" },
     { "name": "review", "source": "./plugins/review", "description": "依頼からマージまでの開発フローと PR のレビューを回すスキル・フック・コマンド（フローの入口・飛ばすと事故になる段を止めるフック・レビュー bot の結果待ち・再レビュー依頼・AI レビューから修正まで）", "category": "development" },
     { "name": "testing", "source": "./plugins/testing", "description": "テストを設計して回すスキルとフック（Gherkin のテストケース作成・成果物の検証・全体テストのゲート）", "category": "testing" },
-    { "name": "devtools", "source": "./plugins/devtools", "description": "リポの立ち上げと道具づくりのスキル（基本設定の点検・クラウド環境のセットアップ）", "category": "development" },
+    { "name": "devtools", "source": "./plugins/devtools", "description": "リポの立ち上げと道具づくりのスキル（基本設定の点検・クラウド環境のセットアップ）と、使用枠をファイルへ書き出す mod", "category": "development" },
     { "name": "docs", "source": "./plugins/docs", "description": "画像生成プロンプト・コードで描くモーション動画のスキル", "category": "design" }
   ]
 }
