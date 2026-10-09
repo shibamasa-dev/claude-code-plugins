@@ -42,14 +42,11 @@ const toWindows = (limits: readonly SessionRateLimit[], seenAt: number): Snapsho
   return out
 }
 
-let path: string | undefined
-
-// 出力は本人専用ディレクトリ /tmp/claude-<uid>/ の中に置く（uid は $.env に無いので id -u を一度だけ叩く）。
+// 出力は本人専用ディレクトリ /tmp/claude-<uid>/ の中に置く（uid は $.env に無いので id -u を叩く）。
 // /tmp 直下の予測できる名前だと、他ユーザーが先に置いたシンボリックリンクの先を書かされる。
 // ディレクトリは本人所有・700 の実体でなければ使わない。$.fs.stat は種別とリンクしか返さず所有者と権限が
 // 取れないので、find（開始点のリンクを辿らない）で「ディレクトリ・本人所有・700」を一度に確かめる。
 async function filePath($: Engine) {
-  if (path !== undefined) return path
   const idRun = await $.process.run(['id', '-u'])
   const uid = idRun.stdout.trim()
   if (idRun.exitCode !== 0 || !/^\d+$/.test(uid)) throw new Error('uid unavailable')
@@ -58,8 +55,7 @@ async function filePath($: Engine) {
   await $.process.run(['mkdir', '-m', '700', dir]).catch(() => undefined)
   const found = await $.process.run(['find', dir, '-maxdepth', '0', '-type', 'd', '-user', uid, '-perm', '0700'])
   if (found.exitCode !== 0 || found.stdout.trim() !== dir) throw new Error('not a private directory')
-  path = `${dir}/rate-limits.json`
-  return path
+  return `${dir}/rate-limits.json`
 }
 
 async function exportLimits($: Engine, limits: readonly SessionRateLimit[]) {

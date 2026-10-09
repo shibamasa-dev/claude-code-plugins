@@ -121,6 +121,14 @@ test('ディレクトリが本人所有の 700 でなければ何も書かない
   expect(s.files).toEqual({})
 })
 
+test('ディレクトリが後から他人所有に変わったら次は書かない', async ($, on) => {
+  const s = world(on)
+  await $.session.measure(measure([limit('five_hour', 17, FIVE)]))
+  s.dir = 'foreign'
+  await $.session.measure(measure([limit('five_hour', 50, FIVE)]))
+  expect(read(s)).toEqual({ five_hour: win(17, 1791553800) })
+})
+
 test('mv が失敗したら本番パスへ書かずに一時ファイルを消す', async ($, on) => {
   const s = world(on)
   s.failMv = true
