@@ -23,4 +23,4 @@ done | awk '
     else { ok++; print "  " $0 }
     next }
   {print}
-  END {printf "\n==== 期待どおり %d 件 / 食い違い %d 件 ====\n", ok, bad+0}'
+  END {printf "\n==== 期待どおり %d 件 / 食い違い %d 件 ====\n", ok, bad+0; exit (bad > 0)}'

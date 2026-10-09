@@ -13,6 +13,7 @@ exit 0 = error なし（warn のみ含む）/ 1 = error あり / 2 = 引数エ�
 import argparse, fnmatch, json, os, re, shutil, subprocess, sys, tempfile
 
 IGNORE_MARK = "skill-lint: ignore"
+GITLEAKS_TIMEOUT = 120
 SKIP_DIRS = {".git", "node_modules", "__pycache__"}
 SKIP_FILES = {".DS_Store"}
 IGNORE_FILE = ".skill-lint-ignore"
@@ -141,15 +142,18 @@ def run_gitleaks(root):
     os.close(fd)
     try:
         for args in (["dir", root], ["detect", "--no-git", "--source", root]):
-            r = subprocess.run([exe] + args + ["--no-banner", "--report-format", "json", "--report-path", rep, "--exit-code", "0"],
-                               capture_output=True, text=True, stdin=subprocess.DEVNULL)
+            try:
+                r = subprocess.run([exe] + args + ["--no-banner", "--report-format", "json", "--report-path", rep, "--exit-code", "0"],
+                                   capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=GITLEAKS_TIMEOUT)
+            except subprocess.TimeoutExpired:
+                return {"status": "失敗", "reason": "gitleaks が %d 秒で終わらなかった" % GITLEAKS_TIMEOUT}
             if r.returncode == 0:
                 try:
                     leaks = json.load(open(rep)) or []
                 except ValueError:
                     leaks = []
                 return {"status": "実施", "leaks": [
-                    {"file": os.path.relpath(x.get("File", ""), root), "line": x.get("StartLine"), "rule": x.get("RuleID")}
+                    {"file": os.path.relpath(x.get("File", ""), root).replace(os.sep, "/"), "line": x.get("StartLine"), "rule": x.get("RuleID")}
                     for x in leaks]}
         return {"status": "失敗", "reason": (r.stderr or r.stdout).strip()[:300]}
     finally:

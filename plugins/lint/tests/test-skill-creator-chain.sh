@@ -17,4 +17,6 @@ row() { printf '  %-58s -> %-5s (%s 期待)\n' "$1" "$2" "$3"; }
 echo '=== skill-creator への連鎖 ==='
 row 'skill-creator なら注入する' "$(injected skill-creator)" 'yes'
 row '名前空間付きの skill-creator でも注入する' "$(injected skill-creator:skill-creator)" 'yes'
+expansion() { out=$(printf '{"hook_event_name":"UserPromptExpansion","session_id":"s"}' | python3 "$HOOK" --expansion); case "$out" in *skill-lint*) echo yes ;; *) echo no ;; esac; }
+row '/skill-creator の直接入力（--expansion）でも案内を出す' "$(expansion)" 'yes'
 row 'ほかのスキルなら何も出さない' "$(injected issue-ops)" 'none'

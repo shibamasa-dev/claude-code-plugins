@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PostToolUse（Skill）hook: skill-creator が呼ばれたら、作り終えたスキルに skill-lint を走らせるよう伝える。
+"""PostToolUse（Skill）と UserPromptExpansion（/skill-creator の直接入力）の hook: skill-creator が呼ばれたら、作り終えたスキルに skill-lint を走らせるよう伝える。
 
 skill-creator（`skill-creator:skill-creator` のような名前空間付きも含む）のときだけ additionalContext を返し、
 ほかのスキルでは何も出さない。状態は持たない。
@@ -13,6 +13,9 @@ MESSAGE = ("[lint] skill-creator を使っている。スキルの作成・更�
 
 
 def main():
+    if "--expansion" in sys.argv:  # UserPromptExpansion（ユーザーが /skill-creator を打った）: matcher で絞り済み。素の stdout が文脈に入る
+        print(MESSAGE)
+        return
     try:
         inp = json.load(sys.stdin)
     except Exception:
