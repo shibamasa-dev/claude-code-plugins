@@ -5,7 +5,8 @@
 
 denylist（具体的な名前・ホスト）は配布物に入れず、build_denylist.py が生成した
 ${XDG_CONFIG_HOME:-~/.config}/skill-lint/denylist.json から読む。ここに書くのは汎用の正規表現だけ。
-evals/fixtures/ 配下は意図的に漏れを含むテスト用データなので既定で除外する。
+スキル内の `.skill-lint-ignore`（1 行 1 パターン。そのファイルのあるディレクトリからの相対。末尾 `/` はディレクトリ）に
+書いたパスだけ除外する。既定では何も除外しない（実データ由来のフィクスチャこそ漏れやすいため）。
 行内に `skill-lint: ignore` がある行は調べない。
 exit 0 = error なし（warn のみ含む）/ 1 = error あり / 2 = 引数エラー。
 """
@@ -15,7 +16,7 @@ DEFAULT_DENYLIST = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.exp
 IGNORE_MARK = "skill-lint: ignore"
 SKIP_DIRS = {".git", "node_modules", "__pycache__"}
 SKIP_FILES = {".DS_Store"}
-FIXTURE_DIR = "evals/fixtures/"  # 意図的に漏れを含むテストデータ。どの深さにあっても除外する
+IGNORE_FILE = ".skill-lint-ignore"
 MANIFESTS = (".claude-plugin/plugin.json", ".claude-plugin/marketplace.json")
 RE_PUBLISHER = re.compile(r'^\s*"(?:name|author|owner|homepage|repository|url)"\s*:')  # manifest の公開者情報
 
@@ -60,16 +61,39 @@ def load_denylist(path):
     return {k: sorted(v, key=len, reverse=True) for k, v in out.items()}
 
 
+def read_ignore(d):
+    path = os.path.join(d, IGNORE_FILE)
+    if not os.path.isfile(path):
+        return []
+    with open(path, encoding="utf-8") as f:
+        return [l.strip() for l in f if l.strip() and not l.lstrip().startswith("#")]
+
+
+def ignored(rel, pats):
+    for p in pats:
+        if p.endswith("/") and (rel + "/").startswith(p):
+            return True
+        if fnmatch.fnmatch(rel, p):
+            return True
+    return False
+
+
 def iter_files(root):
-    """(相対パス, 絶対パス, 除外か) を返す。"""
+    """(相対パス, 絶対パス, 除外か) を返す。除外は各階層の .skill-lint-ignore に従う。"""
+    rules = []  # (ignore ファイルのあるディレクトリ, パターン)
     for d, dirs, files in os.walk(root):
         dirs[:] = sorted(x for x in dirs if x not in SKIP_DIRS)
+        pats = read_ignore(d)
+        if pats:
+            rules.append((d, pats))
         for f in sorted(files):
             if f in SKIP_FILES:
                 continue
             ab = os.path.join(d, f)
             rel = os.path.relpath(ab, root).replace(os.sep, "/")
-            yield rel, ab, rel.startswith(FIXTURE_DIR) or ("/" + FIXTURE_DIR) in rel
+            ex = any(ignored(os.path.relpath(ab, base).replace(os.sep, "/"), p)
+                     for base, p in rules if (ab + os.sep).startswith(base + os.sep))
+            yield rel, ab, ex
 
 
 def structure_findings(rel):
@@ -199,7 +223,7 @@ def lint(root, denylist_path, use_gitleaks=True):
 
 def print_human(res):
     d = res["denylist"]
-    print("対象: %s（%d ファイル、除外 %d: evals/fixtures/）" % (res["root"], res["scanned_files"], len(res["excluded_files"])))
+    print("対象: %s（%d ファイル、除外 %d: .skill-lint-ignore）" % (res["root"], res["scanned_files"], len(res["excluded_files"])))
     print("denylist: %s" % ("%s（名前 %d・ホスト %d）" % (d["path"], d["names"], d["hosts"]) if d["loaded"]
                              else "未読込（%s が無い。build_denylist.py で作る）" % d["path"]))
     g = res["gitleaks"]

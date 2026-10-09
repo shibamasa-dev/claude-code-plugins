@@ -47,7 +47,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/skill-lint/scripts/lint.py" "$ARGUMENTS" -
 | provenance | warn | 同じ行に日付と「確定・承認・指示・判断・確認」 |
 
 - frontmatter の `last_reviewed` / `review_after` は調べない。行内に `skill-lint: ignore` がある行も調べない。
-- `evals/fixtures/` は意図的に漏れを含むテストデータとして扱い、調べない（除外したファイル数を出す）。
+- 除外は対象スキルの `.skill-lint-ignore` に書いたパスだけ（既定は全ファイルを調べる。実データ由来のフィクスチャが一番漏れやすいので、意図的に漏れを含むテストデータ以外は除外しない）。除外したファイル数を出す。
 - プラグインの manifest（`.claude-plugin/plugin.json`・`marketplace.json`）の公開者情報（`name`・`author`・`owner`・`homepage`・`repository` の行）は、公開が前提なので調べない。
 - `gitleaks` が PATH にあれば secret の検査を任せる。無ければ「未実施」と出る。
 - 終了コードは error があれば 1、warn だけなら 0。
@@ -57,7 +57,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/skill-lint/scripts/lint.py" "$ARGUMENTS" -
 `Agent(subagent_type: general-purpose)` を 1 つ起動する。prompt は次をこの順で連結する:
 
 1. `${CLAUDE_PLUGIN_ROOT}/skills/skill-lint/references/reviewer-prompt.md` の全文
-2. 対象ディレクトリの絶対パスと「全ファイルを Read で読む（`evals/fixtures/` は除く）」という指示
+2. 対象ディレクトリの絶対パスと「全ファイルを Read で読む（lint.py の `excluded_files` は除く）」という指示
 3. ヒント: `<tmp>/lint.json` の `findings` から `file`・`line`・`category`・`match` だけを抜いたもの
 4. ヒント: denylist の `names` と `hosts`
 5. 「JSON 配列だけを出力する」
