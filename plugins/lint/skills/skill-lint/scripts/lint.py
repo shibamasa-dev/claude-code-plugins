@@ -20,7 +20,7 @@ IGNORE_FILE = ".skill-lint-ignore"
 MANIFESTS = (".claude-plugin/plugin.json", ".claude-plugin/marketplace.json")
 RE_PUBLISHER = re.compile(r'^\s*"(?:name|author|owner|homepage|repository|url)"\s*:')  # manifest の公開者情報
 
-SEVERITY = {"identity": "error", "path": "error", "network": "error", "structure": "error",
+SEVERITY = {"identity": "error", "path": "error", "network": "error", "structure": "error", "unreadable": "error",
             "secret": "error", "tracker": "warn", "provenance": "warn"}
 FIX = {
     "identity": "人名・組織名・アカウント名は役割（「ユーザー」「起動元」等）に置き換えるか、経緯の括弧ごと消す",
@@ -29,6 +29,7 @@ FIX = {
     "tracker": "私的な issue/PR 番号は消し、必要なら理由を本文で書く。公開 upstream の参照なら行に `skill-lint: ignore` を付ける",
     "provenance": "日付と誰が決めたかは消し、ルールとその理由だけ残す（経緯は git log / issue に置く）",
     "structure": "実行時データはスキルの外（例: `~/.local/state/<skill>/`）へ移し、スキル配下から消す",
+    "unreadable": "読める権限にして再実行する（読めないファイルは調べていない）",
     "secret": "secret を消し、漏れた値は失効させる。gitleaks が失敗したなら原因を直して再実行する",
 }
 
@@ -99,10 +100,9 @@ def structure_findings(rel):
 
 
 def read_text(ab):
-    try:
-        b = open(ab, "rb").read()
-    except OSError:
-        return None
+    """テキストを返す。バイナリは None、読めなければ OSError をそのまま上げる（黙って飛ばさない）。"""
+    with open(ab, "rb") as f:
+        b = f.read()
     if b"\0" in b[:8192]:
         return None
     return b.decode("utf-8", errors="replace")
@@ -149,9 +149,10 @@ def run_gitleaks(root):
                 return {"status": "失敗", "reason": "gitleaks が %d 秒で終わらなかった" % GITLEAKS_TIMEOUT}
             if r.returncode == 0:
                 try:
-                    leaks = json.load(open(rep)) or []
-                except ValueError:
-                    leaks = []
+                    with open(rep, encoding="utf-8") as f:
+                        leaks = json.load(f) or []
+                except ValueError as e:  # 読めないレポートを「検出 0 件」にしない
+                    return {"status": "失敗", "reason": "gitleaks のレポートを読めない（%s）" % e}
                 return {"status": "実施", "leaks": [
                     {"file": os.path.relpath(x.get("File", ""), root).replace(os.sep, "/"), "line": x.get("StartLine"), "rule": x.get("RuleID")}
                     for x in leaks]}
@@ -170,7 +171,11 @@ def lint(root, use_gitleaks=True):
         scanned += 1
         for msg, m in structure_findings(rel):
             findings.append({"file": rel, "line": 0, "category": "structure", "match": m, "message": msg, "text": ""})
-        text = read_text(ab)
+        try:
+            text = read_text(ab)
+        except OSError as e:
+            findings.append({"file": rel, "line": 0, "category": "unreadable", "match": "", "message": "読めないので調べられていない（%s）" % e.strerror, "text": ""})
+            continue
         if text is None:
             continue
         lines = text.splitlines()
@@ -185,9 +190,10 @@ def lint(root, use_gitleaks=True):
                 continue
             if i - 1 <= fm_end and fm_end and RE_FM_SKIP.match(line):
                 continue
-            if rel.endswith(MANIFESTS) and RE_PUBLISHER.match(line):
-                continue
+            publisher = rel.endswith(MANIFESTS) and RE_PUBLISHER.match(line)
             for cat, m, msg, sev in scan_line(line):
+                if publisher and cat == "identity":  # 公開者の名前・連絡先は公開前提。パスやホストは調べる
+                    continue
                 findings.append({"file": rel, "line": i, "category": cat, "match": m, "message": msg,
                                  "text": line.strip()[:200], "severity": sev})
     gl = run_gitleaks(root) if use_gitleaks else {"status": "未実施", "reason": "--no-gitleaks"}
