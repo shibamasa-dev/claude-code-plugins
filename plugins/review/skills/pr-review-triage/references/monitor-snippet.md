@@ -75,14 +75,17 @@ while true; do
   fi
   fails=0
   [ "$sha" != "$seen" ] && { seen=$sha; since=$(date +%s); }   # push で head が変わったら数え直す
-  nrun=$(printf '%s' "$runs" | jq '.check_runs | length')
-  left=$(printf '%s' "$runs" | jq '[.check_runs[] | select(.status != "completed")] | length')
+  nrun=$(printf '%s' "$runs" | jq '.total_count')
+  # 1 ページは 100 件まで。取れていない分（total_count との差）は未完了として数える
+  left=$(printf '%s' "$runs" | jq '.total_count as $t | (.check_runs | length) as $n | ([.check_runs[] | select(.status != "completed")] | length) + (if $t > $n then $t - $n else 0 end)')
   nst=$(printf '%s' "$st" | jq '.total_count')
   state=$(printf '%s' "$st" | jq -r '.state')   # 1 件も無いときも pending になる
   if [ $((nrun + nst)) = 0 ]; then
     # push の直後はまだ 0 件のことがあるので、すぐには抜けない
     [ $(($(date +%s) - since)) -ge 600 ] && { echo "[PR#{pr} ci] NO_CHECKS（10 分たってもチェックが 1 つも付かない）"; break; }
   elif [ "$left" = 0 ] && { [ "$nst" = 0 ] || [ "$state" != pending ]; }; then
+    # 待っている間に push されていたら、古い commit の結果で抜けず次の回で数え直す
+    [ "$(get "$API/pulls/{pr}" | jq -r '.head.sha // empty')" != "$sha" ] && { sleep 30; continue; }
     { printf '%s' "$runs" | jq -r '.check_runs[] | "\(.name)=\(.conclusion)"'
       printf '%s' "$st" | jq -r '.statuses[] | "\(.context)=\(.state)"'; } | paste -sd' ' - | sed 's/^/[PR#{pr} ci] /'
     break
