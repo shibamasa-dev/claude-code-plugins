@@ -2,8 +2,8 @@ import type { On, SessionRateLimit } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
 // 値は実機で見た形に合わせた実例: 1791553800 = 2026-10-09T22:50:00+09:00, 1791615600 = 2026-10-10T16:00:00+09:00
-const FILE = '/tmp/claude-rate-limits-501.json'
-const TMP = '/tmp/claude-rate-limits.AbC123'
+const DIR = '/tmp/claude-501'
+const FILE = `${DIR}/rate-limits.json`
 const NOW = 1791552278
 const FIVE = '2026-10-09T22:50:00+09:00'
 const SEVEN = '2026-10-10T16:00:00+09:00'
@@ -15,9 +15,10 @@ const measure = (rateLimits: SessionRateLimit[]) => ({
   changed: ['rateLimits' as const],
 })
 
-// エンジンの代わりにメモリ上の fs と id/mktemp/mv/rm を置く。files がファイルの中身、links がシンボリックリンクのパス。
-const world = (on: On, files: Record<string, string> = {}) => {
-  const state = { files, links: new Set<string>(), failMktemp: false, failMv: false, ran: [] as string[] }
+// エンジンの代わりにメモリ上の fs と id/mkdir/find/mv/rm を置く。files がファイルの中身。
+// dir は /tmp/claude-501 の状態: ok（本人所有 700）/ missing / link / foreign（他人所有か 700 でない）。
+const world = (on: On, files: Record<string, string> = {}, dir: 'ok' | 'missing' | 'link' | 'foreign' = 'ok') => {
+  const state = { files, dir, failMv: false, ran: [] as string[][] }
   mock.clock(on, { now: NOW * 1000 })
   on('fs.read', (_$, e) => {
     const text = state.files[e.path]
@@ -25,21 +26,24 @@ const world = (on: On, files: Record<string, string> = {}) => {
     return { value: text }
   })
   on('fs.write', (_$, e) => {
-    // 書き込みはリンクを辿る: リンクならリンク先ではなく /victim に落ちる
-    state.files[state.links.has(e.path) ? '/victim' : e.path] = e.text
+    state.files[e.path] = e.text
     return { value: undefined }
   })
   on('process.run', (_$, e) => {
     const [cmd, a, b, c] = e.argv
-    state.ran.push(cmd ?? '')
+    state.ran.push([...e.argv])
     const ok = { exitCode: 0, stdout: '', stderr: '' }
     const fail = { exitCode: 1, stdout: '', stderr: 'failed' }
     if (cmd === 'id') return { value: { ...ok, stdout: '501\n' } }
-    if (cmd === 'mktemp') return { value: state.failMktemp ? fail : { ...ok, stdout: `${TMP}\n` } }
+    if (cmd === 'mkdir') {
+      if (state.dir !== 'missing') return { value: fail }
+      state.dir = 'ok'
+      return { value: ok }
+    }
+    if (cmd === 'find') return { value: state.dir === 'ok' ? { ...ok, stdout: `${a}\n` } : fail }
     if (cmd === 'mv' && a === '-f' && b !== undefined && c !== undefined) {
       if (state.failMv) return { value: fail }
-      state.files[c] = state.files[b] ?? '' // rename は宛先のリンクを辿らず置き換える
-      state.links.delete(c)
+      state.files[c] = state.files[b] ?? ''
       delete state.files[b]
     }
     if (cmd === 'rm') delete state.files[b === '-f' ? (c ?? '') : (b ?? '')]
@@ -97,13 +101,24 @@ test('既存ファイルが壊れていても新しい値で書ける', async ($
   expect(read(s)).toEqual({ five_hour: win(17, 1791553800) })
 })
 
-test('書き込み先がシンボリックリンクでもリンク先は書き換えず、リンク自体を置き換える', async ($, on) => {
-  const s = world(on, { '/victim': 'secret' })
-  s.links.add(FILE)
+test('ディレクトリが無ければ 700 で作って書く', async ($, on) => {
+  const s = world(on, {}, 'missing')
   await $.session.measure(measure([limit('five_hour', 17, FIVE)]))
-  expect(s.files['/victim']).toBe('secret')
-  expect(s.links.has(FILE)).toBe(false)
+  expect(s.ran).toContainEqual(['mkdir', '-m', '700', DIR])
   expect(read(s)).toEqual({ five_hour: win(17, 1791553800) })
+})
+
+test('ディレクトリがシンボリックリンクなら何も書かない', async ($, on) => {
+  const s = world(on, {}, 'link')
+  await $.session.measure(measure([limit('five_hour', 17, FIVE)]))
+  expect(s.files).toEqual({})
+  expect(s.ran.some(a => a[0] === 'mv')).toBe(false)
+})
+
+test('ディレクトリが本人所有の 700 でなければ何も書かない', async ($, on) => {
+  const s = world(on, {}, 'foreign')
+  await $.session.measure(measure([limit('five_hour', 17, FIVE)]))
+  expect(s.files).toEqual({})
 })
 
 test('mv が失敗したら本番パスへ書かずに一時ファイルを消す', async ($, on) => {
@@ -111,13 +126,5 @@ test('mv が失敗したら本番パスへ書かずに一時ファイルを消�
   s.failMv = true
   await $.session.measure(measure([limit('five_hour', 17, FIVE)]))
   expect(s.files).toEqual({})
-  expect(s.ran).toContain('rm')
-})
-
-test('mktemp が失敗したら何もしない', async ($, on) => {
-  const s = world(on)
-  s.failMktemp = true
-  await $.session.measure(measure([limit('five_hour', 17, FIVE)]))
-  expect(s.files).toEqual({})
-  expect(s.ran).not.toContain('mv')
+  expect(s.ran.some(a => a[0] === 'rm')).toBe(true)
 })

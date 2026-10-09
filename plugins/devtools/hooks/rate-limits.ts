@@ -1,6 +1,6 @@
 import type { Engine, Register, SessionRateLimit } from 'claude-code'
 
-// 使用枠（rate limits）を /tmp/claude-rate-limits-<uid>.json に書き出す。
+// 使用枠（rate limits）を /tmp/claude-<uid>/rate-limits.json に書き出す。
 // 週の残り枠を見張る外部スクリプトが読む。形式:
 // {"five_hour": {"used_percentage": 17, "resets_at": 1791553800, "seen_at": 1791552278}, "seven_day": {...}}
 
@@ -44,13 +44,21 @@ const toWindows = (limits: readonly SessionRateLimit[], seenAt: number): Snapsho
 
 let path: string | undefined
 
-// ファイル名は実行ユーザーの uid で決める（$.env に UID は無いので id -u を一度だけ叩く）
+// 出力は本人専用ディレクトリ /tmp/claude-<uid>/ の中に置く（uid は $.env に無いので id -u を一度だけ叩く）。
+// /tmp 直下の予測できる名前だと、他ユーザーが先に置いたシンボリックリンクの先を書かされる。
+// ディレクトリは本人所有・700 の実体でなければ使わない。$.fs.stat は種別とリンクしか返さず所有者と権限が
+// 取れないので、find（開始点のリンクを辿らない）で「ディレクトリ・本人所有・700」を一度に確かめる。
 async function filePath($: Engine) {
   if (path !== undefined) return path
-  const { exitCode, stdout } = await $.process.run(['id', '-u'])
-  const uid = stdout.trim()
-  if (exitCode !== 0 || !/^\d+$/.test(uid)) throw new Error('uid unavailable')
-  path = `/tmp/claude-rate-limits-${uid}.json`
+  const idRun = await $.process.run(['id', '-u'])
+  const uid = idRun.stdout.trim()
+  if (idRun.exitCode !== 0 || !/^\d+$/.test(uid)) throw new Error('uid unavailable')
+  const dir = `/tmp/claude-${uid}`
+  // 無ければ 700 で作る。何かが既にあれば失敗するだけ（-p を付けないので既存のリンクの先には作らない）
+  await $.process.run(['mkdir', '-m', '700', dir]).catch(() => undefined)
+  const found = await $.process.run(['find', dir, '-maxdepth', '0', '-type', 'd', '-user', uid, '-perm', '0700'])
+  if (found.exitCode !== 0 || found.stdout.trim() !== dir) throw new Error('not a private directory')
+  path = `${dir}/rate-limits.json`
   return path
 }
 
@@ -84,13 +92,9 @@ async function exportLimits($: Engine, limits: readonly SessionRateLimit[]) {
   }
   if (!changed) return
 
-  // /tmp の予測できる名前に他人が置いたシンボリックリンクを辿って書かないための手順:
-  // mktemp は O_EXCL で新規の通常ファイルを自分所有で作り、/tmp は sticky bit なので他人は消せず差し替えられない。
-  // そこへ書いて mv -f で置き換える。rename は宛先がリンクでもリンクを辿らず置き換える。
-  // 失敗したら直書きには落とさず何もしない（次の measure で再試行される）。stat と write の間の競合が残るため。
-  const made = await $.process.run(['mktemp', '/tmp/claude-rate-limits.XXXXXX']).catch(() => undefined)
-  const tmp = made?.exitCode === 0 ? made.stdout.trim() : ''
-  if (!tmp.startsWith('/tmp/claude-rate-limits.')) return
+  // 本人専用ディレクトリの中なので他ユーザーは何も置けない。一時ファイルに書いて mv -f（rename は原子的）。
+  // 失敗したら tmp を消して何もしない（直書きには落とさない。次の measure で再試行される）。
+  const tmp = `${file}.${seenAt}.${Math.random().toString(36).slice(2, 8)}.tmp`
   try {
     await $.fs.write(tmp, JSON.stringify(merged))
     const moved = await $.process.run(['mv', '-f', tmp, file])
