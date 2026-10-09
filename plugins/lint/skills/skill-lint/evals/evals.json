@@ -1,0 +1,336 @@
+{
+ "description": "skill-lint の評価。fixtures/leaky-skill/ の各行は 2026-10-09 に実在のスキル群とルールファイルを grep した行を、人名・組織・リポ・取引先・ホストだけ一貫した仮名に置き換えたもの（作り物は無し）。行の並べ替えと、ファイルの区切り（frontmatter の --- と空行、リポの検査が求める frontmatter の name 行）だけを足した。P12 のメールアドレスと P13 のホーム配下の絶対パスは、このリポ自身の漏れ検査（check-repo.py）に当たるため、当たる部分だけを {{AT}}・{{USERS_DIR}} のトークンにして置き、runner が一時ディレクトリへ展開してから流す（展開後は逐語どおり）。lint は汎用の正規表現だけで、人名・組織名・取引先・私的ボットのような固有名は reviewer が判定する（denylist は持たない）。グループ A（scripts/run_evals.py）は lint.py の結果を lint_expect ⊆ 実測・lint_forbid ∩ 実測 = ∅ で採点する。グループ B（scripts/run_reviewer_eval.py）は reviewer_expect（1 要素＝期待する指摘 1 件。中の語のどれかを quote に含めば命中）の recall と、陰性行への指摘（N7 は reviewer_forbid_quote を含む指摘だけ）を誤検知として数える。行は file と anchor（行内の一意な断片）で特定し、漏れ文字列そのものは evals.json に書かない。 lint_expect_match は、その行の指摘の match に含まれるべき文字列（どの規則で拾ったかまで確かめる）。",
+ "fixture_dir": "evals/fixtures/leaky-skill",
+ "cases": [
+  {
+   "id": "P1",
+   "kind": "positive",
+   "file": "SKILL.md",
+   "anchor": "完了報告の型に次の1行を必ず入れる",
+   "lint_expect": [
+    "provenance"
+   ],
+   "lint_forbid": [],
+   "reviewer_expect": [
+    [
+     "たろう"
+    ]
+   ],
+   "note": "人名は reviewer、日付つきの決定の経緯は lint"
+  },
+  {
+   "id": "P2",
+   "kind": "positive",
+   "file": "SKILL.md",
+   "anchor": "からの導出＋isdir 検証のみ",
+   "lint_expect": [
+    "path"
+   ],
+   "lint_forbid": [],
+   "reviewer_expect": [
+    [
+     "たろう"
+    ],
+    [
+     "ACMECO"
+    ]
+   ],
+   "note": "個人ディレクトリのパスは lint（warn）、人名と組織名は reviewer"
+  },
+  {
+   "id": "P3",
+   "kind": "positive",
+   "file": "SKILL.md",
+   "anchor": "会話文脈から取引先・リポ名が分かるとき",
+   "lint_expect": [
+    "tracker"
+   ],
+   "lint_forbid": [],
+   "note": "取引先名は denylist に入れていない。reviewer だけが拾える",
+   "reviewer_expect": [
+    [
+     "マルヤマ"
+    ]
+   ]
+  },
+  {
+   "id": "P4",
+   "kind": "positive",
+   "file": "SKILL.md",
+   "anchor": "spinoff 追跡台帳に1行登録",
+   "lint_expect": [
+    "tracker"
+   ],
+   "lint_forbid": []
+  },
+  {
+   "id": "P5",
+   "kind": "positive",
+   "file": "SKILL.md",
+   "anchor": "で listen",
+   "lint_expect": [
+    "network"
+   ],
+   "lint_forbid": []
+  },
+  {
+   "id": "P6",
+   "kind": "positive",
+   "file": "scripts/spawn.sh",
+   "anchor": "SIGNALS_PY=",
+   "lint_expect": [
+    "path"
+   ],
+   "lint_forbid": [],
+   "note": "私的リポへの依存は reviewer が拾う",
+   "reviewer_expect": [
+    [
+     "TARO-BOT-CC",
+     "signal-inbox",
+     "signals.py"
+    ]
+   ]
+  },
+  {
+   "id": "P7",
+   "kind": "positive",
+   "file": "scripts/resolve_workspace.py",
+   "anchor": "os.path.expanduser",
+   "lint_expect": [
+    "path"
+   ],
+   "lint_forbid": []
+  },
+  {
+   "id": "P8",
+   "kind": "positive",
+   "file": "scripts/spawn.sh",
+   "anchor": "未コミット変更があれば拒否",
+   "lint_expect": [
+    "tracker"
+   ],
+   "lint_forbid": []
+  },
+  {
+   "id": "P9",
+   "kind": "positive",
+   "file": "SKILL.md",
+   "anchor": "Slack push",
+   "lint_expect": [],
+   "lint_forbid": [],
+   "note": "人名と私的ボットへの依存は reviewer",
+   "reviewer_expect": [
+    [
+     "たろう"
+    ],
+    [
+     "taro-bot"
+    ]
+   ]
+  },
+  {
+   "id": "P10",
+   "kind": "positive",
+   "file": "logs/maruyama.md",
+   "anchor": "適合 44/45",
+   "lint_expect": [
+    "provenance"
+   ],
+   "lint_forbid": [],
+   "note": "日付つきの決定の経緯は lint、人名と取引先 xyz は reviewer",
+   "reviewer_expect": [
+    [
+     "たろう"
+    ],
+    [
+     "xyz"
+    ]
+   ]
+  },
+  {
+   "id": "P11",
+   "kind": "positive",
+   "file": "scripts/resolve_workspace.py",
+   "anchor": "が真になり、誤ったケースのまま",
+   "lint_expect": [],
+   "lint_forbid": [],
+   "note": "reviewer のみ",
+   "reviewer_expect": [
+    [
+     "maruyama"
+    ]
+   ]
+  },
+  {
+   "id": "P12",
+   "kind": "positive",
+   "file": "SKILL.md",
+   "anchor": "CEO",
+   "lint_expect": [
+    "identity"
+   ],
+   "lint_forbid": [],
+   "lint_expect_match": [
+    "taro.yamada"
+   ],
+   "note": "メールアドレス規則そのもので lint が拾うこと。人名・組織名は reviewer",
+   "reviewer_expect": [
+    [
+     "ACMECO",
+     "Taro"
+    ]
+   ]
+  },
+  {
+   "id": "P13",
+   "kind": "positive",
+   "file": "SKILL.md",
+   "anchor": "carryover.py add",
+   "lint_expect": [
+    "path"
+   ],
+   "lint_forbid": [],
+   "lint_expect_match": [
+    "taro/"
+   ],
+   "note": "ホーム配下の絶対パス規則で拾うこと"
+  },
+  {
+   "id": "P14",
+   "kind": "positive",
+   "file": "SKILL.md",
+   "anchor": "並列セッション数が増えると",
+   "lint_expect": [],
+   "lint_forbid": [],
+   "reviewer_expect": [
+    [
+     "たろう"
+    ]
+   ],
+   "note": "人名は reviewer"
+  },
+  {
+   "id": "P15",
+   "kind": "positive",
+   "file": "logs/maruyama.md",
+   "anchor": null,
+   "lint_expect": [
+    "structure"
+   ],
+   "lint_forbid": [],
+   "note": "ファイルの存在そのもの（line 0）"
+  },
+  {
+   "id": "N1",
+   "kind": "negative",
+   "file": "SKILL.md",
+   "anchor": "last_reviewed:",
+   "lint_expect": [],
+   "lint_forbid": [
+    "identity",
+    "path",
+    "network",
+    "structure",
+    "tracker",
+    "provenance"
+   ],
+   "note": "frontmatter の last_reviewed は対象外"
+  },
+  {
+   "id": "N2",
+   "kind": "negative",
+   "file": "scripts/spawn.sh",
+   "anchor": "gh stack merge 42 --yes",
+   "lint_expect": [],
+   "lint_forbid": [
+    "identity",
+    "path",
+    "network",
+    "structure",
+    "provenance"
+   ],
+   "note": "lint は tracker warn 可。reviewer は無指摘"
+  },
+  {
+   "id": "N3",
+   "kind": "negative",
+   "file": "SKILL.md",
+   "anchor": "を単独指定する",
+   "lint_expect": [],
+   "lint_forbid": [
+    "identity",
+    "path",
+    "network",
+    "structure",
+    "tracker",
+    "provenance"
+   ],
+   "note": "標準パスは対象外"
+  },
+  {
+   "id": "N4",
+   "kind": "negative",
+   "file": "SKILL.md",
+   "anchor": "issue 対応は",
+   "lint_expect": [],
+   "lint_forbid": [
+    "identity",
+    "path",
+    "network",
+    "structure",
+    "tracker",
+    "provenance"
+   ],
+   "note": "プレースホルダ"
+  },
+  {
+   "id": "N5",
+   "kind": "negative",
+   "file": "SKILL.md",
+   "anchor": "NOT_PLANNED＝未修正",
+   "lint_expect": [],
+   "lint_forbid": [
+    "identity",
+    "path",
+    "network",
+    "structure",
+    "provenance"
+   ],
+   "note": "公開 upstream。lint は tracker warn 可"
+  },
+  {
+   "id": "N6",
+   "kind": "negative",
+   "file": "scripts/spawn.sh",
+   "anchor": "worktree 行のパスは",
+   "lint_expect": [],
+   "lint_forbid": [
+    "identity",
+    "path",
+    "network",
+    "structure",
+    "tracker",
+    "provenance"
+   ]
+  },
+  {
+   "id": "N7",
+   "kind": "negative",
+   "file": "SKILL.md",
+   "anchor": "以外のとき",
+   "lint_expect": [],
+   "lint_forbid": [
+    "identity",
+    "path",
+    "network",
+    "structure",
+    "tracker",
+    "provenance"
+   ],
+   "reviewer_forbid_quote": [
+    "Claude Desktop"
+   ],
+   "note": "製品名は無指摘。私的ボット名への指摘は可"
+  }
+ ]
+}
