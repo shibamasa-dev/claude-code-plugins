@@ -1396,6 +1396,22 @@ def _python_arg(tokens: list):
     return None
 
 
+_UV_PIP_SUBCOMMANDS = {"compile", "sync", "install", "uninstall", "freeze", "list", "show", "tree", "check"}
+
+
+def _uv_pip_subcommand(tokens: list):
+    """`uv [OPTIONS] pip [OPTIONS] <COMMAND>` の COMMAND（uv pip でなければ None）。オプションの後ろも見る。"""
+    if not tokens or os.path.basename(tokens[0]) != "uv" or "pip" not in tokens[1:]:
+        return None
+    i = tokens.index("pip", 1)
+    for j in range(1, i):
+        # pip より前はオプションとその値だけ（`uv run pip …` のように別のサブコマンドが先なら uv pip ではない）
+        prev = tokens[j - 1]
+        if not tokens[j].startswith("-") and not (j > 1 and prev.startswith("-") and "=" not in prev):
+            return None
+    return next((t for t in tokens[i + 1:] if t in _UV_PIP_SUBCOMMANDS), None)
+
+
 def _targets_shared_venv(cmd, cwd_shared: bool, venv_shared) -> bool:
     """`uv pip` が共有 venv を対象にするか。`--python` を明示したらその値だけで、無ければ有効な venv、次に今いるフォルダで決める。"""
     py = _python_arg(cmd.tokens)
@@ -1519,8 +1535,8 @@ def rule_shared_venv_guard(command: str):
             continue
         if _marker(cmd, "SHARED_VENV_OK") or len(tk) < 3:
             continue
-        if os.path.basename(tk[0]) == "uv" and tk[1] == "pip" and \
-                (tk[2] in ("sync", "uninstall") or (tk[2] == "install" and "--exact" in tk)):
+        sub = _uv_pip_subcommand(tk)
+        if sub in ("sync", "uninstall") or (sub == "install" and "--exact" in tk):
             return deny(
                 "🛑 shared-venv-guard: 共有 venv(設定 shared_venv_dirs の配下) への sync / --exact / uninstall は"
                 "定義に無い同居パッケージを消す。install(追加のみ)を使うか、"
