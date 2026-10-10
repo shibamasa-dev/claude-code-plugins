@@ -12,3 +12,7 @@
 6. API の MCP connector：https://platform.claude.com/docs/en/agents-and-tools/mcp-connector
 
 社内の値はこのリポジトリに書かない（組織で固定の値は組織側のプラグインが注入する）。人ごとの値は `userConfig` で受けて `${user_config.KEY}` で参照する。
+
+## PR レビュー
+
+review-bots: coderabbit, codex
