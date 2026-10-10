@@ -27,6 +27,8 @@ bash $D --light  # light の PR に使うもの（claude か ツールの id）
 bash $D --auto   # ツールの自動レビュー（on / off）
 ```
 
+以降の節の `$D` はこのパス（別のシェルで回すときは環境変数と一緒に定義し直す）。
+
 リポの作業ツリーの中で実行する。キーごとに、上から最初に見つかったものを使う（結果は保存しない）:
 
 1. リポの CLAUDE.md（または AGENTS.md）の行
@@ -152,11 +154,11 @@ PR を作った後の流れ:
 
 ## 6. 再レビュー
 
-`review-auto: on` のリポで、ツールの設定で push ごとに自動でレビューが走る（CodeRabbit の incremental review など）なら、そのツールには頼まず 4.2 から待つ（同じ push に二重に枠を使わないため）。
-
 **頼む**: その回に直した指摘のうち、重い指摘（CodeRabbit=Critical / Codex=P1。ほかのツールは Critical・High 相当。ツールごとの呼び方は `references/tools/<id>.md` の「重い指摘」）が **${user_config.rereview_threshold} 件以上**（userConfig `rereview_threshold`。既定 3）あったときだけ、その回に頼んだツールへ頼む（頼み方は 4.1、そのあと 4.2 から）。
 
 **それ以外は頼まない**: push して CI だけ待ち、マージ判断へ。push のたびに頼むと 1 PR で 5 巡になりコスト過大（過去の実例で実測）。多くのツールは push しても再レビューを自動では走らせないので、頼まずに待っても何も来ない。
+
+`review-auto: on` のリポで、ツールの設定で push ごとに自動でレビューが走る（CodeRabbit の incremental review など）なら、そのツールには頼まず 4.2 から待つ（同じ push に二重に枠を使わないため）。
 
 **基準の例外**（基準を満たさなくても頼んでよい）:
 - **ユーザーの明示指示**（「再レビュー投げて」）
