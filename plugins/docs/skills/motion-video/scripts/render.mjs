@@ -338,11 +338,14 @@ async function cmdStoryboard(P, f) {
     const { meta } = S;
     const aspects = f.aspect === 'all' ? meta.aspects : f.aspect ? f.aspect.split(',') : [meta.aspects[0]];
     const dir = path.join(P.out, 'storyboard');
-    // 最新の版はトップに作り直す。前の版（v<N>/）は残す
     fs.mkdirSync(dir, { recursive: true });
-    for (const e of fs.readdirSync(dir)) if (!VERSION_DIR.test(e)) fs.rmSync(path.join(dir, e), { recursive: true, force: true });
     const fb = loadFeedback(P.proj);
     const version = 1 + Math.max(0, ...Object.keys(fb).map(Number));
+    // 版番号は feedback/ のファイル名から決まる。FB ファイルを消す・名前を変えると、既に作った版より小さくなり v<N>/ を上書きしてしまう。何も消す前に止める
+    const latest = Math.max(0, ...fs.readdirSync(dir).filter((e) => VERSION_DIR.test(e)).map((e) => +e.slice(1)));
+    if (version < latest) throw new Error(`feedback/ から決まる版 v${version} が、既にある out/storyboard/v${latest}/ より小さい（FB ファイルを消した・名前を変えた？）。v${version}/ を上書きしないので止める。feedback/v${latest - 1}.json を戻すか、やり直すなら out/storyboard/v${version}/〜v${latest}/ を消す`);
+    // 最新の版はトップに作り直す。前の版（v<N>/）は残す
+    for (const e of fs.readdirSync(dir)) if (!VERSION_DIR.test(e)) fs.rmSync(path.join(dir, e), { recursive: true, force: true });
     const warnings = [...sceneWarnings(meta), ...audioWarnings(meta.audio, meta.duration, meta.fps), ...feedbackWarnings(fb[version - 1], version - 1, meta.scenes)];
     const beats = beatsInfo(meta.audio, meta.duration);
     fs.writeFileSync(path.join(dir, 'beats.json'), JSON.stringify(beats, null, 2));

@@ -255,6 +255,16 @@ async function runCutsheetCase(c) {
   const j3 = sbJson();
   add('対応を書いて再実行すると未対応の警告が消え、版は v2 のまま（v1/ も残る）', s3.code === 0 && j3?.version === 2 && !j3.warnings.some((w) => w.includes('対応が書かれていない')) && fs.existsSync(path.join(sbDir, 'v1')) && !fs.existsSync(path.join(sbDir, 'v3')), `version=${j3?.version} warnings=${JSON.stringify(j3?.warnings)}`);
 
+  // 3b. FB ファイルを消して版番号が戻っても、既にある v<N>/ を上書きしない（issue #43）
+  const mt = (f) => fs.statSync(path.join(sbDir, f)).mtimeMs;
+  const before = { v1: mt('v1/cutsheet.html'), v2: mt('v2/cutsheet.html') };
+  const fbSaved = fs.readFileSync(fbFile);
+  fs.rmSync(fbFile);
+  const s5 = render('storyboard', P);
+  const untouched = mt('v1/cutsheet.html') === before.v1 && mt('v2/cutsheet.html') === before.v2;
+  fs.writeFileSync(fbFile, fbSaved);
+  add('FB ファイルを消して版番号が戻るときは、既存の v1/ と v2/ を上書きせずエラーで止まる', s5.code !== 0 && s5.err.includes('上書きしない') && untouched && sbJson()?.version === 2, `exit=${s5.code} v1/v2 untouched=${untouched} top version=${sbJson()?.version} ${s5.err.trim().slice(-160)}`);
+
   // 4. 承認ハッシュ: FB ファイルもソースに入る
   const ap = render('approve', P, '--by', 'eval', '--note', 'eval の自動承認');
   fs.writeFileSync(path.join(dir, 'feedback', 'v2.json'), JSON.stringify({ cuts: { [e.cuts[0]]: '新しい FB' } }));
