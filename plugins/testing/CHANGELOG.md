@@ -2,6 +2,11 @@
 
 testing プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.1.4] - 2026-10-11
+
+### Changed
+- testcase-generator：`codebase-doctor` の入ったプラグインの名前を devtools から repo-setup に直した
+
 ## [0.1.3] - 2026-10-10
 
 ### Changed

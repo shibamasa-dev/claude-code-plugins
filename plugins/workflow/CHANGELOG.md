@@ -2,6 +2,15 @@
 
 workflow プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.3.0] - 2026-10-11
+
+### Added
+- review プラグイン（0.6.1）を統合した。`pr-review-triage` スキル・`dev-process` コマンド（`/workflow:dev-process:review-and-fix`）・テスト（`tests/test-detect-bots.sh`）と、userConfig `review_heavy`・`review_light`・`review_auto`・`rereview_threshold` をそのまま移した。dev-flow の 5・6 段と同じプラグインで、片方だけ入れて流れが途切れることが無くなる。review を入れていたら外し、設定を workflow の同じキーに入れ直す。review の変更履歴は review を消す前の git の履歴（`plugins/review/CHANGELOG.md`）にある
+- 使用枠（5時間・週）を `/tmp/claude-<uid>/rate-limits.json` に書き出す mod（`hooks/rate-limits.ts`）を devtools（今の repo-setup）から移した。書き出し先と形式は変えていない
+
+### Changed
+- dev-flow・dev-flow-gate・session-wrap・weekly-orchestrator-base：「review プラグインの pr-review-triage」を同じプラグインのスキルとして書き直した
+
 ## [0.2.3] - 2026-10-10
 
 ### Changed

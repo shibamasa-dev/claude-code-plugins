@@ -1,0 +1,16 @@
+{
+  "name": "creative",
+  "version": "0.2.0",
+  "description": "画像生成プロンプト・コードで描くモーション動画のスキルと、DESIGN.md の lint フック",
+  "author": {
+    "name": "shibamasa-dev"
+  },
+  "homepage": "https://github.com/shibamasa-dev/claude-code-plugins/tree/main/plugins/creative",
+  "repository": "https://github.com/shibamasa-dev/claude-code-plugins",
+  "license": "MIT",
+  "keywords": [
+    "image-generation",
+    "video",
+    "motion-graphics"
+  ]
+}

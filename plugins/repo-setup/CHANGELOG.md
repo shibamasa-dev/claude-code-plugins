@@ -1,6 +1,14 @@
 # Changelog
 
-devtools プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
+repo-setup プラグイン（0.2.2 までは devtools）の変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
+
+## [0.3.0] - 2026-10-11
+
+### Changed
+- **プラグインの名前を devtools から repo-setup に変えた。** 開発のどこで使うか（リポの立ち上げ）が名前から分かるようにするため。devtools を入れていたら外して repo-setup を入れる
+
+### Removed
+- 使用枠を書き出す mod（`rate-limits`）を workflow プラグインへ移した。書き出し先と形式は変わらない。引き続き使うには workflow を入れる
 
 ## [0.2.2] - 2026-10-10
 

@@ -1,4 +1,7 @@
 {
+  "modules": [
+    "./rate-limits.ts"
+  ],
   "hooks": {
     "SessionStart": [
       {

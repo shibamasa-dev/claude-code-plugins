@@ -11,10 +11,9 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 /plugin marketplace add shibamasa-dev/claude-code-plugins
 /plugin install guards@shibamasa-plugins
 /plugin install workflow@shibamasa-plugins
-/plugin install review@shibamasa-plugins
 /plugin install testing@shibamasa-plugins
-/plugin install devtools@shibamasa-plugins
-/plugin install docs@shibamasa-plugins
+/plugin install repo-setup@shibamasa-plugins
+/plugin install creative@shibamasa-plugins
 /plugin install lint@shibamasa-plugins
 ```
 
@@ -25,14 +24,29 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 | プラグイン | 中身 |
 |---|---|
 | [guards](plugins/guards/README.md) | 作業を止めるフック。破壊的な削除・未マージ worktree の削除・古い既定ブランチからの push。リポ構成のルール（ルールファイルを置いたときだけ）。マージの後のローカルのマージ先ブランチの追従 |
-| [workflow](plugins/workflow/README.md) | 依頼からマージまでの開発フロー・issue 運用・セッションの引き継ぎ・runbook 記録などのスキルとフック |
-| [review](plugins/review/README.md) | PR のレビューを回すスキルとコマンド（差分の重さでレビューの頼み先を振り分けて結果待ちと再レビューまで回すスキル・AI レビューから修正まで） |
+| [workflow](plugins/workflow/README.md) | 依頼からマージまでの開発フロー（PR のレビューの振り分けと待ち方を含む）・issue 運用・セッションの引き継ぎ・runbook 記録などのスキルとフック、使用枠をファイルへ書き出す mod |
 | [testing](plugins/testing/README.md) | テストを設計して回す。Gherkin のテストケース作成・成果物の検証・全体テストのゲート |
-| [devtools](plugins/devtools/README.md) | リポの立ち上げと道具づくり。基本設定の点検・クラウド環境のセットアップ |
-| [docs](plugins/docs/README.md) | 画像生成プロンプト・コードで描くモーション動画のスキル |
+| [repo-setup](plugins/repo-setup/README.md) | リポの立ち上げ。基本設定の点検・クラウド環境のセットアップ |
+| [creative](plugins/creative/README.md) | 画像生成プロンプト・コードで描くモーション動画のスキルと、DESIGN.md の lint フック |
 | [lint](plugins/lint/README.md) | スキルなどの成果物を検査する linter 群。今は skill-lint（スキルに作った人・会社・マシンの固有情報が混ざっていないかを調べ、配布してよいかを報告する）のみ |
 
 スキル・フックの一覧と設定は、各プラグインの README にある。
+
+### 旧名からの移行（2026-10）
+
+review は workflow に入り、devtools は repo-setup に、docs は creative に名前が変わった。前の名前で入れていたら入れ直す:
+
+```text
+/plugin uninstall review@shibamasa-plugins
+/plugin uninstall devtools@shibamasa-plugins
+/plugin uninstall docs@shibamasa-plugins
+/plugin marketplace update shibamasa-plugins
+/plugin install workflow@shibamasa-plugins
+/plugin install repo-setup@shibamasa-plugins
+/plugin install creative@shibamasa-plugins
+```
+
+review の設定（`review_heavy`・`review_light`・`review_auto`・`rereview_threshold`）は workflow の同じキーに入れ直す。
 
 ## 前提
 

@@ -7,13 +7,13 @@ review_after: 2027-04-10
 
 # pr-review-triage — PR のレビューを重さで振り分けて回す
 
-> workflow プラグインの dev-flow の 5・6 段（頼む・待つ・評価して直す・再レビュー）の正典。ツールごとの違い（アカウント名・頼み方・完了と未レビューの合図）は [references/tools/](references/tools/) に 1 ツール 1 ファイル、ローカルで待つ Monitor の実体は [references/monitor-snippet.md](references/monitor-snippet.md)。
+> 同じプラグインの dev-flow の 5・6 段（頼む・待つ・評価して直す・再レビュー）の正典。ツールごとの違い（アカウント名・頼み方・完了と未レビューの合図）は [references/tools/](references/tools/) に 1 ツール 1 ファイル、ローカルで待つ Monitor の実体は [references/monitor-snippet.md](references/monitor-snippet.md)。
 
 **前提**: ツールの自動レビューの扱いはリポごとに 2 通りある（`review-auto:`。1 で決める）。
 - **`off`（既定）**: ツールの自動レビューは止めてある。自動のままだと README の 1 行修正でもツールが走り、プランの上限（1 時間あたりの回数）を軽い PR が食い潰す。止めた代わりに、PR ごとにここで頼み先を決めて頼む
 - **`on`**: ツールの自動レビューは ON のまま。軽い PR だけ、作るときに `review:light` ラベルを付けてツール側の設定で自動レビューから外す（2.1）。重い PR は自動で走るので頼まない。手動の `@coderabbitai review` も上限に 1 回ずつ数えられるので、止めても枠は節約できない。CodeRabbit はラベルなどで自動レビューから外した PR を上限に数えない（[rate limits](https://docs.coderabbit.ai/management/rate-limits)）
 
-**起動するとき**: PR を作った直後（workflow の dev-flow-gate の案内）、既存 PR へ push した直後（再レビューを頼むかを 6 の基準で決める）、ユーザーが再レビューを明示で頼んだとき、レート制限が明けたとき。
+**起動するとき**: PR を作った直後（dev-flow-gate の案内）、既存 PR へ push した直後（再レビューを頼むかを 6 の基準で決める）、ユーザーが再レビューを明示で頼んだとき、レート制限が明けたとき。
 
 **待ち方はクラウドとローカルで違う**: クラウドのセッションは PR イベントの購読（`subscribe_pr_activity`）でターンを終える。ローカルは Monitor を立てる。Monitor はシェルのコマンドを回す仕組みなので、中では `gh` を使う（コネクタを使えない、CLI が残る例外）。**Monitor はセッションが生きている間だけ動く。** 長時間離席するなら「セッションを閉じるとレビュー待機も切れる」とユーザーに伝える。
 
@@ -75,7 +75,7 @@ light でも、ユーザーが「重めでレビューして」と頼んだら h
 
 ### 2.1 `review-auto: on` のとき — PR を作る前にラベルを決める
 
-`review-auto: on` のリポでは、ラベルを PR を作るときに付ける（作った後に付けても、ツールの最初の自動レビューに間に合わない可能性がある）。そのため 1・2 を **PR を作る前に** 回す（workflow の dev-flow の 4 段もここを指す）。
+`review-auto: on` のリポでは、ラベルを PR を作るときに付ける（作った後に付けても、ツールの最初の自動レビューに間に合わない可能性がある）。そのため 1・2 を **PR を作る前に** 回す（dev-flow の 4 段もここを指す）。
 
 1. `bash $D --auto` が `on` で、2 の判定が `light`、かつ `bash $D --light` に `claude` が含まれる（または何も出ない）ときだけ、`review:light` ラベルを付けて作る。それ以外はラベルを付けない
    - **`review-light:` にツールを書いたリポ**（例: `review-light: coderabbit, codex`）では、light でもラベルを付けない。ツールの自動レビューがそのまま走り、heavy と同じ扱いになる（4 の手順。待つツールは `bash $D --light` の id）。ラベルの運用をやめたいときの戻し方もこれ
