@@ -1482,7 +1482,12 @@ def rule_shared_venv_guard(command: str):
             new = (target, _under_shared_venv(target)) if target is not None else \
                 (None, True)  # 行き先が分からない。共有 venv の中かもしれないので止める側に倒す
             if head == "pushd" and "-n" in tk:
-                dir_stack.append(new)  # `pushd -n` はスタックに積むだけで移動しない
+                # `pushd -n` はスタックに積むだけで移動しない。相対パスは文字のまま積まれ、後の popd の時点の
+                # 場所から解かれるので、行き先は分からない扱いにする
+                args = [t for t in tk[1:] if not t.startswith("-")]
+                if args and _abs_path(args[0], None) is None:
+                    new = (None, True)
+                dir_stack.append(new)
             else:
                 if head == "pushd":
                     dir_stack.append((cwd, cwd_shared))
