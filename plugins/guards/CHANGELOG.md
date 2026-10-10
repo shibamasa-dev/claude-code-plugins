@@ -2,6 +2,12 @@
 
 guards プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.5.0] - 2026-10-11
+
+### Removed
+- shared-venv-guard と設定 `shared_venv_dirs` を外した。複数のプロジェクトで共有する venv への `uv pip sync`・`uv pip uninstall`・`uv pip install --exact` を止めるガードだったが、1 プロジェクト 1 `.venv` の人には関係が無く、コマンドから対象の venv を当てる作りは抜け道が尽きなかった。共有 venv を使うなら、使う人のルール（CLAUDE.md など）に「共有 venv に sync・--exact・uninstall を使わない」と書く（#40）
+- `SHARED_VENV_OK` マーカーも無くなった。付けたままのコマンドもそのまま通る
+
 ## [0.4.0] - 2026-10-10
 
 特定の運用を前提にした決め打ちを外し、使う人が選べるようにした。**今までの挙動に頼っていた場合は、下の「戻し方」を見てほしい。**
