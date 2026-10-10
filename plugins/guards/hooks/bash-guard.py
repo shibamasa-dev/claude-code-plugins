@@ -74,8 +74,6 @@ def _option_dirs(key: str) -> tuple:
 
 # worktree をまとめて置くフォルダ（設定 worktree_dirs。既定は空）
 WORKTREE_DIRS = _option_dirs("worktree_dirs")
-# 複数のプロジェクトで共有する venv の置き場（設定 shared_venv_dirs。既定は空＝shared-venv-guard は効かない）
-SHARED_VENV_DIRS = _option_dirs("shared_venv_dirs")
 
 SAFE_PREFIXES = ("/tmp/", "/private/tmp/") + tuple(d + "/" for d in WORKTREE_DIRS)
 SAFE_VAR_PREFIXES = ("$TMPDIR", "${TMPDIR")
@@ -1369,182 +1367,6 @@ def rule_pip_freeze_guard(command: str):
     return None
 
 
-# ----------------------------------------------------------- shared-venv-guard
-def _mentions_shared_venv(command: str) -> bool:
-    """コマンドが設定 shared_venv_dirs のどれかを指しているか（`~` の形でも絶対パスでも）。"""
-    for d in SHARED_VENV_DIRS:
-        forms = {d}
-        if d.startswith(HOME + "/"):
-            rest = d[len(HOME):]
-            forms |= {"~" + rest, "$HOME" + rest, "${HOME}" + rest}
-        # フォルダ名の境目で見る（`~/.venvs-backup` は `~/.venvs` の配下ではない）
-        if any(re.search(re.escape(f.rstrip("/")) + r"(?=/|$|[\s'\";&|)<>])", command) for f in forms):
-            return True
-    return False
-
-
-_VENV_VARS_RE = re.compile(r"\b(?:VIRTUAL_ENV|UV_PROJECT_ENVIRONMENT)=")
-
-
-def _python_arg(tokens: list):
-    """`uv pip` の `--python` / `-p` の値（無ければ None）。"""
-    for i, t in enumerate(tokens):
-        if t.startswith("--python="):
-            return t.split("=", 1)[1]
-        if t in ("--python", "-p") and i + 1 < len(tokens):
-            return tokens[i + 1]
-    return None
-
-
-_UV_PIP_SUBCOMMANDS = {"compile", "sync", "install", "uninstall", "freeze", "list", "show", "tree", "check"}
-
-
-def _uv_pip_subcommand(tokens: list):
-    """`uv [OPTIONS] pip [OPTIONS] <COMMAND>` の COMMAND（uv pip でなければ None）。オプションの後ろも見る。"""
-    if not tokens or os.path.basename(tokens[0]) != "uv" or "pip" not in tokens[1:]:
-        return None
-    i = tokens.index("pip", 1)
-    for j in range(1, i):
-        # pip より前はオプションとその値だけ（`uv run pip …` のように別のサブコマンドが先なら uv pip ではない）
-        prev = tokens[j - 1]
-        if not tokens[j].startswith("-") and not (j > 1 and prev.startswith("-") and "=" not in prev):
-            return None
-    return next((t for t in tokens[i + 1:] if t in _UV_PIP_SUBCOMMANDS), None)
-
-
-def _targets_shared_venv(cmd, cwd_shared: bool, venv_shared) -> bool:
-    """`uv pip` が共有 venv を対象にするか。`--python` を明示したらその値だけで、無ければ有効な venv、次に今いるフォルダで決める。"""
-    py = _python_arg(cmd.tokens)
-    if py is not None:
-        return _mentions_shared_venv(py)
-    if _mentions_shared_venv(cmd.raw):
-        return True
-    if "VIRTUAL_ENV" in cmd.env:
-        return False
-    return venv_shared if venv_shared is not None else cwd_shared
-
-
-def _under_shared_venv(path: str) -> bool:
-    """絶対パスが設定 shared_venv_dirs のどれかの配下（またはそのもの）か。"""
-    p = os.path.normpath(path)
-    return any(p == d or p.startswith(d + "/") for d in SHARED_VENV_DIRS)
-
-
-def _cdpath_set(cmd) -> bool:
-    """この `cd` で CDPATH が効くか。コマンドの中で代入・export・unset したものも見る（値が分からなければ効く側）。"""
-    if "CDPATH" in cmd.env:
-        return cmd.env["CDPATH"] != ""
-    if "CDPATH" in cmd.assigns:
-        return cmd.assigns["CDPATH"] != ""
-    return bool(os.environ.get("CDPATH"))
-
-
-def _abs_path(arg: str, cwd):
-    """パスの引数を絶対パスにする。分からない（HOME 以外の変数、今いる場所が分からない相対パスなど）なら None。"""
-    arg = arg.strip('"').strip("'")
-    for h in ("${HOME}", "$HOME"):
-        if arg == h or arg.startswith(h + "/"):
-            arg = "~" + arg[len(h):]
-    arg = os.path.expanduser(arg)
-    if "$" in arg or "`" in arg:
-        return None
-    if not os.path.isabs(arg):
-        if cwd is None:
-            return None
-        arg = os.path.join(cwd, arg)
-    return os.path.normpath(arg)
-
-
-def _cd_target(cmd, cwd):
-    """`cd` / `pushd` の行き先の絶対パス。分からない（`cd -`、HOME 以外の変数など）なら None。"""
-    args = [t for t in cmd.tokens[1:] if t == "-" or not t.startswith("-")]  # `cd -P dir` などのオプションは飛ばす
-    arg = args[0].strip('"').strip("'") if args else "~"
-    if arg == "-" or arg.startswith("+"):
-        return None  # `cd -` は前の場所、`pushd +1` はスタックの何番目かで、行き先は分からない
-    # CDPATH があると相対名の行き先が変わる（`.`・`..` か `./`・`../` で始まるときだけ今いる場所の下。`.hidden` は CDPATH を探す）
-    if not os.path.isabs(os.path.expanduser(arg)) and not arg.startswith("$") and \
-            _cdpath_set(cmd) and arg.split("/", 1)[0] not in (".", ".."):
-        return None
-    return _abs_path(arg, cwd)
-
-
-def rule_shared_venv_guard(command: str):
-    if not SHARED_VENV_DIRS or "uv" not in command or "pip" not in command:
-        return None  # 高速素通し（設定 shared_venv_dirs が空か、uv pip を含まないコマンドは対象外）
-    # 文脈を追う。始まりはフックが受け取った cwd と、引き継いだ環境変数 VIRTUAL_ENV（uv pip はまず VIRTUAL_ENV、
-    # 次に今いるフォルダとその上の .venv を使う）。そのあと `cd` で今いるフォルダ、`source …/activate`・
-    # `export VIRTUAL_ENV=…` で有効な venv を置き直す。分からないときは前の状態を残す（止める側に倒す）
-    cwd = os.path.normpath(_CWD or os.getcwd())
-    cwd_shared = _under_shared_venv(cwd)
-    dir_stack = []  # pushd で積んだ (cwd, cwd_shared)
-    inherited = os.environ.get("VIRTUAL_ENV")
-    venv_shared = _under_shared_venv(inherited) if inherited and os.path.isabs(inherited) else None
-    for cmd in _commands(command):
-        tk = cmd.tokens
-        head = os.path.basename(tk[0]) if tk else ""
-        if head in ("pushd", "popd") and any(re.fullmatch(r"[+-]\d+", t) for t in tk[1:]):
-            # `pushd +1`・`popd -0` などはスタックの何番目かで決まる。行き先もスタックも分からなくなる
-            cwd, cwd_shared, dir_stack = None, True, []
-            continue
-        if head == "pushd" and not [t for t in tk[1:] if not t.startswith("-")]:
-            # 引数なしの pushd は今いる場所とスタックの先頭を入れ替える（-n なら何もしない）
-            if dir_stack and "-n" not in tk:
-                top = dir_stack.pop()
-                dir_stack.append((cwd, cwd_shared))
-                cwd, cwd_shared = top
-            continue
-        if head in ("cd", "pushd"):
-            target = _cd_target(cmd, cwd)
-            new = (target, _under_shared_venv(target)) if target is not None else \
-                (None, True)  # 行き先が分からない。共有 venv の中かもしれないので止める側に倒す
-            if head == "pushd" and "-n" in tk:
-                # `pushd -n` はスタックに積むだけで移動しない。相対パスは文字のまま積まれ、後の popd の時点の
-                # 場所から解かれるので、行き先は分からない扱いにする
-                args = [t for t in tk[1:] if not t.startswith("-")]
-                if args and _abs_path(args[0], None) is None:
-                    new = (None, True)
-                dir_stack.append(new)
-            else:
-                if head == "pushd":
-                    dir_stack.append((cwd, cwd_shared))
-                cwd, cwd_shared = new
-            continue
-        if head == "popd":
-            if "-n" in tk:
-                if dir_stack:
-                    dir_stack.pop()  # `popd -n` はスタックから外すだけで移動しない
-            else:
-                cwd, cwd_shared = dir_stack.pop() if dir_stack else (None, True)
-            continue
-        if head in ("source", "."):
-            # activate を読んだときだけ venv を置き直す（ほかのスクリプトは venv を変えない前提で前の状態のまま）
-            if _mentions_shared_venv(cmd.raw):
-                venv_shared = True
-            elif len(tk) > 1 and os.path.basename(tk[1].strip('"').strip("'")).startswith("activate"):
-                # 相対パス（`source bin/activate`）は今いる場所から解く。解けなければ共有 venv かもしれない側に倒す
-                path = _abs_path(_resolve(tk[1], cmd.assigns), cwd)
-                venv_shared = True if path is None else _under_shared_venv(path)
-            continue
-        if head == "deactivate":
-            venv_shared = None
-            continue
-        if head in ("export", "") and _VENV_VARS_RE.search(cmd.raw):
-            venv_shared = _mentions_shared_venv(cmd.raw)
-            continue
-        if not _targets_shared_venv(cmd, cwd_shared, venv_shared):
-            continue
-        if _marker(cmd, "SHARED_VENV_OK") or len(tk) < 3:
-            continue
-        sub = _uv_pip_subcommand(tk)
-        if sub in ("sync", "uninstall") or (sub == "install" and "--exact" in tk):
-            return deny(
-                "🛑 shared-venv-guard: 共有 venv(設定 shared_venv_dirs の配下) への sync / --exact / uninstall は"
-                "定義に無い同居パッケージを消す。install(追加のみ)を使うか、"
-                "影響確認済みなら `SHARED_VENV_OK=1 ` を先頭に。"
-            )
-    return None
-
-
 RULES = [
     rule_worktree_guard,      # rm-guard より先(SAFE_PREFIXES が worktree_dirs の配下を素通しするため)
     rule_rm_guard,
@@ -1552,7 +1374,6 @@ RULES = [
     rule_main_commit_freshness,
     rule_gh_comments_guard,
     rule_pip_freeze_guard,
-    rule_shared_venv_guard,
 ]
 
 
