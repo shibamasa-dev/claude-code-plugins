@@ -3,7 +3,7 @@
   "owner": { "name": "shibamasa-dev" },
   "metadata": { "description": "Claude Code の作業を止めるガード・issue/セッション運用・PR レビュー・テスト設計・リポの立ち上げ・画像と動画のスキル・成果物の linter" },
   "plugins": [
-    { "name": "guards", "source": "./plugins/guards", "description": "破壊的な Bash 操作・古い既定ブランチからの push・リポ構造違反の書き込みを止め、マージの後にローカルのマージ先ブランチを追従させるフック", "category": "security" },
+    { "name": "guards", "source": "./plugins/guards", "description": "破壊的な Bash 操作・未マージ worktree の削除・古い既定ブランチからの push を止め、マージの後にローカルのマージ先ブランチを追従させるフック。リポ構成のルールはルールファイルを置いたときだけ効く", "category": "security" },
     { "name": "workflow", "source": "./plugins/workflow", "description": "依頼からマージまでの開発フロー・issue 運用・セッションの引き継ぎ・runbook 記録などのスキルとフック", "category": "productivity" },
     { "name": "review", "source": "./plugins/review", "description": "PR のレビューを回すスキルとコマンド（差分の重さでレビューの頼み先を振り分けて結果待ちと再レビューまで回すスキル・AI レビューから修正まで）", "category": "development" },
     { "name": "testing", "source": "./plugins/testing", "description": "テストを設計して回すスキルとフック（Gherkin のテストケース作成・成果物の検証・全体テストのゲート）", "category": "testing" },
