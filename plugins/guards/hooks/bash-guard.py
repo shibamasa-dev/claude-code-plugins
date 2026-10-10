@@ -1408,26 +1408,54 @@ def _targets_shared_venv(cmd, cwd_shared: bool, venv_shared) -> bool:
     return venv_shared if venv_shared is not None else cwd_shared
 
 
-def _is_absolute_dir(arg: str) -> bool:
-    a = arg.strip('"').strip("'")
-    return a.startswith(("/", "~", "$HOME", "${HOME}"))
+def _under_shared_venv(path: str) -> bool:
+    """絶対パスが設定 shared_venv_dirs のどれかの配下（またはそのもの）か。"""
+    p = os.path.normpath(path)
+    return any(p == d or p.startswith(d + "/") for d in SHARED_VENV_DIRS)
+
+
+def _cd_target(tokens: list, cwd):
+    """`cd` / `pushd` の行き先の絶対パス。分からない（`cd -`、HOME 以外の変数など）なら None。"""
+    args = [t for t in tokens[1:] if t == "-" or not t.startswith("-")]  # `cd -P dir` などのオプションは飛ばす
+    arg = args[0].strip('"').strip("'") if args else "~"
+    if arg.startswith("+"):
+        return None  # `pushd +1` はスタックの何番目かで、行き先は分からない
+    for h in ("${HOME}", "$HOME"):
+        if arg == h or arg.startswith(h + "/"):
+            arg = "~" + arg[len(h):]
+    arg = os.path.expanduser(arg)
+    if arg == "-" or "$" in arg or "`" in arg:
+        return None
+    if not os.path.isabs(arg):
+        if cwd is None:
+            return None
+        arg = os.path.join(cwd, arg)
+    return os.path.normpath(arg)
 
 
 def rule_shared_venv_guard(command: str):
-    if not SHARED_VENV_DIRS or not _mentions_shared_venv(command):
-        return None  # 高速素通し（設定 shared_venv_dirs が空か、そこに言及しないコマンドは対象外）
-    # 前のコマンドが決めた文脈（`cd` で今いるフォルダ、`source …/activate`・`export VIRTUAL_ENV=…` で有効な venv）を
-    # 順に追う。置き直すのは文脈が確かに変わるときだけで、分からないときは前の状態を残す（止める側に倒す）
-    cwd_shared, venv_shared = False, None
+    if not SHARED_VENV_DIRS or "uv" not in command or "pip" not in command:
+        return None  # 高速素通し（設定 shared_venv_dirs が空か、uv pip を含まないコマンドは対象外）
+    # 文脈を追う。始まりはフックが受け取った cwd と、引き継いだ環境変数 VIRTUAL_ENV（uv pip はまず VIRTUAL_ENV、
+    # 次に今いるフォルダとその上の .venv を使う）。そのあと `cd` で今いるフォルダ、`source …/activate`・
+    # `export VIRTUAL_ENV=…` で有効な venv を置き直す。分からないときは前の状態を残す（止める側に倒す）
+    cwd = os.path.normpath(_CWD or os.getcwd())
+    cwd_shared = _under_shared_venv(cwd)
+    inherited = os.environ.get("VIRTUAL_ENV")
+    venv_shared = _under_shared_venv(inherited) if inherited and os.path.isabs(inherited) else None
     for cmd in _commands(command):
         tk = cmd.tokens
         head = os.path.basename(tk[0]) if tk else ""
         if head in ("cd", "pushd"):
-            # 絶対パス（`/`・`~`・`$HOME`）の移動だけ置き直す。相対パスの移動は今いる場所の下なので前の状態のまま
-            if len(tk) > 1 and _is_absolute_dir(tk[1]):
-                cwd_shared = _mentions_shared_venv(cmd.raw)
-            elif _mentions_shared_venv(cmd.raw):
-                cwd_shared = True
+            target = _cd_target(tk, cwd)
+            if target is not None:
+                cwd, cwd_shared = target, _under_shared_venv(target)
+            else:
+                cwd = None  # 行き先が分からない。相対パスの移動は前の状態のまま
+                cwd_shared = cwd_shared or _mentions_shared_venv(cmd.raw)
+            continue
+        if head == "popd":
+            cwd = None
             continue
         if head in ("source", "."):
             # activate を読んだときだけ venv を置き直す（ほかのスクリプトは venv を変えない前提で前の状態のまま）

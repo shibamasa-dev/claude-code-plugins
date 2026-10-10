@@ -9,8 +9,11 @@ probe() {
   python3 - "$1" <<'PY'
 import json, subprocess, sys, os
 payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": sys.argv[1]},
-                      "cwd": os.path.expanduser("~")})
-p = subprocess.run(["python3", os.environ["HOOK"]], input=payload, capture_output=True, text=True)
+                      "cwd": os.path.expanduser(os.environ.get("PROBE_CWD") or "~")})
+env = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}
+if os.environ.get("PROBE_VIRTUAL_ENV"):
+    env["VIRTUAL_ENV"] = os.path.expanduser(os.environ["PROBE_VIRTUAL_ENV"])
+p = subprocess.run(["python3", os.environ["HOOK"]], input=payload, capture_output=True, text=True, env=env)
 out = p.stdout.strip()
 if not out:
     print("allow"); raise SystemExit
@@ -50,6 +53,12 @@ row 'uv pip sync --python /tmp/.venv/bin/python ~/.venvs/req.txt'   '共有 venv
 row 'cd ~/.venvs/x && cd project && uv pip sync req.txt'             '共有 venv の中で相対パスの cd'    'deny'
 row 'source ~/.venvs/x/bin/activate && source /tmp/s.sh && uv pip sync r' 'activate 後に別のスクリプト' 'deny'
 row 'source ~/.venvs/x/bin/activate && source /p/.venv/bin/activate && uv pip sync r' '別の venv を activate' 'allow'
+PROBE_VIRTUAL_ENV='~/.venvs/team' row 'uv pip sync req.txt'                  '引き継いだ VIRTUAL_ENV が共有 venv' 'deny'
+PROBE_VIRTUAL_ENV='~/.venvs/team' row 'deactivate && uv pip sync req.txt'    '引き継いだ venv を deactivate'    'allow'
+PROBE_CWD='~/.venvs/x' row 'uv pip sync req.txt'                               'フックの cwd が共有 venv の中'     'deny'
+row 'cd .venvs/x && uv pip sync req.txt'                                       '相対パスの cd で共有 venv に入る' 'deny'
+row 'cd .venvs/x && cd ../.. && uv pip sync req.txt'                           '相対パスの cd で出る'             'allow'
+row 'cd -P .venvs/x && uv pip sync req.txt'                                    'cd のオプションの後の相対パス'   'deny'
 
 echo
 echo '=== shared-venv-guard: 設定 shared_venv_dirs が空のとき（既定） ==='
