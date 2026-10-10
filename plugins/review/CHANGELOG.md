@@ -8,7 +8,7 @@ review プラグインの変更履歴。書式は [Keep a Changelog](https://kee
 - pr-review-triage：ツールの自動レビューを ON のまま使うモード（リポの `review-auto: on` 行か userConfig `review_auto`。既定 `off` で今までどおり）。軽い PR は作る前に判定して `review:light` ラベルを付けて作り、ツール側の設定（CodeRabbit なら `.coderabbit.yaml` の `reviews.auto_review.labels: ["!review:light"]`）で自動レビューから外す。重い PR は依頼コメントを投稿せずに結果を待つ。push で軽い → 重いに変わったらラベルを外して手動で頼む。ユーザーが「重めでレビューして」と頼めば軽い PR でも重い手順で回す
 - 軽い PR に使うものを選べるようにした（リポの `review-light:` 行か userConfig `review_light`。既定 `claude`）。ツールの id を書けば軽い PR も重い PR と同じ扱いになり、ラベルを付けない
 - リポの `review-notes:` 行（重点的に見てほしいことを自然言語で）。依頼文と Claude のレビューに渡す。振り分けの判定には使わない
-- pr-review-triage：レビューの結果が返った後に同じ PR へ続きを足した push は、再レビューの基準（直した重い指摘の件数）に関係なく頼む
+- pr-review-triage：レビューの結果が返った後に、指摘への対応以外の新しい作業を足した push は、再レビューの基準（直した重い指摘の件数）に関係なく頼む。指摘への対応だけの push は従来の基準に従う
 
 ### Changed
 - **リポの `review-bots:` 行を `review-heavy:` に、userConfig `review_tools` を `review_heavy` に名前を変えた。旧名は読まない**。利用者は userConfig `review_heavy` を設定し直し、リポの CLAUDE.md / AGENTS.md の `review-bots:` 行を `review-heavy:` に書き換える
