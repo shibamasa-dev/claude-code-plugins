@@ -91,13 +91,13 @@ review_after: 2027-04-06
   - 構造変更でない：`Arch-Review: not-needed — <理由>`
   - 構造変更で GO 済み：`Arch-Review: approved — <GO の在りか（issue・設計書・メッセージのリンク）>`
 
-**ツールの自動レビューが ON のリポ（`review-auto: on`）では、PR を作る前に振り分ける。** pr-review-triage の 2.1 に従い、light（かつ `review-light:` が `claude`）なら `review:light` ラベルを付けて作る。作った後に付けると、ツールの最初の自動レビューに間に合わない可能性がある。コネクタの `create_pull_request` はラベルを渡せないので、このときだけ `gh pr create --label review:light` で作る。
+**ツールの自動レビューが ON のリポ（`review-auto: on`）では、PR を作る前に振り分ける。** pr-review-triage の 2.1 に従い、light（かつ `review-light:` に `claude` が含まれる）なら `review:light` ラベルを付けて作る。作った後に付けると、ツールの最初の自動レビューに間に合わない可能性がある。コネクタの `create_pull_request` はラベルを渡せないので、このときだけ `gh pr create --label review:light` で作る。
 
 ## 5〜6. 待つ・評価する・直す
 
 手順は pr-review-triage（振り分け・頼み方・待ち方・到着判定・評価・対応表・再レビュー）。段をまたぐ約束だけここに置く:
 
-- **差分の重さで頼み先を振り分ける。** 軽い PR（文書だけ・200 行以内）は、light のレビュー役（`review-light:`。既定 `claude`）が `claude` か `none` なら Claude がレビューして PR 本文の `## レビュー（Claude）` に書き、CI だけ待つ。ツールなら重い PR と同じくそのツールで回す。重い PR はそのリポのレビューツールにコネクタで頼み（ツールの自動レビューが ON のリポでは頼まずに）、その結果と CI を待つ。`review-heavy: none` のリポでは重い PR も Claude がレビューする。
+- **差分の重さで頼み先を振り分ける。** 軽い PR（文書だけ・200 行以内）は、light のレビュー役（`review-light:`。既定 `claude`）に `claude` が含まれる（または `none`）なら Claude がレビューして PR 本文の `## レビュー（Claude）` に書く。ツールが含まれれば、重い PR と同じくそのツールの結果も待つ（`claude, codex` のように両方なら両方）。そのうえで CI を待つ。重い PR はそのリポのレビューツールにコネクタで頼み（ツールの自動レビューが ON のリポでは頼まずに）、その結果と CI を待つ。`review-heavy: none` のリポでは重い PR も Claude がレビューする。
 
 - **待ち方はクラウドとローカルで違う。** クラウドのセッションは PR イベントの購読（`subscribe_pr_activity` があればそれ）でターンを終える。イベントがターンをまたいで起こしてくれる。ローカルは Monitor を立てる。Monitor はシェルのコマンドを回す仕組みなので、中では `gh` を使う（コネクタを使えない、CLI が残る例外）。
 - **レート制限・上限で止まったツールは未レビュー**として数え、待ち時間の後にそのツールにだけ頼み直す。
@@ -117,7 +117,7 @@ review_after: 2027-04-06
 
 - レビューが済んだ：
   - heavy の PR：その回に頼んだレビューツールすべてが結果を出した（レート制限・上限は数えない）。`review-heavy: none` なら PR 本文に `## レビュー（Claude）` がある
-  - light の PR：light のレビュー役（`review-light:`）が `claude` か `none` なら PR 本文に `## レビュー（Claude）` がある。ツールなら、そのツールすべてが結果を出した（レート制限・上限は数えない）
+  - light の PR：light のレビュー役（`review-light:`）に `claude` が含まれる（または `none`）なら PR 本文に `## レビュー（Claude）` がある。ツールが含まれれば、そのツールすべてが結果を出した（レート制限・上限は数えない）。両方なら両方
 - 指摘への対応が終わり、PR 本文の対応表が最新
 - CI が終わって緑、マージの衝突が無い（チェックが 1 つも付かないリポでは、緑とは数えず「チェックが無い」と提案に書く）
 - `Closes` 先の `## 結果` が書けている（issue を作らない口頭の依頼では、結果を PR 本文に書いている）

@@ -2,6 +2,11 @@
 
 workflow プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.2.3] - 2026-10-10
+
+### Changed
+- dev-flow：軽い PR の振り分けとマージ提案の条件を、light のレビュー役（`review-light:`）に `claude` が含まれれば `## レビュー（Claude）` がある、ツールが含まれればそのツールすべての結果が揃った（両方なら両方）、にした（review 0.6.1 の `review-light: claude, codex` に合わせた）
+
 ## [0.2.2] - 2026-10-10
 
 ### Changed

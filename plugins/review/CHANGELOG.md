@@ -2,6 +2,12 @@
 
 review プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.6.1] - 2026-10-10
+
+### Changed
+- pr-review-triage：`review-light:` に `claude` とツールを並べられるようにした（例: `review-light: claude, codex`）。軽い PR に `review:light` ラベルを付けて Claude がレビューし、並べたツールの結果も待って評価する（`review-auto: on` なら自動レビューを待ち、`off` なら頼む）。push の後の再レビューは、ツールが含まれていれば重い PR と同じ基準で決める。0.6.0 で入れた「`claude` とツールの混在は `detect-bots.sh --light` が exit 5」はやめ、`claude` とツールの id の両方を出す
+- light に `claude` と並べたツールがラベルで外れるツール（CodeRabbit）なら、`review-auto: on` でも手動で頼む（自動では結果が来ず、待ちが終わらないため）
+
 ## [0.6.0] - 2026-10-10
 
 ### Added

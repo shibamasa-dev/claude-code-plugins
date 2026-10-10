@@ -2,7 +2,7 @@
 # そのリポのレビューの設定（heavy・light に使うツール、ツールの自動レビューが ON か）を出す。
 # 使い方: detect-bots.sh [--light | --auto] [--regex]   （リポの作業ツリーの中で実行する）
 #   （引数なし）: heavy の PR に使うツールの id を 1 行ずつ（id は references/tools/<id>.md のファイル名）
-#   --light: light の PR に使うもの。`claude`（Claude がレビュー。既定）か、ツールの id を 1 行ずつ
+#   --light: light の PR に使うもの。`claude`（Claude がレビュー。既定）とツールの id を 1 行ずつ（どちらか一方でも、両方でもよい）
 #   --auto:  ツールの自動レビューが ON か。`on` / `off`（既定 off）
 #   --regex: id の代わりに、jq の test() に渡す投稿者 login の正規表現（完全一致）を 1 行で出す（Monitor のフィルタ用）
 # 決め方（上から最初に見つかったもの。結果は保存しない）:
@@ -11,7 +11,7 @@
 #   3. 既定: light は `claude`、auto は `off`。heavy には既定が無い（exit 4）
 # 過去の PR に来た bot からは推測しない。自動レビューを止めると軽い PR が bot の痕跡を残さず、推測が空になるため。
 # exit: 0 = 決まった（「ツールなし」なら何も出さない）／ 4 = heavy の行も設定も無い ／ 5 = 書いてあるが読めない
-#       （知っている id が 1 つも無い、auto が on / off 以外、light で claude とツールの id を並べた）（4・5 は呼び出し側がユーザーに聞く）
+#       （知っている id が 1 つも無い、auto が on / off 以外）（4・5 は呼び出し側がユーザーに聞く）
 set -u
 KEY=heavy; REGEX=0
 for a in "$@"; do
@@ -58,15 +58,16 @@ if [ "$KEY" = auto ]; then
     *) echo "detect-bots: review-auto は on か off（'$(printf '%s' "$norm" | paste -sd, -)' は読めない）" >&2; exit 5 ;;
   esac
 fi
-# light の `claude` はツールではない（Claude がレビューする）。--regex では待つツールが無いので何も出さない
-if [ "$KEY" = light ] && [ "$norm" = claude ]; then
-  [ "$REGEX" = 1 ] || echo claude
-  exit 0
-fi
-# claude とツールの混在は、どちらの手順で回すか決まらない。黙って claude を落としてツールだけにしない
+# light の `claude` はツールではない（Claude がレビューする）ので、ツールの id とは分けて先頭に出す。
+# ツールと並べたとき（例: claude, codex）は「Claude がレビューし、並べたツールの結果も待つ」。--regex には含めない
+CLAUDE=0
 if [ "$KEY" = light ] && printf '%s\n' "$norm" | grep -qx claude; then
-  echo "detect-bots: review-light の claude はほかの id と並べられない（'$(printf '%s' "$norm" | paste -sd, -)'。claude だけか、ツールの id だけにする）" >&2
-  exit 5
+  CLAUDE=1
+  norm=$(printf '%s\n' "$norm" | grep -v -x claude)
+  if [ -z "$norm" ]; then
+    [ "$REGEX" = 1 ] || echo claude
+    exit 0
+  fi
 fi
 
 # 表に無い id は外す（macOS の bash 3.2 は $( ) の中の case を読み違えるので関数に出す）
@@ -91,6 +92,7 @@ if [ "$REGEX" = 1 ]; then
   re=$(for b in $BOTS; do printf '%s\n' "$ids" | grep -qx "${b%%=*}" && printf '%s\n' "${b#*=}"; done | paste -sd'|' -)
   [ -n "$re" ] && printf '^(%s)$\n' "$re"
 else
+  [ "$CLAUDE" = 1 ] && echo claude
   [ -n "$ids" ] && printf '%s\n' "$ids"
 fi
 exit 0
