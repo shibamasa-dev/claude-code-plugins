@@ -2,7 +2,7 @@
 
 guards プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
-## [0.3.0] - 2026-10-07
+## [0.4.0] - 2026-10-10
 
 特定の運用を前提にした決め打ちを外し、使う人が選べるようにした。**今までの挙動に頼っていた場合は、下の「戻し方」を見てほしい。**
 
@@ -17,6 +17,16 @@ guards プラグインの変更履歴。書式は [Keep a Changelog](https://kee
 ### 戻し方
 - リポ構成のルール：`examples/repo-structure.md` を `~/.claude/rules/repo-structure.md`（全リポ）か `<repo>/.claude/rules/repo-structure.md`（そのリポだけ）にコピーする
 - worktree の置き場・共有 venv：`/plugin configure guards@shibamasa-plugins`（または `/config`）で `worktree_dirs` に `~/.worktrees`、`shared_venv_dirs` に `~/.venvs` を入れる。`claude plugin install --config worktree_dirs=~/.worktrees` でもよい
+
+## [0.3.1] - 2026-10-10
+
+### Changed
+- README と bash-guard のコメントの dev-flow の置き場を workflow プラグインに直した
+
+## [0.3.0] - 2026-10-10
+
+### Removed
+- 非推奨の設定 `merge_allowed_repos` を消した。自動マージのリポはリポの `.claude/dev-flow.json`（`{"autoMerge": true}`）で示す
 
 ## [0.2.2] - 2026-10-06
 

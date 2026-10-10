@@ -2,6 +2,16 @@
 
 testing プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.1.3] - 2026-10-10
+
+### Changed
+- testcase-generator：codebase-doctor が devtools プラグインのスキルだと書き添えた
+
+## [0.1.2] - 2026-10-10
+
+### Changed
+- testcase-generator：eval の入力から私的なプロジェクト名・関数名を外し、`<your-project>` で当てはめる形にした
+
 ## [0.1.1] - 2026-10-06
 
 ### Fixed

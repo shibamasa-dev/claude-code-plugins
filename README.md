@@ -15,6 +15,7 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 /plugin install testing@shibamasa-plugins
 /plugin install devtools@shibamasa-plugins
 /plugin install docs@shibamasa-plugins
+/plugin install lint@shibamasa-plugins
 ```
 
 どれも独立していて、必要なものだけ入れられる。
@@ -24,11 +25,12 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 | プラグイン | 中身 |
 |---|---|
 | [guards](plugins/guards/README.md) | 作業を止めるフック。破壊的な削除・未マージ worktree の削除・古い既定ブランチからの push。リポ構成のルール（ルールファイルを置いたときだけ）。マージの後のローカルのマージ先ブランチの追従 |
-| [workflow](plugins/workflow/README.md) | issue 運用・セッションの引き継ぎ・runbook 記録などのスキルとフック |
-| [review](plugins/review/README.md) | 依頼からマージまでの開発フローと PR のレビューを回す。フローの入口・飛ばすと事故になる段を止めるフック・レビュー bot の結果待ち・再レビュー依頼・AI レビューから修正まで |
+| [workflow](plugins/workflow/README.md) | 依頼からマージまでの開発フロー・issue 運用・セッションの引き継ぎ・runbook 記録などのスキルとフック |
+| [review](plugins/review/README.md) | PR のレビューを回すスキルとコマンド（差分の重さでレビューの頼み先を振り分けて結果待ちと再レビューまで回すスキル・AI レビューから修正まで） |
 | [testing](plugins/testing/README.md) | テストを設計して回す。Gherkin のテストケース作成・成果物の検証・全体テストのゲート |
 | [devtools](plugins/devtools/README.md) | リポの立ち上げと道具づくり。基本設定の点検・クラウド環境のセットアップ |
 | [docs](plugins/docs/README.md) | 画像生成プロンプト・コードで描くモーション動画のスキル |
+| [lint](plugins/lint/README.md) | スキルなどの成果物を検査する linter 群。今は skill-lint（スキルに作った人・会社・マシンの固有情報が混ざっていないかを調べ、配布してよいかを報告する）のみ |
 
 スキル・フックの一覧と設定は、各プラグインの README にある。
 

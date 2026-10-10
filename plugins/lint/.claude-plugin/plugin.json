@@ -1,0 +1,16 @@
+{
+  "name": "lint",
+  "version": "0.1.0",
+  "description": "スキルなどの成果物を検査する linter 群。今は skill-lint（スキルに作った人・会社・マシンの固有情報が混ざっていないかを調べる）と、skill-creator の後に skill-lint を促すフック",
+  "author": {
+    "name": "shibamasa-dev"
+  },
+  "homepage": "https://github.com/shibamasa-dev/claude-code-plugins/tree/main/plugins/lint",
+  "repository": "https://github.com/shibamasa-dev/claude-code-plugins",
+  "license": "MIT",
+  "keywords": [
+    "skills",
+    "lint",
+    "privacy"
+  ]
+}

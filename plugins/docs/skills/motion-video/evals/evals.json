@@ -5,7 +5,7 @@
     {
       "id": 1,
       "name": "example-intro-15s-16x9",
-      "prompt": "Example Co.（架空の会社）の会社紹介動画を 15 秒・16:9 で作って。色とフォントとロゴは brand.json（メイン #1F4E79 / アクセント #C8553D / サブ #E08A2E / 補助 #F2C14E）を使って。",
+      "prompt": "Example Co.（架空の家具店）の紹介動画を 15 秒・16:9 で作って。色とフォントとロゴは brand.json（メイン #2F5D50 / アクセント #6B4E9B / サブ #3F9C94 / 補助 #C5D86D）を使って。",
       "expected_output": "絵コンテ（シーン表＋代表コマ＋contact/strip/phone）で一度止まり、承認後に 1920x1080・60fps・900 コマ・音付きの mp4 と poster/contact/README/source を出す。2回書き出しても mp4 のハッシュが同じ。承認前・承認後の変更では本番書き出しが止まる。",
       "fixture": "example-intro",
       "brand": "fixture",
@@ -16,7 +16,7 @@
         "aspects": { "16:9": [1920, 1080] },
         "audio": true,
         "determinism": ["16:9"],
-        "brandColor": "#1F4E79",
+        "brandColor": "#2F5D50",
         "brandMinShare": 0.05,
         "gate": true
       },

@@ -6,7 +6,7 @@ matcher は "Bash"（ツール名しかマッチできない）なので全 Bash
 書いて RULES に登録するだけ（hook の追加登録は不要）。
 
 現行ルール:
-  （merge-gate は 2026-10-06 に外した。マージの判断は review プラグインの dev-flow スキルと
+  （merge-gate は 2026-10-06 に外した。マージの判断は workflow プラグインの dev-flow スキルと
    dev-flow-gate フックへ移した。自動マージはリポの .claude/dev-flow.json で決める）
   1. rm-guard    : 再帰 rm (-r/-rf) の破壊事故防止。
                    - 壊滅的ターゲット(/, ~, $HOME, システムdir, 裸の* 等) → 無条件 deny

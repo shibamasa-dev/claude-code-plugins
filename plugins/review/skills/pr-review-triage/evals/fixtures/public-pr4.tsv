@@ -1,0 +1,4 @@
+17	1	plugins/guards/hooks/file-guard.py
+1	1	plugins/guards/repo-structure.md
+4	1	plugins/guards/tests/test-file-guard-expect.sh
+6	1	plugins/guards/tests/test-file-guard.sh

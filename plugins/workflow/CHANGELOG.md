@@ -2,6 +2,45 @@
 
 workflow プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.2.3] - 2026-10-10
+
+### Changed
+- dev-flow：軽い PR の振り分けとマージ提案の条件を、light のレビュー役（`review-light:`）に `claude` が含まれれば `## レビュー（Claude）` がある、ツールが含まれればそのツールすべての結果が揃った（両方なら両方）、にした（review 0.6.1 の `review-light: claude, codex` に合わせた）
+
+## [0.2.2] - 2026-10-10
+
+### Changed
+- dev-flow：レビューツールの決め方を review 0.6.0 の名前（`review-heavy:`・`review-light:`・`review-auto:` 行、userConfig `review_heavy`・`review_light`・`review_auto`）にした。4 段（PR を作る）に、ツールの自動レビューが ON のリポ（`review-auto: on`）では PR を作る前に振り分けて、軽い PR は `review:light` ラベルを付けて `gh pr create --label` で作ることを足した。軽い PR のレビューとマージ提案の条件は、light のレビュー役（`review-light:`）が `claude` なら `## レビュー（Claude）`、ツールならそのツールすべての結果、で分けた
+- `none`（`review-light: none`・`review-heavy: none`）のときは Claude がレビューし、マージ提案の条件も `## レビュー（Claude）` で判定する（light → heavy に変わった PR も同じ）
+
+## [0.2.1] - 2026-10-10
+
+### Changed
+- dev-flow：4 段（PR を作る）に PR の粒度の目安を足した。1 つの issue につき開いている PR は 1 本（続きは追加 push。例外は前の PR が閉じた後と `gh-stack` の層）、大きさは 500〜800 行が目安（層に分けるのは今の変更に依存する境目があるときだけ）。レビューの結果が返った後に指摘への対応以外の新しい作業を足したら、その push でもう一度レビューを頼む
+
+## [0.2.0] - 2026-10-10
+
+### Added
+- `dev-flow` スキルと `dev-flow-gate` フックを review プラグインから移した。issue-ops と同じプラグインで、依頼から `## 結果` までの流れが揃う。dev-flow-gate の状態は新しい置き場（`${CLAUDE_PLUGIN_DATA}/dev-flow-gate/`）で取り直す
+
+### Changed
+- dev-flow：自動マージの判定は既定ブランチの `.claude/dev-flow.json` で行い、作業ブランチの値では決めない（有効にする PR 自身を自動マージしないため）。自動マージの実行の場所はリポ側の文書に定めがあればそれに従う
+
+## [0.1.11] - 2026-10-10
+
+### Changed
+- session-wrap・weekly-orchestrator-base：pr-review-triage（review）・bash-guard（guards）が別のプラグインだと書き添え、guards が無くても push 前の確認が読めるようにした
+
+## [0.1.10] - 2026-10-10
+
+### Changed
+- issue-ops・session-wrap・weekly-orchestrator-base・context-diet：本文から日付つきの決定・実例・実測と、作った環境に固有の名前（私的スキル名・サービス名・ファイル名）を外した。別セッションの起動は、特定のスキル名ではなく「別のセッションを待機状態で起動できるスキルや仕組み（環境にあれば）」と機能で書いた
+
+## [0.1.9] - 2026-10-09
+
+### Changed
+- session-wrap・weekly-orchestrator-base・issue-writeback：レビュー待ちの参照先を、review プラグインで統合された `pr-review-triage` にした
+
 ## [0.1.8] - 2026-10-06
 
 ### Changed

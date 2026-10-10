@@ -1,7 +1,7 @@
 {
   "name": "review",
-  "version": "0.3.1",
-  "description": "依頼からマージまでの開発フローと PR のレビューを回すスキル・フック・コマンド（フローの入口・飛ばすと事故になる段を止めるフック・レビュー bot の結果待ち・再レビュー依頼・AI レビューから修正まで）",
+  "version": "0.6.1",
+  "description": "PR のレビューを回すスキルとコマンド（差分の重さでレビューの頼み先を振り分けて結果待ちと再レビューまで回すスキル・AI レビューから修正まで）",
   "author": {
     "name": "shibamasa-dev"
   },
@@ -14,5 +14,36 @@
     "code-review",
     "workflow",
     "hooks"
-  ]
+  ],
+  "userConfig": {
+    "review_heavy": {
+      "type": "string",
+      "title": "重い PR に使うレビューツール",
+      "description": "リポの CLAUDE.md / AGENTS.md に review-heavy: 行が無いときに、heavy の PR に使うレビューツール（カンマ区切り。例: coderabbit,codex。none はツールなし）。使える id は codex・coderabbit・copilot・gemini・cursor-bugbot。空なら pr-review-triage がユーザーに聞く",
+      "required": false,
+      "default": ""
+    },
+    "review_light": {
+      "type": "string",
+      "title": "軽い PR に使うレビュー",
+      "description": "リポの CLAUDE.md / AGENTS.md に review-light: 行が無いときに、light の PR に使うもの。claude なら Claude がレビューする。ツールの id（例: coderabbit,codex）を書けば light も heavy と同じ扱い（review:light ラベルを付けない）。claude,codex のように並べると Claude がレビューし、並べたツールの結果も待つ",
+      "required": false,
+      "default": "claude"
+    },
+    "review_auto": {
+      "type": "string",
+      "title": "ツールの自動レビュー（on / off）",
+      "description": "リポの CLAUDE.md / AGENTS.md に review-auto: 行が無いときに使う値。on ならツールの自動レビューを ON のまま使い、light の PR だけ review:light ラベルを付けて作って自動レビューから外す。off なら自動レビューは止めてある前提で、PR ごとに頼む",
+      "required": false,
+      "default": "off"
+    },
+    "rereview_threshold": {
+      "type": "number",
+      "title": "再レビューを頼む重い指摘の件数",
+      "description": "重い指摘（CodeRabbit=Critical / Codex=P1、ほかは Critical・High 相当）をこの件数以上直したときだけ、その回に頼んだツールへ再レビューを頼む",
+      "required": false,
+      "default": 3,
+      "min": 1
+    }
+  }
 }

@@ -1,0 +1,87 @@
+[
+  {
+    "id": "classify_public_scripts_ci",
+    "description": "CI の yml・変換スクリプト・テンプレート（.j2）・テスト → heavy（文章以外・200 行超）",
+    "source": "このリポジトリ（公開リポ）の PR #1 のマージ: git diff --numstat 1f8e939^1 1f8e939",
+    "fixture": "public-pr1.tsv",
+    "expected": "heavy",
+    "expect_reasons": ["文章以外のファイル: .github/workflows/ci.yml", "変更行数 262 行 > 200 行"],
+    "notes": "skill.md.j2 は文書の拡張子ではないので文章以外に数える"
+  },
+  {
+    "id": "classify_public_hooks",
+    "description": "hooks の .py とテストの .sh、規約の .md（32 行）→ heavy",
+    "source": "このリポジトリ（公開リポ）の PR #4 のマージ: git diff --numstat daac2f3^1 daac2f3",
+    "fixture": "public-pr4.tsv",
+    "expected": "heavy",
+    "expect_reasons": ["文章以外のファイル: plugins/guards/hooks/file-guard.py"],
+    "notes": "行数は閾値未満。コードを含むことだけで heavy"
+  },
+  {
+    "id": "classify_public_new_skill",
+    "description": "新しい skill（SKILL.md・scripts・evals.json）と README → heavy（3 つの規則すべてに当たる）",
+    "source": "このリポジトリ（公開リポ）の PR #5（closed・未マージ）: gh pr view 5 --json files の additions / deletions / path",
+    "fixture": "public-pr5.tsv",
+    "expected": "heavy",
+    "expect_reasons": ["文章以外のファイル:", "振る舞いを決める文書（ファイル名）: plugins/workflow/skills/spinoff-session/SKILL.md", "変更行数 948 行 > 200 行"],
+    "notes": "理由が全部並ぶこと"
+  },
+  {
+    "id": "classify_public_skill_md_small",
+    "description": "既存 SKILL.md の文言修正・CHANGELOG・plugin.json の version だけ（29 行）→ heavy",
+    "source": "このリポジトリ（公開リポ）の PR #22 のマージ: git diff --numstat e4e59eb^1 e4e59eb",
+    "fixture": "public-pr22.tsv",
+    "expected": "heavy",
+    "expect_reasons": ["文章以外のファイル: plugins/review/.claude-plugin/plugin.json", "振る舞いを決める文書（ファイル名）: plugins/review/skills/dev-flow/SKILL.md"],
+    "notes": "小さい文書中心の PR でも、SKILL.md と version を上げる plugin.json で heavy になる。CHANGELOG.md はどの規則にも当たらない"
+  },
+  {
+    "id": "trigger_prt_created",
+    "description": "PR を作成した直後 → 指示が無くても発動すべき",
+    "user_message": "PR 作ったよ。example-org/example-repo#310。",
+    "expected": "invoke",
+    "notes": "PR 作成の報告そのものがトリガー。まず振り分ける"
+  },
+  {
+    "id": "trigger_prt_pushed",
+    "description": "既存 PR へ push した直後 → 発動すべき（振り分けのやり直しと再レビューの判断）",
+    "user_message": "指摘対応を push した。",
+    "expected": "invoke",
+    "notes": "基準を満たさなければ何も頼まず CI だけ待つ"
+  },
+  {
+    "id": "trigger_prt_rereview_request",
+    "description": "再レビュー依頼の投稿を明示で頼まれた → 発動すべき（再レビューの依頼もこのスキル）",
+    "user_message": "PR #59 に coderabbit と codex の再レビュー依頼を投げて。",
+    "expected": "invoke",
+    "notes": "明示指示なので基準に関係なく頼む。コメントで頼むツールは 1 コメントにまとめる"
+  },
+  {
+    "id": "trigger_prt_rereview_decision",
+    "description": "再レビューを投げるかの判断相談 → 発動すべき（基準 rereview_threshold はこのスキルが持つ）",
+    "user_message": "CodeRabbit の Critical が 3 件あって全部直した。再レビュー投げるべき？",
+    "expected": "invoke",
+    "notes": "既定の rereview_threshold は 3 なので頼む側"
+  },
+  {
+    "id": "trigger_prt_rate_limited",
+    "description": "一方がレート制限・もう一方は指摘なしの段階でマージ可否を聞かれた → 発動して「未レビュー」として待ち直すべき",
+    "user_message": "PR #42、Codex は 👍 で CodeRabbit は rate limited って出てる。もうマージ頼んでいい？",
+    "expected": "invoke",
+    "notes": "発動後の期待: rate limited を結果に数えず「マージ判断に回せる」と報告しない。待ち時間の後に CodeRabbit だけへ頼み直して待ち直す"
+  },
+  {
+    "id": "trigger_prt_english",
+    "description": "英語で PR を作ったと報告された → 発動すべき",
+    "user_message": "I just opened a PR for the fix. Can you take care of the review?",
+    "expected": "invoke",
+    "notes": "英語のトリガー語（opened a PR / review）"
+  },
+  {
+    "id": "trigger_no_prt_unrelated",
+    "description": "PR とは無関係のコード修正依頼 → 発動すべきでない",
+    "user_message": "このバリデーションのバグを直して。",
+    "expected": "no-invoke",
+    "notes": "PR 作成・push・レビューの文脈なし"
+  }
+]

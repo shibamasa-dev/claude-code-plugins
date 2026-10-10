@@ -1,0 +1,111 @@
+# PR レビュー待機の Monitor スニペット
+
+`pr-review-triage` skill の heavy の「待つ」をローカルで行うときの実体（クラウドは PR イベントの購読で待つので使わない）。
+`persistent: true` で起動し、TaskStop で明示停止するまで動く。Monitor の `allowed_domains` に `api.github.com` を入れる。
+
+```bash
+# ⚠️ このループは起動時刻より後しか拾わない。立てる前に既存の未解決スレッドを必ず1回さらうこと
+#    （PR 作成の数分後には初回レビューが着くため、Monitor だけでは取りこぼす）。
+#    bot 以外(自分の返信)を除外しないと通知が溢れて本物のレビューが埋もれる。
+# ⚠️ Monitor は sandbox 内で走り、gh は sandbox 内で TLS 検証に失敗する（x509: OSStatus -26276）。
+#    gh api は使わず curl + gh auth token で取る。
+# ⚠️ 取得結果は printf '%s' で jq に渡す。Bash ツールは zsh で、zsh の echo は JSON 文字列中の \n を
+#    本物の改行に展開して jq を落とす（stderr に出るだけで通知は0件になる）。
+# 取得失敗・パース失敗は FETCH_FAILED / PARSE_FAILED として通知に出す（「0件」と区別するため）。
+TOKEN=$(gh auth token 2>/dev/null); [ -z "$TOKEN" ] && echo "FETCH_FAILED no_token"
+API=https://api.github.com/repos/{owner}/{repo}
+last=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+# 待つ bot の投稿者（scripts/detect-bots.sh --regex の出力。Monitor の前に一度だけ取って埋め込む）
+BOTS='{bots_regex}'
+# CodeRabbit の自動サマリ（walkthrough）は push のたびに更新されるので本文は通知しない。
+# ただし指摘ゼロのとき CodeRabbit は review を作らず、完了をこの walkthrough の中に書くだけなので、
+# 「No actionable comments」と、未レビューの合図（rate limited・plan limit）だけは状態行として出す
+# （前者を出さないと完了を検知できない。後者は「終わり」ではなく待ち直しの合図）。
+# 未レビューの合図は summarize とは別のコメントで来ることもあるので、$NOISE に当たらなくても状態行に回す。
+NOISE='auto-generated comment: summarize|review in progress'
+get() { curl -sf -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" "$1"; }
+while true; do
+  now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  for pr in {pr_numbers}; do
+    # reviews は since 未対応（黙って無視され全件返る）ため jq 側で絞る
+    r=$(get "$API/pulls/$pr/reviews?per_page=100") || { echo "FETCH_FAILED PR#$pr reviews"; r='[]'; }
+    printf '%s' "$r" | jq -r --arg l "$last" --arg b "$BOTS" --arg p "$pr" \
+      '.[] | select(.submitted_at > $l) | select(.user.login | test($b; "i")) | "[PR#\($p) review] \(.user.login): \(.state) \(.body[0:200] | gsub("\n";" "))"' \
+      || echo "PARSE_FAILED PR#$pr reviews"
+    c=$(get "$API/pulls/$pr/comments?since=$last&per_page=100") || { echo "FETCH_FAILED PR#$pr comments"; c='[]'; }
+    printf '%s' "$c" | jq -r --arg b "$BOTS" --arg p "$pr" \
+      '.[] | select(.user.login | test($b; "i")) | "[PR#\($p) comment] \(.user.login) \(.path | split("/") | last):\(.line // .original_line) \(.body[0:250] | gsub("\n";" "))"' \
+      || echo "PARSE_FAILED PR#$pr comments"
+    i=$(get "$API/issues/$pr/comments?since=$last&per_page=100") || { echo "FETCH_FAILED PR#$pr issue_comments"; i='[]'; }
+    printf '%s' "$i" | jq -r --arg b "$BOTS" --arg n "$NOISE" --arg p "$pr" \
+      '.[] | select(.user.login | test($b; "i"))
+        | if ((.body | test($n)) or (.body | test("rate limited|plan limit"; "i"))) then
+            (if (.body | test("No actionable comments|rate limited|plan limit"; "i")) then "[PR#\($p) coderabbit-status] actionable_none=\(.body | test("No actionable comments")) not_reviewed_limit=\(.body | test("rate limited|plan limit"; "i"))" else empty end)
+          else "[PR#\($p) issue-comment] \(.user.login): \(.body[0:250] | gsub("\n";" "))" end' \
+      || echo "PARSE_FAILED PR#$pr issue_comments"
+    # Codex 等は指摘ゼロのとき reviews に載らず PR へのリアクション（👍）で返す。👀 はレビュー中
+    x=$(get "$API/issues/$pr/reactions") || { echo "FETCH_FAILED PR#$pr reactions"; x='[]'; }
+    printf '%s' "$x" | jq -r --arg l "$last" --arg b "$BOTS" --arg p "$pr" \
+      '.[] | select(.created_at > $l) | select(.user.login | test($b; "i")) | "[PR#\($p) reaction] \(.user.login): \(.content)"' \
+      || echo "PARSE_FAILED PR#$pr reactions"
+  done
+  last=$now
+  sleep 30
+done
+```
+
+## CI だけ待つ（light の PR・再レビューを頼まない push の後）
+
+Monitor の中の `gh` は sandbox で TLS 検証に失敗する（上のスニペットの注記）ので、`gh pr checks --watch` ではなく curl で取る。コマンドに `pulls/<番号>` とリポの URL が出るので、dev-flow-gate はこれを「待ちを始めた」と数える。CI は check run（GitHub Actions など）と commit status（外部の CI が付けるもの）の 2 種類があるので、両方を見る。両方が終わったら 1 行出して抜ける（`persistent` は不要）。head の commit に 10 分たっても 1 つもチェックが付かなければ `NO_CHECKS` を出して抜ける（CI が緑とは数えない）。取得が 5 回続けて失敗したら（token が無効・権限が無いなど）`FETCH_GAVE_UP` を出して抜ける。
+
+```bash
+TOKEN=$(gh auth token 2>/dev/null); [ -z "$TOKEN" ] && { echo "FETCH_FAILED no_token"; exit 1; }
+API=https://api.github.com/repos/{owner}/{repo}
+get() { curl -sf -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" "$1"; }
+seen=; since=$(date +%s); fails=0
+while true; do
+  sha=$(get "$API/pulls/{pr}" | jq -r '.head.sha // empty')
+  runs=$([ -n "$sha" ] && get "$API/commits/$sha/check-runs?per_page=100")
+  st=$([ -n "$sha" ] && get "$API/commits/$sha/status")
+  if [ -z "$runs" ] || [ -z "$st" ]; then
+    # token が無効・権限が無いと何度やっても取れない。5 回（約 2.5 分）続いたら抜けて報告する
+    fails=$((fails + 1)); echo "FETCH_FAILED PR#{pr} checks ($fails/5)"
+    [ "$fails" -ge 5 ] && { echo "[PR#{pr} ci] FETCH_GAVE_UP（取得が続けて失敗した。gh auth status を確かめる）"; break; }
+    sleep 30; continue
+  fi
+  fails=0
+  [ "$sha" != "$seen" ] && { seen=$sha; since=$(date +%s); }   # push で head が変わったら数え直す
+  nrun=$(printf '%s' "$runs" | jq '.total_count')
+  # 1 ページは 100 件まで。取れていない分（total_count との差）は未完了として数える
+  left=$(printf '%s' "$runs" | jq '.total_count as $t | (.check_runs | length) as $n | ([.check_runs[] | select(.status != "completed")] | length) + (if $t > $n then $t - $n else 0 end)')
+  nst=$(printf '%s' "$st" | jq '.total_count')
+  state=$(printf '%s' "$st" | jq -r '.state')   # 1 件も無いときも pending になる
+  if [ $((nrun + nst)) = 0 ]; then
+    # push の直後はまだ 0 件のことがあるので、すぐには抜けない
+    [ $(($(date +%s) - since)) -ge 600 ] && { echo "[PR#{pr} ci] NO_CHECKS（10 分たってもチェックが 1 つも付かない）"; break; }
+  elif [ "$left" = 0 ] && { [ "$nst" = 0 ] || [ "$state" != pending ]; }; then
+    # 待っている間に push されていたら、古い commit の結果で抜けず次の回で数え直す
+    [ "$(get "$API/pulls/{pr}" | jq -r '.head.sha // empty')" != "$sha" ] && { sleep 30; continue; }
+    { printf '%s' "$runs" | jq -r '.check_runs[] | "\(.name)=\(.conclusion)"'
+      printf '%s' "$st" | jq -r '.statuses[] | "\(.context)=\(.state)"'; } | paste -sd' ' - | sed 's/^/[PR#{pr} ci] /'
+    break
+  fi
+  sleep 30
+done
+```
+
+起動前のさらい（未解決スレッドの一覧。これを先に潰してから Monitor を立てる）:
+
+```bash
+gh api graphql -f query='{ repository(owner:"{owner}", name:"{repo}") { pullRequest(number:{pr}) {
+  reviewThreads(first:20) { nodes { isResolved comments(first:1) { nodes { author{login} path body } } } } } } }' \
+  --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)'
+```
+
+（さらいは Monitor の外で叩くので `gh` でよい。ただし sandbox 内の Bash では同じ TLS 失敗で落ちるので sandbox 外で実行する。）
+
+注意: Monitor 通知の本文は truncate される。新着検知後は必ず `gh api` で
+reviews / comments の**全文を再取得**してから評価する（通知本文だけで判断しない）。
+
+**満了通知が0件でも「まだ来ていない」と読まない。** 一次ソースを引き直してから判断する。
+Monitor の出力ファイル（`tasks/<id>.output`）に jq や curl のエラーが残っていないかも見る。

@@ -5,7 +5,7 @@
       "id": 0,
       "prompt": "このリポジトリを claude.ai/code のクラウド環境でも触れるようにリモートセットアップを追加して。リモートセッション開始時に npm 依存が入っていて node が使える状態にしてほしい。ローカルセッションでは何も起きないようにすること。",
       "expected_output": "scripts/remote-setup/{setup.sh,steps.sh} が生成され、.claude/settings.json に SessionStart hook が配線される。light_steps に npm ci 相当が入り、ローカルでは hook が無出力・exit 0 で即終了する。",
-      "files": ["node-app fixture: package.json / package-lock.json / src/index.js"],
+      "files": ["用意するリポ: Node.js の最小構成（package.json と package-lock.json があり、src/index.js をエントリにする）"],
       "expectations": [
         "セッション開始時に実行されるセットアップ経路が CLAUDE_CODE_REMOTE を用いてリモート判定している",
         "リモート判定が許可リスト方式である(CLAUDE_CODE_REMOTE=true / ENTRYPOINT=remote_* を positive 判定。『cli でなければリモート』のような除外方式でない)",
@@ -18,7 +18,7 @@
       "id": 1,
       "prompt": "この CAD リポをクラウド環境(claude.ai/code / Cowork)で動かせるようにリモートセットアップを追加して。リモートセッションで build123d が import できる状態になっていてほしい。build123d はネイティブ依存が重くインストールに時間がかかるので、毎セッション全部入れ直しにならない工夫をして。ローカルでは一切何も実行しないこと。",
       "expected_output": "重い導入(apt / build123d 本体)がリポ非依存で自己完結の環境層(environment-setup.sh)に分離され、毎セッションは軽量同期+verify のみ。Python 依存はリポ内 .venv(--system-site-packages)。verify で build123d の import を確認。",
-      "files": ["cad-py fixture: pyproject.toml (build123d) / demo.py / CLAUDE.md"],
+      "files": ["用意するリポ: Python の最小構成（pyproject.toml の依存に build123d、build123d を import する demo.py、CLAUDE.md がある）"],
       "expectations": [
         "セッション開始時に実行されるセットアップ経路が CLAUDE_CODE_REMOTE を用いてリモート判定している",
         "リモート判定が許可リスト方式である(CLAUDE_CODE_REMOTE=true / ENTRYPOINT=remote_* を positive 判定。『cli でなければリモート』のような除外方式でない)",
@@ -33,7 +33,7 @@
       "id": 2,
       "prompt": "リモート環境(Cowork のクラウド VM)用のセットアップをこのリポに入れて。既存の .claude/settings.json の設定(hook や permissions)は絶対に壊さないで。",
       "expected_output": "SessionStart hook が既存 settings.json にマージ追記され、既存の PostToolUse hook と permissions.allow が保持される。",
-      "files": ["merge-settings fixture: requirements.txt / main.py / .claude/settings.json(既存 hook + permissions あり)"],
+      "files": ["用意するリポ: Python の最小構成（requirements.txt・main.py と、既存の .claude/settings.json がある。settings.json には hooks.PostToolUse に command が `echo existing-lint-hook` の hook、permissions.allow に `Bash(python3 -m pytest:*)` を入れておく）"],
       "expectations": [
         "セッション開始時に実行されるセットアップ経路が CLAUDE_CODE_REMOTE を用いてリモート判定している",
         "リモート判定が許可リスト方式である(CLAUDE_CODE_REMOTE=true / ENTRYPOINT=remote_* を positive 判定。『cli でなければリモート』のような除外方式でない)",
