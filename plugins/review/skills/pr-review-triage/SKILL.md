@@ -23,7 +23,7 @@ review_after: 2027-04-10
 export CLAUDE_PLUGIN_OPTION_REVIEW_HEAVY='${user_config.review_heavy}' CLAUDE_PLUGIN_OPTION_REVIEW_LIGHT='${user_config.review_light}' CLAUDE_PLUGIN_OPTION_REVIEW_AUTO='${user_config.review_auto}'
 D=${CLAUDE_PLUGIN_ROOT}/skills/pr-review-triage/scripts/detect-bots.sh
 bash $D          # heavy の PR に使うツール
-bash $D --light  # light の PR に使うもの（claude か ツールの id）
+bash $D --light  # light の PR に使うもの（claude とツールの id。どちらか一方でも両方でもよい）
 bash $D --auto   # ツールの自動レビュー（on / off）
 ```
 
@@ -37,14 +37,14 @@ bash $D --auto   # ツールの自動レビュー（on / off）
 | 行 | userConfig | 例 | 意味 |
 |---|---|---|---|
 | `review-heavy:` | `review_heavy` | `coderabbit, codex` | heavy の PR に使うツール（カンマ区切り）。`none` は「ツールなし」 |
-| `review-light:` | `review_light` | `claude` | light の PR に使うもの。既定は `claude`（3 の手順で Claude がレビュー）。ツールの id を書けば light も heavy と同じ扱い（ラベルを付けず、そのツールで 4 の手順） |
+| `review-light:` | `review_light` | `claude` | light の PR に使うもの。既定は `claude`（3 の手順で Claude がレビュー）。ツールの id を書けば light も heavy と同じ扱い（ラベルを付けず、そのツールで 4 の手順）。`claude, codex` のように並べると、Claude がレビューし（3）、並べたツールの結果も待つ |
 | `review-auto:` | `review_auto` | `on` / `off` | ツールの自動レビューが ON か。既定は `off` |
 | `review-notes:` | — | 自然言語 | 重点的に見てほしいこと。行をそのまま読む（スクリプトは読まない） |
 
 - **id が出る**: その回に頼むツール。id は `references/tools/<id>.md` のファイル名
 - **何も出ずに exit 0**（`review-heavy: none`）: ツールのいないリポ。heavy でも 3 の手順で Claude がレビューする（`review-light: none` も同じく 3 の手順）
 - **exit 4**（`review-heavy:` の行も設定も無い）: どのツールを使うかをユーザーに聞き、リポの CLAUDE.md に `review-heavy:` 行を足す PR を提案する
-- **exit 5**（行か設定はあるが読めない。知っている id が 1 つも無い綴り違い、`review-auto:` が `on` / `off` 以外、`review-light:` で `claude` とツールの id を並べた（`claude` はほかの id と並べられない））: 「ツールなし」「off」とは扱わない。stderr をユーザーに見せて、どのつもりかを聞く（`none` の書き間違いで誰もレビューしない PR が出るのを防ぐ）
+- **exit 5**（行か設定はあるが読めない。知っている id が 1 つも無い綴り違い、`review-auto:` が `on` / `off` 以外）: 「ツールなし」「off」とは扱わない。stderr をユーザーに見せて、どのつもりかを聞く（`none` の書き間違いで誰もレビューしない PR が出るのを防ぐ）
 
 **`review-notes:`** は振り分け（2）の判定には使わない。渡し先は 2 つ:
 - Claude のレビュー（3）: `code-review` に重点として渡す
@@ -77,22 +77,25 @@ light でも、ユーザーが「重めでレビューして」と頼んだら h
 
 `review-auto: on` のリポでは、ラベルを PR を作るときに付ける（作った後に付けても、ツールの最初の自動レビューに間に合わない可能性がある）。そのため 1・2 を **PR を作る前に** 回す（workflow の dev-flow の 4 段もここを指す）。
 
-1. `bash $D --auto` が `on` で、2 の判定が `light`、かつ `bash $D --light` が `claude`（または何も出ない）のときだけ、`review:light` ラベルを付けて作る。それ以外はラベルを付けない
+1. `bash $D --auto` が `on` で、2 の判定が `light`、かつ `bash $D --light` に `claude` が含まれる（または何も出ない）ときだけ、`review:light` ラベルを付けて作る。それ以外はラベルを付けない
    - **`review-light:` にツールを書いたリポ**（例: `review-light: coderabbit, codex`）では、light でもラベルを付けない。ツールの自動レビューがそのまま走り、heavy と同じ扱いになる（4 の手順。待つツールは `bash $D --light` の id）。ラベルの運用をやめたいときの戻し方もこれ
+   - **`claude` とツールを並べたリポ**（例: `review-light: claude, codex`）ではラベルを付ける。ラベルで外れるツール（CodeRabbit）は走らず、外せないツール（Codex など）は自動で走る。並べるのは外せないツールにする（外れるツールを並べると、自動では結果が来ない）
 2. ラベルはリポに無ければ先に作る: `gh label create review:light --force --description "light の PR。ツールの自動レビューから外す"`（`--force` は既にあっても上書きするだけ）
 3. PR は `gh pr create --label review:light ...` で作る。GitHub コネクタの `create_pull_request` はラベルを渡せないので、ここは `gh` を使う例外
 4. ツール側で、このラベルの PR を自動レビューから外す設定を入れておく。CodeRabbit の設定例と未確認の点は [references/tools/coderabbit.md](references/tools/coderabbit.md)。ラベルで外せないツールは light でも走る（Codex は未確認。`references/tools/codex.md`）
 
 PR を作った後の流れ:
-- **light（ラベルあり）**: 3 のまま
+- **light（ラベルあり）**: 3 のまま（`claude` とツールを並べたなら、3 の「ツールも並べたとき」）
 - **heavy**: ツールは自動で走るので、4.1 の依頼コメントは投稿しない。4.2〜4.4 はそのまま。4.4 の「4.1 で控えた head SHA と時刻」は、PR を作ったときの head SHA と時刻（`pull_request_read` の `get` の `head.sha` と `created_at`）に読み替える
 
 ## 3. light — Claude がレビューして CI だけ待つ
 
 1. 組み込みの `code-review` skill を PR 番号つきで起動する（例: `code-review <PR番号>`。`review-notes:` があれば重点として添える）。`coderabbit:code-review` ではない（あちらは CodeRabbit の枠を使う）。`--comment` は付けない（スレッドに書かない運用のため）。`code-review` が無い環境では、general-purpose subagent に `git diff origin/<base>...HEAD` を渡してレビューさせる
 2. 結果を **PR 本文** の `## レビュー（Claude）` 節に、対応表（指摘 / 判定 / 対応 / 根拠）で書く。**指摘ゼロでも節を置いて「指摘なし」と書く**（後から見た人が「レビューされていない」と誤読しないため）。本文の更新はコネクタの `update_pull_request`
-3. 対応する指摘を直して push する。ツールには頼まない
+3. 対応する指摘を直して push する。ツールには頼まない（`review-light:` にツールも並べたときは下）
 4. **CI だけ待つ**: クラウドは `subscribe_pr_activity`、ローカルは Monitor で [references/monitor-snippet.md](references/monitor-snippet.md) の「CI だけ待つ」を回す。待たずに終えると dev-flow-gate の Stop の確認に止められる。チェックが 1 つも付かずに `NO_CHECKS` で抜けたら、CI が緑とは数えず「このリポ（この commit）にはチェックが無い」と報告する。取得の失敗が続いて `FETCH_GAVE_UP` で抜けたら、CI は「未確認」と報告し、取得し直して結果が出るまでマージの判断に進まない
+
+**`review-light:` に `claude` とツールを並べたとき**（例: `review-light: claude, codex`）: 1〜4 に加えて、並べたツール（`bash $D --light` の `claude` 以外の id）の結果を 4.2〜4.4 で待ち、4.5 で評価して対応表に書く。`review-auto: on` ならツールへの依頼は出さずに自動レビューを待つ（4.4 の head SHA と時刻は 2.1 の読み替え）。`off` なら 4.1 で頼む。Monitor の投稿者のフィルタは `bash $D --light --regex`。
 
 `review-heavy: none` のリポで heavy だった PR も同じ手順で回し、`## レビュー（Claude）` に heavy だった理由（classify.sh の理由行）も書く。
 
@@ -148,7 +151,7 @@ PR を作った後の流れ:
 
 指摘対応などで push したら、2 の振り分けをやり直す。
 
-- **light のまま**: light のレビュー役（`bash $D --light`）が `claude` なら、push して CI だけ待つ。ツールなら、heavy のままと同じく 6 の基準で再レビューを頼むかを決める（新しい作業を足した push の例外も同じ）
+- **light のまま**: light のレビュー役（`bash $D --light`）が `claude` だけ（または何も出ない）なら、push して CI だけ待つ。ツールが含まれていれば（`claude` と並べたときも）、heavy のままと同じく 6 の基準で、そのツールへ再レビューを頼むかを決める（新しい作業を足した push の例外も同じ）
 - **前回 light だった PR が heavy に変わった**: `review:light` ラベルが付いていれば先に外す（`gh pr edit <PR番号> --remove-label review:light`）。`review-heavy: none`（`bash $D` が何も出さない）なら 3 の手順で Claude がレビューする。ツールがあれば、ツールにとっては初回なので、6 の基準に関係なく 4 の手順で頼む。外しただけでツールの自動レビューが始まるかは未確認なので、`review-auto: on` でも 4.1 の手順で手動で頼む
 - **heavy のまま**: 6 の基準で再レビューを頼むかを決める。レビューの結果が返った後に指摘への対応以外の新しい作業を足した push は、6 の基準の例外で頼む
 
