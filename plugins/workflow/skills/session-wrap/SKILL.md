@@ -16,13 +16,13 @@ review_after: 2027-03-21
    python3 ${CLAUDE_PLUGIN_ROOT}/skills/session-wrap/scripts/survey.py
    ```
    session_id は Bash の親 `claude` プロセスの pid を `claude agents --json` と突き合わせて自動解決する。解決できなければ `--session <id>` を渡す。
-2. **自分の subagent / Monitor を数える**: `ListAgents` で走っているものを見る。Monitor はセッションと一緒に死ぬので、レビュー待ち中なら「閉じるとレビューを拾えない」とユーザーに伝える（`pr-review-triage` の規約）。
+2. **自分の subagent / Monitor を数える**: `ListAgents` で走っているものを見る。Monitor はセッションと一緒に死ぬので、レビュー待ち中なら「閉じるとレビューを拾えない」とユーザーに伝える（review プラグインの `pr-review-triage` の規約）。
 3. **旗ごとに 1 件ずつ提案**して、ユーザーの返事で実行する:
 
    | 旗 | 提案 |
    |---|---|
    | `DIRTY` | 今コミットするか（`commit-commands:commit`）、次回に残すか（残すなら何が未コミットかを最後の報告に書く）、捨てるか（`git stash` / `git checkout --`。**破壊的なので必ず確認**） |
-   | `UNPUSHED` | push するか（main なら bash-guard の freshness ゲートに従う） |
+   | `UNPUSHED` | push するか（main なら既定ブランチより遅れていないか先に確かめる。guards プラグインがあれば bash-guard が機械で止める） |
    | `PR_OPEN` | レビュー待ちなら「閉じると Monitor が切れる」を伝える。対応表は PR 本文に書けているか |
    | `PENDING_ISSUE` | 決定があれば body/コメントへ反映（`issue-ops`）。無ければ hook が示す `dismiss --why` |
    | 走っている subagent | 報告を待つか、止めるか（成果物はファイルに残る） |

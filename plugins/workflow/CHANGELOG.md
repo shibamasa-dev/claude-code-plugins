@@ -2,6 +2,11 @@
 
 workflow プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.1.11] - 2026-10-10
+
+### Changed
+- session-wrap・weekly-orchestrator-base：pr-review-triage（review）・bash-guard（guards）が別のプラグインだと書き添え、guards が無くても push 前の確認が読めるようにした
+
 ## [0.1.10] - 2026-10-10
 
 ### Changed

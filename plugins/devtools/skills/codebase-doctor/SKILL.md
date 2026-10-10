@@ -185,7 +185,7 @@ For each `[FAIL]` and `[WARN]` item, propose a concrete fix:
 Rated separately from 6 — a project can have a healthy test suite and still have none of
 this, and vice versa. Do not fold this into the `6. Testing` rating.
 
-The global `testcase-generator` skill carries the product-independent half of test design
+The `testcase-generator` skill (testing plugin) carries the product-independent half of test design
 (input/boundary/abnormal values, calculation first, Gherkin style, forbidden vague wording).
 It reads a project-specific half on top of that when one exists. This check reports whether
 that half is present. **Only presence — never judge the contents.**
@@ -219,7 +219,7 @@ Rate in this order — the four buckets are exhaustive, so every run lands in ex
 
 **Do not put the phase into the PASS/WARN/FAIL decision.** The phase decides *how loudly*
 to report (Step 1c weights checks; Step 5 orders fixes), not whether the check holds.
-- **Fix**: delegate to `testcase-generator`. **Do not write the files here** — see Boundaries.
+- **Fix**: delegate to `testcase-generator` (testing plugin). **Do not write the files here** — see Boundaries.
   When proposing, say plainly that the templates ship empty on purpose: a perspective file
   whose content was guessed reads as finished while carrying nothing, which is the failure
   mode this whole layer exists to prevent. The contents come from someone who has watched

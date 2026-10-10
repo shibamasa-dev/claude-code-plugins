@@ -180,7 +180,7 @@ printf '{"tool_name":"Write","tool_input":{"file_path":"<成果物のパス>"}}'
 
 ## プロジェクト固有層を用意する（初回のみ）
 
-`codebase-doctor` の Check 6b が「固有層が無い」と報告したとき、あるいは設計を始めて固有観点が無いことに気づいたときに、ここを置く。**置き場の正典は `references/perspectives-common.md` の「プロジェクト固有の観点」節**（このファイルでパスを再定義しない）。
+devtools プラグインの `codebase-doctor` を使っているなら、その Check 6b が「固有層が無い」と報告したとき、あるいは設計を始めて固有観点が無いことに気づいたときに、ここを置く。**置き場の正典は `references/perspectives-common.md` の「プロジェクト固有の観点」節**（このファイルでパスを再定義しない）。
 
 ### 置くもの
 
@@ -229,4 +229,4 @@ review_after: <置いた日 + 180日>
 
 - **テストコードの実装**（Playwright / vitest / pytest を書く）— ケース設計の後段で、プロジェクトの構成に依存する
 - **テストの実行と合否判定**
-- **プロジェクト固有層の不足の検出** — `codebase-doctor` の Check 6b が担当する（このスキルは設置の owner。上の「プロジェクト固有層を用意する」節）
+- **プロジェクト固有層の不足の検出** — devtools プラグインの `codebase-doctor`（Check 6b）が担当する（このスキルは設置の owner。上の「プロジェクト固有層を用意する」節）

@@ -12,13 +12,7 @@ Claude Code の作業を、取り返しがつかなくなる前に止めるフ�
 
 ## 設定
 
-`/plugin configure guards@shibamasa-plugins`（または `/config`）で変えられる。
-
-| キー | 既定 | 意味 |
-|---|---|---|
-| `merge_allowed_repos` | 空 | **非推奨**。guards はもう読まない（0.2.0 でマージの確認を外した）。自動マージは [review](../review/README.md) の `dev-flow` に移り、リポの `.claude/dev-flow.json`（`{"autoMerge": true}`）で決める。移行が済むまでは、review のスキルがここに書いたリポも自動マージのリポとして扱う |
-
-フックごとの調整:
+userConfig は無い。フックごとの調整:
 
 - **file-guard** のルールはプラグイン同梱の [`repo-structure.md`](repo-structure.md)。`~/.claude/rules/repo-structure.md` を置くとそちらが優先、環境変数 `FILE_GUARD_SPEC` を設定するとさらに優先（存在しないパスを指せば無効化）
 

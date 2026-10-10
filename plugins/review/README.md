@@ -39,7 +39,7 @@
 
 - スコープ外の気づきの処分は [workflow](../workflow/README.md) の `issue-ops` の判定表を参照する。無くても review 単体で使える
 - `dev-flow` は issue の書き方と `## 結果` を [workflow](../workflow/README.md) の `issue-ops` に任せる。workflow が無くても、`dev-flow` に書いた最低限の手順で回る
-- 自動マージのリポは、リポの `.claude/dev-flow.json`（`{"autoMerge": true}`）で決める。[guards](../guards/README.md) の設定 `merge_allowed_repos`（非推奨）に書いたリポは、このファイルに移す。マージの前の確認は guards から dev-flow-gate に移った
+- 自動マージのリポは、リポの `.claude/dev-flow.json`（`{"autoMerge": true}`）で決める。マージの前の確認は guards から dev-flow-gate に移った
 - GitHub の操作は GitHub コネクタが第一。`gh` はコネクタで取れないもの（ローカルの Monitor など）にだけ使う
 
 ## 前提
