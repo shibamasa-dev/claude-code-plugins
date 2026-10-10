@@ -12,19 +12,13 @@ Claude Code の作業を、取り返しがつかなくなる前に止めるフ�
 
 ## 設定
 
-`/plugin configure guards@shibamasa-plugins`（または `/config`）で変えられる。
-
-| キー | 既定 | 意味 |
-|---|---|---|
-| `merge_allowed_repos` | 空 | **非推奨**。guards はもう読まない（0.2.0 でマージの確認を外した）。自動マージは [review](../review/README.md) の `dev-flow` に移り、リポの `.claude/dev-flow.json`（`{"autoMerge": true}`）で決める。移行が済むまでは、review のスキルがここに書いたリポも自動マージのリポとして扱う |
-
-フックごとの調整:
+userConfig は無い。フックごとの調整:
 
 - **file-guard** のルールはプラグイン同梱の [`repo-structure.md`](repo-structure.md)。`~/.claude/rules/repo-structure.md` を置くとそちらが優先、環境変数 `FILE_GUARD_SPEC` を設定するとさらに優先（存在しないパスを指せば無効化）
 
 ## マージの扱い
 
-マージの前の確認（以前の bash-guard の merge-gate）は 0.2.0 で外した。マージの条件（レビューがそろう・`Closes` 先の `## 結果`）は review プラグインの `dev-flow` スキルと `dev-flow-gate` フックが持つ。guards だけを入れている場合、マージは止まらない。
+マージの前の確認（以前の bash-guard の merge-gate）は 0.2.0 で外した。マージの条件（レビューがそろう・`Closes` 先の `## 結果`）は workflow プラグインの `dev-flow` スキルと `dev-flow-gate` フックが持つ。guards だけを入れている場合、マージは止まらない。
 
 ## 前提
 

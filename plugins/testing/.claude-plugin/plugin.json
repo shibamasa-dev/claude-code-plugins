@@ -1,6 +1,6 @@
 {
   "name": "testing",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "テストを設計して回すスキルとフック（Gherkin のテストケース作成・成果物の検証・全体テストのゲート）",
   "author": {
     "name": "shibamasa-dev"

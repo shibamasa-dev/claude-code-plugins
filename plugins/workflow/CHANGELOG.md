@@ -2,6 +2,19 @@
 
 workflow プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.2.0] - 2026-10-10
+
+### Added
+- `dev-flow` スキルと `dev-flow-gate` フックを review プラグインから移した。issue-ops と同じプラグインで、依頼から `## 結果` までの流れが揃う。dev-flow-gate の状態は新しい置き場（`${CLAUDE_PLUGIN_DATA}/dev-flow-gate/`）で取り直す
+
+### Changed
+- dev-flow：自動マージの判定は既定ブランチの `.claude/dev-flow.json` で行い、作業ブランチの値では決めない（有効にする PR 自身を自動マージしないため）。自動マージの実行の場所はリポ側の文書に定めがあればそれに従う
+
+## [0.1.11] - 2026-10-10
+
+### Changed
+- session-wrap・weekly-orchestrator-base：pr-review-triage（review）・bash-guard（guards）が別のプラグインだと書き添え、guards が無くても push 前の確認が読めるようにした
+
 ## [0.1.10] - 2026-10-10
 
 ### Changed

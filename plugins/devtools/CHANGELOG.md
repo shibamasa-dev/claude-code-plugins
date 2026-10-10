@@ -2,6 +2,11 @@
 
 devtools プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.2.2] - 2026-10-10
+
+### Changed
+- codebase-doctor：testcase-generator が testing プラグインのスキルだと書き添えた
+
 ## [0.2.1] - 2026-10-10
 
 ### Changed

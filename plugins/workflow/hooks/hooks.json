@@ -1,17 +1,117 @@
 {
   "hooks": {
-    "SessionStart": [ { "hooks": [
-      { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/handoff.py\"" },
-      { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/knowledge-freshness.py\"" },
-      { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/issue-writeback.py\"" },
-      { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/runbook.py\" hook-session-start" } ] } ],
-    "UserPromptSubmit": [ { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/issue-writeback.py\"" } ] } ],
-    "Stop": [ { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/issue-writeback.py\"" }, { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/runbook.py\" hook-stop" } ] } ],
-    "SessionEnd": [ { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/issue-writeback.py\"" } ] } ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/handoff.py\""
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/knowledge-freshness.py\""
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/issue-writeback.py\""
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/runbook.py\" hook-session-start"
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/dev_flow_gate.py\""
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/issue-writeback.py\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/issue-writeback.py\""
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/runbook.py\" hook-stop"
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/dev_flow_gate.py\""
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/issue-writeback.py\""
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
-      { "matcher": "Bash|mcp__.*__(issue_read|issue_write|add_issue_comment|sub_issue_write)", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/issue-writeback.py\"" } ] },
-      { "matcher": "^Artifact$", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/artifact-ledger.py\"" } ] },
-      { "matcher": "mcp__claude-in-chrome__.*|mcp__computer-use__.*|mcp__remote-devices__.*|mcp__Claude_Browser__.*", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/runbook.py\" hook-post" } ] }
+      {
+        "matcher": "Bash|mcp__.*__(issue_read|issue_write|add_issue_comment|sub_issue_write)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/issue-writeback.py\""
+          }
+        ]
+      },
+      {
+        "matcher": "^Artifact$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/artifact-ledger.py\""
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__claude-in-chrome__.*|mcp__computer-use__.*|mcp__remote-devices__.*|mcp__Claude_Browser__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/runbook.py\" hook-post"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Monitor|mcp__.*__(create_pull_request|merge_pull_request|enable_pr_auto_merge|issue_read|issue_write|subscribe_pr_activity)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/dev_flow_gate.py\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|mcp__.*__(create_pull_request|merge_pull_request|enable_pr_auto_merge)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/dev_flow_gate.py\""
+          }
+        ]
+      }
     ]
   }
 }

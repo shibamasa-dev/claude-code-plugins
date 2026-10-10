@@ -1,6 +1,6 @@
 {
   "name": "guards",
-  "version": "0.2.2",
+  "version": "0.3.1",
   "description": "破壊的な Bash 操作・古い既定ブランチからの push・リポ構造違反の書き込みを止め、マージの後にローカルのマージ先ブランチを追従させるフック",
   "author": {
     "name": "shibamasa-dev"
@@ -13,14 +13,5 @@
     "safety",
     "git",
     "guardrails"
-  ],
-  "userConfig": {
-    "merge_allowed_repos": {
-      "type": "string",
-      "title": "（非推奨）マージを Claude に任せてよいリポ",
-      "description": "非推奨。guards はもう読まない。自動マージは review プラグインの dev-flow（リポの .claude/dev-flow.json）へ移す。移行中は review のスキルがここに書いたリポも自動マージのリポとして扱う",
-      "required": false,
-      "default": ""
-    }
-  }
+  ]
 }
