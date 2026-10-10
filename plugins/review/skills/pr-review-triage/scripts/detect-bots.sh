@@ -11,7 +11,7 @@
 #   3. 既定: light は `claude`、auto は `off`。heavy には既定が無い（exit 4）
 # 過去の PR に来た bot からは推測しない。自動レビューを止めると軽い PR が bot の痕跡を残さず、推測が空になるため。
 # exit: 0 = 決まった（「ツールなし」なら何も出さない）／ 4 = heavy の行も設定も無い ／ 5 = 書いてあるが読めない
-#       （知っている id が 1 つも無い、auto が on / off 以外）（4・5 は呼び出し側がユーザーに聞く）
+#       （知っている id が 1 つも無い、auto が on / off 以外、light で claude とツールの id を並べた）（4・5 は呼び出し側がユーザーに聞く）
 set -u
 KEY=heavy; REGEX=0
 for a in "$@"; do
@@ -62,6 +62,11 @@ fi
 if [ "$KEY" = light ] && [ "$norm" = claude ]; then
   [ "$REGEX" = 1 ] || echo claude
   exit 0
+fi
+# claude とツールの混在は、どちらの手順で回すか決まらない。黙って claude を落としてツールだけにしない
+if [ "$KEY" = light ] && printf '%s\n' "$norm" | grep -qx claude; then
+  echo "detect-bots: review-light の claude はほかの id と並べられない（'$(printf '%s' "$norm" | paste -sd, -)'。claude だけか、ツールの id だけにする）" >&2
+  exit 5
 fi
 
 # 表に無い id は外す（macOS の bash 3.2 は $( ) の中の case を読み違えるので関数に出す）

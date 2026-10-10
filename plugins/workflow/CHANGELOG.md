@@ -5,7 +5,7 @@ workflow プラグインの変更履歴。書式は [Keep a Changelog](https://k
 ## [0.2.2] - 2026-10-10
 
 ### Changed
-- dev-flow：レビューツールの決め方を review 0.6.0 の名前（`review-heavy:`・`review-light:`・`review-auto:` 行、userConfig `review_heavy`・`review_light`・`review_auto`）にした。4 段（PR を作る）に、ツールの自動レビューが ON のリポ（`review-auto: on`）では PR を作る前に振り分けて、軽い PR は `review:light` ラベルを付けて `gh pr create --label` で作ることを足した
+- dev-flow：レビューツールの決め方を review 0.6.0 の名前（`review-heavy:`・`review-light:`・`review-auto:` 行、userConfig `review_heavy`・`review_light`・`review_auto`）にした。4 段（PR を作る）に、ツールの自動レビューが ON のリポ（`review-auto: on`）では PR を作る前に振り分けて、軽い PR は `review:light` ラベルを付けて `gh pr create --label` で作ることを足した。軽い PR のレビューとマージ提案の条件は、light のレビュー役（`review-light:`）が `claude` なら `## レビュー（Claude）`、ツールならそのツールすべての結果、で分けた
 
 ## [0.2.1] - 2026-10-10
 

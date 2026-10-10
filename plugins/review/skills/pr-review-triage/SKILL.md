@@ -44,7 +44,7 @@ bash $D --auto   # ツールの自動レビュー（on / off）
 - **id が出る**: その回に頼むツール。id は `references/tools/<id>.md` のファイル名
 - **何も出ずに exit 0**（`review-heavy: none`）: ツールのいないリポ。heavy でも 3 の手順で Claude がレビューする（`review-light: none` も同じく 3 の手順）
 - **exit 4**（`review-heavy:` の行も設定も無い）: どのツールを使うかをユーザーに聞き、リポの CLAUDE.md に `review-heavy:` 行を足す PR を提案する
-- **exit 5**（行か設定はあるが読めない。知っている id が 1 つも無い綴り違い、`review-auto:` が `on` / `off` 以外）: 「ツールなし」「off」とは扱わない。stderr をユーザーに見せて、どのつもりかを聞く（`none` の書き間違いで誰もレビューしない PR が出るのを防ぐ）
+- **exit 5**（行か設定はあるが読めない。知っている id が 1 つも無い綴り違い、`review-auto:` が `on` / `off` 以外、`review-light:` で `claude` とツールの id を並べた（`claude` はほかの id と並べられない））: 「ツールなし」「off」とは扱わない。stderr をユーザーに見せて、どのつもりかを聞く（`none` の書き間違いで誰もレビューしない PR が出るのを防ぐ）
 
 **`review-notes:`** は振り分け（2）の判定には使わない。渡し先は 2 つ:
 - Claude のレビュー（3）: `code-review` に重点として渡す
@@ -148,7 +148,7 @@ PR を作った後の流れ:
 
 指摘対応などで push したら、2 の振り分けをやり直す。
 
-- **light のまま**: push して CI だけ待つ
+- **light のまま**: light のレビュー役（`bash $D --light`）が `claude` なら、push して CI だけ待つ。ツールなら、heavy のままと同じく 6 の基準で再レビューを頼むかを決める（新しい作業を足した push の例外も同じ）
 - **前回 light だった PR が heavy に変わった**: ツールにとっては初回なので、6 の基準に関係なく 4 の手順で頼む。`review:light` ラベルが付いていれば先に外す（`gh pr edit <PR番号> --remove-label review:light`）。外しただけでツールの自動レビューが始まるかは未確認なので、`review-auto: on` でも 4.1 の手順で手動で頼む
 - **heavy のまま**: 6 の基準で再レビューを頼むかを決める。レビューの結果が返った後に指摘への対応以外の新しい作業を足した push は、6 の基準の例外で頼む
 

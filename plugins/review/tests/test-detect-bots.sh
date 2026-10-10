@@ -26,6 +26,7 @@ row 'review-heavy: none は「ツールなし」で exit 0' "$(det "$(repo none 
 row '知っている id が 1 つも無ければ none 扱いせず exit 5' "$(det "$(repo typo 'review-heavy: coderabit')")" '/5'
 row 'review-light: 行が無ければ claude' "$(det "$(repo light0 'review-heavy: codex')" --light)" 'claude/0'
 row 'review-light: にツールを書けばその id を出す' "$(det "$(repo light1 'review-light: coderabbit, codex')" --light)" 'coderabbit,codex/0'
+row 'review-light: で claude とツールを混ぜたら exit 5' "$(det "$(repo light2 'review-light: claude, codex')" --light)" '/5'
 row 'review-auto: 行が無ければ off' "$(det "$(repo auto0 'review-heavy: codex')" --auto)" 'off/0'
 row 'review-auto: on を読む' "$(det "$(repo auto1 '- review-auto: ON')" --auto)" 'on/0'
 row 'review-auto: が on / off 以外なら exit 5' "$(det "$(repo auto2 'review-auto: yes')" --auto)" '/5'
