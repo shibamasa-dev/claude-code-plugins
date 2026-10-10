@@ -1427,7 +1427,8 @@ def _cd_target(tokens: list, cwd):
     if arg == "-" or "$" in arg or "`" in arg:
         return None
     if not os.path.isabs(arg):
-        if cwd is None:
+        # CDPATH があると相対名の行き先が変わる（`./`・`../` で始まるときだけ今いる場所の下）
+        if cwd is None or (os.environ.get("CDPATH") and not arg.startswith(".")):
             return None
         arg = os.path.join(cwd, arg)
     return os.path.normpath(arg)
@@ -1441,21 +1442,23 @@ def rule_shared_venv_guard(command: str):
     # `export VIRTUAL_ENV=…` で有効な venv を置き直す。分からないときは前の状態を残す（止める側に倒す）
     cwd = os.path.normpath(_CWD or os.getcwd())
     cwd_shared = _under_shared_venv(cwd)
+    dir_stack = []  # pushd で積んだ (cwd, cwd_shared)
     inherited = os.environ.get("VIRTUAL_ENV")
     venv_shared = _under_shared_venv(inherited) if inherited and os.path.isabs(inherited) else None
     for cmd in _commands(command):
         tk = cmd.tokens
         head = os.path.basename(tk[0]) if tk else ""
         if head in ("cd", "pushd"):
+            if head == "pushd":
+                dir_stack.append((cwd, cwd_shared))
             target = _cd_target(tk, cwd)
             if target is not None:
                 cwd, cwd_shared = target, _under_shared_venv(target)
             else:
-                cwd = None  # 行き先が分からない。相対パスの移動は前の状態のまま
-                cwd_shared = cwd_shared or _mentions_shared_venv(cmd.raw)
+                cwd, cwd_shared = None, True  # 行き先が分からない。共有 venv の中かもしれないので止める側に倒す
             continue
         if head == "popd":
-            cwd = None
+            cwd, cwd_shared = dir_stack.pop() if dir_stack else (None, True)
             continue
         if head in ("source", "."):
             # activate を読んだときだけ venv を置き直す（ほかのスクリプトは venv を変えない前提で前の状態のまま）
