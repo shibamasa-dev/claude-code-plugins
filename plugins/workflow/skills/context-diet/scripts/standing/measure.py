@@ -46,7 +46,7 @@ def has_paths_frontmatter(body: str) -> bool:
 
 
 def resolve_imports(p: Path, seen: set) -> list:
-    """1階層の @import 解決（@SOUL.md 形式）。循環・重複は seen で止める。"""
+    """1階層の @import 解決（@<file> 形式）。循環・重複は seen で止める。"""
     out = []
     for m in IMPORT_RE.finditer(text(p)):
         t = (p.parent / m.group(1)).resolve()
@@ -124,7 +124,7 @@ def main() -> int:
     ap.add_argument("--project", default=os.getcwd())
     ap.add_argument("--home", default=str(Path.home()))
     ap.add_argument("--max-standing-kb", type=float, default=130.0)
-    # 既定120: 2026-08-16 に整えた直後の実測（日本語フック）が avg 104.7 だった。
+    # 既定120: 日本語のフックは整えた直後でも平均 100 字を超えやすい。
     # 100 だと「書き直した直後に超過」の矛盾になる。80字は理想・120字が実務線。
     ap.add_argument("--max-index-avg", type=float, default=120.0)
     ap.add_argument("--json", action="store_true", help="互換用（出力は常に JSON）")

@@ -2,6 +2,11 @@
 
 docs プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.1.4] - 2026-10-10
+
+### Changed
+- motion-video：eval の題材 example-intro とブランドの例（`references/brand.example.json`）を、架空の家具店の紹介・別系統のパレットと書体に差し替えた。シーンの構成と時刻は変えていない
+
 ## [0.1.3] - 2026-10-06
 
 ### Added

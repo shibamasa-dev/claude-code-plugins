@@ -1,16 +1,16 @@
 {
   "name": "Example Co.",
   "colors": {
-    "primary": "#1F4E79",
-    "accent": "#C8553D",
-    "secondary": "#E08A2E",
-    "support": "#F2C14E",
-    "ink": "#0E1B1C",
-    "paper": "#F4F1EA"
+    "primary": "#2F5D50",
+    "accent": "#6B4E9B",
+    "secondary": "#3F9C94",
+    "support": "#C5D86D",
+    "ink": "#1B1F23",
+    "paper": "#F1F3F2"
   },
   "fonts": {
-    "ja": { "family": "Noto Sans JP", "fallback": ["Hiragino Sans", "Hiragino Kaku Gothic ProN", "sans-serif"] },
-    "heading": { "family": "Montserrat", "fallback": ["Helvetica Neue", "Arial", "sans-serif"] }
+    "ja": { "family": "Zen Kaku Gothic New", "fallback": ["Hiragino Sans", "Hiragino Kaku Gothic ProN", "sans-serif"] },
+    "heading": { "family": "Poppins", "fallback": ["Helvetica Neue", "Arial", "sans-serif"] }
   },
   "logo": "logo.svg"
 }

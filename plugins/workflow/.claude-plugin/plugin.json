@@ -1,6 +1,6 @@
 {
   "name": "workflow",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "issue 運用・セッションの引き継ぎ・runbook 記録などのスキルとフック",
   "author": {
     "name": "shibamasa-dev"

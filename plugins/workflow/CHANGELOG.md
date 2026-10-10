@@ -2,6 +2,11 @@
 
 workflow プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.1.10] - 2026-10-10
+
+### Changed
+- issue-ops・session-wrap・weekly-orchestrator-base・context-diet：本文から日付つきの決定・実例・実測と、作った環境に固有の名前（私的スキル名・サービス名・ファイル名）を外した。別セッションの起動は、特定のスキル名ではなく「別のセッションを待機状態で起動できるスキルや仕組み（環境にあれば）」と機能で書いた
+
 ## [0.1.9] - 2026-10-09
 
 ### Changed
