@@ -1414,24 +1414,42 @@ def _under_shared_venv(path: str) -> bool:
     return any(p == d or p.startswith(d + "/") for d in SHARED_VENV_DIRS)
 
 
-def _cd_target(tokens: list, cwd):
-    """`cd` / `pushd` の行き先の絶対パス。分からない（`cd -`、HOME 以外の変数など）なら None。"""
-    args = [t for t in tokens[1:] if t == "-" or not t.startswith("-")]  # `cd -P dir` などのオプションは飛ばす
-    arg = args[0].strip('"').strip("'") if args else "~"
-    if arg.startswith("+"):
-        return None  # `pushd +1` はスタックの何番目かで、行き先は分からない
+def _cdpath_set(cmd) -> bool:
+    """この `cd` で CDPATH が効くか。コマンドの中で代入・export・unset したものも見る（値が分からなければ効く側）。"""
+    if "CDPATH" in cmd.env:
+        return cmd.env["CDPATH"] != ""
+    if "CDPATH" in cmd.assigns:
+        return cmd.assigns["CDPATH"] != ""
+    return bool(os.environ.get("CDPATH"))
+
+
+def _abs_path(arg: str, cwd):
+    """パスの引数を絶対パスにする。分からない（HOME 以外の変数、今いる場所が分からない相対パスなど）なら None。"""
+    arg = arg.strip('"').strip("'")
     for h in ("${HOME}", "$HOME"):
         if arg == h or arg.startswith(h + "/"):
             arg = "~" + arg[len(h):]
     arg = os.path.expanduser(arg)
-    if arg == "-" or "$" in arg or "`" in arg:
+    if "$" in arg or "`" in arg:
         return None
     if not os.path.isabs(arg):
-        # CDPATH があると相対名の行き先が変わる（`.`・`..` か `./`・`../` で始まるときだけ今いる場所の下。`.hidden` は CDPATH を探す）
-        if cwd is None or (os.environ.get("CDPATH") and arg.split("/", 1)[0] not in (".", "..")):
+        if cwd is None:
             return None
         arg = os.path.join(cwd, arg)
     return os.path.normpath(arg)
+
+
+def _cd_target(cmd, cwd):
+    """`cd` / `pushd` の行き先の絶対パス。分からない（`cd -`、HOME 以外の変数など）なら None。"""
+    args = [t for t in cmd.tokens[1:] if t == "-" or not t.startswith("-")]  # `cd -P dir` などのオプションは飛ばす
+    arg = args[0].strip('"').strip("'") if args else "~"
+    if arg == "-" or arg.startswith("+"):
+        return None  # `cd -` は前の場所、`pushd +1` はスタックの何番目かで、行き先は分からない
+    # CDPATH があると相対名の行き先が変わる（`.`・`..` か `./`・`../` で始まるときだけ今いる場所の下。`.hidden` は CDPATH を探す）
+    if not os.path.isabs(os.path.expanduser(arg)) and not arg.startswith("$") and \
+            _cdpath_set(cmd) and arg.split("/", 1)[0] not in (".", ".."):
+        return None
+    return _abs_path(arg, cwd)
 
 
 def rule_shared_venv_guard(command: str):
@@ -1451,7 +1469,7 @@ def rule_shared_venv_guard(command: str):
         if head in ("cd", "pushd"):
             if head == "pushd":
                 dir_stack.append((cwd, cwd_shared))
-            target = _cd_target(tk, cwd)
+            target = _cd_target(cmd, cwd)
             if target is not None:
                 cwd, cwd_shared = target, _under_shared_venv(target)
             else:
@@ -1465,7 +1483,9 @@ def rule_shared_venv_guard(command: str):
             if _mentions_shared_venv(cmd.raw):
                 venv_shared = True
             elif len(tk) > 1 and os.path.basename(tk[1].strip('"').strip("'")).startswith("activate"):
-                venv_shared = False
+                # 相対パス（`source bin/activate`）は今いる場所から解く。解けなければ共有 venv かもしれない側に倒す
+                path = _abs_path(_resolve(tk[1], cmd.assigns), cwd)
+                venv_shared = True if path is None else _under_shared_venv(path)
             continue
         if head == "deactivate":
             venv_shared = None
