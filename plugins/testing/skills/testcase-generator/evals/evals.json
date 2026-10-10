@@ -4,8 +4,8 @@
   "evals": [
     {
       "id": 0,
-      "name": "gas-chat-bot-no-project-layer",
-      "prompt": "<your-gas-project>/chat-bot/Code.gs の doPost / verifyApiKey_ / doRequestInternal まわりのテストケースを作って。仕様書はないのでコードから起こして。",
+      "name": "gas-apikey-dopost-no-project-layer",
+      "prompt": "<your-gas-project> の、APIキー検証つきの doPost を持つ GAS ファイルについて、doPost とそこから呼ばれるキー検証・リクエスト処理まわりのテストケースを作って。仕様書はないのでコードから起こして。",
       "expected_output": "観点の対象/対象外判定表と Gherkin テストケース。このリポには .claude/knowledge/ が無いので「固有観点なし（共通層のみで設計）」が明記される。APIキー未設定・不正キー・payload 欠損などの異常値ケースが含まれる。",
       "files": [],
       "assertions": [
@@ -65,8 +65,8 @@
     {
       "id": 1,
       "name": "gas-session-state-transition",
-      "prompt": "Code.gs の selectAnswer / selectFreeText / submitAll の一連のアンケート回答フローについて、テスト観点を洗い出してテストケースまで作って。",
-      "expected_output": "状態遷移・前提条件の観点が主体。セッション未作成での回答、同じ設問への2回目の回答（冪等性）、全問未回答での submitAll などが含まれる。",
+      "prompt": "<your-gas-project> の、画面（HtmlService などの Web アプリ）から回答するアンケートを持つ GAS ファイルについて、セッションを持った一連の回答フロー（選択式の回答 → 自由記述の回答 → 最後にまとめて送信）のテスト観点を洗い出してテストケースまで作って。",
+      "expected_output": "状態遷移・前提条件の観点が主体。セッション未作成での回答、同じ設問への2回目の回答（冪等性）、全問未回答でのまとめて送信などが含まれる。",
       "files": [],
       "assertions": [
         {
@@ -94,7 +94,7 @@
     {
       "id": 2,
       "name": "numeric-calc-priority",
-      "prompt": "<your-project>/kabu-analyzer の src 配下から、数値計算を行っている関数を1つ選んでテストケースを作って。",
+      "prompt": "<your-project> の src 配下から、数値計算を行っている関数を1つ選んでテストケースを作って。",
       "expected_output": "数値計算の観点が最優先で扱われ、境界値が最小/最小-1/最大/最大+1 に分けて別ケースになっている。ランダムな値1件で済ませていない。",
       "files": [],
       "assertions": [

@@ -39,10 +39,10 @@ function makeMedia(dir) {
   fs.mkdirSync(path.join(dir, 'assets'), { recursive: true });
   fs.mkdirSync(path.join(dir, 'clips'), { recursive: true });
   const boxes = [
-    [0, 0, 1280, 64, '1F4E79'], [0, 64, 220, 736, 'E3E7EA'], [24, 100, 172, 28, 'C9D1D6'], [24, 150, 150, 28, 'C9D1D6'],
+    [0, 0, 1280, 64, '2F5D50'], [0, 64, 220, 736, 'E3E7EA'], [24, 100, 172, 28, 'C9D1D6'], [24, 150, 150, 28, 'C9D1D6'],
     [260, 100, 300, 150, 'FFFFFF'], [590, 100, 300, 150, 'FFFFFF'], [920, 100, 300, 150, 'FFFFFF'],
-    [284, 200, 120, 26, 'E08A2E'], [614, 200, 180, 26, 'C8553D'], [944, 200, 90, 26, 'F2C14E'],
-    [260, 280, 960, 470, 'FFFFFF'], [300, 600, 70, 110, '1F4E79'], [400, 520, 70, 190, '1F4E79'], [500, 450, 70, 260, '1F4E79'], [600, 560, 70, 150, '1F4E79'],
+    [284, 200, 120, 26, '3F9C94'], [614, 200, 180, 26, '6B4E9B'], [944, 200, 90, 26, 'C5D86D'],
+    [260, 280, 960, 470, 'FFFFFF'], [300, 600, 70, 110, '2F5D50'], [400, 520, 70, 190, '2F5D50'], [500, 450, 70, 260, '2F5D50'], [600, 560, 70, 150, '2F5D50'],
   ].map(([x, y, w, h, c]) => `drawbox=x=${x}:y=${y}:w=${w}:h=${h}:color=0x${c}:t=fill`).join(',');
   const a = sh('ffmpeg', ['-y', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=0xF6F7F9:s=1280x800', '-vf', boxes, '-frames:v', '1', path.join(dir, 'assets', 'screenshot.png')]);
   const b = sh('ffmpeg', ['-y', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30:duration=3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', path.join(dir, 'clips', 'demo.mp4')]);

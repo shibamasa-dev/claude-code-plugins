@@ -11,7 +11,7 @@ review_after: 2027-03-21
 
 ### 概要
 
-タスクが発生したら **GitHub issue を作成し、Issue Fields がある組織ではそれでメタデータを設定**。プロジェクトボードへ auto-add で自動追加される設定なら Projects API は触らない。**操作は GitHub MCP が既定**（Issue Fields がある組織ではメタデータは組織レベルの Issue Fields を使う。ProjectV2 GraphQL は使わない）。**ただし MCP の `issue_write` が承認フォームを出す環境では、フォームを待たずに `gh` ＋ GraphQL で直接行う**（下の「MCP が承認フォームを出すとき」。issue の作成・更新・close にユーザー承認は要らない＝2026-10-02 確定）。
+タスクが発生したら **GitHub issue を作成し、Issue Fields がある組織ではそれでメタデータを設定**。プロジェクトボードへ auto-add で自動追加される設定なら Projects API は触らない。**操作は GitHub MCP が既定**（Issue Fields がある組織ではメタデータは組織レベルの Issue Fields を使う。ProjectV2 GraphQL は使わない）。**ただし MCP の `issue_write` が承認フォームを出す環境では、フォームを待たずに `gh` ＋ GraphQL で直接行う**（下の「MCP が承認フォームを出すとき」。issue の作成・更新・close にユーザー承認は要らない）。
 
 組織の値（GitHub 組織・issue の既定リポ・Issue Fields の表・プロジェクトボード）は、セッション文脈に「組織設定」という見出しの注入テキストがあればそれを使う。無ければプロジェクトの CLAUDE.md、それも無ければユーザーに聞く。推測で埋めない。対象リポジトリは github_repo など文脈から抽出し、不明なら組織設定の既定リポを使う。
 
@@ -45,7 +45,7 @@ issue_write(method: "create", owner: "<org>", repo: "<repo>", title: "...", body
 
 ### MCP が承認フォームを出すとき（gh ＋ GraphQL で直接）
 
-Claude デスクトップアプリの Code タブなど、`issue_write` が「interactive form has been shown」を返す環境では、ユーザーが Submit するまで何も起きない（2026-10-02 実測: フォームが 4 件溜まり、作ったつもりの issue が無かった。Submit してもらっても Issue Fields が入っていなかった例もある）。**フォームが 1 回出たら、そのセッションの issue 操作はすべて下の方法に切り替える**（読み取りの `issue_read` はフォームが出ないので MCP のままでよい）。
+Claude デスクトップアプリの Code タブなど、`issue_write` が「interactive form has been shown」を返す環境では、ユーザーが Submit するまで何も起きない（フォームが溜まるだけで、作ったつもりの issue が作られていないことがある。Submit してもらっても Issue Fields が入らないことがある）。**フォームが 1 回出たら、そのセッションの issue 操作はすべて下の方法に切り替える**（読み取りの `issue_read` はフォームが出ないので MCP のままでよい）。
 
 | 操作 | コマンド |
 |---|---|
@@ -60,7 +60,7 @@ Claude デスクトップアプリの Code タブなど、`issue_write` が「in
 - フィールドとオプションの ID は `organization(login:"<org>"){issueFields(first:20){nodes{__typename … on IssueFieldSingleSelect{id name options{id name}} … on IssueFieldDate{id name}}}}` で引く（ID を推測で書かない）。
 - 設定したら上の読み取りで値が入ったことを確かめる。
 
-### 受け入れ基準の書き方（Gherkin を使う / 使わない）（2026-09-22 確定）
+### 受け入れ基準の書き方（Gherkin を使う / 使わない）
 
 受け入れ基準は **body に inline**（正解を定義するもの＝閉じるまで変わらない）。**振る舞いが変わる issue だけ Gherkin（Given/When/Then）、それ以外は箇条書き。**
 
@@ -73,7 +73,7 @@ Claude デスクトップアプリの Code タブなど、`issue_write` が「in
 | バグ報告の再現条件（Given に実データ・実状態） | `Arch Review: Pending`（振る舞いが未確定。先に書くと決めた気になる） |
 | 委譲 seed の受け入れ基準（実装 agent が経緯ゼロで読む） | 時間軸・複数アクターの相互作用が主題 → `sequenceDiagram` の領域 |
 
-書き方（過去の実例「取込処理の UPDATE 経路でフラグを立て忘れたのに全テスト緑」を構文で潰す形）:
+書き方（UPDATE 経路だけ更新漏れがあっても全テストが緑になる、を構文で防ぐ形）:
 
 ```gherkin
 Scenario Outline: 伝票ファイルの取込で印刷対象フラグが立つ
@@ -98,7 +98,7 @@ Scenario Outline: 伝票ファイルの取込で印刷対象フラグが立つ
 - 委譲 seed に入れるときは **「Scenario は受け入れ基準であってテストの実装形式ではない」を 1 行添える**（無いと、フレームワークが無いのに feature ファイルを作り始める）
 - **PR 本文に Gherkin は貼らない。** 受け入れ基準 ✅/❌ の行から Scenario 名を引用するだけにする（二重管理を作らない）。PR で書き起こしたくなったら、issue に受け入れ基準が無いまま実装したサイン
 
-### 残件を issue にするか PR スタックの層にするか（2026-09-21 確定）
+### 残件を issue にするか PR スタックの層にするか
 
 **既定は層。issue は例外。** 「タスクが発生したら issue」を無条件に適用すると、同じ story の続きまで issue に積み上がる（実害: 1 PR で終わる残件が issue の山になり、後から読む agent がそれを未処理タスクとして扱う）。
 
@@ -116,7 +116,7 @@ Scenario Outline: 伝票ファイルの取込で印刷対象フラグが立つ
 - どちらにも当てはまらないものは PR 本文の `## スコープ外の気づき` に置く。**ただし置きっぱなしにしない**: マージ前に 1 件ずつ「層 / issue / やらない（理由）」を書く。「やらない」は PR 本文に理由付きで残せば十分で、issue は作らない。
 - 委譲した subagent が残件を報告してきた場合も同じ表で振り分ける。「報告のみ」は subagent が勝手に直さないためのルールであって、報告された残件が自動的に issue になるルールではない。
 
-### issue の階層と依存（2026-09-08 決定）
+### issue の階層と依存
 
 **3件以上のステップがある／2週間以上かかる仕事は「ゴール issue ＋ 子 issue」に分ける。** GitHub ネイティブの sub-issues を使う（body のリンクで擬似的にやらない。親に進捗バーが出て、agent が `issue_read` で親→子を辿れる）。
 
@@ -127,7 +127,7 @@ Scenario Outline: 伝票ファイルの取込で印刷対象フラグが立つ
 
 - **深さは2段まで**。孫を作りたくなったらゴールの切り方が大きすぎるサイン
 - 親子は `issue_write` の `parent_issue_number`（起票時）か `sub_issue_write`（後付け）
-- **横の依存**（A が終わらないと B に着手できない）は GitHub の issue dependencies（*blocked by*）で表す。MCP に無いので GraphQL `addBlockedBy(input:{issueId, blockingIssueId})`／読み取りは `issue { blockedBy blocking }`（2026-09-08 に API の存在を実測）
+- **横の依存**（A が終わらないと B に着手できない）は GitHub の issue dependencies（*blocked by*）で表す。MCP に無いので GraphQL `addBlockedBy(input:{issueId, blockingIssueId})`／読み取りは `issue { blockedBy blocking }`
 - **やりすぎない**: 単発タスク（購入・提出・1回の調査）に親は要らない
 - 週次の「今週やること」は **open なゴール issue の子 issue 一覧**から出す（進捗レポートの「来週の予定」をゴールの代わりにしない）
 - 子を close するときも「issue close 時の記録ルール」どおり `## 結果` を body に。親の close は全子が閉じてから、親 body の「今どこまで来たか」を完了形に書き換えて
@@ -140,7 +140,7 @@ Scenario Outline: 伝票ファイルの取込で印刷対象フラグが立つ
 - 解除はユーザーが `Approved` に変更（または明示 GO）してから。フィールドが未設定でも、構造変更なら GO は要る。`Arch Review` を使えない（Issue Fields の無いリポ・個人アカウント）ときは、チャットで GO をもらう。
 - 機械抽出: `list_issues(field_filters: [{field_name:"Arch Review", value:"Pending"}])`。
 
-### 実機検証ゲート（Verification）（2026-09-23 確定）
+### 実機検証ゲート（Verification）
 
 **「コードは終わったが、実環境に触れないので確かめていない」を追えるようにする軸。** GitHub の状態（PR が merged か・issue が open か）からは導出できないので Issue Field に置く。導出できるものはフィールドにしない（二重管理になり陳腐化する）。
 
@@ -170,7 +170,7 @@ Recurrence は分類・絞り込み用で実行トリガーではない。**記�
 
 **書くタイミングは「決定した瞬間」。セッション終了時にまとめて書かない。** 読んだ issue を更新しないまま数ターン経つと、workflow プラグインの hook `issue-writeback` が Stop を block して書き戻しを促す（issue ごと最大 3 回）。決定が本当に無い（要約だけ・実装の仕様として読んだだけ）なら、hook の指示文にある `dismiss` コマンドを理由付きで実行して終了する。`/clear`・compact・resume 後は未反映 issue を再通知する。全セッション横断の追跡状況は `issue-writeback status --pending`（`claude agents --json` と突合してセッション名・生死を出す。終了済みで未反映が残るものには resume コマンドが付く）。
 
-**body は「今どうなっているか」、コメントは「なぜそうなったか」**（2026-09-06 確定）。
+**body は「今どうなっているか」、コメントは「なぜそうなったか」**。
 
 | 置く場所 | 内容 |
 |---|---|
@@ -178,8 +178,8 @@ Recurrence は分類・絞り込み用で実行トリガーではない。**記�
 | **コメント** | 変更の経緯・「なぜ書き直したか」・旧設計の説明・調査の途中経過 |
 
 - **設計が変わったら body を書き換える**（訂正コメントを足して body を放置しない）。後続 agent は `issue_read` 1コールで **body しか読まない**ため、body が古いと誤った前提の上に作業が積まれる。
-- **経緯を body に残さない**。旧設計の説明が body にあると、ざっと読んだ人が現行仕様と誤読する（2026-09-06 実例: ある issue の body に「旧設計は帳票だった」が残り、今も帳票を作る issue に見えていた）。
-- **body に置くのは「閉じるまで変わらないもの」だけ。** 実測値・達成率・「今どこまで来たか」は再実行で変わるので、body には出し方（パス・再現コマンド）を書き、値は日付つきでコメントへ（2026-09-15 実例: ある issue の「110/141」が7日で 112/138 と食い違い、母数の定義まで変わっていた）。期待値・対応表・実サンプルは正解を定義するもので変わらないため body に inline する。
+- **経緯を body に残さない**。旧設計の説明が body にあると、ざっと読んだ人が現行仕様と誤読する。
+- **body に置くのは「閉じるまで変わらないもの」だけ。** 実測値・達成率・「今どこまで来たか」は再実行で変わるので、body には出し方（パス・再現コマンド）を書き、値は日付つきでコメントへ（例: 達成率は再実行で分子だけでなく母数まで変わることがある）。期待値・対応表・実サンプルは正解を定義するもので変わらないため body に inline する。
 - 検証は機械で: 書き換え後に `旧設計` `なぜ書き直` 等のキーワードが body に残っていないか grep する。
 
 ### issue close 時の記録ルール（全 issue 対象）
@@ -196,9 +196,9 @@ close 後も別 issue・別 agent から参照される（agent は `issue_read`
 - 自動化エージェントが代行 close する場合、記録が薄ければ close 前にユーザーへ1問だけ確認（未記録のまま close しない）。
 - 再発性タスクの次回 issue は前回リンクを張り、`## 次回への引き継ぎ` をコピーして叩き台に。
 
-### PR と issue の連動（`Closes` / `Refs`）（2026-09-23 確定）
+### PR と issue の連動（`Closes` / `Refs`）
 
-**PR 本文には必ず `Closes <owner/repo#N>` か `Refs <owner/repo#N>` のどちらかを書く。** どちらも無い PR はマージ後に issue と辿れなくなる。**クロージングキーワードは別リポでも効く**（実測 2026-09-23: 実装 PR と issue が別リポでも、マージ2秒後に自動 close された）。`Refs` は相互参照を張るだけで close しない。
+**PR 本文には必ず `Closes <owner/repo#N>` か `Refs <owner/repo#N>` のどちらかを書く。** どちらも無い PR はマージ後に issue と辿れなくなる。**クロージングキーワードは別リポの issue にも効く**（GitHub Docs「Linking a pull request to an issue」: https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue ）。`Refs` は相互参照を張るだけで close しない。
 
 | 書くもの | 条件 |
 |---|---|
@@ -206,8 +206,8 @@ close 後も別 issue・別 agent から参照される（agent は `issue_read`
 | **`Refs`** | 上のどちらかが欠ける。**PR 本文に「未達の項目」と「残件の行き先（層 / issue 番号 / やらない）」を書く** |
 
 - **`## 結果` は `Closes` の PR をマージする前提条件**。自動 close は body に記録を残さないので、マージの後に書くと記録の無い close になる（PR を作る時点で `Closes` を書くのはよい）。review プラグインの `dev-flow-gate` フックが入っていれば、書いていないマージを止める。
-- **`Refs` にした issue のマージ後の始末は委譲元（main セッション）の責務。** 未達の受け入れ基準が残る間は閉じず、残件を終えたか、別 issue に移したか、やらないと決めた後に閉じる。 委譲先（subagent・別セッション）のスコープは「PR 作成まで」で、マージ後の始末は委譲先の担当ではない。ここが無主になると「PR マージ済み・issue open」が翌朝の planner まで残る（2026-09-23 に実例あり）。
-- 機械で拾う: `search_pull_requests`（`is:merged <issue番号>`）と issue の state の突き合わせ。朝の定期チェックを置いているならそれが安全網になるが、**ルールは「翌朝気づく」を「PR を出す時点で決まっている」に前倒しするためのもの**。
+- **`Refs` にした issue のマージ後の始末は委譲元（main セッション）の責務。** 未達の受け入れ基準が残る間は閉じず、残件を終えたか、別 issue に移したか、やらないと決めた後に閉じる。 委譲先（subagent・別セッション）のスコープは「PR 作成まで」で、マージ後の始末は委譲先の担当ではない。ここが無主になると「PR マージ済み・issue open」が次に誰かが気づくまで残る。
+- 機械で拾う: `search_pull_requests`（`is:merged <issue番号>`）と issue の state の突き合わせ。朝の定期チェックを置いているならそれが安全網になるが、**ルールは「後で誰かが気づく」を「PR を出す時点で決まっている」に前倒しするためのもの**。
 
 ### 日付フィールドの入力ルール
 

@@ -2,7 +2,7 @@
   {
     "id": "classify_public_scripts_ci",
     "description": "CI の yml・変換スクリプト・テンプレート（.j2）・テスト → heavy（文章以外・200 行超）",
-    "source": "shibamasa-dev/claude-code-plugins PR #1 のマージ: git diff --numstat 1f8e939^1 1f8e939",
+    "source": "このリポジトリ（公開リポ）の PR #1 のマージ: git diff --numstat 1f8e939^1 1f8e939",
     "fixture": "public-pr1.tsv",
     "expected": "heavy",
     "expect_reasons": ["文章以外のファイル: .github/workflows/ci.yml", "変更行数 262 行 > 200 行"],
@@ -11,7 +11,7 @@
   {
     "id": "classify_public_hooks",
     "description": "hooks の .py とテストの .sh、規約の .md（32 行）→ heavy",
-    "source": "shibamasa-dev/claude-code-plugins PR #4 のマージ: git diff --numstat daac2f3^1 daac2f3",
+    "source": "このリポジトリ（公開リポ）の PR #4 のマージ: git diff --numstat daac2f3^1 daac2f3",
     "fixture": "public-pr4.tsv",
     "expected": "heavy",
     "expect_reasons": ["文章以外のファイル: plugins/guards/hooks/file-guard.py"],
@@ -20,7 +20,7 @@
   {
     "id": "classify_public_new_skill",
     "description": "新しい skill（SKILL.md・scripts・evals.json）と README → heavy（3 つの規則すべてに当たる）",
-    "source": "shibamasa-dev/claude-code-plugins PR #5（closed・未マージ）: gh pr view 5 --json files の additions / deletions / path",
+    "source": "このリポジトリ（公開リポ）の PR #5（closed・未マージ）: gh pr view 5 --json files の additions / deletions / path",
     "fixture": "public-pr5.tsv",
     "expected": "heavy",
     "expect_reasons": ["文章以外のファイル:", "振る舞いを決める文書（ファイル名）: plugins/workflow/skills/spinoff-session/SKILL.md", "変更行数 948 行 > 200 行"],
@@ -29,7 +29,7 @@
   {
     "id": "classify_public_skill_md_small",
     "description": "既存 SKILL.md の文言修正・CHANGELOG・plugin.json の version だけ（29 行）→ heavy",
-    "source": "shibamasa-dev/claude-code-plugins PR #22 のマージ: git diff --numstat e4e59eb^1 e4e59eb",
+    "source": "このリポジトリ（公開リポ）の PR #22 のマージ: git diff --numstat e4e59eb^1 e4e59eb",
     "fixture": "public-pr22.tsv",
     "expected": "heavy",
     "expect_reasons": ["文章以外のファイル: plugins/review/.claude-plugin/plugin.json", "振る舞いを決める文書（ファイル名）: plugins/review/skills/dev-flow/SKILL.md"],

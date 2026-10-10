@@ -36,7 +36,7 @@ strings -a "$BIN" | grep -o 'e0="computer-use"'
 
 説明文は "Enterprise denylist" だが、**プロジェクト settings.json でもユーザー settings.json でも効く**（実測）。
 
-**ユーザー `~/.claude/settings.json` に置けば「このマシンの全プロジェクト」に効く**（2026-09-15・Claude Code 2.1.272 で実測）。claude.ai 側のコネクタは有効なままなので、**他のデバイス・Web では使えるがこの PC だけ落とす**、という切り分けができる。用途例: freee をこの PC ではローカル MCP（`npx freee-mcp`）で使い、claude.ai のリモートコネクタと二重にならないようにする。
+**ユーザー `~/.claude/settings.json` に置けば「このマシンの全プロジェクト」に効く**（2026-09-15・Claude Code 2.1.272 で実測）。claude.ai 側のコネクタは有効なままなので、**他のデバイス・Web では使えるがこの PC だけ落とす**、という切り分けができる。用途例: 同じサービスをこの PC ではローカル MCP で使い、claude.ai のリモートコネクタと二重にならないようにする。
 
 ```json
 "deniedMcpServers": [
@@ -92,7 +92,7 @@ claude -p 'reply OK' </dev/null 2>&1 | grep blocked   # blocked 警告に名前�
 claude -p --model haiku 'Output ONLY JSON: {"<落とした skill>":<listed?>, "<残した skill>":<listed?>}' < /dev/null
 ```
 
-⚠️ **この yes/no 質問はモデルが幻覚する。** 「落とした側が false・残した側が true」が揃っても、それだけでは信用しない。**往復で確かめる** —— override を外して同じ質問をし、false だった側が true に戻ることまで見る。これを怠って「プラグイン prefix も効く」と誤った結論を出したことがある。最終確認は `/context` の Skills 表（ユーザーに叩いてもらう）。
+⚠️ **この yes/no 質問はモデルが幻覚する。** 「落とした側が false・残した側が true」が揃っても、それだけでは信用しない。**往復で確かめる** —— override を外して同じ質問をし、false だった側が true に戻ることまで見る。最終確認は `/context` の Skills 表（ユーザーに叩いてもらう）。
 
 ## プラグイン由来の MCP サーバー・スキルのスコープ
 

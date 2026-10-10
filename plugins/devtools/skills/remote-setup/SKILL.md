@@ -68,8 +68,7 @@ python3 <このスキルのパス>/scripts/scaffold.py <repo-root>
 - **環境層は自己完結**: リポ参照禁止(実行時点でリポが無い)。system pip へは
   `pip install --break-system-packages`(Ubuntu 24.04 は PEP 668)。
 - **Python はセッション層でリポ直下 `.venv`**。環境層で system に入れた重量パッケージは
-  `python3 -m venv --system-site-packages` で見せる(ローカルの `~/.venvs` 集約ルールは
-  ローカル専用。リモート VM は ephemeral で worktree も無い)。
+  `python3 -m venv --system-site-packages` で見せる。
 - **非対話**: `-y` / `DEBIAN_FRONTEND=noninteractive`。環境層は各ステップ `|| true`(exit 0 必須)。
 - 必須環境変数は `REQUIRED_ENV_VARS` に列挙。**値はリポに書かない**(claude.ai の環境
   ダイアログで設定。setup は存在チェックと警告のみ)。secrets はコミット禁止。

@@ -36,7 +36,7 @@ EXECUTOR = """あなたは、あるプロジェクトの週次オーケストレ
 
 ## これはドライランです
 - 依頼文の状況は架空の設定です。GitHub・セッション一覧などの実物は見ず、依頼文に書いた状態だけで答える
-- issue の作成・編集・close、PR 操作、subagent・spawn_task・spinoff の起動、SendMessage、archive_session、
+- issue の作成・編集・close、PR 操作、subagent・spawn_task・別セッションの起動、SendMessage、archive_session、
   ファイルの作成・編集は**しない**。代わりに「実際なら何を・どの内容で・どの順で実行するか」を回答に書く
 - ユーザーへの確認が要る場面では、確認する内容を回答に書き、そこで止まるべきか先へ進めてよいかをスキルに従って判断して書く
 - 今日は {today}

@@ -2,6 +2,11 @@
 
 review プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.4.1] - 2026-10-10
+
+### Changed
+- pr-review-triage：本文の実例から案件の中身を外し、eval の出典をリポ名ではなく「このリポジトリ（公開リポ）」と書いた
+
 ## [0.4.0] - 2026-10-09
 
 ### Added

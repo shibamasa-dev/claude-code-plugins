@@ -2,6 +2,11 @@
 
 devtools プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.2.1] - 2026-10-10
+
+### Changed
+- remote-setup：ローカルの venv 運用への言及を外し、eval の入力を入れた人が用意できるリポの記述にした
+
 ## [0.2.0] - 2026-10-09
 
 ### Added
