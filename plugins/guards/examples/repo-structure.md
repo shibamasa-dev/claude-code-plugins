@@ -1,8 +1,12 @@
 # リポジトリ構造ルール（docs/・scripts/・一時ファイル）
 
-> guards プラグインの file-guard フックが、Write の前にこのファイルの `<!-- guard:… -->` ブロックを読んで判定する。docs/ 直下の .md・scripts/ 直下のスクリプトの新規作成を止める。
+> guards プラグインの repo-structure-guard フックが、Write の前にこのファイルの `<!-- guard:… -->` ブロックを読んで判定する。docs/ 直下の .md・scripts/ 直下のスクリプトの新規作成を止める。
 >
-> **これはプラグイン同梱の既定。** `~/.claude/rules/repo-structure.md` を置くとそちらが優先され、環境変数 `FILE_GUARD_SPEC` を設定するとさらにそれが優先される。値を変えるときはブロックを1行直せば、フックの挙動と deny メッセージが同時に変わる。
+> **これは見本。プラグインの中にあるこのファイルはフックに読まれない。** 使うなら下のどちらかへコピーして、自分の運用に合わせて直す。
+> - リポごと：`<repo>/.claude/rules/repo-structure.md`（コミットすればチームで共有できる。Claude もルールとして読む）
+> - 自分の全リポ：`~/.claude/rules/repo-structure.md`
+>
+> 両方あればリポのほうを使う。環境変数 `REPO_STRUCTURE_SPEC` を設定するとそれだけを見る。値を変えるときはブロックを1行直せば、フックの挙動と deny メッセージが同時に変わる。
 
 ## docs/ の構造
 

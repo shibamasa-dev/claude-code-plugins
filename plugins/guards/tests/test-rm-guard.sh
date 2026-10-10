@@ -2,6 +2,9 @@
 # rm-guard（bash-guard.py の再帰 rm ガード）の実測。
 set -u
 export HOOK="$(cd "$(dirname "$0")/.." && pwd)/hooks/bash-guard.py"
+# A〜K は worktree をまとめて置くフォルダを ~/.worktrees に設定した状態で見る（設定 worktree_dirs。
+# Claude Code は userConfig の値を CLAUDE_PLUGIN_OPTION_<KEY> でフックに渡す）。設定が空のときは L で見る
+export CLAUDE_PLUGIN_OPTION_WORKTREE_DIRS='~/.worktrees'
 
 probe() {
   python3 - "$1" <<'PY'
@@ -239,5 +242,48 @@ TMPDIR="$FH/tmpd" K 'rm -rf "$TMPDIR/other"'       '$TMPDIR の下の worktree �
 # フックが別の worktree の GIT_DIR を受け継いでいても、消す先のリポで判定する
 GIT_DIR="$FH/repo/.git/worktrees/done" GIT_WORK_TREE="$FH/repo/.claude/worktrees/done" \
   K 'rm -rf .claude/worktrees/feat'               'GIT_DIR が別の worktree を指していても'    'deny'
+
+echo
+echo '=== L: 設定 worktree_dirs（空＝既定・値あり）で、どのガードが止めるか ==='
+# 一時領域（/tmp）は rm-guard が通すので、ここでは存在しない HOME（一時領域の外）で見る。
+# 出力は allow / wtguard（worktree-guard が止めた）/ rmguard（rm-guard が止めた）
+who() {
+  python3 - "$1" <<'PY'
+import json, subprocess, sys, os
+payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": sys.argv[1]}, "cwd": "/"})
+out = subprocess.run(["python3", os.environ["HOOK"]], input=payload, capture_output=True, text=True).stdout.strip()
+if not out:
+    print("allow"); raise SystemExit
+r = json.loads(out).get("hookSpecificOutput", {}).get("permissionDecisionReason", "")
+print("wtguard" if "worktree-guard" in r else "rmguard" if "rm-guard" in r else "other")
+PY
+}
+lrow() { printf '  %-58s -> %-7s (%s 期待)\n' "$2" "$(who "$1")" "$3"; }
+NH=/nonexistent-guards-home
+CLAUDE_PLUGIN_OPTION_WORKTREE_DIRS= HOME=$NH lrow 'rm -rf ~/.worktrees/x'      '空: ~/.worktrees は特別扱いしない'          'rmguard'
+CLAUDE_PLUGIN_OPTION_WORKTREE_DIRS= HOME=$NH lrow 'W=~/.worktrees/x; rm -rf $W' '空: 変数経由でも同じ'                        'rmguard'
+CLAUDE_PLUGIN_OPTION_WORKTREE_DIRS='~/.worktrees' HOME=$NH lrow 'rm -rf ~/.worktrees/x' '~/.worktrees: 判定できない worktree として止める' 'wtguard'
+CLAUDE_PLUGIN_OPTION_WORKTREE_DIRS='~/wt, ~/.worktrees' HOME=$NH lrow 'rm -rf ~/wt/x'       'カンマ区切りの1つ目'      'wtguard'
+CLAUDE_PLUGIN_OPTION_WORKTREE_DIRS='~/wt, ~/.worktrees' HOME=$NH lrow 'rm -rf ~/.worktrees/x' 'カンマ区切りの2つ目'    'wtguard'
+CLAUDE_PLUGIN_OPTION_WORKTREE_DIRS='/' HOME=$NH lrow 'rm -rf /opt/x'               'ルートは置き場として受け付けない'            'rmguard'
+CLAUDE_PLUGIN_OPTION_WORKTREE_DIRS='~' HOME=$NH lrow 'rm -rf ~/x'                  'ホームも置き場として受け付けない'            'rmguard'
+
+echo
+echo '=== M: rm-guard はマージ済みでクリーンな worktree の root を置き場に関係なく通す ==='
+# 一時領域の扱いを外して rm-guard の分類だけを見る（K の feat は未マージ、done はマージ済みでクリーン）
+classify() {
+  CLAUDE_PLUGIN_OPTION_WORKTREE_DIRS= HOME="$FH" PATH="$FH/bin-other:$PATH" python3 - "$1" <<'PY'
+import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("bash_guard", os.environ["HOOK"])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.SAFE_PREFIXES = ()
+print(m._classify_target(sys.argv[1]))
+PY
+}
+crow() { printf '  %-58s -> %-5s (%s 期待)\n' "$2" "$(classify "$1")" "$3"; }
+crow "$FH/repo/.claude/worktrees/done"            'マージ済みでクリーンな worktree の root'   'safe'
+crow "$FH/repo/.claude/worktrees/feat"            '未マージの worktree の root'               'other'
+crow "$FH/repo/.claude/worktrees/done/build"      'worktree の root でないパス'               'other'
+crow "$FH/repo"                                   'メインの作業ツリー'                        'other'
 
 rm -rf "$FH"
