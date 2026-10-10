@@ -1,15 +1,17 @@
 ---
 name: pr-review-triage
-description: PR を作成した直後・既存 PR へ push した直後に、差分の重さでレビューの頼み先を振り分け、頼む→待つ→評価して直す→再レビューまでを回すワークフロー。軽い PR（README などの文書だけ・200 行以内）は Claude が code-review skill でレビューして PR 本文に記録し CI だけ待つ。重い PR（コード・設定・skills/hooks などの振る舞いを決める文書・200 行超）はそのリポのレビューツール（CodeRabbit・Codex・Copilot・Gemini・Cursor Bugbot など）にコネクタで頼み、結果を待って評価・対応し、PR 本文に対応表を書く。再レビュー（指摘対応後にもう一度頼む）を投げるかの判断と依頼もここ。「PR 作った」「push した」「レビューして」「レビュー待って」「レビュー来た？」「再レビュー投げて」、英語の "PR created", "opened a PR", "pushed", "review", "re-review", "request review" で発動。PR 作成・push 後は指示が無くても必ず起動する。
-last_reviewed: 2026-10-09
-review_after: 2027-04-09
+description: PR を作成した直後・既存 PR へ push した直後に、差分の重さでレビューの頼み先を振り分け、頼む→待つ→評価して直す→再レビューまでを回すワークフロー。軽い PR（README などの文書だけ・200 行以内）は Claude が code-review skill でレビューして PR 本文に記録し CI だけ待つ。重い PR（コード・設定・skills/hooks などの振る舞いを決める文書・200 行超）はそのリポのレビューツール（CodeRabbit・Codex・Copilot・Gemini・Cursor Bugbot など）にコネクタで頼み（ツールの自動レビューを ON にしたリポでは頼まずに、軽い PR だけ `review:light` ラベルで自動レビューから外す）、結果を待って評価・対応し、PR 本文に対応表を書く。再レビュー（指摘対応後にもう一度頼む）を投げるかの判断と依頼もここ。「PR 作った」「push した」「レビューして」「レビュー待って」「レビュー来た？」「再レビュー投げて」「重めでレビューして」、英語の "PR created", "opened a PR", "pushed", "review", "re-review", "request review" で発動。PR 作成・push 後は指示が無くても必ず起動する。
+last_reviewed: 2026-10-10
+review_after: 2027-04-10
 ---
 
 # pr-review-triage — PR のレビューを重さで振り分けて回す
 
 > workflow プラグインの dev-flow の 5・6 段（頼む・待つ・評価して直す・再レビュー）の正典。ツールごとの違い（アカウント名・頼み方・完了と未レビューの合図）は [references/tools/](references/tools/) に 1 ツール 1 ファイル、ローカルで待つ Monitor の実体は [references/monitor-snippet.md](references/monitor-snippet.md)。
 
-**前提**: レビューツールの自動レビューは止めてある。自動のままだと README の 1 行修正でもツールが走り、プランの上限（1 時間あたりの回数）を軽い PR が食い潰す。止めた代わりに、PR ごとにここで頼み先を決めて頼む。
+**前提**: ツールの自動レビューの扱いはリポごとに 2 通りある（`review-auto:`。1 で決める）。
+- **`off`（既定）**: ツールの自動レビューは止めてある。自動のままだと README の 1 行修正でもツールが走り、プランの上限（1 時間あたりの回数）を軽い PR が食い潰す。止めた代わりに、PR ごとにここで頼み先を決めて頼む
+- **`on`**: ツールの自動レビューは ON のまま。軽い PR だけ、作るときに `review:light` ラベルを付けてツール側の設定で自動レビューから外す（2.1）。重い PR は自動で走るので頼まない。手動の `@coderabbitai review` も上限に 1 回ずつ数えられるので、止めても枠は節約できない。CodeRabbit はラベルなどで自動レビューから外した PR を上限に数えない（[rate limits](https://docs.coderabbit.ai/management/rate-limits)）
 
 **起動するとき**: PR を作った直後（workflow の dev-flow-gate の案内）、既存 PR へ push した直後（再レビューを頼むかを 6 の基準で決める）、ユーザーが再レビューを明示で頼んだとき、レート制限が明けたとき。
 
@@ -18,18 +20,33 @@ review_after: 2027-04-09
 ## 1. 使うツールを決める
 
 ```bash
-CLAUDE_PLUGIN_OPTION_REVIEW_TOOLS='${user_config.review_tools}' bash ${CLAUDE_PLUGIN_ROOT}/skills/pr-review-triage/scripts/detect-bots.sh
+export CLAUDE_PLUGIN_OPTION_REVIEW_HEAVY='${user_config.review_heavy}' CLAUDE_PLUGIN_OPTION_REVIEW_LIGHT='${user_config.review_light}' CLAUDE_PLUGIN_OPTION_REVIEW_AUTO='${user_config.review_auto}'
+D=${CLAUDE_PLUGIN_ROOT}/skills/pr-review-triage/scripts/detect-bots.sh
+bash $D          # heavy の PR に使うツール
+bash $D --light  # light の PR に使うもの（claude か ツールの id）
+bash $D --auto   # ツールの自動レビュー（on / off）
 ```
 
-リポの作業ツリーの中で実行する。上から最初に見つかったものを使う（結果は保存しない）:
+リポの作業ツリーの中で実行する。キーごとに、上から最初に見つかったものを使う（結果は保存しない）:
 
-1. リポの CLAUDE.md（または AGENTS.md）の `review-bots:` 行（例: `review-bots: coderabbit, codex`。`review-bots: none` は「ツールなし」）
-2. userConfig `review_tools`（カンマ区切り）
+1. リポの CLAUDE.md（または AGENTS.md）の行
+2. userConfig
+
+| 行 | userConfig | 例 | 意味 |
+|---|---|---|---|
+| `review-heavy:` | `review_heavy` | `coderabbit, codex` | heavy の PR に使うツール（カンマ区切り）。`none` は「ツールなし」 |
+| `review-light:` | `review_light` | `claude` | light の PR に使うもの。既定は `claude`（3 の手順で Claude がレビュー）。ツールの id を書けば light も heavy と同じ扱い（ラベルを付けず、そのツールで 4 の手順） |
+| `review-auto:` | `review_auto` | `on` / `off` | ツールの自動レビューが ON か。既定は `off` |
+| `review-notes:` | — | 自然言語 | 重点的に見てほしいこと。行をそのまま読む（スクリプトは読まない） |
 
 - **id が出る**: その回に頼むツール。id は `references/tools/<id>.md` のファイル名
-- **何も出ずに exit 0**（`review-bots: none`）: ツールのいないリポ。heavy でも 3 の手順で Claude がレビューする
-- **exit 4**（行も設定も無い）: どのツールを使うかをユーザーに聞き、リポの CLAUDE.md に `review-bots:` 行を足す PR を提案する
-- **exit 5**（行か設定はあるが、知っている id が 1 つも無い。綴り違いなど）: 「ツールなし」とは扱わない。stderr に出た id をユーザーに見せて、どのツールのつもりかを聞く（`none` の書き間違いで誰もレビューしない PR が出るのを防ぐ）
+- **何も出ずに exit 0**（`review-heavy: none`）: ツールのいないリポ。heavy でも 3 の手順で Claude がレビューする（`review-light: none` も同じく 3 の手順）
+- **exit 4**（`review-heavy:` の行も設定も無い）: どのツールを使うかをユーザーに聞き、リポの CLAUDE.md に `review-heavy:` 行を足す PR を提案する
+- **exit 5**（行か設定はあるが読めない。知っている id が 1 つも無い綴り違い、`review-auto:` が `on` / `off` 以外）: 「ツールなし」「off」とは扱わない。stderr をユーザーに見せて、どのつもりかを聞く（`none` の書き間違いで誰もレビューしない PR が出るのを防ぐ）
+
+**`review-notes:`** は振り分け（2）の判定には使わない。渡し先は 2 つ:
+- Claude のレビュー（3）: `code-review` に重点として渡す
+- ツールへの依頼（4.1）: 依頼コメントのメンション行には混ぜない。メンションの無い説明コメントとして依頼コメントの前に投稿する（Codex は長い focus 文で反応しなくなる。`references/tools/codex.md`）。`review-auto: on` で依頼しない回は渡す先が無いので、ツールに常に伝えたいことはツール側の設定に書く
 
 **過去の PR に来た bot から推測しない。** 自動レビューを止めると軽い PR が bot の痕跡を残さないので、推測は空になり、誰もレビューしない PR が出る。
 
@@ -50,22 +67,38 @@ git diff --numstat origin/<base>...HEAD | bash ${CLAUDE_PLUGIN_ROOT}/skills/pr-r
 
 **light**: それ以外（README などの文書だけで、200 行以内）。
 
+light でも、ユーザーが「重めでレビューして」と頼んだら heavy の手順（4）で回す（重い方へ倒すのはよい。軽い方へは倒さない）。`review:light` ラベルが付いていれば外してから頼む（5 と同じ）。
+
 基準を変えたら `bash ${CLAUDE_PLUGIN_ROOT}/skills/pr-review-triage/evals/run_evals.sh` を回す（このリポの実 PR から取った差分で判定を確かめる。オフラインで動く）。fixture にはまだ light の実例が無い。**最初の light PR が出たら、そのマージの `git diff --numstat <merge>^1 <merge>` を fixture に足す**（合成した light ケースは作らない）。
+
+### 2.1 `review-auto: on` のとき — PR を作る前にラベルを決める
+
+`review-auto: on` のリポでは、ラベルを PR を作るときに付ける（作った後に付けても、ツールの最初の自動レビューに間に合わない可能性がある）。そのため 1・2 を **PR を作る前に** 回す（workflow の dev-flow の 4 段もここを指す）。
+
+1. `bash $D --auto` が `on` で、2 の判定が `light`、かつ `bash $D --light` が `claude`（または何も出ない）のときだけ、`review:light` ラベルを付けて作る。それ以外はラベルを付けない
+   - **`review-light:` にツールを書いたリポ**（例: `review-light: coderabbit, codex`）では、light でもラベルを付けない。ツールの自動レビューがそのまま走り、heavy と同じ扱いになる（4 の手順。待つツールは `bash $D --light` の id）。ラベルの運用をやめたいときの戻し方もこれ
+2. ラベルはリポに無ければ先に作る: `gh label create review:light --force --description "light の PR。ツールの自動レビューから外す"`（`--force` は既にあっても上書きするだけ）
+3. PR は `gh pr create --label review:light ...` で作る。GitHub コネクタの `create_pull_request` はラベルを渡せないので、ここは `gh` を使う例外
+4. ツール側で、このラベルの PR を自動レビューから外す設定を入れておく。CodeRabbit の設定例と未確認の点は [references/tools/coderabbit.md](references/tools/coderabbit.md)。ラベルで外せないツールは light でも走る（Codex は未確認。`references/tools/codex.md`）
+
+PR を作った後の流れ:
+- **light（ラベルあり）**: 3 のまま
+- **heavy**: ツールは自動で走るので、4.1 の依頼コメントは投稿しない。4.2〜4.4 はそのまま。4.4 の「4.1 で控えた head SHA と時刻」は、PR を作ったときの head SHA と時刻（`pull_request_read` の `get` の `head.sha` と `created_at`）に読み替える
 
 ## 3. light — Claude がレビューして CI だけ待つ
 
-1. 組み込みの `code-review` skill を PR 番号つきで起動する（例: `code-review <PR番号>`）。`coderabbit:code-review` ではない（あちらは CodeRabbit の枠を使う）。`--comment` は付けない（スレッドに書かない運用のため）。`code-review` が無い環境では、general-purpose subagent に `git diff origin/<base>...HEAD` を渡してレビューさせる
+1. 組み込みの `code-review` skill を PR 番号つきで起動する（例: `code-review <PR番号>`。`review-notes:` があれば重点として添える）。`coderabbit:code-review` ではない（あちらは CodeRabbit の枠を使う）。`--comment` は付けない（スレッドに書かない運用のため）。`code-review` が無い環境では、general-purpose subagent に `git diff origin/<base>...HEAD` を渡してレビューさせる
 2. 結果を **PR 本文** の `## レビュー（Claude）` 節に、対応表（指摘 / 判定 / 対応 / 根拠）で書く。**指摘ゼロでも節を置いて「指摘なし」と書く**（後から見た人が「レビューされていない」と誤読しないため）。本文の更新はコネクタの `update_pull_request`
 3. 対応する指摘を直して push する。ツールには頼まない
 4. **CI だけ待つ**: クラウドは `subscribe_pr_activity`、ローカルは Monitor で [references/monitor-snippet.md](references/monitor-snippet.md) の「CI だけ待つ」を回す。待たずに終えると dev-flow-gate の Stop の確認に止められる。チェックが 1 つも付かずに `NO_CHECKS` で抜けたら、CI が緑とは数えず「このリポ（この commit）にはチェックが無い」と報告する。取得の失敗が続いて `FETCH_GAVE_UP` で抜けたら、CI は「未確認」と報告し、取得し直して結果が出るまでマージの判断に進まない
 
-`review-bots: none` のリポで heavy だった PR も同じ手順で回し、`## レビュー（Claude）` に heavy だった理由（classify.sh の理由行）も書く。
+`review-heavy: none` のリポで heavy だった PR も同じ手順で回し、`## レビュー（Claude）` に heavy だった理由（classify.sh の理由行）も書く。
 
 ## 4. heavy — ツールに頼む → 待つ → 評価して直す
 
 ### 4.1 頼む
 
-頼み方は `references/tools/<id>.md` の「再レビューの頼み方」（初回も同じ）。**頼む直前に、今の head SHA（`pull_request_read` の `get` の `head.sha`）と時刻を控える**（4.4 で前の回の結果と分けるため）。
+`review-auto: on` のリポで PR を作った直後は頼まない（2.1）。それ以外の頼み方は `references/tools/<id>.md` の「再レビューの頼み方」（初回も同じ）。**頼む直前に、今の head SHA（`pull_request_read` の `get` の `head.sha`）と時刻を控える**（4.4 で前の回の結果と分けるため）。
 
 - **コメントで頼むツール**は、コネクタの `add_issue_comment` で **1 コメントにまとめて**投稿する（例: `@coderabbitai review` と `@codex review` を 1 行ずつ）。本文はメンション行だけにする（focus の制約は各ツールのファイル。Codex は短い英語だけ）
 - **Copilot** はコネクタの `request_copilot_review`
@@ -84,7 +117,7 @@ git diff --numstat origin/<base>...HEAD | bash ${CLAUDE_PLUGIN_ROOT}/skills/pr-r
 ### 4.3 待つ
 
 - **クラウド**: `subscribe_pr_activity` で PR イベントを購読してターンを終える
-- **ローカル**: Monitor（`persistent: true`）を立てる。実体は [references/monitor-snippet.md](references/monitor-snippet.md)。投稿者のフィルタは `bash ${CLAUDE_PLUGIN_ROOT}/skills/pr-review-triage/scripts/detect-bots.sh --regex` の出力（1 と同じ環境変数を付ける）。**ツール以外（自分の返信）は除外する**。自分の投稿を拾うと通知が溢れて本物のレビューが埋もれる
+- **ローカル**: Monitor（`persistent: true`）を立てる。実体は [references/monitor-snippet.md](references/monitor-snippet.md)。投稿者のフィルタは `bash $D --regex` の出力（1 と同じ環境変数を付ける。light をツールで回すときは `bash $D --light --regex`）。**ツール以外（自分の返信）は除外する**。自分の投稿を拾うと通知が溢れて本物のレビューが埋もれる
 
 通知本文は truncate されるので、新着を検知したら必ず全文を取り直してから評価する。満了通知が 0 件でも「まだ来ていない」と読まず、一次ソースを引き直す。
 
@@ -114,10 +147,12 @@ git diff --numstat origin/<base>...HEAD | bash ${CLAUDE_PLUGIN_ROOT}/skills/pr-r
 指摘対応などで push したら、2 の振り分けをやり直す。
 
 - **light のまま**: push して CI だけ待つ
-- **前回 light だった PR が heavy に変わった**: ツールにとっては初回なので、6 の基準に関係なく 4 の手順で頼む
-- **heavy のまま**: 6 の基準で再レビューを頼むかを決める
+- **前回 light だった PR が heavy に変わった**: ツールにとっては初回なので、6 の基準に関係なく 4 の手順で頼む。`review:light` ラベルが付いていれば先に外す（`gh pr edit <PR番号> --remove-label review:light`）。外しただけでツールの自動レビューが始まるかは未確認なので、`review-auto: on` でも 4.1 の手順で手動で頼む
+- **heavy のまま**: 6 の基準で再レビューを頼むかを決める。ツールのレビューの結果が返った後に続き（新しい変更）を足した push は、6 の基準の例外で頼む
 
 ## 6. 再レビュー
+
+`review-auto: on` のリポで、ツールの設定で push ごとに自動でレビューが走る（CodeRabbit の incremental review など）なら、そのツールには頼まず 4.2 から待つ（同じ push に二重に枠を使わないため）。
 
 **頼む**: その回に直した指摘のうち、重い指摘（CodeRabbit=Critical / Codex=P1。ほかのツールは Critical・High 相当。ツールごとの呼び方は `references/tools/<id>.md` の「重い指摘」）が **${user_config.rereview_threshold} 件以上**（userConfig `rereview_threshold`。既定 3）あったときだけ、その回に頼んだツールへ頼む（頼み方は 4.1、そのあと 4.2 から）。
 
@@ -125,6 +160,7 @@ git diff --numstat origin/<base>...HEAD | bash ${CLAUDE_PLUGIN_ROOT}/skills/pr-r
 
 **基準の例外**（基準を満たさなくても頼んでよい）:
 - **ユーザーの明示指示**（「再レビュー投げて」）
+- **レビューの結果が返った後に、同じ PR へ続きを足した push**。足した範囲はまだ誰も見ていないので、直した重い指摘の件数に関係なく頼む。結果が返る前に足した分は初回のレビューに含まれるので頼まない（指摘への対応だけの push はこの例外に当たらない）
 - **レート制限明けの頼み直し**（4.4。そのツールにだけ）
 - **自動マージのリポ**（リポの `.claude/dev-flow.json` が `{"autoMerge": true}`）で、**エージェント（委譲先のセッション等）が作った PR**。そのリポではマージ自体をユーザー以外の判断で認めているので、その前段の再レビューも同じ扱いにする。判断の目安はリポの CLAUDE.md に定めがあればそれ、無ければクリティカル/actionable な指摘（nit・style は除く）が多い、または PR のファイル数が多いときに頼む側へ倒す。総コメント数では測らない（ツールは nit を無限に出す）
   - 対象外（基準か明示指示が要る）: client / product リポ（他組織のリポを含む）の PR／エージェントが作ったものでない PR／破壊的変更・後戻りしづらい変更を含む PR
@@ -142,5 +178,5 @@ git diff --numstat origin/<base>...HEAD | bash ${CLAUDE_PLUGIN_ROOT}/skills/pr-r
 - 「念のため」を理由に、基準を満たさないまま頼む
 - 数分待っても来ないからもう一度頼む（到着待ちは 4.3 に任せる）
 - closed / merged の PR に頼む
-- 振り分けの結果を「軽そうだから」と手で light に変える（変えたいなら classify.sh の基準を直す PR を出す）
+- 振り分けの結果を「軽そうだから」と手で light に変える（変えたいなら classify.sh の基準を直す PR を出す）。heavy へ倒す（ユーザーの「重めで」）のはよい
 - レート制限・上限で止まったツールを「レビュー済み」に数える

@@ -15,4 +15,4 @@
 
 ## PR レビュー
 
-review-bots: coderabbit, codex
+review-heavy: coderabbit, codex

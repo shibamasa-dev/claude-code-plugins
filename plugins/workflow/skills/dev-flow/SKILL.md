@@ -29,7 +29,7 @@ review_after: 2027-04-06
    - 組織のリポで `Arch Review` か `Verification` が無い → ユーザーに1回警告する：「組織の設定の Issue Fields に `Arch Review`（Pending / Approved）と `Verification`（Not needed / Pending / Verified）を登録すると、アーキレビューと実機確認の状態を issue に残せます」。登録されるまでは、GO はチャットでもらい、未検証の項目は `## 結果` に書く。
    - 個人アカウントのリポ（Organization として解決できない・空が返る）→ Issue Fields は組織専用で使えない旨を1回伝え、同じ代わりの方法で進める。
 2. **自動マージ**: リポの既定ブランチにある `.claude/dev-flow.json` を読む（手元に clone があれば `git show origin/<既定ブランチ>:.claude/dev-flow.json`、無ければ ref を指定しない `get_file_contents`）。作業ブランチの値では決めない（自動マージを有効にする PR を、そのブランチの値で自動マージしないため）。`{"autoMerge": true}` なら自動マージのリポ（9 段）。ファイルが無い・`false` なら既定どおりユーザーがマージする。
-3. **レビューツール**: review プラグインの pr-review-triage の決め方に従う（リポの CLAUDE.md / AGENTS.md の `review-bots:` 行、無ければ userConfig `review_tools`。どちらも無ければユーザーに聞く。過去の PR からは推測しない）。
+3. **レビューツール**: review プラグインの pr-review-triage の決め方に従う（リポの CLAUDE.md / AGENTS.md の `review-heavy:`・`review-light:`・`review-auto:` 行、無ければ review の userConfig `review_heavy`・`review_light`・`review_auto`。heavy のツールがどちらにも無ければユーザーに聞く。過去の PR からは推測しない）。
 
 ## ユーザーに決めてもらうときの出し方
 
@@ -91,11 +91,13 @@ review_after: 2027-04-06
   - 構造変更でない：`Arch-Review: not-needed — <理由>`
   - 構造変更で GO 済み：`Arch-Review: approved — <GO の在りか（issue・設計書・メッセージのリンク）>`
 
+**ツールの自動レビューが ON のリポ（`review-auto: on`）では、PR を作る前に振り分ける。** pr-review-triage の 2.1 に従い、light（かつ `review-light:` が `claude`）なら `review:light` ラベルを付けて作る。作った後に付けると、ツールの最初の自動レビューに間に合わない可能性がある。コネクタの `create_pull_request` はラベルを渡せないので、このときだけ `gh pr create --label review:light` で作る。
+
 ## 5〜6. 待つ・評価する・直す
 
 手順は pr-review-triage（振り分け・頼み方・待ち方・到着判定・評価・対応表・再レビュー）。段をまたぐ約束だけここに置く:
 
-- **差分の重さで頼み先を振り分ける。** 軽い PR（文書だけ・200 行以内）は Claude がレビューして PR 本文の `## レビュー（Claude）` に書き、CI だけ待つ。重い PR はそのリポのレビューツールにコネクタで頼み、その結果と CI を待つ。
+- **差分の重さで頼み先を振り分ける。** 軽い PR（文書だけ・200 行以内）は Claude がレビューして PR 本文の `## レビュー（Claude）` に書き、CI だけ待つ。重い PR はそのリポのレビューツールにコネクタで頼み（ツールの自動レビューが ON のリポでは頼まずに）、その結果と CI を待つ。
 
 - **待ち方はクラウドとローカルで違う。** クラウドのセッションは PR イベントの購読（`subscribe_pr_activity` があればそれ）でターンを終える。イベントがターンをまたいで起こしてくれる。ローカルは Monitor を立てる。Monitor はシェルのコマンドを回す仕組みなので、中では `gh` を使う（コネクタを使えない、CLI が残る例外）。
 - **レート制限・上限で止まったツールは未レビュー**として数え、待ち時間の後にそのツールにだけ頼み直す。
@@ -146,7 +148,7 @@ GitHub の操作は GitHub コネクタのツールで行う。`gh` は、コネ
 |---|---|---|
 | issue を読む・作る・更新・close | `issue_read`・`issue_write` | `issue_write` が承認フォームを出す環境（issue-ops） |
 | issue のコメント・親子 | `add_issue_comment`・`sub_issue_write` | 同上 |
-| PR を作る・更新 | `create_pull_request`・`update_pull_request` | — |
+| PR を作る・更新 | `create_pull_request`・`update_pull_request` | `review-auto: on` のリポで `review:light` ラベルを付けて作る・外す（コネクタはラベルを渡せない） |
 | PR・レビュー・CI を読む | `pull_request_read`（get・get_reviews・get_review_comments・get_comments・get_check_runs） | — |
 | マージ | `merge_pull_request`・`enable_pr_auto_merge` | — |
 | ローカルでレビューを待つ | — | Monitor の中（シェルのコマンドなので） |
