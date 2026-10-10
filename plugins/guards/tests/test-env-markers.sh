@@ -60,6 +60,8 @@ row 'cd .venvs/x && uv pip sync req.txt'                                       '
 row 'cd .venvs/x && cd ../.. && uv pip sync req.txt'                           '相対パスの cd で出る'             'allow'
 row 'cd -P .venvs/x && uv pip sync req.txt'                                    'cd のオプションの後の相対パス'   'deny'
 CDPATH="$HOME/.venvs" row 'cd x && uv pip sync req.txt'                        'CDPATH があるときの相対名の cd'   'deny'
+CDPATH="$HOME/.venvs" row 'cd .x && uv pip sync req.txt'                       'CDPATH があるときのドットで始まる名前' 'deny'
+CDPATH="$HOME/.venvs" row 'cd ./x && uv pip sync req.txt'                       'CDPATH があっても ./ は今いる場所の下' 'allow'
 row 'cd "$WORKDIR" && uv pip sync req.txt'                                     '行き先が分からない cd'            'deny'
 row 'pushd ~/.venvs/x && popd && uv pip sync req.txt'                          'pushd で入って popd で戻る'       'allow'
 

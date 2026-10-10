@@ -1427,8 +1427,8 @@ def _cd_target(tokens: list, cwd):
     if arg == "-" or "$" in arg or "`" in arg:
         return None
     if not os.path.isabs(arg):
-        # CDPATH があると相対名の行き先が変わる（`./`・`../` で始まるときだけ今いる場所の下）
-        if cwd is None or (os.environ.get("CDPATH") and not arg.startswith(".")):
+        # CDPATH があると相対名の行き先が変わる（`.`・`..` か `./`・`../` で始まるときだけ今いる場所の下。`.hidden` は CDPATH を探す）
+        if cwd is None or (os.environ.get("CDPATH") and arg.split("/", 1)[0] not in (".", "..")):
             return None
         arg = os.path.join(cwd, arg)
     return os.path.normpath(arg)
