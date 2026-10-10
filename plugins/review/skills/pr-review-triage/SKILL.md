@@ -7,11 +7,11 @@ review_after: 2027-04-09
 
 # pr-review-triage — PR のレビューを重さで振り分けて回す
 
-> dev-flow の 5・6 段（頼む・待つ・評価して直す・再レビュー）の正典。ツールごとの違い（アカウント名・頼み方・完了と未レビューの合図）は [references/tools/](references/tools/) に 1 ツール 1 ファイル、ローカルで待つ Monitor の実体は [references/monitor-snippet.md](references/monitor-snippet.md)。
+> workflow プラグインの dev-flow の 5・6 段（頼む・待つ・評価して直す・再レビュー）の正典。ツールごとの違い（アカウント名・頼み方・完了と未レビューの合図）は [references/tools/](references/tools/) に 1 ツール 1 ファイル、ローカルで待つ Monitor の実体は [references/monitor-snippet.md](references/monitor-snippet.md)。
 
 **前提**: レビューツールの自動レビューは止めてある。自動のままだと README の 1 行修正でもツールが走り、プランの上限（1 時間あたりの回数）を軽い PR が食い潰す。止めた代わりに、PR ごとにここで頼み先を決めて頼む。
 
-**起動するとき**: PR を作った直後（dev-flow-gate の案内）、既存 PR へ push した直後（再レビューを頼むかを 6 の基準で決める）、ユーザーが再レビューを明示で頼んだとき、レート制限が明けたとき。
+**起動するとき**: PR を作った直後（workflow の dev-flow-gate の案内）、既存 PR へ push した直後（再レビューを頼むかを 6 の基準で決める）、ユーザーが再レビューを明示で頼んだとき、レート制限が明けたとき。
 
 **待ち方はクラウドとローカルで違う**: クラウドのセッションは PR イベントの購読（`subscribe_pr_activity`）でターンを終える。ローカルは Monitor を立てる。Monitor はシェルのコマンドを回す仕組みなので、中では `gh` を使う（コネクタを使えない、CLI が残る例外）。**Monitor はセッションが生きている間だけ動く。** 長時間離席するなら「セッションを閉じるとレビュー待機も切れる」とユーザーに伝える。
 

@@ -2,6 +2,11 @@
 
 workflow プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.2.0] - 2026-10-10
+
+### Added
+- `dev-flow` スキルと `dev-flow-gate` フックを review プラグインから移した。issue-ops と同じプラグインで、依頼から `## 結果` までの流れが揃う。dev-flow-gate の状態は新しい置き場（`${CLAUDE_PLUGIN_DATA}/dev-flow-gate/`）で取り直す
+
 ## [0.1.11] - 2026-10-10
 
 ### Changed

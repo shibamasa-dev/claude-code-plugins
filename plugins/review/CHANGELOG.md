@@ -2,6 +2,11 @@
 
 review プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
 
+## [0.5.0] - 2026-10-10
+
+### Removed
+- `dev-flow` スキルと `dev-flow-gate` フックを workflow プラグインへ移した。引き続き使うには workflow を入れる（スキル名は `workflow:dev-flow`）。review は `pr-review-triage` とコマンドだけになった
+
 ## [0.4.2] - 2026-10-10
 
 ### Removed

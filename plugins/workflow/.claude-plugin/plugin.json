@@ -1,7 +1,7 @@
 {
   "name": "workflow",
-  "version": "0.1.11",
-  "description": "issue 運用・セッションの引き継ぎ・runbook 記録などのスキルとフック",
+  "version": "0.2.0",
+  "description": "依頼からマージまでの開発フロー・issue 運用・セッションの引き継ぎ・runbook 記録などのスキルとフック",
   "author": {
     "name": "shibamasa-dev"
   },
