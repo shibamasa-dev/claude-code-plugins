@@ -7,6 +7,9 @@ workflow プラグインの変更履歴。書式は [Keep a Changelog](https://k
 ### Added
 - `dev-flow` スキルと `dev-flow-gate` フックを review プラグインから移した。issue-ops と同じプラグインで、依頼から `## 結果` までの流れが揃う。dev-flow-gate の状態は新しい置き場（`${CLAUDE_PLUGIN_DATA}/dev-flow-gate/`）で取り直す
 
+### Changed
+- dev-flow：自動マージの判定は既定ブランチの `.claude/dev-flow.json` で行い、作業ブランチの値では決めない（有効にする PR 自身を自動マージしないため）。自動マージの実行の場所はリポ側の文書に定めがあればそれに従う
+
 ## [0.1.11] - 2026-10-10
 
 ### Changed

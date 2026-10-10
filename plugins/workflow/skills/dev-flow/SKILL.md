@@ -28,7 +28,7 @@ review_after: 2027-04-06
 1. **Issue Fields**: `list_issue_fields`（owner と repo を指定）を呼ぶ。
    - 組織のリポで `Arch Review` か `Verification` が無い → ユーザーに1回警告する：「組織の設定の Issue Fields に `Arch Review`（Pending / Approved）と `Verification`（Not needed / Pending / Verified）を登録すると、アーキレビューと実機確認の状態を issue に残せます」。登録されるまでは、GO はチャットでもらい、未検証の項目は `## 結果` に書く。
    - 個人アカウントのリポ（Organization として解決できない・空が返る）→ Issue Fields は組織専用で使えない旨を1回伝え、同じ代わりの方法で進める。
-2. **自動マージ**: リポの `.claude/dev-flow.json` を読む（手元に clone があればファイル、無ければ `get_file_contents`）。`{"autoMerge": true}` なら自動マージのリポ（9 段）。ファイルが無い・`false` なら既定どおりユーザーがマージする。
+2. **自動マージ**: リポの既定ブランチにある `.claude/dev-flow.json` を読む（手元に clone があれば `git show origin/<既定ブランチ>:.claude/dev-flow.json`、無ければ ref を指定しない `get_file_contents`）。作業ブランチの値では決めない（自動マージを有効にする PR を、そのブランチの値で自動マージしないため）。`{"autoMerge": true}` なら自動マージのリポ（9 段）。ファイルが無い・`false` なら既定どおりユーザーがマージする。
 3. **レビューツール**: review プラグインの pr-review-triage の決め方に従う（リポの CLAUDE.md / AGENTS.md の `review-bots:` 行、無ければ userConfig `review_tools`。どちらも無ければユーザーに聞く。過去の PR からは推測しない）。
 
 ## ユーザーに決めてもらうときの出し方
@@ -123,7 +123,7 @@ review_after: 2027-04-06
 ## 9. マージ
 
 - **既定はユーザーがマージする**（ユーザーがマージを明示して指示したら、Claude がマージしてよい）。
-- **自動マージのリポ**（0 段で `.claude/dev-flow.json` が `{"autoMerge": true}`）：8 段の条件がそろった時点で、Claude が `merge_pull_request` でマージする。リポが GitHub の auto-merge を許可していれば、`enable_pr_auto_merge` で CI 待ちを GitHub に任せてもよい。ただし次はユーザーに回す：
+- **自動マージのリポ**（0 段で `.claude/dev-flow.json` が `{"autoMerge": true}`）：8 段の条件がそろった時点で、Claude が `merge_pull_request` でマージする。判断の目安と実行の場所は、リポ側の文書（CLAUDE.md・`.claude/ARCHITECTURE.md` など）に定めがあればそれに従う。リポが GitHub の auto-merge を許可していれば、`enable_pr_auto_merge` で CI 待ちを GitHub に任せてもよい。ただし次はユーザーに回す：
   - 破壊的な変更・後戻りしにくい変更（データの移行、公開 API の削除など）
   - Claude が作っていない PR
   - client / product のリポ（他組織のリポを含む）の PR。pr-review-triage の自動マージの例外と同じ扱い
