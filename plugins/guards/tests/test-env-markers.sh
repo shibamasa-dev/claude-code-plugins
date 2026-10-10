@@ -70,6 +70,12 @@ row 'cd /tmp/p && source .venv/bin/activate && uv pip sync r'                  '
 row 'source "$V/bin/activate" && uv pip sync r'                                '行き先が分からない activate'      'deny'
 row 'cd "$WORKDIR" && uv pip sync req.txt'                                     '行き先が分からない cd'            'deny'
 row 'pushd ~/.venvs/x && popd && uv pip sync req.txt'                          'pushd で入って popd で戻る'       'allow'
+row 'cd ~/.venvs/x && pushd -n /tmp && uv pip sync req.txt'                   'pushd -n は移動しない'            'deny'
+row 'pushd -n ~/.venvs/x && popd && uv pip sync req.txt'                       'pushd -n で積んだ先へ popd'       'deny'
+row 'pushd ~/.venvs/x && pushd /tmp && pushd && uv pip sync req.txt'            '引数なしの pushd で入れ替え'      'deny'
+row 'cd ~/.venvs/x && pushd /tmp && pushd && pushd && uv pip sync req.txt'      '引数なしの pushd を2回で戻る'     'allow'
+row 'pushd ~/.venvs/x && pushd /tmp && popd -n && uv pip sync req.txt'          'popd -n は移動しない'             'allow'
+row 'pushd /tmp && pushd +1 && uv pip sync req.txt'                             'スタックの番号で移動'             'deny'
 
 echo
 echo '=== shared-venv-guard: 設定 shared_venv_dirs が空のとき（既定） ==='

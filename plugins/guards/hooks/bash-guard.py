@@ -1466,17 +1466,34 @@ def rule_shared_venv_guard(command: str):
     for cmd in _commands(command):
         tk = cmd.tokens
         head = os.path.basename(tk[0]) if tk else ""
-        if head in ("cd", "pushd"):
-            if head == "pushd":
+        if head in ("pushd", "popd") and any(re.fullmatch(r"[+-]\d+", t) for t in tk[1:]):
+            # `pushd +1`・`popd -0` などはスタックの何番目かで決まる。行き先もスタックも分からなくなる
+            cwd, cwd_shared, dir_stack = None, True, []
+            continue
+        if head == "pushd" and not [t for t in tk[1:] if not t.startswith("-")]:
+            # 引数なしの pushd は今いる場所とスタックの先頭を入れ替える（-n なら何もしない）
+            if dir_stack and "-n" not in tk:
+                top = dir_stack.pop()
                 dir_stack.append((cwd, cwd_shared))
+                cwd, cwd_shared = top
+            continue
+        if head in ("cd", "pushd"):
             target = _cd_target(cmd, cwd)
-            if target is not None:
-                cwd, cwd_shared = target, _under_shared_venv(target)
+            new = (target, _under_shared_venv(target)) if target is not None else \
+                (None, True)  # 行き先が分からない。共有 venv の中かもしれないので止める側に倒す
+            if head == "pushd" and "-n" in tk:
+                dir_stack.append(new)  # `pushd -n` はスタックに積むだけで移動しない
             else:
-                cwd, cwd_shared = None, True  # 行き先が分からない。共有 venv の中かもしれないので止める側に倒す
+                if head == "pushd":
+                    dir_stack.append((cwd, cwd_shared))
+                cwd, cwd_shared = new
             continue
         if head == "popd":
-            cwd, cwd_shared = dir_stack.pop() if dir_stack else (None, True)
+            if "-n" in tk:
+                if dir_stack:
+                    dir_stack.pop()  # `popd -n` はスタックから外すだけで移動しない
+            else:
+                cwd, cwd_shared = dir_stack.pop() if dir_stack else (None, True)
             continue
         if head in ("source", "."):
             # activate を読んだときだけ venv を置き直す（ほかのスクリプトは venv を変えない前提で前の状態のまま）
