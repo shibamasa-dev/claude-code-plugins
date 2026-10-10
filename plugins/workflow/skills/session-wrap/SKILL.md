@@ -22,7 +22,7 @@ review_after: 2027-03-21
    | 旗 | 提案 |
    |---|---|
    | `DIRTY` | 今コミットするか（`commit-commands:commit`）、次回に残すか（残すなら何が未コミットかを最後の報告に書く）、捨てるか（`git stash` / `git checkout --`。**破壊的なので必ず確認**） |
-   | `UNPUSHED` | push するか（main なら既定ブランチより遅れていないか先に確かめる。guards プラグインがあれば bash-guard が機械で止める） |
+   | `UNPUSHED` | push するか（作業ブランチなら、既定ブランチより遅れていないか先に確かめ、遅れていれば取り込んでから push する。guards プラグインがあれば bash-guard が機械で止める） |
    | `PR_OPEN` | レビュー待ちなら「閉じると Monitor が切れる」を伝える。対応表は PR 本文に書けているか |
    | `PENDING_ISSUE` | 決定があれば body/コメントへ反映（`issue-ops`）。無ければ hook が示す `dismiss --why` |
    | 走っている subagent | 報告を待つか、止めるか（成果物はファイルに残る） |
