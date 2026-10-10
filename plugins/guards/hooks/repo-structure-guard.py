@@ -4,8 +4,7 @@
 判定に使う値（許すファイル名・サブフォルダ規定セット・スクリプト拡張子・例外）を
 **このスクリプトは持たない。** ルールファイルの `<!-- guard:… -->` ブロックを実行時に読む。
 ルールファイルは上から順に最初に見つかったものを使い、どれも無ければ何もしない:
-  1. 環境変数 `REPO_STRUCTURE_SPEC`（移行期間は旧名 `FILE_GUARD_SPEC` も読む。
-     設定されていればこれだけを見る。指す先が無ければ何もしない）
+  1. 環境変数 `REPO_STRUCTURE_SPEC`（設定されていればこれだけを見る。指す先が無ければ何もしない）
   2. 書き込み先のリポの `.claude/rules/repo-structure.md`（リポごとのルール。コミットすればチームで共有できる）
   3. `~/.claude/rules/repo-structure.md`（ユーザーのルール）
 見本はプラグインの `examples/repo-structure.md`（ルールとしては読まない。使うならコピーして直す）。
@@ -53,7 +52,7 @@ def repo_root(path: str):
 
 def resolve_spec(path: str):
     """書き込み先 path に効くルールファイル。無ければ None（何もしない）。"""
-    env = os.environ.get("REPO_STRUCTURE_SPEC") or os.environ.get("FILE_GUARD_SPEC")
+    env = os.environ.get("REPO_STRUCTURE_SPEC")
     if env:
         return os.path.expanduser(env)
     root = repo_root(path)

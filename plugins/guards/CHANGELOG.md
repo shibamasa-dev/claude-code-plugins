@@ -7,7 +7,7 @@ guards プラグインの変更履歴。書式は [Keep a Changelog](https://kee
 特定の運用を前提にした決め打ちを外し、使う人が選べるようにした。**今までの挙動に頼っていた場合は、下の「戻し方」を見てほしい。**
 
 ### Changed
-- file-guard を repo-structure-guard（`hooks/repo-structure-guard.py`）に改名し、オプトインにした。ルールファイルがあるときだけ効く。探す順は環境変数 `REPO_STRUCTURE_SPEC`（旧名 `FILE_GUARD_SPEC` も読む）→ 書き込み先のリポの `.claude/rules/repo-structure.md` → `~/.claude/rules/repo-structure.md`。リポごとにルールを変えられ、コミットすればチームやクラウドのセッションでも効く
+- file-guard を repo-structure-guard（`hooks/repo-structure-guard.py`）に改名し、オプトインにした。ルールファイルがあるときだけ効く。探す順は環境変数 `REPO_STRUCTURE_SPEC`（旧名 `FILE_GUARD_SPEC` は読まない）→ 書き込み先のリポの `.claude/rules/repo-structure.md` → `~/.claude/rules/repo-structure.md`。リポごとにルールを変えられ、コミットすればチームやクラウドのセッションでも効く
 - 同梱のルール `repo-structure.md` は `examples/repo-structure.md` に移した。見本としてだけ置き、フックは読まない
 - `~/.worktrees` の特別扱いを外し、設定 `worktree_dirs`（既定は空）にした。書いたフォルダは今までの `~/.worktrees` と同じ扱い（配下の再帰削除を通し、未マージか判定できないパスは止める）
 - rm-guard は、マージ済みでクリーンな linked worktree の root の削除を置き場に関係なく通す（`worktree_dirs` が空でも、片付けのたびに確認が出ないように）
@@ -15,6 +15,7 @@ guards プラグインの変更履歴。書式は [Keep a Changelog](https://kee
 - 設定値はフックが環境変数 `CLAUDE_PLUGIN_OPTION_<KEY>` から読む（シェル形式のフックのコマンドには `${user_config.KEY}` を書けないため）
 
 ### 戻し方
+- 環境変数 `FILE_GUARD_SPEC` を使っていた場合：`REPO_STRUCTURE_SPEC` に名前を変える
 - リポ構成のルール：`examples/repo-structure.md` を `~/.claude/rules/repo-structure.md`（全リポ）か `<repo>/.claude/rules/repo-structure.md`（そのリポだけ）にコピーする
 - worktree の置き場・共有 venv：`/plugin configure guards@shibamasa-plugins`（または `/config`）で `worktree_dirs` に `~/.worktrees`、`shared_venv_dirs` に `~/.venvs` を入れる。`claude plugin install --config worktree_dirs=~/.worktrees` でもよい
 

@@ -8,7 +8,7 @@ git -C "$R/repo" init -q
 probe() {   # $1 = 書き込み先、残りは env に渡す（環境変数の上書き）
   f=$1; shift
   out=$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$f" \
-        | env -u REPO_STRUCTURE_SPEC -u FILE_GUARD_SPEC HOME="$R/home" "$@" python3 "$H") || { echo error; return; }
+        | env -u REPO_STRUCTURE_SPEC HOME="$R/home" "$@" python3 "$H") || { echo error; return; }
   case "$out" in *'"deny"'*) echo deny ;; '') echo silent ;; *) echo other ;; esac
 }
 FAIL=0
@@ -47,7 +47,6 @@ echo '=== 環境変数（いちばん優先） ==='
 spec "$R/env.md" env.md
 row 'REPO_STRUCTURE_SPEC のルールで許した .md' "$(probe "$R/repo/docs/env.md" REPO_STRUCTURE_SPEC="$R/env.md")" silent
 row 'REPO_STRUCTURE_SPEC があるとリポのルールは見ない' "$(probe "$R/repo/docs/repo.md" REPO_STRUCTURE_SPEC="$R/env.md")" deny
-row '旧名 FILE_GUARD_SPEC も読む'           "$(probe "$R/repo/docs/env.md" FILE_GUARD_SPEC="$R/env.md")" silent
 row '環境変数が無いパスを指す＝外す'        "$(probe "$R/repo/docs/new.md" REPO_STRUCTURE_SPEC=/nonexistent/x.md)" silent
 rm -rf "$R"
 exit $FAIL

@@ -25,7 +25,7 @@ Claude Code の作業を、取り返しがつかなくなる前に止めるフ�
 
 ルールファイルがあるときだけ効く。上から順に最初に見つかったものを使い、どれも無ければ何もしない。
 
-1. 環境変数 `REPO_STRUCTURE_SPEC`（旧名 `FILE_GUARD_SPEC` も読む）。設定されていればこれだけを見る。存在しないパスを指せば無効
+1. 環境変数 `REPO_STRUCTURE_SPEC`。設定されていればこれだけを見る。存在しないパスを指せば無効
 2. 書き込み先のリポの `.claude/rules/repo-structure.md`。コミットすればチームで共有でき、クラウドのセッションでも効く。Claude もルールとして読む
 3. `~/.claude/rules/repo-structure.md`（自分の全リポ）
 
