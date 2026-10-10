@@ -13,6 +13,7 @@ review プラグインの変更履歴。書式は [Keep a Changelog](https://kee
 ### Changed
 - **リポの `review-bots:` 行を `review-heavy:` に、userConfig `review_tools` を `review_heavy` に名前を変えた。旧名は読まない**。利用者は userConfig `review_heavy` を設定し直し、リポの CLAUDE.md / AGENTS.md の `review-bots:` 行を `review-heavy:` に書き換える
 - `detect-bots.sh` に `--light`・`--auto` を足した
+- 5 節：light → heavy に変わった PR で `review-heavy: none` なら、3 の手順で Claude がレビューする
 
 ## [0.5.0] - 2026-10-10
 

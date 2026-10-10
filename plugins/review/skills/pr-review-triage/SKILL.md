@@ -149,7 +149,7 @@ PR を作った後の流れ:
 指摘対応などで push したら、2 の振り分けをやり直す。
 
 - **light のまま**: light のレビュー役（`bash $D --light`）が `claude` なら、push して CI だけ待つ。ツールなら、heavy のままと同じく 6 の基準で再レビューを頼むかを決める（新しい作業を足した push の例外も同じ）
-- **前回 light だった PR が heavy に変わった**: ツールにとっては初回なので、6 の基準に関係なく 4 の手順で頼む。`review:light` ラベルが付いていれば先に外す（`gh pr edit <PR番号> --remove-label review:light`）。外しただけでツールの自動レビューが始まるかは未確認なので、`review-auto: on` でも 4.1 の手順で手動で頼む
+- **前回 light だった PR が heavy に変わった**: `review:light` ラベルが付いていれば先に外す（`gh pr edit <PR番号> --remove-label review:light`）。`review-heavy: none`（`bash $D` が何も出さない）なら 3 の手順で Claude がレビューする。ツールがあれば、ツールにとっては初回なので、6 の基準に関係なく 4 の手順で頼む。外しただけでツールの自動レビューが始まるかは未確認なので、`review-auto: on` でも 4.1 の手順で手動で頼む
 - **heavy のまま**: 6 の基準で再レビューを頼むかを決める。レビューの結果が返った後に指摘への対応以外の新しい作業を足した push は、6 の基準の例外で頼む
 
 ## 6. 再レビュー
