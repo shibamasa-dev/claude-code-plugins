@@ -79,7 +79,7 @@ light でも、ユーザーが「重めでレビューして」と頼んだら h
 
 1. `bash $D --auto` が `on` で、2 の判定が `light`、かつ `bash $D --light` に `claude` が含まれる（または何も出ない）ときだけ、`review:light` ラベルを付けて作る。それ以外はラベルを付けない
    - **`review-light:` にツールを書いたリポ**（例: `review-light: coderabbit, codex`）では、light でもラベルを付けない。ツールの自動レビューがそのまま走り、heavy と同じ扱いになる（4 の手順。待つツールは `bash $D --light` の id）。ラベルの運用をやめたいときの戻し方もこれ
-   - **`claude` とツールを並べたリポ**（例: `review-light: claude, codex`）ではラベルを付ける。ラベルで外れるツール（CodeRabbit）は走らず、外せないツール（Codex など）は自動で走る。並べるのは外せないツールにする（外れるツールを並べると、自動では結果が来ない）
+   - **`claude` とツールを並べたリポ**（例: `review-light: claude, codex`）ではラベルを付ける。ラベルで外れるツール（CodeRabbit）は走らず、外せないツール（Codex など）は自動で走る。並べるのは外せないツールにする。外れるツールを並べたときは自動では結果が来ないので、3 の「ツールも並べたとき」のとおり 4.1 で手動で頼む
 2. ラベルはリポに無ければ先に作る: `gh label create review:light --force --description "light の PR。ツールの自動レビューから外す"`（`--force` は既にあっても上書きするだけ）
 3. PR は `gh pr create --label review:light ...` で作る。GitHub コネクタの `create_pull_request` はラベルを渡せないので、ここは `gh` を使う例外
 4. ツール側で、このラベルの PR を自動レビューから外す設定を入れておく。CodeRabbit の設定例と未確認の点は [references/tools/coderabbit.md](references/tools/coderabbit.md)。ラベルで外せないツールは light でも走る（Codex は未確認。`references/tools/codex.md`）
@@ -95,7 +95,7 @@ PR を作った後の流れ:
 3. 対応する指摘を直して push する。ツールには頼まない（`review-light:` にツールも並べたときは下）
 4. **CI だけ待つ**: クラウドは `subscribe_pr_activity`、ローカルは Monitor で [references/monitor-snippet.md](references/monitor-snippet.md) の「CI だけ待つ」を回す。待たずに終えると dev-flow-gate の Stop の確認に止められる。チェックが 1 つも付かずに `NO_CHECKS` で抜けたら、CI が緑とは数えず「このリポ（この commit）にはチェックが無い」と報告する。取得の失敗が続いて `FETCH_GAVE_UP` で抜けたら、CI は「未確認」と報告し、取得し直して結果が出るまでマージの判断に進まない
 
-**`review-light:` に `claude` とツールを並べたとき**（例: `review-light: claude, codex`）: 1〜4 に加えて、並べたツール（`bash $D --light` の `claude` 以外の id）の結果を 4.2〜4.4 で待ち、4.5 で評価して対応表に書く。`review-auto: on` ならツールへの依頼は出さずに自動レビューを待つ（4.4 の head SHA と時刻は 2.1 の読み替え）。`off` なら 4.1 で頼む。Monitor の投稿者のフィルタは `bash $D --light --regex`。
+**`review-light:` に `claude` とツールを並べたとき**（例: `review-light: claude, codex`）: 1〜4 に加えて、並べたツール（`bash $D --light` の `claude` 以外の id）の結果を 4.2〜4.4 で待ち、4.5 で評価して対応表に書く。`review-auto: on` なら、ラベルで外せないツール（Codex など）には依頼を出さずに自動レビューを待つ（4.4 の head SHA と時刻は 2.1 の読み替え）。ラベルで外れるツール（CodeRabbit）を並べたときは、自動では結果が来ないので 4.1 で手動で頼む（待ち続けない）。`off` なら全部 4.1 で頼む。Monitor の投稿者のフィルタは `bash $D --light --regex`。
 
 `review-heavy: none` のリポで heavy だった PR も同じ手順で回し、`## レビュー（Claude）` に heavy だった理由（classify.sh の理由行）も書く。
 
