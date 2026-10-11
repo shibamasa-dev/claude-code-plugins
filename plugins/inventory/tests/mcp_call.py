@@ -84,10 +84,15 @@ def main():
     for i, (name, arguments) in enumerate(calls, start=2):
         query = arguments.get("query", "")
         if name == "execute_sql" and query.startswith("!"):
+            # The command is written by the test script itself (shell=True is on purpose), but it can carry a
+            # connection URL, so a failure reports only the step and exit code, never the command or its stderr
             try:
-                subprocess.run(query[1:], shell=True, check=True, stdout=subprocess.DEVNULL, timeout=REPLY_TIMEOUT_S)
+                subprocess.run(query[1:], shell=True, check=True, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, timeout=REPLY_TIMEOUT_S)
             except subprocess.TimeoutExpired:
-                sys.exit(f"external command did not finish within {REPLY_TIMEOUT_S}s: {query[1:]}")
+                sys.exit(f"external command (step {i}) did not finish within {REPLY_TIMEOUT_S}s")
+            except subprocess.CalledProcessError as e:
+                sys.exit(f"external command (step {i}) failed with exit code {e.returncode}")
             continue
         r = rpc({"jsonrpc": "2.0", "id": i, "method": "tools/call",
                  "params": {"name": name, "arguments": arguments}})
