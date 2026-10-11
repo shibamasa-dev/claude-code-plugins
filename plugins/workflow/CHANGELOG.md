@@ -5,7 +5,7 @@ Changes to the workflow plugin. The format follows [Keep a Changelog](https://ke
 ## [0.4.0] - 2026-10-11
 
 ### Changed
-- All messages, skills and docs are now in English. Skill descriptions keep the Japanese trigger phrases.
+- Messages, skill bodies, references, comments and tests are now in English. Japanese stays only in the skill descriptions' trigger phrases, in data the features need (patterns that match Japanese text, fixtures for Japanese input) and in `README.ja.md`.
 - The issue section written at close / before merging a `Closes` PR is now `## Result` (was `## 結果`). dev-flow-gate still accepts `## 結果` and `## Results`.
 - The recurring-task handoff section is now `## Notes for next time` (was `## 次回への引き継ぎ`). dev-flow-gate accepts both (it now also counts `## Notes for next time`).
 - The PR-body section where Claude records its own review is now `## Review (Claude)` (was `## レビュー（Claude）`). No hook reads it; dev-flow and pr-review-triage still count the old heading in older PRs.
