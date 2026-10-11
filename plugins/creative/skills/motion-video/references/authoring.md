@@ -306,6 +306,6 @@ g.restore();
 |---|---|---|---|---|
 | sign | 1 | 1600×900・PNG・背景透過 | s2 の店頭看板 | 5セクション構造（下記） |
 
-プロンプトは5セクション構造で書く（Scene / Subject / Important details / Use case / Constraints。Constraints を空にしない）。docs プラグインの `image-generation-prompt` スキルがあればそれで組む。
+プロンプトは5セクション構造で書く（Scene / Subject / Important details / Use case / Constraints。Constraints を空にしない）。同じプラグインの `image-generation-prompt` スキルがあればそれで組む。
 
 生成はスキルの外で、**人の承認を得てから**行う（codex など人が選んだ経路で）。できた画像は通常の素材と同じく `assets/` に置いて `meta.assets` に足す。製品の UI・数字・ロゴは生成しない（実物を人に求める）。

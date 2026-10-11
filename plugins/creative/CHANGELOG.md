@@ -1,6 +1,11 @@
 # Changelog
 
-docs プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
+creative プラグイン（0.1.4 までは docs）の変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
+
+## [0.2.0] - 2026-10-11
+
+### Changed
+- **プラグインの名前を docs から creative に変えた。** 中身は画像・動画・DESIGN.md で、文書ではないため（`design` は公式の同名プラグインがあるので避けた）。docs を入れていたら外して creative を入れる。スキル名とフックは変えていない
 
 ## [0.1.4] - 2026-10-10
 
