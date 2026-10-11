@@ -2,6 +2,11 @@
 
 Change history of the lint plugin. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
 
+## [0.2.1] - 2026-10-11
+
+### Fixed
+- skill-lint: provenance warnings also fire on English decision words (`approved`, `decided`, `confirmed`, `instructed`, `agreed`, `signed off`; whole words, any case) on a line with a date.
+
 ## [0.2.0] - 2026-10-11
 
 ### Changed

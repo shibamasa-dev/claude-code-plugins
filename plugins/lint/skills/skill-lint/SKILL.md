@@ -36,7 +36,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/skill-lint/scripts/lint.py" "$ARGUMENTS" -
 | secret | error | Secrets found by gitleaks, or a gitleaks failure (including an unreadable report) |
 | structure | error | Runtime data inside the skill: `logs/`, `.trash/`, `*.db`, `*.sqlite`, `*.jsonl`, `*.log`, etc. |
 | tracker | warn | `owner/repo#N`, `repo#N`, bare `#N` |
-| provenance | warn | A date and a Japanese decision word (確定・承認・指示・判断・確認 — confirmed, approved, instructed, decided, checked) on the same line |
+| provenance | warn | A date and a decision word on the same line: Japanese (確定・承認・指示・判断・確認 — confirmed, approved, instructed, decided, checked) or English (approved, decided, confirmed, instructed, agreed, signed off; whole words, any case) |
 
 - Frontmatter `last_reviewed` / `review_after` are not checked. Lines containing `skill-lint: ignore` are not checked either.
 - Only paths listed in the target skill's `.skill-lint-ignore` are excluded (by default every file is checked; fixtures taken from real data leak the most, so exclude nothing except test data that leaks on purpose). The number of excluded files is reported.
