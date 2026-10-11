@@ -24,7 +24,7 @@ https://claude.com/docs/cowork/overview.md
 | Layer | Defined in | Runs | Privileges |
 |----|---------|------|------|
 | Setup script (environment layer) | claude.ai/code environment dialog | At new session start, before Claude Code starts, only when there is no cache | **root** |
-| SessionStart hook (session layer) | the repo's `.claude/settings.json` | Every session (matcher: `startup|resume`, etc.) | normal user |
+| SessionStart hook (session layer) | the repo's `.claude/settings.json` | Every session (matcher: `startup\|resume`, etc.) | normal user |
 
 **Division of roles (documented officially)**: the Setup script is for "provisioning the VM itself"
 (toolchains and CLIs not preinstalled). The repository's project setup
