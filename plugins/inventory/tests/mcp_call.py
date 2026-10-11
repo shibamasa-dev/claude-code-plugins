@@ -84,7 +84,10 @@ def main():
     for i, (name, arguments) in enumerate(calls, start=2):
         query = arguments.get("query", "")
         if name == "execute_sql" and query.startswith("!"):
-            subprocess.run(query[1:], shell=True, check=True, stdout=subprocess.DEVNULL)
+            try:
+                subprocess.run(query[1:], shell=True, check=True, stdout=subprocess.DEVNULL, timeout=REPLY_TIMEOUT_S)
+            except subprocess.TimeoutExpired:
+                sys.exit(f"external command did not finish within {REPLY_TIMEOUT_S}s: {query[1:]}")
             continue
         r = rpc({"jsonrpc": "2.0", "id": i, "method": "tools/call",
                  "params": {"name": name, "arguments": arguments}})
