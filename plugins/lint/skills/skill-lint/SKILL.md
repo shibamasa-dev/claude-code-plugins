@@ -1,89 +1,91 @@
 ---
 name: skill-lint
-description: スキル（SKILL.md と scripts/・references/ などの付属ファイル）に、作った人・会社・マシンの固有情報が混ざっていないかを調べ、不特定多数に配布してよいかを報告する。人名・社名・取引先名、ホームの絶対パスや個人ディレクトリを既定値にした記述、社内ホスト、私的な issue 番号、決定の経緯、私的ボット・私的リポへの依存、スキル配下の実行時データを拾う。ユーザーが /lint:skill-lint を打ったとき、または skill-creator 使用後の注入指示があったときだけ使う。それ以外では自分の判断で起動しない。
-argument-hint: <スキルのディレクトリ>
+description: Checks whether a skill (SKILL.md plus attached files such as scripts/ and references/) contains information specific to the person, company or machine that made it, and reports whether it is safe to distribute to anyone. Catches names of people, companies and clients, home absolute paths and defaults pointing at personal directories, internal hosts, private issue numbers, decision history, dependencies on private bots or private repos, and runtime data inside the skill. Use only when the user types /lint:skill-lint, or when an injected instruction after using skill-creator asks for it. Do not start it on your own judgment otherwise.
+argument-hint: <skill directory>
 ---
 
-# skill-lint — スキルを配布してよいかを調べる
+# skill-lint — check whether a skill is safe to distribute
 
-観点は「別の会社の人が、別のマシンにこのスキルを入れたら成り立つか。入れた人に何がバレるか」。2 層で調べる。
+The question is: "If someone at another company installs this skill on another machine, does it still work? What does it reveal to them?" It checks in two layers.
 
-1. **lint.py（決定論）**: 汎用の正規表現だけで機械的に拾う（メールアドレス・ホームのパス・tailnet・issue 番号・決定の経緯・実行時データ・secret）。安い前処理
-2. **reviewer（エージェント）**: 実行環境から固有名のヒントを自分で集め、lint の結果もヒントにして、人名・社名・取引先・私的ボットや私的リポへの依存・環境前提の手順を判定する。固有名と意味の判定はこちらが主役
+1. **lint.py (deterministic)**: catches things mechanically with generic regular expressions only (email addresses, home paths, tailnet hosts, issue numbers, decision history, runtime data, secrets). A cheap preprocessing pass
+2. **reviewer (agent)**: gathers proper-noun hints from the runtime environment itself, uses the lint results as hints too, and judges names of people, companies and clients, dependencies on private bots or private repos, and steps that assume a specific environment. The reviewer is the main judge of proper nouns and meaning
 
-## 不変条件
+## Invariants
 
-1. **勝手に直さない。** 報告して、直すかどうかをユーザーに聞く。
-2. **固有名の一覧をどこにも作らない。** 名前を集めたファイル（denylist）を持たない。reviewer がその場で集めて判定する。
-3. **reviewer の指摘は validate_findings.py を通ったものだけ報告する。** quote がその行に逐語で無い指摘は捨てる。
+1. **Never fix anything on your own.** Report, then ask the user whether to fix.
+2. **Never build a list of proper nouns anywhere.** Keep no file that collects names (a denylist). The reviewer gathers and judges them on the spot.
+3. **Report only reviewer findings that passed validate_findings.py.** Drop any finding whose quote is not verbatim in that line.
 
-## 手順
+## Steps
 
-対象は `$ARGUMENTS`（スキルのディレクトリ）。無ければユーザーに聞く。作業ファイルはセッションの一時ディレクトリ（無ければ `mktemp -d`）に置く。以下の `<tmp>` はその場所。
+The target is `$ARGUMENTS` (a skill directory). If missing, ask the user. Keep working files in the session's temporary directory (or `mktemp -d` if there is none). `<tmp>` below means that location.
 
-### ① lint.py を流す
+### 1. Run lint.py
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/skill-lint/scripts/lint.py" "$ARGUMENTS" --json > <tmp>/lint.json
 ```
 
-| カテゴリ | 深刻度 | 拾うもの |
+| Category | Severity | What it catches |
 |---|---|---|
-| identity | error | メールアドレス（固有名は調べない。reviewer が判定する） |
-| path | error | ホーム配下の絶対パス（macOS・Linux・Windows） |
-| path | warn | 標準パス（`~/.claude/`・`~/.config/`・`~/.local/`・`~/.cache/`）以外のホーム起点のパス。ホーム直下の道具の置き場（隠しディレクトリや OS の標準フォルダ）も当たるので、個人のディレクトリ構成かどうかは reviewer が判定する |
-| network | error | tailnet のホスト名 |
-| secret | error | gitleaks が検出した secret、または gitleaks の失敗（レポートが読めないときも含む） |
-| structure | error | スキル配下の `logs/`・`.trash/`・`*.db`・`*.sqlite`・`*.jsonl`・`*.log` などの実行時データ |
-| tracker | warn | `owner/repo#N`・`repo#N`・裸の `#N` |
-| provenance | warn | 同じ行に日付と「確定・承認・指示・判断・確認」 |
+| identity | error | Email addresses (proper nouns are not checked; the reviewer judges them) |
+| path | error | Absolute paths under a home directory (macOS, Linux, Windows) |
+| path | warn | Home-relative paths outside the standard ones (`~/.claude/`, `~/.config/`, `~/.local/`, `~/.cache/`). Tool locations right under home (hidden directories, the OS's standard folders) also match, so the reviewer decides whether it is a personal directory layout |
+| network | error | tailnet host names |
+| secret | error | Secrets found by gitleaks, or a gitleaks failure (including an unreadable report) |
+| structure | error | Runtime data inside the skill: `logs/`, `.trash/`, `*.db`, `*.sqlite`, `*.jsonl`, `*.log`, etc. |
+| tracker | warn | `owner/repo#N`, `repo#N`, bare `#N` |
+| provenance | warn | A date and a Japanese decision word (確定・承認・指示・判断・確認 — confirmed, approved, instructed, decided, checked) on the same line |
 
-- frontmatter の `last_reviewed` / `review_after` は調べない。行内に `skill-lint: ignore` がある行も調べない。
-- 除外は対象スキルの `.skill-lint-ignore` に書いたパスだけ（既定は全ファイルを調べる。実データ由来のフィクスチャが一番漏れやすいので、意図的に漏れを含むテストデータ以外は除外しない）。除外したファイル数を出す。
-- プラグインの manifest（`.claude-plugin/plugin.json`・`marketplace.json`）の公開者情報（`name`・`author`・`owner`・`homepage`・`repository` の行）は、公開が前提なのでメールアドレスだけ調べない（パス・ホストは調べる）。
-- 読めないファイルは `unreadable`（error）として出す。黙って飛ばさない。
-- `gitleaks` が PATH にあれば secret の検査を任せる。無ければ「未実施」と出る。
-- 終了コードは error があれば 1、warn だけなら 0。
+- Frontmatter `last_reviewed` / `review_after` are not checked. Lines containing `skill-lint: ignore` are not checked either.
+- Only paths listed in the target skill's `.skill-lint-ignore` are excluded (by default every file is checked; fixtures taken from real data leak the most, so exclude nothing except test data that leaks on purpose). The number of excluded files is reported.
+- In plugin manifests (`.claude-plugin/plugin.json`, `marketplace.json`), publisher lines (`name`, `author`, `owner`, `homepage`, `repository`) are public by design, so only email addresses are skipped there (paths and hosts are still checked).
+- Unreadable files are reported as `unreadable` (error). They are never skipped silently.
+- If `gitleaks` is on PATH, secret checks are delegated to it. Otherwise `gitleaks.status` is `skipped`.
+- Exit code is 1 if there are errors, 0 if there are only warnings.
 
-### ② reviewer を起動する
+### 2. Start the reviewer
 
-`Agent(subagent_type: general-purpose)` を 1 つ起動する。prompt は次をこの順で連結する:
+Start one `Agent(subagent_type: general-purpose)`. Build its prompt by concatenating, in this order:
 
-1. `${CLAUDE_PLUGIN_ROOT}/skills/skill-lint/references/reviewer-prompt.md` の全文
-2. 対象ディレクトリの絶対パスと「全ファイルを Read で読む（lint.py の `excluded_files` は除く）」という指示
-3. ヒント: `<tmp>/lint.json` の `findings` から `file`・`line`・`category`・`match` だけを抜いたもの
-4. 「JSON 配列だけを出力する」
+1. The full text of `${CLAUDE_PLUGIN_ROOT}/skills/skill-lint/references/reviewer-prompt.md`
+2. The absolute path of the target directory and the instruction "Read every file with Read (except lint.py's `excluded_files`)"
+3. Hints: the `findings` from `<tmp>/lint.json`, keeping only `file`, `line`, `category` and `match`
+4. "Output only the JSON array"
 
-実行環境から固有名のヒントを集める手順（`whoami`・`git config`・`gh api user`・`hostname`）は reviewer-prompt.md にあり、reviewer が自分で行う。
+The procedure for gathering proper-noun hints from the runtime environment (`whoami`, `git config`, `gh api user`, `hostname`) is in reviewer-prompt.md; the reviewer does it itself.
 
-reviewer の最終出力をそのまま `<tmp>/review.txt` に保存する。
+Save the reviewer's final output as is to `<tmp>/review.txt`.
 
-### ③ validate_findings.py で検証する
+### 3. Validate with validate_findings.py
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/skill-lint/scripts/validate_findings.py" "$ARGUMENTS" <tmp>/review.txt > <tmp>/review.json
 ```
 
-`valid` だけを報告に使う。`invalid` は件数と理由だけ出す。JSON 配列が取り出せなければ（exit 2）reviewer を 1 回だけ起動し直す。
+Use only `valid` in the report. For `invalid`, report just the count and reasons. If no JSON array can be extracted (exit 2), restart the reviewer once.
 
-### ④ 統合レポートを出す
+### 4. Write the combined report
 
-カテゴリごとにまとめ、各指摘に場所（`file:line`）・何が漏れているか・直し方を付ける。同じ行の同じ語を lint と reviewer の両方が拾ったら 1 件にまとめる。冒頭に次を 1 行ずつ出す:
+Group by category, and give each finding its location (`file:line`), what is leaking, and how to fix it. If lint and the reviewer both caught the same word on the same line, merge them into one. Start with these lines, one each:
 
-- 判定: error が 0 件で reviewer の high が 0 件なら「配布してよい」、それ以外は「直してから配布する」
-- 件数: lint の error / warn、reviewer の有効・無効
-- gitleaks の実施状況、除外したファイル数
+- Verdict: "safe to distribute" if there are 0 errors and 0 reviewer findings with `high` confidence; otherwise "fix before distributing"
+- Counts: lint errors / warnings, reviewer valid / invalid
+- gitleaks status and the number of excluded files
 
-### ⑤ 直すかを聞く
+Write the report in the user's language.
 
-「直しますか？（全部 / 選んで / 直さない）」と聞いて止まる。直す場合も、置き換え先（役割名・環境変数・プレースホルダ）は指摘ごとに示してから書き換え、終わったら ① からやり直して 0 件を確かめる。
+### 5. Ask whether to fix
 
-## 付属ファイル
+Ask "Fix them? (all / pick / none)" and stop. When fixing, first show the replacement for each finding (a role name, an environment variable or a placeholder), then edit, and when done start again from step 1 and confirm zero findings.
 
-| ファイル | 役目 |
+## Attached files
+
+| File | Role |
 |---|---|
-| `scripts/lint.py` | 決定論の検査。`--json` で機械向け、無しで人間向け |
-| `scripts/validate_findings.py` | reviewer の出力から JSON 配列を取り出し、quote を行と突き合わせる |
-| `references/reviewer-prompt.md` | reviewer への指示（観点・拾うもの・漏れではないもの・出力形式） |
-| `scripts/run_evals.py` | eval グループ A（lint.py をフィクスチャに流して採点） |
-| `scripts/run_reviewer_eval.py` | eval グループ B（`claude -p` で reviewer を回し、recall と誤検知を数える。`--runs N`） |
+| `scripts/lint.py` | Deterministic checks. `--json` for machines, plain for humans |
+| `scripts/validate_findings.py` | Extracts the JSON array from the reviewer output and matches each quote against its line |
+| `references/reviewer-prompt.md` | Instructions for the reviewer (viewpoint, what to catch, what is not a leak, output format) |
+| `scripts/run_evals.py` | Eval group A (runs lint.py on the fixture and grades it) |
+| `scripts/run_reviewer_eval.py` | Eval group B (runs the reviewer with `claude -p` and counts recall and false positives. `--runs N`) |

@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""グループ B（reviewer）: references/reviewer-prompt.md を `claude -p` に渡してフィクスチャをレビューさせ、
-validate_findings.py で quote を検証してから、reviewer だけが拾える陽性の recall と陰性への誤検知を数える。
+"""Group B (reviewer): pass references/reviewer-prompt.md to `claude -p` to review the fixture, verify quotes with
+validate_findings.py, then count recall on the positives only the reviewer can catch and false positives on the negatives.
 
   python3 scripts/run_reviewer_eval.py [--runs 1] [--workers 3] [--timeout 600] [--keep DIR]
 
-モデルは指定しない（claude の既定）。フィクスチャの内容は行番号つきで prompt に入れ、ヒントとして
-lint.py の結果を添える。フィクスチャの作者はこの実行環境の人ではないので、reviewer-prompt の
-「実行環境から固有名のヒントを集める」手順はこの評価では行わせない（固有名は本文だけから判定させる）。
-採点: 陽性の reviewer_expect の各要素（期待する指摘 1 件）は、同じ file・line に、要素内の語のどれかを
-quote に含む有効な指摘があれば命中。
-陰性は同じ行への有効な指摘を誤検知に数える（reviewer_forbid_quote があるケースは quote がそれを含むものだけ）。
-合格の目安: recall ≥ 0.8 かつ各回の誤検知 ≤ 1。exit 0 = 目安を満たす / 1 = 満たさない。
+No model is specified (claude's default). The fixture content goes into the prompt with line numbers, plus the lint.py
+results as hints. The fixture's author is not the person in this runtime environment, so this eval skips the
+reviewer-prompt step "gather proper-noun hints from the runtime environment" (proper nouns are judged from the text alone).
+Grading: each element of a positive's reviewer_expect (one expected finding) is a hit if the same file and line has a
+valid finding whose quote contains any of the element's words.
+For negatives, any valid finding on the same line is a false positive (for cases with reviewer_forbid_quote, only quotes containing it).
+Pass bar: recall >= 0.8 and at most 1 false positive per run. exit 0 = bar met / 1 = not met.
 """
 import argparse, json, os, subprocess, sys, tempfile, time
 from concurrent.futures import ThreadPoolExecutor
@@ -24,7 +24,7 @@ from run_evals import locate, materialize  # noqa: E402
 
 def build_prompt(fixture):
     parts = [open(os.path.join(SKILL_DIR, "references", "reviewer-prompt.md"), encoding="utf-8").read()]
-    parts.append("\n## 対象スキル（ファイル内容・行番号つき。ツールは使わずこれを読む）\n")
+    parts.append("\n## Target skill (file contents with line numbers; read these instead of using tools)\n")
     for rel, ab, _ in lint.iter_files(fixture):
         text = lint.read_text(ab)
         if text is None:
@@ -34,15 +34,16 @@ def build_prompt(fixture):
         parts.append("```")
     res = lint.lint(fixture, use_gitleaks=False)
     hints = [{k: f[k] for k in ("file", "line", "category", "match")} for f in res["findings"]]
-    parts.append("\n## ヒント: linter の結果\n```json\n%s\n```" % json.dumps(hints, ensure_ascii=False))
-    parts.append("\n## 実行環境のヒント\nこの評価では実行環境からヒントを集めない（コマンドは実行しない）。固有名は対象スキルの本文だけから判定する。")
-    parts.append("\n上の指示どおり、JSON 配列だけを出力してください。")
+    parts.append("\n## Hints: linter results\n```json\n%s\n```" % json.dumps(hints, ensure_ascii=False))
+    parts.append("\n## Runtime environment hints\nThis eval does not gather hints from the runtime environment (run no commands). "
+                 "Judge proper nouns from the target skill's text alone.")
+    parts.append("\nAs instructed above, output only the JSON array.")
     return "\n".join(parts)
 
 
 def run_claude(prompt, timeout):
     env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
-    cwd = tempfile.mkdtemp(prefix="skill-lint-eval-")  # 空の cwd: プロジェクトの CLAUDE.md を読ませない
+    cwd = tempfile.mkdtemp(prefix="skill-lint-eval-")  # empty cwd: keep the project's CLAUDE.md out
     cmd = ["claude", "-p", prompt, "--output-format", "json", "--max-turns", "5"]
     t0 = time.time()
     try:
@@ -82,7 +83,7 @@ def main():
     ap.add_argument("--runs", type=int, default=1)
     ap.add_argument("--workers", type=int, default=3)
     ap.add_argument("--timeout", type=int, default=600)
-    ap.add_argument("--keep", help="生出力と検証結果を保存するディレクトリ")
+    ap.add_argument("--keep", help="directory to keep raw output and validation results")
     a = ap.parse_args()
     spec = json.load(open(os.path.join(SKILL_DIR, "evals", "evals.json"), encoding="utf-8"))
     with materialize(os.path.join(SKILL_DIR, spec["fixture_dir"])) as fixture:
@@ -101,7 +102,7 @@ def evaluate(spec, fixture, a):
     for i, o in enumerate(outs, 1):
         arr = vf.extract_array(o.get("result", "")) if "result" in o else None
         if arr is None:
-            print("run %d: JSON 配列を取り出せない（%s）" % (i, o.get("error") or o.get("stderr") or o.get("result", "")[:200]))
+            print("run %d: cannot extract a JSON array (%s)" % (i, o.get("error") or o.get("stderr") or o.get("result", "")[:200]))
             ok = False
             continue
         v = vf.validate(fixture, arr)
@@ -111,16 +112,16 @@ def evaluate(spec, fixture, a):
         ok &= len(fps) <= 1
         json.dump({"raw": o, "validated": v, "hits": hits, "false_positives": fps},
                   open(os.path.join(keep, "run%d.json" % i), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-        print("run %d（%ss・model=%s）: recall %d/%d %s / 陰性誤検知 %d %s / 指摘 %d 件（有効 %d・無効 %d・無効比率 %.2f）" % (
-            i, o.get("seconds"), o.get("model") or "既定", len(hits), total, hits, len(fps),
+        print("run %d (%ss, model=%s): recall %d/%d %s / negative false positives %d %s / findings %d (valid %d, invalid %d, invalid ratio %.2f)" % (
+            i, o.get("seconds"), o.get("model") or "default", len(hits), total, hits, len(fps),
             [f["case"] + ":" + f["quote"] for f in fps], len(arr), len(v["valid"]), len(v["invalid"]), v["invalid_ratio"]))
         for x in v["invalid"]:
-            print("    無効: %s:%s %r（%s）" % (x.get("file"), x.get("line"), x.get("quote"), x["reason"]))
+            print("    invalid: %s:%s %r (%s)" % (x.get("file"), x.get("line"), x.get("quote"), x["reason"]))
     recall = hits_sum / total_sum if total_sum else 0.0
     ok &= recall >= 0.8 and total_sum > 0
-    print("\n合計: recall %d/%d = %.2f（目安 ≥ 0.80）/ 各回の陰性誤検知 ≤ 1 / 結果: %s" % (
-        hits_sum, total_sum, recall, "目安を満たす" if ok else "目安に届かない"))
-    print("生出力: %s" % keep)
+    print("\nTotal: recall %d/%d = %.2f (bar >= 0.80) / negative false positives <= 1 per run / result: %s" % (
+        hits_sum, total_sum, recall, "bar met" if ok else "bar not met"))
+    print("raw output: %s" % keep)
     return ok
 
 
