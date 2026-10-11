@@ -90,7 +90,10 @@ for f in filter(None, FILES):
         for rx, what in LEAKS:
             if rx.search(line):
                 errors.append(f"{f}:{n}: {what}")  # don't print the matched text (the log is public too)
-QUOTED = re.compile(r"`[^`]*`|「[^」]*」|'[^']*'|\"[^\"]*\"")
+# Single quotes count only as a literal, not as contractions: the opening quote follows a non-word character
+# (or a string prefix such as r / b / f) and the closing one isn't followed by a word character. Backslash
+# escapes inside '...' and "..." don't end the literal
+QUOTED = re.compile(r"`[^`]*`|「[^」]*」|(?:(?<!\w)|(?<=(?<!\w)[rRbBuUfF]))'(?:\\.|[^'\\])*'(?!\w)|\"(?:\\.|[^\"\\])*\"")
 LANG_EXEMPT = re.compile(r"(^|/)(README\.ja\.md$|tests/|evals/|fixtures/)")
 
 
@@ -111,18 +114,21 @@ def frontmatter_end(f):
 
 if "--base" in sys.argv:
     base = git("merge-base", sys.argv[sys.argv.index("--base") + 1], "HEAD").strip()
-    f = None
-    for line in git("diff", "-U0", "--no-color", base, "HEAD").splitlines():
-        if line.startswith("+++ "):
-            f = line[6:] if line.startswith("+++ b/") else None
-            fm = frontmatter_end(f) if f and f.endswith("/SKILL.md") else 0
-        elif line.startswith("@@"):
-            n = int(re.search(r"\+(\d+)", line).group(1))
-        elif line.startswith("+") and f:
-            text = line[1:]
-            if not (LANG_EXEMPT.search(f) or n <= fm or "ja-ok" in text) and KANA.search(QUOTED.sub("", text)):
-                errors.append(f"{f}:{n}: Japanese outside quotes (write it in English, quote it, or add ja-ok to the line)")
-            n += 1
+    # Paths come from -z (never quoted); each file's diff is read on its own, and only lines after the first
+    # @@ are content, so an added line starting with "++ " can't be mistaken for a file header
+    for f in filter(None, git("diff", "--name-only", "-z", "--diff-filter=d", base, "HEAD").split("\0")):
+        if LANG_EXEMPT.search(f):
+            continue
+        fm = frontmatter_end(f) if f == "SKILL.md" or f.endswith("/SKILL.md") else 0
+        n = None
+        for line in git("diff", "-U0", "--no-color", base, "HEAD", "--", f).splitlines():
+            if line.startswith("@@"):
+                n = int(re.search(r"\+(\d+)", line).group(1))
+            elif n is not None and line.startswith("+"):
+                text = line[1:]
+                if not (n <= fm or "ja-ok" in text) and KANA.search(QUOTED.sub("", text)):
+                    errors.append(f"{f}:{n}: Japanese outside quotes (write it in English, quote it, or add ja-ok to the line)")
+                n += 1
 
 # Don't print the location or count of BLOCKED_PATTERNS matches. If the public log showed which line
 # matched, an external PR could probe candidate terms to guess internal names (see locations in the local pre-commit)
