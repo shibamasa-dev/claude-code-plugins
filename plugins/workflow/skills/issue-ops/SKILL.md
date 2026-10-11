@@ -13,7 +13,7 @@ review_after: 2027-03-21
 
 When a task comes up, **create a GitHub issue, and in organizations with Issue Fields, set the metadata with them**. If the project board auto-adds issues, don't touch the Projects API. **GitHub MCP is the default for operations** (in organizations with Issue Fields, use organization-level Issue Fields for metadata; don't use ProjectV2 GraphQL). **But in environments where MCP `issue_write` shows an approval form, don't wait for the form; do it directly with `gh` + GraphQL** (see "When MCP shows an approval form" below. Creating, updating, and closing issues needs no user approval).
 
-For organization values (GitHub organization, default issue repo, Issue Fields table, project board), use injected text in the session context headed "Organization settings" if present. Otherwise use the project's CLAUDE.md, and if that has none, ask the user. Don't fill them in by guessing. Take the target repository from the context (github_repo etc.); if unknown, use the default repo from the organization settings.
+For organization values (GitHub organization, default issue repo, Issue Fields table, project board), use injected text in the session context headed "Organization settings" (or 「組織設定」 in Japanese) if present. Otherwise use the project's CLAUDE.md, and if that has none, ask the user. Don't fill them in by guessing. Take the target repository from the context (github_repo etc.); if unknown, use the default repo from the organization settings.
 
 ### Issue Fields (only in organizations that have them; organization-level; shared by all repos)
 
