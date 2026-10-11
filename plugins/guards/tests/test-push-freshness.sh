@@ -1,6 +1,6 @@
 #!/bin/bash
-# push-freshness（bash-guard.py ルール3）の受け入れ基準を実測する。
-# 使い捨ての git リポを /tmp に作り、bash-guard.py に JSON を食わせて判定を見る。
+# Measure the acceptance criteria of push-freshness (bash-guard.py rule 3).
+# Create a throwaway git repo in /tmp, feed JSON to bash-guard.py and look at the verdict.
 set -u
 HOOK="$(cd "$(dirname "$0")/.." && pwd)/hooks/bash-guard.py"
 
@@ -8,14 +8,14 @@ rm -rf /tmp/gtest
 mkdir -p /tmp/gtest
 cd /tmp/gtest || exit 1
 
-git init -q -b main .   # 既定ブランチ名（init.defaultBranch）に左右されないよう固定する
+git init -q -b main .   # pin it so the default branch name (init.defaultBranch) doesn't matter
 git commit -q --allow-empty -m base
 MAINB=$(git rev-parse --abbrev-ref HEAD)
 git checkout -q -b feat/x
 git commit -q --allow-empty -m work
 git checkout -q "$MAINB"
 git commit -q --allow-empty -m "main moves on"
-# origin/main を疑似的に作る（fetch はさせない＝hook の fetch は失敗しても behind 計算は ref を見る）
+# Fake origin/main (no fetch = even if the hook's fetch fails, the behind count uses the ref)
 git update-ref refs/remotes/origin/main "$MAINB"
 git checkout -q feat/x
 
@@ -31,49 +31,49 @@ d=json.loads(s)
 print(d.get('hookSpecificOutput',{}).get('permissionDecision','allow'))"
 }
 
-echo '=== behind > 0 の状態 ==='
+echo '=== behind > 0 ==='
 echo "  branch=$(git rev-parse --abbrev-ref HEAD) behind=$(git rev-list --count HEAD..origin/main)"
-printf '  %-46s -> %s   (deny 期待)\n' '素の push' "$(probe 'git push -u origin feat/x')"
-printf '  %-46s -> %s   (deny 期待: 申告が効かないこと)\n' '旧マーカー付き push' "$(probe 'PUSH_FRESHNESS_OK=1 git push -u origin feat/x')"
-printf '  %-46s -> %s   (deny 期待: 別名の環境変数でも通らない)\n' '適当な環境変数付き push' "$(probe 'SKIP_CHECK=1 FORCE=1 git push -u origin feat/x')"
+printf '  %-46s -> %s   (expect deny)\n' 'plain push' "$(probe 'git push -u origin feat/x')"
+printf '  %-46s -> %s   (expect deny: a claim alone must not work)\n' 'push with the old marker' "$(probe 'PUSH_FRESHNESS_OK=1 git push -u origin feat/x')"
+printf '  %-46s -> %s   (expect deny: other env var names do not pass either)\n' 'push with arbitrary env vars' "$(probe 'SKIP_CHECK=1 FORCE=1 git push -u origin feat/x')"
 
 echo
-echo '=== behind = 0 にする（取り込み済みブランチを作る） ==='
+echo '=== make behind = 0 (create a branch that is up to date) ==='
 git checkout -q -b feat/y origin/main
 echo "  branch=$(git rev-parse --abbrev-ref HEAD) behind=$(git rev-list --count HEAD..origin/main)"
-printf '  %-46s -> %s  (allow 期待)\n' '素の push' "$(probe 'git push -u origin feat/y')"
+printf '  %-46s -> %s  (expect allow)\n' 'plain push' "$(probe 'git push -u origin feat/y')"
 
 echo
-echo '=== 対象外のケース（従来どおり素通り） ==='
+echo '=== out-of-scope cases (pass through as before) ==='
 git checkout -q "$MAINB"
-printf '  %-46s -> %s  (allow 期待: main 系は対象外)\n' 'main で push' "$(probe "git push -u origin $MAINB")"
-printf '  %-46s -> %s  (allow 期待: push 以外)\n' 'git status' "$(probe 'git status')"
+printf '  %-46s -> %s  (expect allow: main-like branches are out of scope)\n' 'push on main' "$(probe "git push -u origin $MAINB")"
+printf '  %-46s -> %s  (expect allow: not a push)\n' 'git status' "$(probe 'git status')"
 
 echo
-echo '=== main-freshness: main が origin/main より遅れている状態のマーカー ==='
+echo '=== main-freshness: marker while main is behind origin/main ==='
 git checkout -q -b ahead "$MAINB" && git commit -q --allow-empty -m ahead
 git update-ref refs/remotes/origin/main ahead
 git checkout -q "$MAINB"
-printf '  %-46s -> %s  (deny 期待)\n' '素の commit' "$(probe 'git commit -m x')"
-printf '  %-46s -> %s  (allow 期待)\n' 'commit 自身の先頭にマーカー' "$(probe 'MAIN_FRESHNESS_OK=1 git commit -m x')"
-printf '  %-46s -> %s  (deny 期待)\n' 'マーカーを echo の引数に' "$(probe 'echo MAIN_FRESHNESS_OK=1; git commit -m x')"
-printf '  %-46s -> %s  (deny 期待)\n' 'マーカーをコメントに' "$(probe 'git commit -m x # MAIN_FRESHNESS_OK=1')"
+printf '  %-46s -> %s  (expect deny)\n' 'plain commit' "$(probe 'git commit -m x')"
+printf '  %-46s -> %s  (expect allow)\n' 'marker at the start of the commit itself' "$(probe 'MAIN_FRESHNESS_OK=1 git commit -m x')"
+printf '  %-46s -> %s  (expect deny)\n' 'marker as an echo argument' "$(probe 'echo MAIN_FRESHNESS_OK=1; git commit -m x')"
+printf '  %-46s -> %s  (expect deny)\n' 'marker in a comment' "$(probe 'git commit -m x # MAIN_FRESHNESS_OK=1')"
 
 echo
-echo '=== 既定ブランチが main 以外（origin/HEAD -> origin/develop） ==='
+echo '=== default branch other than main (origin/HEAD = origin/develop) ==='
 git checkout -q -b develop "$MAINB" && git commit -q --allow-empty -m dev1
 git update-ref refs/remotes/origin/develop develop
-git commit -q --allow-empty -m dev-local-only   # 手元の develop は origin/develop より進んでいる（遅れではない）
+git commit -q --allow-empty -m dev-local-only   # local develop is ahead of origin/develop (not behind)
 git update-ref refs/remotes/origin/develop HEAD~1
 git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/develop
 git checkout -q -b feat/d HEAD~1
 git checkout -q develop && git commit -q --allow-empty -m dev2 && git update-ref refs/remotes/origin/develop HEAD && git reset -q --hard HEAD~1
 git checkout -q feat/d
-printf '  %-46s -> %s  (deny 期待)\n' 'origin/develop より遅れた feature の push' "$(probe 'git push -u origin feat/d')"
+printf '  %-46s -> %s  (expect deny)\n' 'push a feature branch behind origin/develop' "$(probe 'git push -u origin feat/d')"
 git merge -q --no-edit origin/develop
-printf '  %-46s -> %s  (allow 期待)\n' 'origin/develop を取り込んだ後の push' "$(probe 'git push -u origin feat/d')"
+printf '  %-46s -> %s  (expect allow)\n' 'push after merging origin/develop' "$(probe 'git push -u origin feat/d')"
 git checkout -q develop
-printf '  %-46s -> %s  (deny 期待)\n' '遅れた develop の上の commit' "$(probe 'git commit -m x')"
-printf '  %-46s -> %s  (allow 期待: 既定ブランチは対象外)\n' 'develop の push' "$(probe 'git push origin develop')"
+printf '  %-46s -> %s  (expect deny)\n' 'commit on a stale develop' "$(probe 'git commit -m x')"
+printf '  %-46s -> %s  (expect allow: the default branch is out of scope)\n' 'push develop' "$(probe 'git push origin develop')"
 
 rm -rf /tmp/gtest

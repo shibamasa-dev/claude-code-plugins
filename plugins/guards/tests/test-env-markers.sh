@@ -1,5 +1,5 @@
 #!/bin/bash
-# 通過マーカー（PIP_FREEZE_OK）が、対象コマンド自身の先頭の環境変数代入としてだけ効くこと。
+# The bypass marker (PIP_FREEZE_OK) works only as an env var assignment at the start of the target command itself.
 set -u
 export HOOK="$(cd "$(dirname "$0")/.." && pwd)/hooks/bash-guard.py"
 
@@ -16,14 +16,14 @@ print(json.loads(out).get("hookSpecificOutput", {}).get("permissionDecision", "a
 PY
 }
 
-row() { printf '  %-58s -> %-5s (%s 期待)\n' "$2" "$(probe "$1")" "$3"; }
+row() { printf '  %-58s -> %-5s (expect %s)\n' "$2" "$(probe "$1")" "$3"; }
 
 echo '=== pip-freeze-guard ==='
-row 'pip freeze > req.txt'                               'マーカー無し'                    'deny'
-row 'PIP_FREEZE_OK=1 pip freeze > req.txt'               'pip freeze 自身の先頭にマーカー'   'allow'
-row 'echo PIP_FREEZE_OK=1; pip freeze > req.txt'         'マーカーを echo の引数に'          'deny'
-row 'pip freeze > req.txt # PIP_FREEZE_OK=1'             'マーカーをコメントに'              'deny'
+row 'pip freeze > req.txt'                               'no marker'                          'deny'
+row 'PIP_FREEZE_OK=1 pip freeze > req.txt'               'marker at the start of pip freeze'  'allow'
+row 'echo PIP_FREEZE_OK=1; pip freeze > req.txt'         'marker as an echo argument'         'deny'
+row 'pip freeze > req.txt # PIP_FREEZE_OK=1'             'marker in a comment'                'deny'
 
 echo
-echo '=== shared-venv-guard は 0.5.0 で外した ==='
-CLAUDE_PLUGIN_OPTION_SHARED_VENV_DIRS='~/.venvs' row 'uv pip sync --python ~/.venvs/x req.txt' '前の設定が残っていても止めない' 'allow'
+echo '=== shared-venv-guard was removed in 0.5.0 ==='
+CLAUDE_PLUGIN_OPTION_SHARED_VENV_DIRS='~/.venvs' row 'uv pip sync --python ~/.venvs/x req.txt' 'not blocked even with the old setting left over' 'allow'
