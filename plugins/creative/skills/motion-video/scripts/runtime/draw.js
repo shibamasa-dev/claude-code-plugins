@@ -1,10 +1,10 @@
-// draw.js — Canvas 2D の描画補助（ブラウザ専用）。全部「g（2D コンテキスト）を受け取って描くだけ」で状態を持たない。
+// draw.js — Canvas 2D drawing helpers (browser only). Every function just takes g (the 2D context) and draws; none keeps state.
 import { fit } from './motion.js';
 
-// 行頭に来てはいけない文字（簡易禁則）
+// Characters that must not start a line (simplified Japanese line-breaking rules, kinsoku)
 const NO_HEAD = '、。，．・：；？！ー）」』】〉》”’ゃゅょっァィゥェォャュョッ';
 
-// maxWidth で折り返した行の配列。日本語は1文字単位、英単語は語単位で折る。改行 \n は尊重。
+// Array of lines wrapped at maxWidth. Japanese breaks per character, English per word. Respects \n line breaks.
 export function wrapLines(g, text, maxWidth) {
   const out = [];
   for (const para of String(text).split('\n')) {
@@ -23,8 +23,8 @@ export function wrapLines(g, text, maxWidth) {
   return out;
 }
 
-// 文字を描く。戻り値は描いた範囲 { x, y, w, h, lines }。
-// opts: font, color, align(left|center|right), baseline(top|middle|bottom), maxWidth, lineHeight(倍率), letterSpacing(px), alpha
+// Draw text. Returns the drawn bounds { x, y, w, h, lines }.
+// opts: font, color, align(left|center|right), baseline(top|middle|bottom), maxWidth, lineHeight(multiplier), letterSpacing(px), alpha
 export function text(g, str, x, y, opts = {}) {
   const { font, color = '#fff', align = 'left', baseline = 'top', maxWidth = Infinity, lineHeight = 1.25, letterSpacing = 0, alpha = 1 } = opts;
   g.save();
@@ -51,7 +51,7 @@ export function text(g, str, x, y, opts = {}) {
   return { x: left, y: top, w, h: total, lines };
 }
 
-// 角丸の四角をパスとして作る（fill / clip は呼び出し側）
+// Build a rounded rectangle as a path (the caller does fill / clip)
 export function roundRect(g, x, y, w, h, r = 0) {
   const rr = Math.max(0, Math.min(r, w / 2, h / 2));
   g.beginPath();
@@ -63,7 +63,7 @@ export function roundRect(g, x, y, w, h, r = 0) {
   g.closePath();
 }
 
-// 画像を枠に収めて描く。opts: fit(contain|cover), radius, alpha。戻り値は実際に描いた矩形。
+// Draw an image fitted into a box. opts: fit(contain|cover), radius, alpha. Returns the rectangle actually drawn.
 export function image(g, img, box, opts = {}) {
   const { fit: mode = 'contain', radius = 0, alpha = 1 } = opts;
   const iw = img.naturalWidth || img.width;
@@ -80,7 +80,7 @@ export function image(g, img, box, opts = {}) {
   return mode === 'cover' ? box : r;
 }
 
-// 背景を塗る
+// Fill the background
 export function fill(g, W, H, color) {
   g.save();
   g.fillStyle = color;

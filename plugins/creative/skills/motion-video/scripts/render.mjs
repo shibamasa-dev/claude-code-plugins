@@ -1,15 +1,15 @@
 #!/usr/bin/env node
-// render.mjs — motion-video の実行本体（依存ゼロ: node 22+（グローバル WebSocket）/ system Chrome / ffmpeg）
+// render.mjs — the motion-video engine (zero dependencies: node 22+ (global WebSocket) / system Chrome / ffmpeg)
 //
-//   node render.mjs storyboard <project> [--aspect 9:16|all] [--brand brand.json] [--out dir]  （カット表 cutsheet.html。feedback/v<N>.json があれば版を進める）
+//   node render.mjs storyboard <project> [--aspect 9:16|all] [--brand brand.json] [--out dir]  (cut sheet cutsheet.html; advances the version if feedback/v<N>.json exists)
 //   node render.mjs check      <project> [--frame 300]
-//   node render.mjs approve    <project> --by "<OK を出した人>" --note "<OK の発言>"
+//   node render.mjs approve    <project> --by "<person who gave the OK>" --note "<the OK statement>"
 //   node render.mjs final      <project> [--aspect all|16:9,9:16] [--keep-frames]
 //   node render.mjs stills     <project> (--times 1.2,3.4 | --from 3 --to 4) [--aspect 16:9]
 //   node render.mjs probe      <file.mp4>
 //
-// Chrome は Claude Code の Bash sandbox 内では起動しない。sandbox 外（dangerouslyDisableSandbox）で実行する。
-// 出力の既定は <project>/out、作業用の連番 PNG は os.tmpdir()/motion-video/ 配下。
+// Chrome does not start inside Claude Code's Bash sandbox. Run outside the sandbox (dangerouslyDisableSandbox).
+// Output defaults to <project>/out; the working PNG sequence goes under os.tmpdir()/motion-video/.
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -50,7 +50,7 @@ function run(bin, args) {
   return r.stdout;
 }
 
-// ── Chrome を CDP で直接操作する ────────────────────────────────
+// ── Drive Chrome directly over CDP ──────────────────────────────
 function chromePath() {
   const cands = [
     process.env.MOTION_VIDEO_CHROME,
@@ -63,7 +63,7 @@ function chromePath() {
     const r = spawnSync('which', [n], { encoding: 'utf8' });
     if (r.status === 0) return r.stdout.trim();
   }
-  die('Chrome / Chromium が見つからない。MOTION_VIDEO_CHROME に実行ファイルのパスを入れる');
+  die('Chrome / Chromium not found. Set MOTION_VIDEO_CHROME to the executable path');
 }
 
 async function launchChrome() {
@@ -76,13 +76,13 @@ async function launchChrome() {
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
   const wsUrl = await new Promise((res, rej) => {
     let buf = '';
-    const to = setTimeout(() => rej(new Error(`Chrome が起動しない（Claude Code の sandbox 内なら sandbox 外で実行する）\n${buf.slice(-800)}`)), 20000);
+    const to = setTimeout(() => rej(new Error(`Chrome did not start (if inside the Claude Code sandbox, run outside it)\n${buf.slice(-800)}`)), 20000);
     proc.stderr.on('data', (d) => {
       buf += d;
       const m = buf.match(/DevTools listening on (ws:\S+)/);
       if (m) { clearTimeout(to); res(m[1]); }
     });
-    proc.on('exit', (c) => rej(new Error(`Chrome が終了した (code ${c})\n${buf.slice(-800)}`)));
+    proc.on('exit', (c) => rej(new Error(`Chrome exited (code ${c})\n${buf.slice(-800)}`)));
   });
   const base = wsUrl.replace('ws://', 'http://').replace(/\/devtools.*/, '');
   const page = (await (await fetch(`${base}/json/list`)).json()).find((x) => x.type === 'page');
@@ -107,7 +107,7 @@ async function launchChrome() {
     pend.set(i, { res, rej });
     sock.send(JSON.stringify({ id: i, method, params }));
   });
-  // Chrome の終了を待ってからプロファイルを消す（kill 直後は Chrome がまだ書いていて消せないことがある）
+  // Wait for Chrome to exit before deleting the profile (right after kill, Chrome may still be writing and the delete can fail)
   const close = async () => {
     try { sock.close(); } catch {}
     const exited = proc.exitCode != null ? Promise.resolve() : new Promise((r) => proc.once('exit', r));
@@ -118,7 +118,7 @@ async function launchChrome() {
   return { send, close };
 }
 
-// ── ローカル http（素材を同一 origin で配る。file:// だと canvas が汚染されて書き出せない） ──
+// ── Local http (serves assets from the same origin; with file:// the canvas is tainted and cannot be exported) ──
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.otf': 'font/otf' };
 async function serve(roots) {
   const srv = http.createServer((req, res) => {
@@ -136,7 +136,7 @@ async function serve(roots) {
   return srv;
 }
 
-// ── プロジェクト ───────────────────────────────────────────────
+// ── Project ─────────────────────────────────────────────────────
 function listFiles(dir, skip) {
   const out = [];
   const walk = (d) => {
@@ -151,15 +151,15 @@ function listFiles(dir, skip) {
 }
 
 function resolveProject(pos, f) {
-  if (!pos[0]) die('プロジェクトのフォルダを指定する');
+  if (!pos[0]) die('Specify the project folder');
   const proj = path.resolve(pos[0]);
-  if (!fs.existsSync(path.join(proj, 'video.js'))) die(`${proj}/video.js が無い`);
+  if (!fs.existsSync(path.join(proj, 'video.js'))) die(`${proj}/video.js not found`);
   const brand = f.brand ? path.resolve(f.brand) : fs.existsSync(path.join(proj, 'brand.json')) ? path.join(proj, 'brand.json') : null;
   const out = path.resolve(f.out || path.join(proj, 'out'));
   return { proj, brand, out };
 }
 
-// 承認の対象＝プロジェクト内の全ファイル（out/ と approval.json を除く）＋外部の brand.json とそこから参照するファイル
+// What approval covers = every file in the project (except out/ and approval.json) + an external brand.json and the files it references
 function sourceHash({ proj, brand, out }) {
   const files = listFiles(proj, [out, path.join(proj, 'approval.json')]);
   const h = crypto.createHash('sha256');
@@ -179,8 +179,8 @@ function prepareClips(meta, proj, work) {
   const counts = {};
   for (const [k, c] of Object.entries(meta.clips || {})) {
     const src = path.resolve(proj, c.src);
-    if (!fs.existsSync(src)) die(`クリップが無い: ${src}`);
-    if (!c.fps) die(`meta.clips.${k}.fps を指定する（ばらすコマ数/秒）`);
+    if (!fs.existsSync(src)) die(`Clip not found: ${src}`);
+    if (!c.fps) die(`Specify meta.clips.${k}.fps (frames per second to extract)`);
     const dir = path.join(work, 'clips', k);
     const key = sha(Buffer.concat([fs.readFileSync(src), Buffer.from(`|${c.fps}|${c.maxWidth || ''}`)]));
     const marker = path.join(dir, '.key');
@@ -192,7 +192,7 @@ function prepareClips(meta, proj, work) {
       fs.writeFileSync(marker, key);
     }
     counts[k] = fs.readdirSync(dir).filter((x) => x.endsWith('.png')).length;
-    if (!counts[k]) die(`クリップ ${k} からコマが取れない`);
+    if (!counts[k]) die(`Could not extract frames from clip ${k}`);
   }
   return counts;
 }
@@ -220,12 +220,12 @@ async function openSession(P, f) {
     await cdp.send('Runtime.enable');
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${srv.address().port}/harness.html` });
     for (let i = 0; !(await ev('window.__mvReady === true').catch(() => false)); i++) {
-      if (i > 400) throw new Error('harness が読み込めない');
+      if (i > 400) throw new Error('harness failed to load');
       await new Promise((r) => setTimeout(r, 50));
     }
     const meta = await ev('__mv.load()');
     const problems = metaErrors(meta);
-    if (problems.length) throw new Error('video.js の meta が不正:\n- ' + problems.join('\n- '));
+    if (problems.length) throw new Error('Invalid meta in video.js:\n- ' + problems.join('\n- '));
     const clipCounts = prepareClips(meta, P.proj, work);
     const brandJson = P.brand ? JSON.parse(fs.readFileSync(P.brand, 'utf8')) : null;
     const init = await ev(`__mv.init(${JSON.stringify({ brandJson, clipCounts })})`);
@@ -255,34 +255,34 @@ async function openSession(P, f) {
 
 function metaErrors(m) {
   const e = [];
-  if (!(m.duration > 0)) e.push('duration（秒）を正の数で');
-  if (!(m.fps > 0)) e.push('fps を正の数で');
-  for (const a of m.aspects || []) if (!SIZES[a]) e.push(`未対応の aspect ${a}（${Object.keys(SIZES).join(' / ')}）`);
-  if (!(m.aspects || []).length) e.push('aspects を1つ以上（例 ["9:16","1:1","16:9"]）');
-  if (!(m.scenes || []).length) e.push('scenes を1つ以上');
+  if (!(m.duration > 0)) e.push('duration (seconds) must be a positive number');
+  if (!(m.fps > 0)) e.push('fps must be a positive number');
+  for (const a of m.aspects || []) if (!SIZES[a]) e.push(`unsupported aspect ${a} (${Object.keys(SIZES).join(' / ')})`);
+  if (!(m.aspects || []).length) e.push('aspects needs at least one entry (e.g. ["9:16","1:1","16:9"])');
+  if (!(m.scenes || []).length) e.push('scenes needs at least one entry');
   return e;
 }
 
-// シーン契約・時間割の点検（警告。止めはしない）
+// Check the scene contract and timing (warnings; does not stop)
 function sceneWarnings(m) {
   const w = [];
   const N = m.duration * m.fps;
-  if (Math.abs(N - Math.round(N)) > 1e-6) w.push(`duration×fps が整数でない（${N}）。コマ数は ${Math.round(N)} に丸める`);
+  if (Math.abs(N - Math.round(N)) > 1e-6) w.push(`duration×fps is not an integer (${N}). Frame count is rounded to ${Math.round(N)}`);
   const sc = m.scenes;
-  if (Math.abs(sc[0].start) > 1e-6) w.push(`最初のシーンが 0 秒から始まっていない（${sc[0].start}）`);
-  for (let i = 1; i < sc.length; i++) if (Math.abs(sc[i].start - sc[i - 1].end) > 1e-6) w.push(`${sc[i - 1].id}→${sc[i].id} の間に隙間か重なり（${sc[i - 1].end}→${sc[i].start}）`);
-  if (Math.abs(sc[sc.length - 1].end - m.duration) > 1e-6) w.push(`最後のシーンの終わり（${sc[sc.length - 1].end}）が尺（${m.duration}）と合わない`);
+  if (Math.abs(sc[0].start) > 1e-6) w.push(`The first scene does not start at 0 s (${sc[0].start})`);
+  for (let i = 1; i < sc.length; i++) if (Math.abs(sc[i].start - sc[i - 1].end) > 1e-6) w.push(`Gap or overlap between ${sc[i - 1].id}→${sc[i].id} (${sc[i - 1].end}→${sc[i].start})`);
+  if (Math.abs(sc[sc.length - 1].end - m.duration) > 1e-6) w.push(`The end of the last scene (${sc[sc.length - 1].end}) does not match the duration (${m.duration})`);
   const dup = sc.map((s) => s.id).filter((id, i, a) => a.indexOf(id) !== i);
-  if (dup.length) w.push(`シーンの id が重複している（${[...new Set(dup)].join(', ')}）。カット表の画像と FB は id で引くので一意にする`);
+  if (dup.length) w.push(`Duplicate scene ids (${[...new Set(dup)].join(', ')}). Cut sheet images and FB are looked up by id, so make them unique`);
   for (const s of sc) {
     const miss = ['message', 'screen', 'motion', 'sound', 'transition'].filter((k) => !s[k]);
-    if (miss.length) w.push(`${s.id}: シーン契約の欄が空（${miss.join(', ')}）`);
-    if (/^(cut|hard ?cut|カット|ハードカット)$/i.test(String(s.transition || '').trim())) w.push(`${s.id}: トランジションがハードカット。画面上の物を次のシーンの物に変える形にする`);
+    if (miss.length) w.push(`${s.id}: empty scene-contract fields (${miss.join(', ')})`);
+    if (/^(cut|hard ?cut|カット|ハードカット)$/i.test(String(s.transition || '').trim())) w.push(`${s.id}: the transition is a hard cut. Turn something on screen into something in the next scene instead`);
   }
   return w;
 }
 
-// 動きの量の列から「4秒以上、目立つ変化が無い区間」を探す
+// From the series of motion amounts, find stretches of 4+ seconds without a noticeable change
 function quietWindows(diffs, fps, thr = 0.002, win = 4) {
   const out = [];
   let start = 0;
@@ -307,7 +307,7 @@ function sceneKeys(s) {
   return s.keys || [s.key ?? (s.start + s.end) / 2];
 }
 
-// 同じコマを「最初に描いた時」と「他のコマを描いた後」で比べる。前フレームの状態を持ち越していれば割れる
+// Compare the same frame "drawn first" and "drawn after other frames". They differ if state carries over from previous frames
 async function determinismCheck(S, asp, frameNo) {
   await S.size(asp);
   const { N, meta } = S;
@@ -317,8 +317,8 @@ async function determinismCheck(S, asp, frameNo) {
   const warm = sha(await S.frame(F / meta.fps));
   const res = { frame: F, cold: cold.slice(0, 16), warm: warm.slice(0, 16), ok: cold === warm };
   if (meta.loop) {
-    // 継ぎ目（最後のコマ→最初のコマ）の変化量が、両側の隣り合うコマの変化量と同程度なら、位置も速度もつながっている。
-    // t % duration で包んでも、ここは誤魔化せない（包んだだけで動きが周期的でなければ継ぎ目の差が跳ねる）
+    // If the change across the seam (last frame → first frame) is about the same as between neighboring frames on either side, position and velocity are continuous.
+    // Wrapping with t % duration cannot fake this (if the motion is not actually periodic, the seam difference jumps)
     const fr = (i) => i / meta.fps;
     await S.size(asp, 4);
     const [before, seam, after] = await S.pairDiff([[fr(N - 2), fr(N - 1)], [fr(N - 1), fr(0)], [fr(0), fr(1)]]);
@@ -338,7 +338,7 @@ async function cmdStoryboard(P, f) {
     const { meta } = S;
     const aspects = f.aspect === 'all' ? meta.aspects : f.aspect ? f.aspect.split(',') : [meta.aspects[0]];
     const dir = path.join(P.out, 'storyboard');
-    // 最新の版はトップに作り直す。前の版（v<N>/）は残す
+    // Rebuild the latest version at the top level. Keep earlier versions (v<N>/)
     fs.mkdirSync(dir, { recursive: true });
     for (const e of fs.readdirSync(dir)) if (!VERSION_DIR.test(e)) fs.rmSync(path.join(dir, e), { recursive: true, force: true });
     const fb = loadFeedback(P.proj);
@@ -348,7 +348,7 @@ async function cmdStoryboard(P, f) {
     fs.writeFileSync(path.join(dir, 'beats.json'), JSON.stringify(beats, null, 2));
     const sound = hasAudio(meta) ? audioPreview(S, P, dir, warnings) : null;
     const check = await determinismCheck(S, aspects[0], f.frame ? +f.frame : undefined);
-    if (!check.ok) warnings.unshift(`決定論チェック失敗: ${JSON.stringify(check)}（render が前フレームの状態を持ち越している）`);
+    if (!check.ok) warnings.unshift(`Determinism check failed: ${JSON.stringify(check)} (render carries state over from previous frames)`);
     const per = {};
     for (const asp of aspects) {
       const ad = path.join(dir, tag(asp));
@@ -362,7 +362,7 @@ async function cmdStoryboard(P, f) {
           stills.push({ scene: s.id, t, path: p });
         }
       }
-      // カット表: カットごとに「はじめ」（最初のコマ）と「おわり」（最後のコマ）
+      // Cut sheet: per cut, the "first" frame and the "last" frame
       const cutDir = path.join(ad, 'cuts');
       fs.mkdirSync(cutDir, { recursive: true });
       const cuts = [];
@@ -372,7 +372,7 @@ async function cmdStoryboard(P, f) {
         fs.writeFileSync(c.endPng, await S.frame(c.end));
         cuts.push(c);
       }
-      // contact: 1拍に1コマ（多すぎるときは間引いて最大 48 コマ）
+      // contact: one frame per beat (thinned to at most 48 frames when there are too many)
       let bt = beats.beats;
       const step = Math.ceil(bt.length / 48);
       if (step > 1) bt = bt.filter((_, i) => i % step === 0);
@@ -385,7 +385,7 @@ async function cmdStoryboard(P, f) {
         cpaths.push(p);
       }
       tile(cpaths, path.join(ad, 'contact.png'), 6, 320);
-      // strip: 最も速く動くコマの前後12コマ
+      // strip: 12 frames around the fastest-moving frame
       await S.size(asp, 8);
       const diffs = await S.motionScan();
       await S.size(asp);
@@ -399,11 +399,11 @@ async function cmdStoryboard(P, f) {
         spaths.push(p);
       }
       tile(spaths, path.join(ad, 'strip.png'), 6, 320);
-      // phone: スマホの画面幅（390px）に縮めた代表コマ
+      // phone: representative frames shrunk to a phone screen width (390px)
       tile(stills.map((x) => x.path), path.join(ad, 'phone.png'), Math.min(4, stills.length), 390);
       const quiet = quietWindows(diffs, meta.fps);
-      for (const [a, b] of quiet) warnings.push(`${asp}: ${a}〜${b}s に目立つ変化が無い（2〜4秒ごとに新しい視覚イベントを入れる）`);
-      // seam: ループ作品なら最後のコマ・尺ちょうど・最初のコマを並べる
+      for (const [a, b] of quiet) warnings.push(`${asp}: no noticeable change in ${a}–${b}s (add a new visual event every 2–4 seconds)`);
+      // seam: for loops, line up the last frame, the exact end, and the first frame
       let seam = null;
       if (meta.loop) {
         const sp = [];
@@ -426,18 +426,18 @@ async function cmdStoryboard(P, f) {
       };
     }
     const manifest = await S.manifest();
-    for (const [fam, ok] of Object.entries(manifest.fonts)) if (!ok) warnings.push(`フォント「${fam}」がこのマシンに無い（fallback で描いている）。brand.json の fonts.*.file にフォントファイルを渡す`);
+    for (const [fam, ok] of Object.entries(manifest.fonts)) if (!ok) warnings.push(`Font "${fam}" is not on this machine (drawn with a fallback). Pass a font file in fonts.*.file of brand.json`);
     const compare = compareCuts(dir, version, fb[version - 1], per[aspects[0]].cuts, aspects[0], warnings);
     const sb = { source_hash: S.hash, version, title: meta.title, duration: meta.duration, fps: meta.fps, frames: S.N, aspects, check, warnings, beats: path.join(dir, 'beats.json'), sound, per, manifest, scenes: meta.scenes, feedback: fb[version - 1] || null, compare };
     fs.writeFileSync(path.join(dir, 'storyboard.json'), JSON.stringify(sb, null, 2));
     fs.writeFileSync(path.join(dir, 'storyboard.md'), storyboardMd(sb, dir, P));
     fs.writeFileSync(path.join(dir, 'cutsheet.html'), cutsheetHtml(sb, dir, P, beats, meta, S.brandJson));
-    // この版の写しを v<N>/ に残す（同じ版での再実行は上書き）
+    // Keep a copy of this version in v<N>/ (re-running the same version overwrites it)
     const snap = path.join(dir, `v${version}`);
     fs.rmSync(snap, { recursive: true, force: true });
     fs.mkdirSync(snap);
     for (const e of fs.readdirSync(dir)) if (!VERSION_DIR.test(e)) fs.cpSync(path.join(dir, e), path.join(snap, e), { recursive: true });
-    // 写しの storyboard.json は写しの中のファイルを指す（トップは次の版で上書きされる）
+    // The copy's storyboard.json points to files inside the copy (the top level is overwritten by the next version)
     const q = (p) => JSON.stringify(p + path.sep).slice(1, -1);
     fs.writeFileSync(path.join(snap, 'storyboard.json'), JSON.stringify(sb, null, 2).split(q(dir)).join(q(snap)));
     console.log(JSON.stringify({ storyboard: path.join(dir, 'storyboard.md'), cutsheet: path.join(dir, 'cutsheet.html'), version, source_hash: S.hash, check: check.ok, warnings, compare, sound: sound && { preview: sound.preview, spectrogram: sound.spectrogram, lufs: sound.lufs, truePeakDb: sound.truePeakDb }, per: Object.fromEntries(Object.entries(per).map(([k, v]) => [k, { contact: v.contact, strip: v.strip, phone: v.phone, seam: v.seam, stills: v.stills.map((x) => x.path) }])) }, null, 2));
@@ -448,7 +448,7 @@ async function cmdStoryboard(P, f) {
 
 const hasAudio = (meta) => !!(meta.audio?.cues?.length || meta.audio?.music);
 
-// 絵コンテの段階で、本番と同じ手順で音を作り、試聴用 WAV とスペクトログラムを出す
+// At the storyboard stage, build the sound with the same steps as the final and output a preview WAV and a spectrogram
 function audioPreview(S, P, dir, warnings) {
   const { meta } = S;
   const ad = path.join(dir, 'audio');
@@ -461,9 +461,9 @@ function audioPreview(S, P, dir, warnings) {
     mid = path.join(ad, 'bgm.mid');
     fs.copyFileSync(r.bgm.mid, mid);
   }
-  if (r.lufs != null && Math.abs(r.lufs - r.target) > 1) warnings.push(`音量 ${r.lufs} LUFS が ${r.target} ±1 に入っていない`);
+  if (r.lufs != null && Math.abs(r.lufs - r.target) > 1) warnings.push(`Loudness ${r.lufs} LUFS is outside ${r.target} ±1`);
   const tp = r.aac?.truePeakDb ?? r.truePeakDb;
-  if (tp != null && tp > -1) warnings.push(`AAC に符号化した後のトゥルーピーク ${tp} dBFS が -1 を超えている`);
+  if (tp != null && tp > -1) warnings.push(`True peak after AAC encoding ${tp} dBFS exceeds -1`);
   const bands = bandLevels(preview);
   const sound = { preview, spectrogram: spec, mid, ...r, bands, bgm: r.bgm && { ...r.bgm, stem: undefined, mid: undefined } };
   fs.writeFileSync(path.join(ad, 'audio.json'), JSON.stringify(sound, null, 2));
@@ -472,7 +472,7 @@ function audioPreview(S, P, dir, warnings) {
 
 function fmtMotion(m) {
   if (!m || typeof m === 'string') return m || '';
-  return ['enter:入場', 'main:主', 'secondary:副', 'exit:退場'].map((kv) => { const [k, l] = kv.split(':'); return m[k] ? `${l}: ${m[k]}` : null; }).filter(Boolean).join(' / ');
+  return ['enter:Enter', 'main:Main', 'secondary:Secondary', 'exit:Exit'].map((kv) => { const [k, l] = kv.split(':'); return m[k] ? `${l}: ${m[k]}` : null; }).filter(Boolean).join(' / ');
 }
 const cell = (s) => String(s ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
 
@@ -480,57 +480,57 @@ function storyboardMd(sb, dir, P) {
   const rel = (p) => path.relative(dir, p);
   const a0 = sb.aspects[0];
   const L = [];
-  L.push(`# 絵コンテ: ${sb.title || path.basename(P.proj)}`, '');
-  L.push(`- 版 v${sb.version} / カット表: [cutsheet.html](cutsheet.html)（前の版は v<N>/ に残る）`);
-  L.push(`- 尺 ${sb.duration}s / ${sb.fps}fps（${sb.frames} コマ） / ${sb.aspects.join(', ')} / source_hash \`${sb.source_hash.slice(0, 12)}\``);
-  L.push(`- 決定論チェック（フレーム ${sb.check.frame} を2回描いて比較）: ${sb.check.ok ? 'OK' : '**NG**'}${sb.check.loop ? ` / ループ継ぎ目: ${sb.check.loop.ok ? 'OK' : '**NG**'}（継ぎ目の差 ${sb.check.loop.seam} / 隣接コマの差 ${sb.check.loop.neighbor}）` : ''}`);
+  L.push(`# Storyboard: ${sb.title || path.basename(P.proj)}`, '');
+  L.push(`- Version v${sb.version} / cut sheet: [cutsheet.html](cutsheet.html) (earlier versions stay in v<N>/)`);
+  L.push(`- Duration ${sb.duration}s / ${sb.fps}fps (${sb.frames} frames) / ${sb.aspects.join(', ')} / source_hash \`${sb.source_hash.slice(0, 12)}\``);
+  L.push(`- Determinism check (frame ${sb.check.frame} drawn twice and compared): ${sb.check.ok ? 'OK' : '**NG**'}${sb.check.loop ? ` / loop seam: ${sb.check.loop.ok ? 'OK' : '**NG**'} (seam diff ${sb.check.loop.seam} / neighbor diff ${sb.check.loop.neighbor})` : ''}`);
   L.push('');
   if (sb.warnings.length) {
-    L.push('## 警告', '');
+    L.push('## Warnings', '');
     for (const w of sb.warnings) L.push(`- ${w}`);
     L.push('');
   }
-  L.push('## シーン表', '');
-  L.push('| # | 開始-終了 | 伝えること | 画面 | 動き | ナレーション | 音 | トランジション | 代表コマ |');
+  L.push('## Scene table', '');
+  L.push('| # | Start-end | Message | Screen | Motion | Narration | Sound | Transition | Representative frame |');
   L.push('|---|---|---|---|---|---|---|---|---|');
   for (const s of sb.scenes) {
     const st = sb.per[a0].stills.filter((x) => x.scene === s.id).map((x) => `[${x.t.toFixed(2)}s](${rel(x.path)})`).join(' ');
     L.push(`| ${cell(s.id)} | ${s.start.toFixed(2)}–${s.end.toFixed(2)}s | ${cell(s.message)} | ${cell(s.screen)} | ${cell(fmtMotion(s.motion))} | ${cell(s.narration)} | ${cell(s.sound)} | ${cell(s.transition)} | ${st} |`);
   }
-  L.push('', '## 書き出し前の証拠', '');
+  L.push('', '## Pre-render evidence', '');
   for (const [asp, v] of Object.entries(sb.per)) {
     L.push(`### ${asp}`, '');
-    L.push(`- contact（1拍1コマ）: [contact.png](${rel(v.contact)})`);
-    L.push(`- strip（最速の動き ${v.fastestAt}s 付近の連続12コマ、${v.stripFrom}s から）: [strip.png](${rel(v.strip)})`);
-    L.push(`- phone（スマホ幅 390px に縮めた代表コマ）: [phone.png](${rel(v.phone)})`);
-    if (v.seam) L.push(`- seam（最後のコマ / 尺ちょうど / 最初のコマ）: [seam.png](${rel(v.seam)})`);
+    L.push(`- contact (one frame per beat): [contact.png](${rel(v.contact)})`);
+    L.push(`- strip (12 consecutive frames around the fastest motion at ${v.fastestAt}s, from ${v.stripFrom}s): [strip.png](${rel(v.strip)})`);
+    L.push(`- phone (representative frames shrunk to a 390px phone width): [phone.png](${rel(v.phone)})`);
+    if (v.seam) L.push(`- seam (last frame / exact end / first frame): [seam.png](${rel(v.seam)})`);
     L.push('');
   }
-  L.push(`- 拍: [beats.json](${rel(sb.beats)})`, '');
+  L.push(`- Beats: [beats.json](${rel(sb.beats)})`, '');
   if (sb.sound) {
     const a = sb.sound;
-    L.push('## 音', '');
-    L.push(`- 試聴（本番と同じ手順で混ぜたもの）: [preview.wav](${rel(a.preview)})${a.mid ? ` / BGM の MIDI: [bgm.mid](${rel(a.mid)})` : ''}`);
-    L.push(`- スペクトログラム（縦=周波数の対数軸・白線=シーンの境目・緑線=ピーク）: [spectrogram.png](${rel(a.spectrogram)})`);
-    L.push(`- 音量 ${a.lufs ?? '-'} LUFS（目標 ${a.target} ±1） / トゥルーピーク ${a.truePeakDb ?? '-'} dBFS（AAC に符号化した後 ${a.aac?.truePeakDb ?? '-'} dBFS） / ラウドネスレンジ ${a.lra ?? '-'} LU`);
-    L.push(`- 帯域ごとの RMS（dBFS。スペクトログラムの最下段は対数軸でにじむので、こもりはこちらで見る）: ${Object.entries(a.bands).map(([k, v]) => `${k}（${BANDS[k][0]}–${BANDS[k][1] || '∞'}Hz）${v ?? '-'}`).join(' / ')}`);
-    if (a.bgm) L.push(`- BGM: ${a.bgm.style} / ${a.bgm.progression.join(' → ')} / ${a.bgm.bars} 小節・${a.bgm.notes} 音 / seed ${a.bgm.seed} / 音源 ${path.basename(a.bgm.soundfont)}（fluidsynth ${a.bgm.fluidsynth}） / リバーブ ${a.bgm.reverb}（IR: ${a.bgm.ir}）`);
+    L.push('## Sound', '');
+    L.push(`- Preview (mixed with the same steps as the final): [preview.wav](${rel(a.preview)})${a.mid ? ` / BGM MIDI: [bgm.mid](${rel(a.mid)})` : ''}`);
+    L.push(`- Spectrogram (vertical = log frequency axis, white lines = scene boundaries, green lines = peaks): [spectrogram.png](${rel(a.spectrogram)})`);
+    L.push(`- Loudness ${a.lufs ?? '-'} LUFS (target ${a.target} ±1) / true peak ${a.truePeakDb ?? '-'} dBFS (${a.aac?.truePeakDb ?? '-'} dBFS after AAC encoding) / loudness range ${a.lra ?? '-'} LU`);
+    L.push(`- RMS per band (dBFS; the bottom row of the spectrogram blurs on the log axis, so judge muddiness here): ${Object.entries(a.bands).map(([k, v]) => `${k} (${BANDS[k][0]}–${BANDS[k][1] || '∞'}Hz) ${v ?? '-'}`).join(' / ')}`);
+    if (a.bgm) L.push(`- BGM: ${a.bgm.style} / ${a.bgm.progression.join(' → ')} / ${a.bgm.bars} bars, ${a.bgm.notes} notes / seed ${a.bgm.seed} / soundfont ${path.basename(a.bgm.soundfont)} (fluidsynth ${a.bgm.fluidsynth}) / reverb ${a.bgm.reverb} (IR: ${a.bgm.ir})`);
     L.push('');
   }
-  L.push('## 次の手順', '');
-  L.push('1. 自己採点（9項目 1〜10）を済ませ、最悪の3件を直してから人に見せる');
-  L.push(`2. カット表 [cutsheet.html](cutsheet.html) を見せ、FB があれば \`feedback/v${sb.version}.json\` に書いてもらう（対応を書いて storyboard を回すと v${sb.version + 1} になる）`);
-  L.push('3. **人の OK を得てから** `node render.mjs approve <project> --by "<名前>" --note "<OK の発言>"`');
-  L.push('4. `node render.mjs final <project>`（承認後にソースが変わると拒否される）');
+  L.push('## Next steps', '');
+  L.push('1. Finish the self-review (9 items, 1–10) and fix the worst 3 before showing a human');
+  L.push(`2. Show the cut sheet [cutsheet.html](cutsheet.html); if there is FB, have it written to \`feedback/v${sb.version}.json\` (write the responses and run storyboard to get v${sb.version + 1})`);
+  L.push('3. **Only after a human OK**: `node render.mjs approve <project> --by "<name>" --note "<the OK statement>"`');
+  L.push('4. `node render.mjs final <project>` (refused if the sources changed after approval)');
   return L.join('\n') + '\n';
 }
 
-// ── カット表と FB の往復 ───────────────────────────────────────
-// 人は feedback/v<N>.json に版 N へのフィードバックを書き、エージェントは同じファイルの response に対応を書く。
-// 次の storyboard は v<N+1> になる（版番号 = FB の付いた最新の版 + 1。FB が無ければ 1）
+// ── Cut sheet and FB round trips ─────────────────────────────────
+// The human writes feedback on version N in feedback/v<N>.json; the agent writes its responses in response in the same file.
+// The next storyboard becomes v<N+1> (version = latest version with FB + 1; 1 if there is no FB)
 const VERSION_DIR = /^v\d+$/;
-// ファイル名に使えない文字（日本語の ID を含む）は _ にし、~ と元の ID のハッシュを足して衝突させない。
-// 置き換えの要らない ID は ~ を含みえないので、置き換えた ID の名前とは重ならない
+// Characters not allowed in file names (including Japanese IDs) become _, and ~ plus a hash of the original ID is appended to avoid collisions.
+// IDs that need no replacement cannot contain ~, so they never collide with names of replaced IDs
 const cutPng = (dir, id, which) => {
   const safe = String(id).replace(/[^\w.-]/g, '_');
   return path.join(dir, `${safe === String(id) ? safe : `${safe}~${sha(String(id)).slice(0, 8)}`}-${which}.png`);
@@ -547,7 +547,7 @@ function loadFeedback(proj) {
     const m = /^v(\d+)\.json$/.exec(name);
     if (!m) continue;
     let j;
-    try { j = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')); } catch (e) { throw new Error(`feedback/${name} が JSON として読めない: ${e.message}`); }
+    try { j = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')); } catch (e) { throw new Error(`feedback/${name} is not valid JSON: ${e.message}`); }
     out[+m[1]] = {
       file: `feedback/${name}`,
       summary: j.summary || '',
@@ -562,13 +562,13 @@ function feedbackWarnings(fb, v, scenes) {
   if (!fb) return [];
   const w = [];
   const ids = new Set(scenes.map((s) => s.id));
-  for (const id of Object.keys(fb.cuts)) if (!ids.has(id)) w.push(`${fb.file}: カット ${id} が今のシーン表に無い（ID を変えたなら FB の側も直す）`);
-  const open = [...fb.overall.map((x) => ['全体', x]), ...Object.entries(fb.cuts).flatMap(([id, xs]) => xs.map((x) => [id, x]))].filter(([, x]) => !x.response.trim());
-  for (const [id, x] of open) w.push(`v${v} の FB に対応が書かれていない（${fb.file} の response）: ${id}「${x.fb.slice(0, 40)}」`);
+  for (const id of Object.keys(fb.cuts)) if (!ids.has(id)) w.push(`${fb.file}: cut ${id} is not in the current scene table (if you renamed the ID, update the FB too)`);
+  const open = [...fb.overall.map((x) => ['overall', x]), ...Object.entries(fb.cuts).flatMap(([id, xs]) => xs.map((x) => [id, x]))].filter(([, x]) => !x.response.trim());
+  for (const [id, x] of open) w.push(`v${v} feedback has no response (response in ${fb.file}): ${id} "${x.fb.slice(0, 40)}"`);
   return w;
 }
 
-// FB の付いたカットについて、前の版と今の版の「はじめ / おわり」を並べる（上段=前の版・下段=今の版）
+// For cuts with FB, line up the "first / last" frames of the previous and current versions (top row = previous, bottom row = current)
 function compareCuts(dir, version, fb, cuts, asp, warnings) {
   if (!fb || !Object.keys(fb.cuts).length) return [];
   const prev = path.join(dir, `v${version - 1}`, tag(asp), 'cuts');
@@ -577,7 +577,7 @@ function compareCuts(dir, version, fb, cuts, asp, warnings) {
   for (const c of cuts.filter((x) => fb.cuts[x.id])) {
     const before = [cutPng(prev, c.id, 'start'), cutPng(prev, c.id, 'end')];
     if (!before.every((p) => fs.existsSync(p))) {
-      warnings.push(`${c.id}: 前の版（v${version - 1}/${tag(asp)}）のコマが無いので比較画像を作れない`);
+      warnings.push(`${c.id}: no frames from the previous version (v${version - 1}/${tag(asp)}), so the comparison image cannot be made`);
       continue;
     }
     fs.mkdirSync(cd, { recursive: true });
@@ -593,13 +593,14 @@ const br = (s) => esc(s).replace(/\n/g, '<br>');
 const clock = (t) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
 const num = (x) => String(+x.toFixed(2));
 
-// 秒 → 小節・拍（1始まり）。拍の格子から外れていれば拍数を小数で出す（半コマ以内は拍の上とみなす）
+// Seconds → bar and beat (1-based). Off the beat grid, output the beat count as a decimal (within half a frame counts as on the beat)
+const beats = (n) => `${num(n)} beat${Math.abs(n) === 1 ? '' : 's'}`;
 function beatPos(t, B, fps) {
   const b = ((t - B.offset) * B.bpm) / 60;
   const on = Math.abs(b - Math.round(b)) <= (0.5 / fps) * (B.bpm / 60);
   const n = on ? Math.round(b) : b;
-  if (n < 0) return `${num(n)}拍（頭出し ${num(B.offset)}s より前）`;
-  return on ? `小節${Math.floor(n / B.beatsPerBar) + 1} 拍${(n % B.beatsPerBar) + 1}（${n}拍）` : `${num(n)}拍`;
+  if (n < 0) return `${beats(n)} (before the ${num(B.offset)}s offset)`;
+  return on ? `bar ${Math.floor(n / B.beatsPerBar) + 1} beat ${(n % B.beatsPerBar) + 1} (${beats(n)})` : beats(n);
 }
 
 function cutsheetHtml(sb, dir, P, B, meta, brand) {
@@ -622,7 +623,7 @@ function cutsheetHtml(sb, dir, P, B, meta, brand) {
   }).join('');
   const L = [];
   L.push(`<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">`);
-  L.push(`<title>カット表 v${v}: ${esc(sb.title || path.basename(P.proj))}</title>`);
+  L.push(`<title>Cut sheet v${v}: ${esc(sb.title || path.basename(P.proj))}</title>`);
   L.push(`<style>
 :root{--ink:#1d1f22;--mute:#666b72;--line:#d9dce0;--paper:#fff;--bg:#f5f6f7;--fb:#fff4b8;--fbline:#e8d675}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 -apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
@@ -648,32 +649,32 @@ td.fb,th.fb{background:var(--fb);border-color:var(--fbline);min-width:220px}td.f
 .overall textarea{width:100%;max-width:960px;min-height:80px;background:var(--fb);border:1px solid var(--fbline);font:inherit;padding:6px}
 button{font:inherit;padding:6px 14px;border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:4px;cursor:pointer}
 </style></head><body><main>`);
-  const d = new Date();  // 見る人の暦に合わせてローカル日付（toISOString は UTC なので JST の 0〜9 時に前日になる）
+  const d = new Date();  // local date to match the viewer's calendar (toISOString is UTC, which gives the previous day between 0 and 9 a.m. JST)
   L.push(`<h1>CUT SHEET v${v} · ${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} · PROPOSAL BY CLAUDE</h1>`);
   L.push(`<h2>${esc(sb.title || path.basename(P.proj))}</h2>`);
-  L.push(`<p class="guide">1行＝1カット。画は「はじめ」と「おわり」の2コマ、動きは文章で。</p>`);
+  L.push(`<p class="guide">1 row = 1 cut. Pictures are the first and last frames; motion is described in words.</p>`);
   if (prevFb?.summary) L.push(`<p class="summary">${br(prevFb.summary)}</p>`);
-  L.push(`<div class="chips"><span>${num(B.bpm)} BPM</span><span>${num(meta.duration / barSec)} 小節 = ${num(meta.duration)} 秒</span><span>${cuts.length} カット</span><span>${w}×${h}·${sb.fps}fps</span><span>素材 ${assets} 点</span><span>source ${sb.source_hash.slice(0, 12)}</span></div>`);
-  if (sb.warnings.length) L.push(`<div class="warn"><b>警告 ${sb.warnings.length} 件</b><ul>${sb.warnings.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`);
-  // プロジェクト情報
+  L.push(`<div class="chips"><span>${num(B.bpm)} BPM</span><span>${num(meta.duration / barSec)} bars = ${num(meta.duration)} s</span><span>${cuts.length} cuts</span><span>${w}×${h}·${sb.fps}fps</span><span>${assets} assets</span><span>source ${sb.source_hash.slice(0, 12)}</span></div>`);
+  if (sb.warnings.length) L.push(`<div class="warn"><b>${sb.warnings.length} warning(s)</b><ul>${sb.warnings.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`);
+  // Project info
   const colors = brand?.colors ? Object.entries(brand.colors).map(([k, c]) => `<span class="sw" style="background:${esc(c)}"></span>${esc(k)} ${esc(c)}`).join('　') : '—';
   const fonts = brand?.fonts ? Object.entries(brand.fonts).map(([k, x]) => `${esc(k)}: ${esc(x.family || x.file || '')}`).join(' / ') : '—';
-  L.push('<h3>プロジェクト情報</h3><dl class="info">');
+  L.push('<h3>Project info</h3><dl class="info">');
   for (const [k, val] of [
-    ['プロジェクト名', esc(sb.title || path.basename(P.proj))],
-    ['全体の尺', `${num(meta.duration)} 秒（${sb.frames} コマ）`],
-    ['テンポ・BPM', `${num(B.bpm)} BPM・${B.beatsPerBar} 拍子${B.offset ? `・頭出し ${B.offset}s` : ''}`],
-    ['画面比', sb.aspects.map((a) => `${a}（${SIZES[a].join('×')}）`).join(' / ') + ` · ${sb.fps}fps`],
-    ['納品物', `final.mp4 / poster.png / contact.png（${(meta.aspects || []).join(' · ')}）`],
-    ['参考', br(meta.reference || '—')],
-    ['カラー', colors],
-    ['フォント', fonts],
+    ['Project name', esc(sb.title || path.basename(P.proj))],
+    ['Total duration', `${num(meta.duration)} s (${sb.frames} frames)`],
+    ['Tempo / BPM', `${num(B.bpm)} BPM, ${B.beatsPerBar} beats per bar${B.offset ? `, offset ${B.offset}s` : ''}`],
+    ['Aspect', sb.aspects.map((a) => `${a} (${SIZES[a].join('×')})`).join(' / ') + ` · ${sb.fps}fps`],
+    ['Deliverables', `final.mp4 / poster.png / contact.png (${(meta.aspects || []).join(' · ')})`],
+    ['Reference', br(meta.reference || '—')],
+    ['Colors', colors],
+    ['Fonts', fonts],
   ]) L.push(`<dt>${k}</dt><dd>${val}</dd>`);
   L.push('</dl>');
-  // タイムライン帯: 1マス＝1小節、シーンを色帯で、その下にカット番号。小節もカットも 0 秒〜尺の同じ軸に置く
+  // Timeline strip: 1 cell = 1 bar, scenes as color bands, cut numbers below. Bars and cuts share the same 0 s–duration axis
   const pct = (t) => +((Math.min(t, meta.duration) / meta.duration) * 100).toFixed(4);
-  L.push('<h3>タイムライン</h3><div class="tl"><div class="row">');
-  if (B.offset > 0) L.push(`<div class="pre" style="left:0%;width:${pct(B.offset)}%">頭出し</div>`);
+  L.push('<h3>Timeline</h3><div class="tl"><div class="row">');
+  if (B.offset > 0) L.push(`<div class="pre" style="left:0%;width:${pct(B.offset)}%">offset</div>`);
   for (let i = 0; i < bars; i++) {
     const t0 = B.offset + i * barSec;
     const k = sceneAt(t0);
@@ -685,31 +686,31 @@ button{font:inherit;padding:6px 14px;border:1px solid var(--ink);background:var(
     L.push(`<a href="#cut-${esc(c.id)}" style="left:${pct(s.start)}%;width:${+(pct(s.end) - pct(s.start)).toFixed(4)}%">${String(i + 1).padStart(2, '0')} ${esc(c.id)}</a>`);
   });
   L.push('</div></div>');
-  // 前の版の FB への対応
+  // Responses to the previous version's FB
   if (prevFb) {
-    const rows = [...prevFb.overall.map((x) => ['全体', x, null]), ...Object.entries(prevFb.cuts).flatMap(([id, xs]) => xs.map((x) => [id, x, id]))];
-    L.push(`<h3>v${v - 1} の FB への対応</h3><div class="wrap"><table class="resp"><tr><th>対象</th><th>FB</th><th>v${v} での対応</th><th>カット</th></tr>`);
+    const rows = [...prevFb.overall.map((x) => ['overall', x, null]), ...Object.entries(prevFb.cuts).flatMap(([id, xs]) => xs.map((x) => [id, x, id]))];
+    L.push(`<h3>Responses to v${v - 1} FB</h3><div class="wrap"><table class="resp"><tr><th>Target</th><th>FB</th><th>Response in v${v}</th><th>Cut</th></tr>`);
     for (const [target, x, id] of rows) {
       const cmp = id && sb.compare.find((c) => c.cut === id);
-      const cell = cmp ? `<a href="${esc(rel(cmp.path))}"><img src="${esc(rel(cmp.path))}" alt="v${v - 1} と v${v} の比較"></a><div class="sm">上段 v${v - 1} / 下段 v${v}（はじめ・おわり）</div>` : id ? `<a href="#cut-${esc(id)}">${esc(id)}</a>` : '—';
-      L.push(`<tr><td>${esc(target)}</td><td>${br(x.fb)}</td><td>${x.response.trim() ? br(x.response) : '<b style="color:#b42318">未記入</b>'}</td><td>${cell}</td></tr>`);
+      const cell = cmp ? `<a href="${esc(rel(cmp.path))}"><img src="${esc(rel(cmp.path))}" alt="v${v - 1} vs v${v}"></a><div class="sm">top v${v - 1} / bottom v${v} (first, last)</div>` : id ? `<a href="#cut-${esc(id)}">${esc(id)}</a>` : '—';
+      L.push(`<tr><td>${esc(target)}</td><td>${br(x.fb)}</td><td>${x.response.trim() ? br(x.response) : '<b style="color:#b42318">(blank)</b>'}</td><td>${cell}</td></tr>`);
     }
-    L.push(`</table></div><p class="sm">FB の原本: ${esc(prevFb.file)}（前の版は <a href="v${v - 1}/cutsheet.html">v${v - 1}/cutsheet.html</a>）</p>`);
+    L.push(`</table></div><p class="sm">Original FB: ${esc(prevFb.file)} (previous version: <a href="v${v - 1}/cutsheet.html">v${v - 1}/cutsheet.html</a>)</p>`);
   }
-  // カット表
-  L.push('<h3>カット表</h3><div class="wrap"><table class="cut"><tr>');
-  const head = ['No.', '開始（秒・拍）', '尺', 'はじめ', 'おわり', ...(others.length ? ['他の画角（はじめ）'] : []), '画の内容', '動き', '次へのつなぎ', 'テキスト', '音', '検証'];
+  // Cut sheet
+  L.push('<h3>Cut sheet</h3><div class="wrap"><table class="cut"><tr>');
+  const head = ['No.', 'Start (s · beat)', 'Length', 'First frame', 'Last frame', ...(others.length ? ['Other aspects (first)'] : []), 'Picture', 'Motion', 'Transition to next', 'Text', 'Sound', 'Verify'];
   L.push(head.map((x) => `<th>${x}</th>`).join('') + '<th class="fb">FB</th></tr>');
   cuts.forEach((c, i) => {
     const s = meta.scenes[i];
     const len = s.end - s.start;
-    const other = others.map((a) => { const oc = sb.per[a].cuts[i]; return `<div class="sm">${a}</div><img src="${esc(rel(oc.startPng))}" alt="${a} はじめ">`; }).join('');
+    const other = others.map((a) => { const oc = sb.per[a].cuts[i]; return `<div class="sm">${a}</div><img src="${esc(rel(oc.startPng))}" alt="${a} first">`; }).join('');
     L.push(`<tr id="cut-${esc(c.id)}">`
       + `<td class="no">${String(i + 1).padStart(2, '0')}<div class="sm">${esc(c.id)}</div></td>`
       + `<td>${clock(s.start)}–${clock(s.end)}<div class="sm">${beatPos(s.start, B, sb.fps)}</div></td>`
-      + `<td>${num(len)}秒<div class="sm">${num(len / spb)}拍</div></td>`
-      + `<td class="img"><img src="${esc(rel(c.startPng))}" alt="はじめ ${num(c.start)}s"><div class="sm">${num(c.start)}s</div></td>`
-      + `<td class="img"><img src="${esc(rel(c.endPng))}" alt="おわり ${num(c.end)}s"><div class="sm">${num(c.end)}s</div></td>`
+      + `<td>${num(len)}s<div class="sm">${beats(len / spb)}</div></td>`
+      + `<td class="img"><img src="${esc(rel(c.startPng))}" alt="first ${num(c.start)}s"><div class="sm">${num(c.start)}s</div></td>`
+      + `<td class="img"><img src="${esc(rel(c.endPng))}" alt="last ${num(c.end)}s"><div class="sm">${num(c.end)}s</div></td>`
       + (others.length ? `<td class="other">${other}</td>` : '')
       + `<td>${s.message ? `<b>${br(s.message)}</b><br>` : ''}${br(s.screen)}</td>`
       + `<td>${br(fmtMotion(s.motion))}</td>`
@@ -717,16 +718,16 @@ button{font:inherit;padding:6px 14px;border:1px solid var(--ink);background:var(
       + `<td>${br(s.text ?? s.narration)}</td>`
       + `<td>${br(s.sound)}</td>`
       + `<td>${verify(s.verify)}</td>`
-      + `<td class="fb"><textarea data-cut="${esc(c.id)}" placeholder="このカットへの FB"></textarea></td></tr>`);
+      + `<td class="fb"><textarea data-cut="${esc(c.id)}" placeholder="FB on this cut"></textarea></td></tr>`);
   });
   L.push('</table></div>');
-  L.push(`<h3>全体への FB</h3><div class="overall"><textarea id="overall" placeholder="カットに紐づかない FB"></textarea></div>`);
-  L.push(`<p><button id="save">FB を保存（v${v}.json）</button></p>`);
-  L.push(`<h3>フィードバックの書き方</h3><ul class="guide">
-<li>各行右端の黄色い FB 欄に書く。全体への FB は表の下の欄に書く。</li>
-<li>書いたら「FB を保存」で <code>v${v}.json</code> を保存し、プロジェクトの <code>feedback/v${v}.json</code> に置く（手で書くなら <code>{"cuts":{"${esc(cuts[0]?.id ?? 's1')}":"…"},"overall":"…"}</code>）。</li>
-<li>エージェントが同じファイルの <code>response</code> に対応を書き、次の版（v${v + 1}）のカット表の冒頭に「v${v} の FB への対応」として出す。</li>
-<li>検証欄はエージェントのメモ: ● できたこと ▲ リスク・未解決 ◆ 素材・次の予定 ✓ 確認済み。</li>
+  L.push(`<h3>Overall FB</h3><div class="overall"><textarea id="overall" placeholder="FB not tied to a cut"></textarea></div>`);
+  L.push(`<p><button id="save">Save FB (v${v}.json)</button></p>`);
+  L.push(`<h3>How to give feedback</h3><ul class="guide">
+<li>Write in the yellow FB column at the right end of each row. Write overall FB in the box below the table.</li>
+<li>When done, click "Save FB" to save <code>v${v}.json</code> and put it at <code>feedback/v${v}.json</code> in the project (to write it by hand: <code>{"cuts":{"${esc(cuts[0]?.id ?? 's1')}":"…"},"overall":"…"}</code>).</li>
+<li>The agent writes its responses in <code>response</code> in the same file, and they appear at the top of the next version's (v${v + 1}) cut sheet as "Responses to v${v} FB".</li>
+<li>The Verify column is the agent's notes: ● done ▲ risk / unresolved ◆ assets / next steps ✓ confirmed.</li>
 </ul>`);
   L.push(`<script>
 document.getElementById('save').onclick = () => {
@@ -746,12 +747,12 @@ document.getElementById('save').onclick = () => {
 
 // ── approve ───────────────────────────────────────────────────
 function cmdApprove(P, f) {
-  if (!f.by || f.by === true) die('--by "<OK を出した人>" を指定する');
+  if (!f.by || f.by === true) die('Specify --by "<person who gave the OK>"');
   const sbp = path.join(P.out, 'storyboard', 'storyboard.json');
-  if (!fs.existsSync(sbp)) die('絵コンテがまだ無い。先に storyboard を実行し、人に見せて OK を得る', 3);
+  if (!fs.existsSync(sbp)) die('No storyboard yet. Run storyboard first, show it to a human and get an OK', 3);
   const sb = JSON.parse(fs.readFileSync(sbp, 'utf8'));
   const hash = sourceHash(P);
-  if (sb.source_hash !== hash) die('絵コンテを作った後にソースが変わっている。storyboard を作り直して、もう一度見せる', 3);
+  if (sb.source_hash !== hash) die('The sources changed after the storyboard was made. Rebuild the storyboard and show it again', 3);
   const ap = { approved_by: f.by, note: f.note === true ? '' : f.note || '', approved_at: new Date().toISOString(), source_hash: hash, storyboard: sbp };
   fs.writeFileSync(path.join(P.proj, 'approval.json'), JSON.stringify(ap, null, 2) + '\n');
   console.log(JSON.stringify({ approval: path.join(P.proj, 'approval.json'), source_hash: hash }, null, 2));
@@ -759,10 +760,10 @@ function cmdApprove(P, f) {
 
 function requireApproval(P) {
   const ap = path.join(P.proj, 'approval.json');
-  if (!fs.existsSync(ap)) die('承認が無い。storyboard を人に見せ、OK を得てから approve する（本番書き出しは承認後だけ）', 3);
+  if (!fs.existsSync(ap)) die('No approval. Show the storyboard to a human, get an OK, then approve (final render only after approval)', 3);
   const a = JSON.parse(fs.readFileSync(ap, 'utf8'));
   const hash = sourceHash(P);
-  if (a.source_hash !== hash) die('承認後にソースが変わっている。storyboard を作り直して、もう一度 OK をもらう', 3);
+  if (a.source_hash !== hash) die('The sources changed after approval. Rebuild the storyboard and get the OK again', 3);
   return a;
 }
 
@@ -774,7 +775,7 @@ async function cmdFinal(P, f) {
     const { meta, N } = S;
     const aspects = !f.aspect || f.aspect === 'all' ? meta.aspects : f.aspect.split(',');
     const check = await determinismCheck(S, aspects[0]);
-    if (!check.ok) throw new Error(`決定論チェック失敗のため書き出さない: ${JSON.stringify(check)}`);
+    if (!check.ok) throw new Error(`Not rendering because the determinism check failed: ${JSON.stringify(check)}`);
     const deliver = path.join(P.out, 'deliver');
     fs.mkdirSync(deliver, { recursive: true });
     const beats = beatsInfo(meta.audio, meta.duration);
@@ -814,7 +815,7 @@ async function cmdFinal(P, f) {
       const loud = audio ? measureLoudness(mp4) : null;
       results[asp] = { mp4, poster: path.join(od, 'poster.png'), contact: path.join(od, 'contact.png'), renderSec, probe: probe(mp4), loudness: loud && { lufs: loud.lufs, lra: loud.lra, truePeakDb: loud.truePeakDb, samplePeakDb: loud.samplePeakDb } };
     }
-    // ソース一式と README
+    // All sources and the README
     const src = path.join(deliver, 'source');
     fs.rmSync(src, { recursive: true, force: true });
     for (const p of listFiles(P.proj, [P.out])) {
@@ -835,21 +836,21 @@ async function cmdFinal(P, f) {
 
 function readme(meta, m, deliver) {
   const L = [`# ${meta.title || 'motion-video'}`, ''];
-  L.push(`- 尺 ${meta.duration}s / ${meta.fps}fps / H.264 yuv420p CRF16 / サブフレーム ${meta.subframes ?? 4} 枚のモーションブラー`);
-  L.push(`- 承認: ${m.approval.approved_by}（${m.approval.approved_at}）「${m.approval.note}」`);
+  L.push(`- Duration ${meta.duration}s / ${meta.fps}fps / H.264 yuv420p CRF16 / motion blur with ${meta.subframes ?? 4} subframes`);
+  L.push(`- Approval: ${m.approval.approved_by} (${m.approval.approved_at}) "${m.approval.note}"`);
   L.push(`- source_hash: \`${m.source_hash}\``);
-  if (m.audio) L.push(`- 音（混ぜた WAV）: ${m.audio.lufs ?? '-'} LUFS / トゥルーピーク ${m.audio.truePeakDb ?? '-'} dBFS${m.audio.bgm ? ` / BGM ${m.audio.bgm.style}（${m.audio.bgm.progression.join(' → ')}・seed ${m.audio.bgm.seed}・${path.basename(m.audio.bgm.soundfont)}）` : ' / 効果音のみ'}`);
-  L.push('', '| 画角 | 動画 | ポスター | コンタクト | 解像度 | コマ数 | 音量（mp4） | sha256 |', '|---|---|---|---|---|---|---|---|');
+  if (m.audio) L.push(`- Sound (mixed WAV): ${m.audio.lufs ?? '-'} LUFS / true peak ${m.audio.truePeakDb ?? '-'} dBFS${m.audio.bgm ? ` / BGM ${m.audio.bgm.style} (${m.audio.bgm.progression.join(' → ')}, seed ${m.audio.bgm.seed}, ${path.basename(m.audio.bgm.soundfont)})` : ' / sound effects only'}`);
+  L.push('', '| Aspect | Video | Poster | Contact | Resolution | Frames | Loudness (mp4) | sha256 |', '|---|---|---|---|---|---|---|---|');
   for (const [asp, r] of Object.entries(m.results)) {
     const rel = (p) => path.relative(deliver, p);
     const ld = r.loudness ? `${r.loudness.lufs} LUFS / TP ${r.loudness.truePeakDb} dBFS` : '-';
     L.push(`| ${asp} | [final.mp4](${rel(r.mp4)}) | [poster.png](${rel(r.poster)}) | [contact.png](${rel(r.contact)}) | ${r.probe.width}x${r.probe.height} | ${r.probe.nb_frames} | ${ld} | \`${r.probe.sha256.slice(0, 16)}\` |`);
   }
-  L.push('', '再書き出し: `node ' + path.join(HERE, 'render.mjs') + ' final source/`（source/ に approval.json が入っている）');
+  L.push('', 'Re-render: `node ' + path.join(HERE, 'render.mjs') + ' final source/` (source/ contains approval.json)');
   return L.join('\n') + '\n';
 }
 
-// ── stills（該当の秒だけ描き直す） ─────────────────────────────
+// ── stills (redraw only the given seconds) ───────────────────────
 async function cmdStills(P, f) {
   const S = await openSession(P, f);
   try {
@@ -863,7 +864,7 @@ async function cmdStills(P, f) {
       const b = Math.round(+(f.to ?? f.from) * meta.fps);
       times = [];
       for (let i = a; i <= b; i++) times.push(i / meta.fps);
-    } else die('--times か --from/--to を指定する');
+    } else die('Specify --times or --from/--to');
     const dir = path.join(P.out, 'stills', tag(asp));
     fs.mkdirSync(dir, { recursive: true });
     const paths = [];
@@ -907,7 +908,7 @@ async function main() {
   const { cmd, pos, f } = parseArgs(process.argv.slice(2));
   if (cmd === 'probe') return console.log(JSON.stringify(probe(path.resolve(pos[0])), null, 2));
   const cmds = { storyboard: cmdStoryboard, check: cmdCheck, approve: cmdApprove, final: cmdFinal, stills: cmdStills };
-  if (!cmds[cmd]) die('使い方: render.mjs <storyboard|check|approve|final|stills|probe> <project> [options]（詳細は SKILL.md）');
+  if (!cmds[cmd]) die('Usage: render.mjs <storyboard|check|approve|final|stills|probe> <project> [options] (details in SKILL.md)');
   await cmds[cmd](resolveProject(pos, f), f);
 }
 

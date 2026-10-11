@@ -1,37 +1,37 @@
-// motion.js — 決定論の動きの部品（ブラウザ / node 両用・DOM 非依存）
-// すべて「時刻 t を入れると値が決まる」純関数。タイマー・Math.random・前フレームの状態に依存しない。
+// motion.js — deterministic motion building blocks (works in browser and node; no DOM dependency)
+// All pure functions: put in a time t, get a value. No timers, no Math.random, no state from the previous frame.
 
-// ── ばね（closed-form） ─────────────────────────────────────────
-// 減衰振動子の厳密解。0→1 へのステップ応答を返す。
-// stiffness=k, damping=d, mass=m。ζ = d / (2√(km)) で減衰の性格が決まる。
-// snappy / default / playful の k・d はプレイブック「Opus 5.5 Motion Design Prompting Techniques」の値。
-// heavy は同資料に無く、このスキルで決めた値（推測。重く・ほぼ行き過ぎずに着地する狙い）。
-// 使い分け: UI（カード・ボタン）は小さく行き過ぎてよい → snappy / playful。
-//           文字は行き過ぎさせない → default（ζ≈1）か heavy。
+// ── Spring (closed-form) ────────────────────────────────────────
+// Exact solution of a damped oscillator. Returns the step response from 0 to 1.
+// stiffness=k, damping=d, mass=m. ζ = d / (2√(km)) sets the damping character.
+// The k and d for snappy / default / playful come from the playbook "Opus 5.5 Motion Design Prompting Techniques".
+// heavy is not in that playbook; this skill chose it (a guess, aiming to land heavily with almost no overshoot).
+// When to use: UI (cards, buttons) may overshoot slightly -> snappy / playful.
+//              Text must not overshoot -> default (ζ≈1) or heavy.
 export const PRESETS = {
-  snappy: { stiffness: 260, damping: 24, mass: 1 },   // ζ≈0.74 ボタン・トグル。速く、3%ほど行き過ぎる
-  default: { stiffness: 170, damping: 26, mass: 1 },  // ζ≈1.0 カード・カメラ・文字。行き過ぎない
-  playful: { stiffness: 130, damping: 18, mass: 1 },  // ζ≈0.79 マスコット・ステッカー。弾む
-  heavy: { stiffness: 120, damping: 30, mass: 2.5 },  // ζ≈0.87 重い物・大きな面（推測値）
+  snappy: { stiffness: 260, damping: 24, mass: 1 },   // ζ≈0.74 buttons, toggles. Fast, overshoots about 3%
+  default: { stiffness: 170, damping: 26, mass: 1 },  // ζ≈1.0 cards, camera, text. No overshoot
+  playful: { stiffness: 130, damping: 18, mass: 1 },  // ζ≈0.79 mascots, stickers. Bouncy
+  heavy: { stiffness: 120, damping: 30, mass: 2.5 },  // ζ≈0.87 heavy objects, large surfaces (guessed values)
 };
 
 function resolvePreset(p) {
   if (!p) return PRESETS.default;
   if (typeof p === 'string') {
     const v = PRESETS[p];
-    if (!v) throw new Error(`unknown spring preset: ${p}（${Object.keys(PRESETS).join(' / ')}）`);
+    if (!v) throw new Error(`unknown spring preset: ${p} (${Object.keys(PRESETS).join(' / ')})`);
     return v;
   }
   return { ...PRESETS.default, ...p };
 }
 
-// t 秒（ばねが動き出してからの経過）での進捗。t<=0 は 0。
+// Progress at t seconds (time elapsed since the spring started). 0 for t<=0.
 export function spring(t, preset = 'default', { velocity = 0 } = {}) {
   if (t <= 0) return 0;
   const { stiffness: k, damping: c, mass: m } = resolvePreset(preset);
   const w0 = Math.sqrt(k / m);
   const z = c / (2 * Math.sqrt(k * m));
-  const x0 = -1; // 目標(1)からの変位
+  const x0 = -1; // displacement from the target (1)
   const v0 = velocity;
   let x;
   if (z < 1 - 1e-9) {
@@ -50,7 +50,7 @@ export function spring(t, preset = 'default', { velocity = 0 } = {}) {
   return 1 + x;
 }
 
-// 収束までの秒数（|1-x| < eps が以後ずっと続く最初の時刻の近似）。シーン尺の見積もり用。
+// Seconds until settled (approximates the first time after which |1-x| < eps holds for good). For estimating scene durations.
 export function springDuration(preset = 'default', eps = 0.001) {
   const dt = 1 / 240;
   let last = 0;
@@ -58,10 +58,10 @@ export function springDuration(preset = 'default', eps = 0.001) {
   return Math.round((last + dt) * 1000) / 1000;
 }
 
-// ターゲットが変わるたびにばねを1本足す（重ね合わせ）。
+// Add one spring each time the target changes (superposition).
 // keys: [{ t: 0, v: 0 }, { t: 1.2, v: 100 }, { t: 3, v: 40, preset: 'snappy' }]
-// 値 = keys[0].v + Σ (keys[i].v - keys[i-1].v) * spring(t - keys[i].t)
-// 線形系なので、途中でターゲットが変わっても速度が連続したまま自然につながる。
+// value = keys[0].v + Σ (keys[i].v - keys[i-1].v) * spring(t - keys[i].t)
+// Because the system is linear, a mid-flight target change connects naturally with continuous velocity.
 export function springTrack(t, keys, preset = 'default') {
   if (!keys.length) return 0;
   let v = keys[0].v;
@@ -71,10 +71,10 @@ export function springTrack(t, keys, preset = 'default') {
   return v;
 }
 
-// ── 補間・イージング ───────────────────────────────────────────
+// ── Interpolation and easing ───────────────────────────────────
 export const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
 export const lerp = (a, b, p) => a + (b - a) * p;
-// t を [a,b] で 0..1 に正規化（範囲外はクランプ）
+// Normalize t over [a,b] to 0..1 (clamped outside the range)
 export const progress = (t, a, b) => (b === a ? (t >= b ? 1 : 0) : clamp((t - a) / (b - a)));
 export const ease = {
   linear: (p) => p,
@@ -83,26 +83,26 @@ export const ease = {
   inOutCubic: (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2),
   outExpo: (p) => (p >= 1 ? 1 : 1 - Math.pow(2, -10 * p)),
 };
-// i 番目の要素の開始時刻（ずらし登場）
+// Start time of the i-th element (staggered entrance)
 export const stagger = (start, i, gap = 0.08) => start + i * gap;
 
-// ── ビートグリッド ─────────────────────────────────────────────
-// BPM から拍の時刻を出す。動きのきっかけと効果音を同じ拍に揃えるために使う。
+// ── Beat grid ──────────────────────────────────────────────────
+// Derives beat times from the BPM. Used to put motion cues and sound effects on the same beat.
 export function beatGrid(bpm = 120, offset = 0, beatsPerBar = 4) {
   const spb = 60 / bpm;
   return {
     bpm,
     spb,
-    beat: (n) => offset + n * spb,               // n 拍目の時刻
-    bar: (n, b = 0) => offset + (n * beatsPerBar + b) * spb, // n 小節目 b 拍の時刻
-    index: (t) => Math.floor((t - offset) / spb + 1e-9),     // t が何拍目か
-    phase: (t) => ((((t - offset) / spb) % 1) + 1) % 1,       // 拍内の位相 0..1
+    beat: (n) => offset + n * spb,               // time of beat n
+    bar: (n, b = 0) => offset + (n * beatsPerBar + b) * spb, // time of beat b in bar n
+    index: (t) => Math.floor((t - offset) / spb + 1e-9),     // which beat t falls on
+    phase: (t) => ((((t - offset) / spb) % 1) + 1) % 1,       // phase within the beat, 0..1
     nearest: (t) => offset + Math.round((t - offset) / spb) * spb,
   };
 }
 
-// ── 乱数（シード固定） ─────────────────────────────────────────
-// Math.random は使わない。同じ seed なら毎回同じ列。
+// ── Random numbers (fixed seed) ────────────────────────────────
+// Never use Math.random. The same seed always gives the same sequence.
 export function rng(seed = 1) {
   let a = seed >>> 0;
   return () => {
@@ -114,7 +114,7 @@ export function rng(seed = 1) {
   };
 }
 
-// ── 色 ─────────────────────────────────────────────────────────
+// ── Color ──────────────────────────────────────────────────────
 export function hexToRgb(hex) {
   const h = hex.replace('#', '');
   const f = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
@@ -131,9 +131,9 @@ export function withAlpha(hex, alpha) {
   return `rgba(${r},${g},${b},${clamp(alpha)})`;
 }
 
-// ── レイアウト関数 ─────────────────────────────────────────────
-// 固定ピクセルで置かず、画面の短辺を 100 とした単位 u で置く。
-// 同じシーン定義から 16:9 / 9:16 / 1:1 を出せるのはこれのおかげ。
+// ── Layout functions ───────────────────────────────────────────
+// Place things in units u, where the screen's short side is 100, rather than in fixed pixels.
+// This is what lets one scene definition produce 16:9 / 9:16 / 1:1.
 export function layout(W, H, { margin = 6 } = {}) {
   const u = Math.min(W, H) / 100;
   const ratio = W / H;
@@ -144,7 +144,7 @@ export function layout(W, H, { margin = 6 } = {}) {
     W, H, u, ratio, orient,
     cx: W / 2, cy: H / 2,
     safe,
-    // 横長なら横並び、縦長なら縦積みの2分割
+    // Two-way split: side by side when landscape, stacked when portrait
     split(gap = 4) {
       const g = gap * u;
       if (orient === 'portrait') {
@@ -154,7 +154,7 @@ export function layout(W, H, { margin = 6 } = {}) {
       const w = (safe.w - g) / 2;
       return [{ x: safe.x, y: safe.y, w, h: safe.h }, { x: safe.x + w + g, y: safe.y, w, h: safe.h }];
     },
-    // cols×rows の格子
+    // cols x rows grid
     grid(cols, rows, gap = 3, box = safe) {
       const g = gap * u;
       const w = (box.w - g * (cols - 1)) / cols;
@@ -166,7 +166,7 @@ export function layout(W, H, { margin = 6 } = {}) {
   };
 }
 
-// 画像を枠に収める（contain=全体が入る / cover=枠を埋める）
+// Fit an image into a box (contain = whole image visible / cover = fills the box)
 export function fit(iw, ih, box, mode = 'contain') {
   const s = mode === 'cover' ? Math.max(box.w / iw, box.h / ih) : Math.min(box.w / iw, box.h / ih);
   const w = iw * s;

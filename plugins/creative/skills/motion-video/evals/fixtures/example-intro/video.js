@@ -1,16 +1,17 @@
-// eval (a): Example Co.（架空の家具店）紹介 15 秒・16:9。ブランドの色・書体・ロゴは brand.json から読む（ここに色を直書きしない）。
-// 製品動画の5拍（課題 → 仕組みが組み上がる → できること3つ → 数字1つ → ロゴ＋CTA）の型で組んである。
+// eval (a): Example Co. (a fictional furniture store) intro, 15 s, 16:9. Brand colors, typefaces and logo come from brand.json (no hard-coded colors here).
+// Built on the five-beat product-video template (problem -> the mechanism assembles -> three things it does -> one number -> logo + CTA).
+// The on-screen copy and narration stay in Japanese on purpose: this fixture exercises CJK font handling with the `ja` font role.
 export const meta = {
-  title: 'Example Co. 紹介',
+  title: 'Example Co. intro',
   duration: 15,
   fps: 60,
   aspects: ['16:9'],
   scenes: [
-    { id: 's1', start: 0, end: 3, key: 1.6, message: '課題: 部屋に合う家具が分からない', screen: '左に主色の面、白抜きの大見出し', motion: { enter: '面が下からばねで立ち上がる', main: '見出しが1語ずつ入る', exit: '見出しが先に上へ抜ける' }, narration: 'その棚、部屋に入りますか。', sound: '小節頭で thump', transition: '主色の面が縮んで次のシーンの左柱になる' },
-    { id: 's2', start: 3, end: 6, key: 4.8, message: 'サイズから選んで部屋が組み上がる', screen: '左柱に見出し、右に UI カードが3枚積み上がる', motion: { enter: 'カードが拍ごとに snappy で入る', main: 'カード内のバーが伸びる', exit: 'カードが右へ抜ける' }, narration: 'サイズから選んで、並べてみる。', sound: 'whoosh と pop×3', transition: '左柱が上へ倒れて見出し帯になる' },
-    { id: 's3', start: 6, end: 9.5, key: 8.2, message: 'できること3つ', screen: '上に帯、下に3枚の機能カード', motion: { enter: '拍に合わせて1枚ずつ', main: '選択枠が左から右へ移る', exit: 'カードが下へ沈む' }, narration: '採寸、配置、お届けまで。', sound: 'click×3', transition: '帯が中央の正方形に畳まれる' },
-    { id: 's4', start: 9.5, end: 12, key: 11.2, message: '数字1つ: 1987 年創業', screen: '中央の正方形に大きな数字', motion: { enter: '数字がばねで数え上がる', main: '下線が伸びる', exit: '数字が先に消える' }, narration: '1987 年に創業。', sound: 'pop', transition: '正方形が画面全体に広がってロゴの背景になる' },
-    { id: 's5', start: 12, end: 15, key: 13.8, message: 'ロゴと CTA', screen: '主色の全面、中央にロゴと一言', motion: { enter: 'ロゴが heavy で着地', main: 'CTA が下から入る', exit: '止め' }, narration: '新しい部屋を、一緒に。', sound: '小節頭で thump', transition: '終わり（止め）' },
+    { id: 's1', start: 0, end: 3, key: 1.6, message: 'Problem: not sure which furniture fits the room', screen: 'Primary-color panel on the left, large knocked-out white heading', motion: { enter: 'The panel springs up from the bottom', main: 'The heading comes in word by word', exit: 'The heading exits upward first' }, narration: 'その棚、部屋に入りますか。', sound: 'thump on the bar start', transition: 'The primary-color panel shrinks into the left column of the next scene' },
+    { id: 's2', start: 3, end: 6, key: 4.8, message: 'Pick by size and the room assembles', screen: 'Heading in the left column, three UI cards stack up on the right', motion: { enter: 'Cards enter with snappy on each beat', main: 'Bars inside the cards grow', exit: 'Cards exit to the right' }, narration: 'サイズから選んで、並べてみる。', sound: 'whoosh and pop x3', transition: 'The left column tips over upward into a heading band' },
+    { id: 's3', start: 6, end: 9.5, key: 8.2, message: 'Three things it does', screen: 'Band on top, three feature cards below', motion: { enter: 'One card per beat', main: 'The selection marker moves left to right', exit: 'Cards sink downward' }, narration: '採寸、配置、お届けまで。', sound: 'click x3', transition: 'The band folds into a square in the center' },
+    { id: 's4', start: 9.5, end: 12, key: 11.2, message: 'One number: founded in 1987', screen: 'Large number in the center square', motion: { enter: 'The number counts up with a spring', main: 'An underline grows', exit: 'The number disappears first' }, narration: '1987 年に創業。', sound: 'pop', transition: 'The square expands to fill the screen and becomes the logo background' },
+    { id: 's5', start: 12, end: 15, key: 13.8, message: 'Logo and CTA', screen: 'Full primary-color screen, logo and a tagline in the center', motion: { enter: 'The logo lands with heavy', main: 'The CTA comes in from below', exit: 'Hold' }, narration: '新しい部屋を、一緒に。', sound: 'thump on the bar start', transition: 'End (hold)' },
   ],
   audio: {
     bpm: 120,
@@ -26,7 +27,7 @@ export const meta = {
   },
 };
 
-// シーンごとの「面」の位置（レイアウト関数。固定ピクセルを使わない）
+// Panel position per scene (layout functions; no fixed pixels)
 function panelFor(id, L) {
   const s = L.safe;
   const land = L.orient !== 'portrait';
@@ -45,7 +46,7 @@ export function render(ctx, t) {
   const u = L.u;
   D.fill(g, W, H, C.paper);
 
-  // 面: シーンが替わるたびにばねを1本足す（springTrack）。変形はシーン境界の 0.15 秒前から始まる
+  // Panel: add one spring each time the scene changes (springTrack). The morph starts 0.15 s before the scene boundary
   const ids = ['s1', 's2', 's3', 's4', 's5'];
   const starts = [0, 3, 6, 9.5, 12];
   const rects = ids.map((id) => panelFor(id, L));
@@ -56,10 +57,10 @@ export function render(ctx, t) {
   D.roundRect(g, pr.x, pr.y, pr.w, pr.h, pr.r * u);
   g.fill();
 
-  // 文字の出入り: 退場は面の変形より先、入場は変形開始の後
+  // Text in/out: exits happen before the panel morph, entrances after the morph starts
   const inOut = (a, b) => M.spring(t - a, 'default') * (1 - M.ease.inCubic(M.progress(t, b - 0.45, b - 0.2)));
 
-  // s1 課題
+  // s1 problem
   if (t < 3) {
     const words = ['その棚、', '部屋に', '入る？'];
     words.forEach((w, i) => {
@@ -67,7 +68,7 @@ export function render(ctx, t) {
       ctx.text(w, pr.x + 7 * u, pr.y + 12 * u + i * 17 * u + (1 - p) * 6 * u, { font: ctx.font('ja', 15 * u, 800), color: C.paper, alpha: p });
     });
   }
-  // s2 仕組みが組み上がる
+  // s2 the mechanism assembles
   if (t >= 2.85 && t < 6) {
     const p = inOut(3.15, 6);
     ctx.text('サイズで\n選んで、\n並べる', pr.x + 5 * u, pr.y + 8 * u, { font: ctx.font('ja', 8.5 * u, 800), color: C.paper, alpha: p, lineHeight: 1.3, maxWidth: pr.w - 10 * u });
@@ -89,7 +90,7 @@ export function render(ctx, t) {
       g.fill();
     });
   }
-  // s3 できること3つ
+  // s3 three things it does
   if (t >= 5.85 && t < 9.5) {
     const p = inOut(6.15, 9.5);
     ctx.text('できること', pr.x + 5 * u, pr.y + pr.h / 2, { font: ctx.font('ja', 8 * u, 800), color: C.paper, baseline: 'middle', alpha: p });
@@ -112,14 +113,14 @@ export function render(ctx, t) {
     const c2 = cells[cells.length - 1];
     const sx = M.lerp(c0.x, c2.x, sel / 2);
     const sy = M.lerp(c0.y, c2.y, sel / 2) + M.ease.inCubic(M.progress(t, 9.05, 9.35)) * H * 0.5;
-    // 選択中のカードの下に主張色の帯（枠線は使わない）
+    // Accent-color bar under the selected card (no outline)
     g.fillStyle = C.accent;
     g.globalAlpha = M.clamp(M.spring(t - 7.2, 'default'));
     D.roundRect(g, sx + c0.w * 0.2, sy + c0.h - 3 * u, c0.w * 0.6, 1.4 * u, 0.7 * u);
     g.fill();
     g.globalAlpha = 1;
   }
-  // s4 数字1つ
+  // s4 one number
   if (t >= 9.35 && t < 12) {
     const p = inOut(9.7, 12);
     const n = Math.round(M.lerp(1962, 1987, M.clamp(M.spring(t - 9.8, 'default'))));
@@ -129,7 +130,7 @@ export function render(ctx, t) {
     const lw = pr.w * 0.5 * M.clamp(M.spring(t - 10.4, 'default')) * p;
     g.fillRect(L.cx - lw / 2, L.cy + 18 * u, lw, 0.8 * u);
   }
-  // s5 ロゴ + CTA
+  // s5 logo + CTA
   if (t >= 12) {
     const e = M.spring(t - 12.25, 'heavy');
     const logo = ctx.img('@logo');

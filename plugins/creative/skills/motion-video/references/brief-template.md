@@ -1,114 +1,114 @@
-# 指示書（企画書）ひな形
+# Brief (project plan) template
 
-動画づくりの最初の一枚。入口は2つある。
+The first page of making a video. There are two entry points.
 
-- **雑メモで始める**（既定）: 人は印象とシーンごとの雑なメモと素材一覧だけ渡す。エージェントがカット割り（v0 のカット表）と音楽ブリーフを先に提案し、人が直す。白紙のひな形を渡すと人の手が止まるので、こちらを先に勧める
-- **指示書を埋める**: 下のひな形を人が書くか、エージェントが質問して埋める
+- **Start from rough notes** (default): the human hands over only an impression, rough notes per scene and an asset list. The agent proposes the cut breakdown (the v0 cut sheet) and the music brief first, and the human corrects them. Handing someone a blank template stalls them, so recommend this one first
+- **Fill in the brief**: the human writes the template below, or the agent fills it in by asking questions
 
-## 雑メモで始める
+## Start from rough notes
 
-人に頼むのは次の3つだけ:
+Ask the human for only these three things:
 
 ```markdown
-## 印象
-〈例: 静かに始まって、最後のロゴで一度だけ開ける。手触りのある紙っぽさ〉
+## Impression
+[e.g. Starts quiet, opens up just once at the final logo. A tactile, papery feel]
 
-## シーンごとの雑なメモ
-- 〈例: 最初は課題を大きな字で〉
-- 〈例: 管理画面が組み上がる〉
-- 〈例: 最後はロゴ〉
+## Rough notes per scene
+- [e.g. Open with the problem in big type]
+- [e.g. The admin screen assembles itself]
+- [e.g. End on the logo]
 
-## 素材一覧
-- 〈例: assets/dashboard.png 管理画面のスクショ（2026-09 時点）〉
-- 〈例: clips/demo.mp4 操作の録画 12 秒〉
+## Asset list
+- [e.g. assets/dashboard.png screenshot of the admin screen (as of 2026-09)]
+- [e.g. clips/demo.mp4 screen recording of the workflow, 12 seconds]
 ```
 
-エージェントへの指示には次の型を添える（人が書かなければエージェントが自分に課す）:
+Attach this framing to the instructions for the agent (if the human does not write it, the agent imposes it on itself):
 
-> アイデアはヒント。再現を目指さない。表現は過剰でよい。
+> The ideas are hints. Do not aim to reproduce them. Overdoing the expression is fine.
 
-受け取ったらエージェントは:
+On receiving them, the agent:
 
-1. カット割りを提案する。`video.js` の `meta.scenes` を1カット1行で書き、render はまだ仮（面と文字だけ）でよい。`storyboard` で出した最初のカット表（v1）を、人が直す前のたたき台として見せる
-2. 音楽ブリーフ（`music-brief.md`）を埋めて一緒に見せる。`music.mjs` に落ちない欄はその旨を書く
-3. 雑メモから決められない項目（尺・画角・見る人・CTA）だけを質問で埋める（下の「足りない項目を質問で埋めるとき」）。素材に無い UI・数字は作らず人へ求める
-4. 人の直しはカット表の FB 欄で受ける（`authoring.md` の「12. カット表と FB の往復」）
+1. Proposes a cut breakdown. Write `meta.scenes` in `video.js` with one cut per row; render can stay provisional (just surfaces and text). Show the first cut sheet (v1) produced by `storyboard` as a starting draft before the human corrects it
+2. Fills in the music brief (`music-brief.md`) and shows it alongside. Note any fields that do not map to `music.mjs`
+3. Asks questions only for items that cannot be decided from the rough notes (length, aspect, audience, CTA) (see "Asking questions to fill missing items" below). Do not invent UI or numbers that are not in the assets; ask the human for them
+4. Takes the human's corrections in the cut sheet's FB column (`authoring.md`, "12. Cut sheet and FB round trips")
 
-人の頭の中に完成像があるなら、それを漏れなく書いてもらうほど良くなる。イメージできていないときは、カット表を叩き台にしてエージェントと一緒に考える段だと伝える。
+If the human has a finished picture in their head, the more completely they write it down, the better the result. If they cannot picture it yet, tell them this is the stage to think it through together with the agent, using the cut sheet as a draft.
 
-## 指示書ひな形
+## Brief template
 
-人が書いてもよいし、エージェントが質問して埋めてもよい。
-**書く順番は「ログラインと制約 → 見た目 → ツール」**。何を・誰に・何秒かが決まる前に色や動きの話をしない。
+The human may write it, or the agent may fill it in by asking questions.
+**Write in the order "logline and constraints → look → tools"**. Do not talk about color or motion before what, for whom and how many seconds are decided.
 
-プロジェクトのフォルダに `brief.md` として置く（`final` の納品物 `source/` にそのまま入る）。
+Put it in the project folder as `brief.md` (it goes as-is into `source/` in the `final` deliverables).
 
 ```markdown
 <role>
-あなたはモーションデザイナー。1本の短い動画を、コードで1コマずつ描いて作る。
+You are a motion designer. You make one short video by drawing it frame by frame in code.
 </role>
 
 <purpose>
-- ログライン（1文）: 〈誰に〉〈何を〉伝えて〈どうしてほしい〉か
-- 見る人: 〈例: 中小企業の経営者。スマホの縦画面で X のタイムラインを流し見している〉
-- 尺: 〈例: 15 秒〉 / 画角: 〈例: 9:16 を先に、同じタイムラインから 1:1・16:9〉 / fps: 60
-- 見終わった後の行動（CTA）: 〈例: サイトを開く〉
-- 制約: 〈例: 音なしでも伝わる / 実在しない機能・数字を出さない〉
+- Logline (one sentence): convey [what] to [whom] so that they [do what]
+- Audience: [e.g. owners of small businesses, skimming the X timeline on a phone in portrait]
+- Length: [e.g. 15 seconds] / Aspect: [e.g. 9:16 first, then 1:1 and 16:9 from the same timeline] / fps: 60
+- Action after watching (CTA): [e.g. open the website]
+- Constraints: [e.g. understandable without sound / do not show features or numbers that do not exist]
 </purpose>
 
 <visual_identity>
-- brand.json のパス: 〈例: ~/brand/example/brand.json〉（色・書体・ロゴ）
-- トーン: 〈例: 明快・前向き・余白多め〉
-- 参考素材: 〈URL やファイル〉 → **文法だけ移す**（色の使い方・書体の組み方・尺・トランジション・カメラ）。
-  **中身は移さない**（物語・ロゴ・キャラクター・著作物の構図）
-- 既定で禁止: グラデーション背景の上に中央タイトル / 全部フェードイン / 隅のラベル / 枠線 / グロー
+- Path to brand.json: [e.g. ~/brand/example/brand.json] (colors, typefaces, logo)
+- Tone: [e.g. clear, positive, generous whitespace]
+- Reference material: [URLs or files] → **carry over only the grammar** (use of color, typesetting, length, transitions, camera).
+  **Do not carry over the content** (story, logos, characters, composition of copyrighted works)
+- Forbidden by default: a centered title on a gradient background / fade everything in / corner labels / outlines / glow
 </visual_identity>
 
 <story>
-シーンの並び（製品動画なら5拍が既定）:
-1. 課題 — 5語くらいの大きな文字
-2. 実際の UI が組み上がる
-3. 実際の操作で機能を3つ
-4. 検証済みの数字を1つ（出典を書く）
-5. ロゴ＋CTA
+Scene order (for a product video, five beats is the default):
+1. Problem — big type, about five words
+2. The actual UI assembles itself
+3. Three features shown through actual operation
+4. One verified number (cite the source)
+5. Logo + CTA
 
-素材一覧（アニメーションを書く前に確定する。**製品の UI や主張を捏造しない**）:
-| キー | ファイル | 何か | 使うシーン |
+Asset list (finalize before writing animation. **Do not fabricate product UI or claims**):
+| Key | File | What it is | Scenes used |
 |---|---|---|---|
-| shot | assets/dashboard.png | 管理画面のスクショ（2026-09 時点） | 2, 3 |
-| demo | clips/demo.mp4 | 操作の録画 12 秒 | 3 |
-| @logo | brand.json の logo | ロゴ | 5 |
+| shot | assets/dashboard.png | Screenshot of the admin screen (as of 2026-09) | 2, 3 |
+| demo | clips/demo.mp4 | Screen recording of the workflow, 12 seconds | 3 |
+| @logo | logo in brand.json | Logo | 5 |
 </story>
 
 <motion>
-- ばね: UI（カード・ボタン）は snappy / playful（小さく行き過ぎてよい）、文字と大きな面は default / heavy（行き過ぎない）
-- 文字の出入り: 文字は容器の変形より先に退場し、新しい文字は変形が始まってから入る
-- 2〜4 秒ごとに新しい視覚イベントを入れる
-- トランジション: 画面上の物が次のシーンの物に変わる（ハードカットしない）
-- ループ作品か: 〈はい / いいえ〉（はいなら最後のコマ→最初のコマで位置も速度もつながる）
+- Springs: UI (cards, buttons) uses snappy / playful (slight overshoot is fine); text and large surfaces use default / heavy (no overshoot)
+- Text in and out: text exits before the container morphs, and new text enters after the morph has started
+- Add a new visual event every 2–4 seconds
+- Transitions: an object on screen turns into an object of the next scene (no hard cuts)
+- Looping piece: [yes / no] (if yes, position and velocity connect from the last frame → the first frame)
 </motion>
 
 <audio>
-- BPM: 〈例: 120〉。状態変化は拍に、主役の登場は小節頭に置く
-- 効果音: click / pop / thump / whoosh（コードで合成。外部音源・有料ナレーションは使わない）
-- BGM: 〈要る / 要らない〉。要るならコード進行〈例: Am → F → C → G〉とスタイル〈calm / upbeat〉。山（主役の登場）の小節に曲の山を合わせる。細かく注文するなら `music-brief.md`（references/music-brief.md）
-- ミックス: -14 LUFS ±1・トゥルーピーク -1 dBFS 以下
+- BPM: [e.g. 120]. Put state changes on beats and the hero's entrance on bar starts
+- Sound effects: click / pop / thump / whoosh (synthesized in code. No external audio sources or paid narration)
+- BGM: [needed / not needed]. If needed, a chord progression [e.g. Am → F → C → G] and a style [calm / upbeat]. Align the music's peak with the bar of the visual peak (the hero's entrance). For detailed requests, use `music-brief.md` (references/music-brief.md)
+- Mix: -14 LUFS ±1, true peak at or below -1 dBFS
 </audio>
 
 <process>
-指示書 → 難しいシーンの技術検証 → カット表（はじめ/おわりの2コマ＋FB 欄）→ 自己採点で最悪の3件を直す → 人の FB → 次の版 …… → **人の OK** → 本番書き出し
+Brief → feasibility test for hard scenes → cut sheet (first/last frame + FB column) → self-review and fix the worst 3 → human FB → next version …… → **human OK** → final render
 </process>
 
 <delivery>
-final.mp4（画角ごと）＋ poster.png ＋ contact.png ＋ source/ ＋ README.md
+final.mp4 (per aspect) + poster.png + contact.png + source/ + README.md
 </delivery>
 ```
 
-## 足りない項目を質問で埋めるとき
+## Asking questions to fill missing items
 
-一度に全部聞かない。次の順で、決まっていないものだけ聞く（1回に3問まで）:
+Do not ask everything at once. Ask only what is undecided, in this order (up to 3 questions at a time):
 
-1. 誰に・何を・何秒・どこで流すか（ログラインと画角が決まる）
-2. 使える素材は何か（スクショ・録画・ロゴ・数字の出典）。**無い素材を作らない**
-3. トーンと参考にしたい動画（文法だけ移す前提で）
-4. 音は要るか・BGM は要るか（要るならコード進行と calm / upbeat）・BPM の好み（無ければ 120）
+1. For whom, what, how many seconds, and where it will play (this decides the logline and aspect)
+2. What assets are available (screenshots, recordings, logo, sources for numbers). **Do not create assets that do not exist**
+3. Tone and reference videos (on the premise that only the grammar is carried over)
+4. Is sound needed, is BGM needed (if so, the chord progression and calm / upbeat), BPM preference (120 if none)

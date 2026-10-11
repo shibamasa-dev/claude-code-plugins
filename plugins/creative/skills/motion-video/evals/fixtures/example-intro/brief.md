@@ -1,40 +1,40 @@
 <role>
-あなたはモーションデザイナー。1本の短い動画を、コードで1コマずつ描いて作る。
+You are a motion designer. You make one short video by drawing it frame by frame in code.
 </role>
 
 <purpose>
-- ログライン: 部屋に合う家具が選べない新生活の人に、Example Co.（架空の家具店）が「サイズから選んで、並べて確かめられる」店だと伝え、サイトを開いてもらう
-- 見る人: 引っ越しを控えた人。PC の横画面（店頭のディスプレイ・サイトのトップ）
-- 尺: 15 秒 / 画角: 16:9 / fps: 60
-- CTA: example.com を開く
-- 制約: 実在しない実績・数字を出さない（数字は創業年のみ）
+- Logline: tell people starting a new life who cannot pick furniture that fits their room that Example Co. (a fictional furniture shop) is a shop where you "choose by size and lay things out to check" (「サイズから選んで、並べて確かめられる」), and get them to open the website
+- Audience: people about to move. Landscape screen on a PC (in-store display, top of the website)
+- Length: 15 seconds / Aspect: 16:9 / fps: 60
+- CTA: open example.com
+- Constraints: do not show track records or numbers that do not exist (the only number is the founding year)
 </purpose>
 
 <visual_identity>
-- brand.json（同じフォルダ）。主色 #2F5D50 / アクセント #6B4E9B / サブ #3F9C94 / 補助 #C5D86D、和文 Zen Kaku Gothic New・欧文見出し Poppins
-- トーン: 明快・前向き・余白多め
-- 既定で禁止: グラデーション上の中央タイトル / 全部フェードイン / 隅のラベル / 枠線 / グロー
+- brand.json (same folder). Primary color #2F5D50 / accent #6B4E9B / secondary #3F9C94 / supporting #C5D86D; Japanese text Zen Kaku Gothic New, Latin headings Poppins
+- Tone: clear, positive, generous whitespace
+- Forbidden by default: a centered title on a gradient / fade everything in / corner labels / outlines / glow
 </visual_identity>
 
 <story>
-5拍: 課題 → 仕組みが組み上がる → できること3つ → 数字1つ（1987 年創業） → ロゴ＋CTA
-素材: @logo（brand.json の logo。eval 用の仮ロゴ）
+Five beats: problem → the system assembles itself → three things you can do → one number (founded in 1987) → logo + CTA
+Assets: @logo (logo in brand.json. A placeholder logo for evals)
 </story>
 
 <motion>
-- UI カードは snappy、文字と面は default、ロゴは heavy
-- 文字は面の変形より先に退場、新しい文字は変形開始の後に入場
-- トランジションは主色の面が形を変えて次のシーンの物になる
+- UI cards use snappy, text and surfaces use default, the logo uses heavy
+- Text exits before the surface morphs; new text enters after the morph starts
+- Transitions: a primary-color surface changes shape and becomes the next scene's object
 </motion>
 
 <audio>
-BPM 120。シーンの切り替えを拍に、主役（冒頭・ロゴ）を小節頭に。click / pop / thump / whoosh
+BPM 120. Scene changes on beats, the hero moments (opening, logo) on bar starts. click / pop / thump / whoosh
 </audio>
 
 <process>
-指示書 → 絵コンテ → 自己採点 → 人の OK → 本番書き出し
+Brief → storyboard → self-review → human OK → final render
 </process>
 
 <delivery>
-final.mp4 ＋ poster.png ＋ contact.png ＋ source/ ＋ README.md
+final.mp4 + poster.png + contact.png + source/ + README.md
 </delivery>

@@ -1,5 +1,5 @@
-// harness.js — render.mjs（node）から CDP 経由で呼ばれるページ側の土台。
-// プロジェクトの video.js を読み、素材を全部読み込み終えてから、render(ctx, t) を時刻ごとに呼んで1コマを返す。
+// harness.js — page-side foundation that render.mjs (node) calls over CDP.
+// Loads the project's video.js, waits until every asset has loaded, then calls render(ctx, t) per time and returns one frame.
 import * as M from './motion.js';
 import * as D from './draw.js';
 
@@ -17,13 +17,13 @@ const clips = {};
 const used = { images: {}, clips: {} };
 const fonts = {};
 
-// 描画中だけ非決定の API を塞ぐ（使ったら例外で止める）
+// Block non-deterministic APIs while drawing (using one throws and stops the render)
 const real = { random: Math.random, now: Date.now, perf: performance.now.bind(performance) };
 function lock(on) {
   if (on) {
-    Math.random = () => { throw new Error('Math.random は使えない。ctx.M.rng(seed) を使う'); };
-    Date.now = () => { throw new Error('Date.now は使えない。時刻は render(ctx, t) の t だけを使う'); };
-    performance.now = () => { throw new Error('performance.now は使えない。時刻は t だけを使う'); };
+    Math.random = () => { throw new Error('Math.random is not allowed. Use ctx.M.rng(seed)'); };
+    Date.now = () => { throw new Error('Date.now is not allowed. Use only t from render(ctx, t) for time'); };
+    performance.now = () => { throw new Error('performance.now is not allowed. Use only t for time'); };
   } else {
     Math.random = real.random;
     Date.now = real.now;
@@ -34,7 +34,7 @@ function lock(on) {
 function loadImage(src) {
   const img = new Image();
   img.src = src;
-  return img.decode().then(() => img, () => { throw new Error(`素材を読めない: ${src}`); });
+  return img.decode().then(() => img, () => { throw new Error(`cannot load asset: ${src}`); });
 }
 
 function fontStack(role, size, weight = 700) {
@@ -44,7 +44,7 @@ function fontStack(role, size, weight = 700) {
   return `${weight} ${size}px ${q}`;
 }
 
-// family が実際に使えるか（fallback と字幅が変わるかで判定）
+// Whether the family is actually available (judged by whether glyph widths differ from the fallback)
 function fontAvailable(family) {
   const probe = 'mmmWWWあいう漢字Il1';
   for (const base of ['monospace', 'serif']) {
@@ -66,14 +66,14 @@ function buildCtx(W, H) {
     font: fontStack,
     img(key) {
       const im = images[key];
-      if (!im) throw new Error(`素材キーが無い: ${key}（meta.assets か brand.logo=@logo に登録する）`);
+      if (!im) throw new Error(`no asset key: ${key} (register it in meta.assets, or as brand.logo=@logo)`);
       used.images[key] = (used.images[key] || 0) + 1;
       return im;
     },
-    // 実写クリップの localT 秒目のコマ（ブラウザの <video> は使わない）
+    // Frame of a live-action clip at localT seconds (does not use the browser's <video>)
     clip(key, localT, { loop = false } = {}) {
       const c = clips[key];
-      if (!c) throw new Error(`クリップキーが無い: ${key}（meta.clips に登録する）`);
+      if (!c) throw new Error(`no clip key: ${key} (register it in meta.clips)`);
       let i = Math.floor(Math.max(0, localT) * c.fps + 1e-6);
       i = loop ? i % c.frames.length : Math.min(i, c.frames.length - 1);
       (used.clips[key] ||= {})[i] = true;
@@ -108,7 +108,7 @@ async function drawOnce(t) {
   }
 }
 
-// サブフレームを平均してモーションブラー（前フレームではなく、同じコマ内の時刻を混ぜる）
+// Motion blur by averaging subframes (blends times within the same frame, not the previous frame)
 async function composite(t, subframes, shutter) {
   const W = work.width;
   const H = work.height;
@@ -131,14 +131,14 @@ async function composite(t, subframes, shutter) {
 }
 
 window.__mv = {
-  // ① video.js を読み、meta を返す（node はこれを見てクリップを連番化する）
+  // (1) Load video.js and return meta (node uses it to split clips into numbered frames)
   async load() {
     mod = await import('/project/video.js');
-    if (!mod.meta || typeof mod.render !== 'function') throw new Error('video.js は meta と render(ctx, t) を export する');
+    if (!mod.meta || typeof mod.render !== 'function') throw new Error('video.js must export meta and render(ctx, t)');
     meta = { fps: 60, shutter: 0.5, subframes: 4, scenes: [], assets: {}, clips: {}, ...mod.meta };
     return JSON.parse(JSON.stringify(meta));
   },
-  // ② 素材・フォント・クリップのコマを全部読み終えてから返す（1コマ目のフォント差し替わりを防ぐ）
+  // (2) Return only after every asset, font and clip frame has loaded (prevents a font swap on the first frame)
   async init({ brandJson, clipCounts }) {
     brand = brandJson || { colors: {}, fonts: {} };
     const jobs = [];
@@ -146,7 +146,7 @@ window.__mv = {
       if (f.file) {
         const face = new FontFace(f.family, `url(/brand/${encodeURI(f.file)})`, { weight: f.weight || '100 900' });
         document.fonts.add(face);
-        jobs.push(face.load().catch(() => { throw new Error(`フォントを読めない: ${f.file}`); }));
+        jobs.push(face.load().catch(() => { throw new Error(`cannot load font: ${f.file}`); }));
       }
     }
     for (const [k, p] of Object.entries(meta.assets || {})) jobs.push(loadImage(`/project/${encodeURI(p)}`).then((im) => (images[k] = im)));
@@ -171,12 +171,12 @@ window.__mv = {
     out.height = work.height = H;
     ctx = buildCtx(W, H);
   },
-  // ③ 時刻 t の1コマを PNG(dataURL) で返す
+  // (3) Return the frame at time t as a PNG (dataURL)
   async frame(t, subframes) {
     await composite(t, subframes ?? meta.subframes, meta.shutter);
     return out.toDataURL('image/png');
   },
-  // 全コマを小さな解像度で描き、隣り合うコマの差（動きの量）を返す。strip と「動きの無い区間」の判定に使う
+  // Draw every frame at a small resolution and return the difference between adjacent frames (amount of motion). Used for the strip and for detecting "stretches without motion"
   async motionScan(n) {
     const W = work.width;
     const H = work.height;
@@ -194,7 +194,7 @@ window.__mv = {
     }
     return diffs;
   },
-  // 2つの時刻のコマの差（ループ継ぎ目の連続性を見る）
+  // Difference between the frames at two times (checks continuity across the loop seam)
   async pairDiff(pairs) {
     const W = work.width;
     const H = work.height;

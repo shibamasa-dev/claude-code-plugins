@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""PostToolUse hook: DESIGN.md を編集したら lint を走らせ、指摘があれば注入して直させる。
+"""PostToolUse hook: lint DESIGN.md after it is edited and inject any findings so Claude fixes them.
 
-matcher は "Edit|Write"（**ツール名しかマッチできない**ので、パスでは絞れない）。
-DESIGN.md 以外のファイルは basename で弾いて即 exit する＝出力ゼロ・完全に silent。
-つまり全編集で python3 が1回起動するが、対象外は数十 ms で抜ける。
+The matcher is "Edit|Write" (**it can only match tool names**, so it cannot filter by path).
+Files other than DESIGN.md are rejected by basename and exit immediately: no output, fully silent.
+So python3 starts once per edit, but non-target files return within tens of ms.
 
-なぜ pre-commit でなくここか（2026-09-10 判断）:
-  commit ゲートより、編集した直後のセッション内で直せるほうが早い。
-  pre-commit は「ユーザーの手編集も捕まえる」利点があるが、今回はそちらを採らない。
+Why here and not pre-commit (decided 2026-09-10):
+  Fixing it in the same session right after the edit is faster than a commit gate.
+  pre-commit has the advantage of also catching the user's manual edits, but we do not take that here.
 
-なぜ @latest か:
-  ユーザーの明示指示（「@google/design.md は最新版にしてね」）。実測で @latest は約4.2秒・
-  ネット必須、@0.4.0 固定なら約2.2秒・オフライン可。alpha ツールなので破壊的変更で
-  ここが落ちる可能性がある。固定に切り替えるなら CMD の版指定を変えるだけ。
+Why @latest:
+  The user explicitly asked for it ("use the latest @google/design.md"). Measured: @latest takes
+  about 4.2 s and needs the network; pinning @0.4.0 takes about 2.2 s and works offline. It is an
+  alpha tool, so a breaking change could make this fail. To pin, just change the version in CMD.
 
-lint が落ちた場合（ネット断・npx 失敗）は**黙って通さない** — 検証できなかったことを
-明示して注入する。silent pass は「lint 済み」と誤認させるため。
+If lint fails to run (no network, npx failure), **do not pass silently**: inject a message saying
+it could not be verified. A silent pass would be mistaken for "linted".
 """
 import json
 import os
@@ -38,7 +38,7 @@ def main() -> None:
 
     path = (data.get("tool_input") or {}).get("file_path") or ""
     if os.path.basename(path) != TARGET or not os.path.isfile(path):
-        sys.exit(0)  # 対象外は完全に silent
+        sys.exit(0)  # non-target files: fully silent
 
     try:
         proc = subprocess.run(
@@ -47,24 +47,24 @@ def main() -> None:
         report = json.loads(proc.stdout)
     except Exception as e:
         emit(
-            f"【DESIGN.md lint 未実行】{path}\n"
-            f"lint を走らせられなかった（{type(e).__name__}）。ネット断か npx の失敗。\n"
-            f"検証できていないので、`npx -y @google/design.md@latest lint {path}` を手で通すこと。"
+            f"[DESIGN.md lint NOT RUN] {path}\n"
+            f"Could not run lint ({type(e).__name__}): no network or npx failed.\n"
+            f"It is unverified, so run `npx -y @google/design.md@latest lint {path}` by hand."
         )
         return
 
     summary = report.get("summary") or {}
     errors, warnings = summary.get("errors", 0), summary.get("warnings", 0)
     if not errors and not warnings:
-        sys.exit(0)  # clean なら黙る
+        sys.exit(0)  # stay silent when clean
 
-    lines = [f"【DESIGN.md lint】{path} — errors {errors} / warnings {warnings}"]
+    lines = [f"[DESIGN.md lint] {path} — errors {errors} / warnings {warnings}"]
     for f in report.get("findings", []):
         if f.get("severity") == "info":
             continue
         where = f.get("path") or "-"
         lines.append(f"  [{f.get('severity')}] {where}: {f.get('message')} ({f.get('rule')})")
-    lines.append("**この編集で DESIGN.md を壊している。先にこれを直してから次に進むこと。**")
+    lines.append("**This edit broke DESIGN.md. Fix these before moving on.**")
     emit("\n".join(lines))
 
 
