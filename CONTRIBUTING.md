@@ -29,7 +29,7 @@ for t in plugins/*/tests/run-all.sh; do bash "$t"; done   # tests assume macOS
 
 - Write everything in English: skills, hook messages, comments, tests, manifests and CHANGELOG entries
 - Skill `description` fields also list the Japanese trigger phrases, so Japanese prompts still trigger the skill
-- Every `README.md` has a Japanese `README.ja.md` next to it, linked from a language switcher on the first line. Update both in the same PR. `check-repo.py` enforces the pair
+- Every `README.md` has a Japanese `README.ja.md` next to it, linked from a language switcher on line 3. Update both in the same PR. `check-repo.py` enforces the pair
 
 ## Versions and CHANGELOG
 

@@ -74,8 +74,12 @@ for f in filter(None, FILES):
         kana = next((n for n, line in enumerate(text.splitlines(), 1) if KANA.search(line)), None)
         if kana:
             errors.append(f"{f}:{kana}: Hiragana/Katakana in README.md (Japanese text belongs in README.ja.md)")
-    elif README_JA.fullmatch(f) and not has_switcher("README.ja.md", text):
-        errors.append(f"{f}:3: line 3 must be the language switcher: {SWITCHER['README.ja.md']}")
+    elif README_JA.fullmatch(f):
+        m = README_JA.fullmatch(f)
+        if f"{m.group(1) or ''}README.md" not in FILES:
+            errors.append(f"{f}: README.md is missing next to it")
+        if not has_switcher("README.ja.md", text):
+            errors.append(f"{f}:3: line 3 must be the language switcher: {SWITCHER['README.ja.md']}")
     for n, line in enumerate(text.splitlines(), 1):
         for rx, what in LEAKS:
             if rx.search(line):
