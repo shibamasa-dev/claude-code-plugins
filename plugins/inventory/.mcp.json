@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "db": {
+      "command": "uv",
+      "args": ["run", "--quiet", "--script", "${CLAUDE_PLUGIN_ROOT}/server/inventory_mcp.py"],
+      "env": {
+        "INVENTORY_DATABASE_URL": "${user_config.database_url}",
+        "INVENTORY_SQLITE_PATH": "${user_config.sqlite_path}",
+        "INVENTORY_ROUTE": "${user_config.route}"
+      }
+    }
+  }
+}

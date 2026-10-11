@@ -20,6 +20,7 @@ A Claude Code plugin marketplace: guard hooks and workflow skills from daily dev
 /plugin install repo-setup@shibamasa-plugins
 /plugin install creative@shibamasa-plugins
 /plugin install lint@shibamasa-plugins
+/plugin install inventory@shibamasa-plugins
 ```
 
 Every plugin is independent. Install only the ones you need.
@@ -34,6 +35,7 @@ Every plugin is independent. Install only the ones you need.
 | [repo-setup](plugins/repo-setup/README.md) | Bootstrapping a repo: a health check of the basics and a setup scaffold for cloud environments |
 | [creative](plugins/creative/README.md) | Skills for image-generation prompts and code-driven motion videos, and a lint hook for `DESIGN.md` |
 | [lint](plugins/lint/README.md) | Linters for artifacts. Currently `skill-lint`, which checks whether a skill leaks details about its author, company or machine before you publish it |
+| [inventory](plugins/inventory/README.md) | An inventory database of the things you own. Claude registers items from photos, keeps what it couldn't read as `needs_review`, and searches with NFKC-normalized text. SQLite by default, or Postgres / Supabase directly or through a claude.ai connector |
 
 Each plugin's README lists its skills, hooks and settings.
 
@@ -61,6 +63,7 @@ English is the base language, and the plugins are being translated from Japanese
 
 - macOS or Linux, `python3`, `git`, `gh`
 - `motion-video` also needs Node.js, Chrome and ffmpeg
+- `inventory` also needs `uv` (to start its MCP server)
 
 ## Contributing
 
