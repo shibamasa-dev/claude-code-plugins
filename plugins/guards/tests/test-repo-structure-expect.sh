@@ -1,9 +1,9 @@
 #!/bin/bash
-# repo-structure-guard.py の19ケースを期待値つきで検証する（規約の単一定義化で挙動が変わっていないこと）。
+# Check repo-structure-guard.py's 19 cases against expected values (behavior unchanged by single-sourcing the rules).
 cd "$(dirname "$0")" || exit 1
 NOW=$(mktemp "${TMPDIR:-/tmp}/rsg-now.XXXX"); trap 'rm -f "$NOW"' EXIT
 bash ./test-repo-structure.sh "$NOW"
-# paste は '-' を渡さないと標準入力（下のヒアドキュメント）を読まない。無いと期待値が空のまま並ぶ
+# paste only reads stdin (the heredoc below) when given '-'. Without it the expected values come out empty
 paste -d'|' <(tail -n +2 "$NOW") - <<'EXPECT' | while IFS='|' read -r got want; do
 deny
 allow
@@ -26,5 +26,5 @@ deny
 deny
 EXPECT
   g=$(echo "$got" | awk '{print $1}'); label=$(echo "$got" | cut -d' ' -f2-)
-  printf '  %-56s -> %-5s (%s 期待)\n' "$(echo $label)" "$g" "$(echo $want)"
+  printf '  %-56s -> %-5s (expect %s)\n' "$(echo $label)" "$g" "$(echo $want)"
 done

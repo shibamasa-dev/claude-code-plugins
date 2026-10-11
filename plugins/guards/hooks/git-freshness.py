@@ -1,36 +1,38 @@
 #!/usr/bin/env python3
-"""PostToolUse hook: マージの後、手元のマージ先ブランチを origin に追従させる汎用ディスパッチャ。
+"""PostToolUse hook: a generic dispatcher that brings the local merge-target branch up to origin after a merge.
 
-なぜ PostToolUse か:
-  PreToolUse でも permissionDecisionReason は Claude のコンテキストに乗るが、**届けるには
-  ツールを止めるしかない**（additionalContext フィールドは PostToolUse 以降にしか無い）。
-  merge は既に完了していて止める対象が無いので、ここは PostToolUse の additionalContext が正しい。
-  逆に「古いブランチの上に commit する」は積む前に止めるべきなので、bash-guard.py(PreToolUse) の
-  rule_main_commit_freshness が deny で担当する。**止める係=bash-guard / 知らせる係=本 hook**。
+Why PostToolUse:
+  A PreToolUse permissionDecisionReason also reaches Claude's context, but **only by blocking
+  the tool** (the additionalContext field exists only from PostToolUse on). The merge has
+  already happened and there is nothing to block, so PostToolUse additionalContext is right here.
+  Conversely, "committing on top of a stale branch" should be stopped before it happens, so
+  rule_main_commit_freshness in bash-guard.py (PreToolUse) handles it with a deny.
+  **bash-guard blocks; this hook informs.**
 
-なぜ必要か:
-  マージは remote で起きるため、手元のチェックアウトは自動では追従しない。そのチェックアウトを
-  直に実行している定期ジョブや常駐プロセスは、pull するまで旧コードを回し続ける。
-  「マージすれば有効」ではなく「マージ＋手元の pull で有効」。
+Why it is needed:
+  Merges happen on the remote, so the local checkout does not follow automatically. Scheduled
+  jobs or daemons that run that checkout directly keep running old code until someone pulls.
+  It's not "live once merged" but "live once merged and pulled locally".
 
-ルール追加＝関数を1つ書いて RULES に登録するだけ（hook の追加登録は不要）。
-bash-guard.py と同じ RULES 方式に揃えてある。
+Adding a rule = write one function and register it in RULES (no extra hook registration).
+Uses the same RULES pattern as bash-guard.py.
 
-現行ルール:
-  1. post-merge-pull : マージの後、手元で開いているブランチがその PR のマージ先で、origin より
-                       遅れていれば --ff-only で追従。clean に通れば実行して報告、通らなければ
-                       **触らず**状況だけ注入。マージ先はブランチ名を決め打ちせずに決める:
-                       - GitHub コネクタ（mcp__*__merge_pull_request）: 結果の merge commit の SHA が
-                         手元のブランチの origin に入ったか。cwd の origin がマージした owner/repo と
-                         同じときだけ動く（別リポの PR をマージしただけで手元を動かさない）
-                       - gh pr merge: `gh pr view` の baseRefName。取れなければリポの既定ブランチ
-                       - git merge: リポの既定ブランチ（origin/HEAD）
+Current rules:
+  1. post-merge-pull : after a merge, if the branch checked out locally is the PR's merge target
+                       and is behind origin, fast-forward it with --ff-only. If that goes through
+                       cleanly, do it and report; if not, **leave it alone** and only inject the
+                       situation. The merge target is determined without hard-coding branch names:
+                       - GitHub connector (mcp__*__merge_pull_request): whether the merge commit SHA
+                         from the result landed in origin of the local branch. Acts only when the cwd's
+                         origin is the merged owner/repo (merging another repo's PR leaves the checkout alone)
+                       - gh pr merge: baseRefName from `gh pr view`; if unavailable, the repo's default branch
+                       - git merge: the repo's default branch (origin/HEAD)
 
-設計上の約束:
-  - **自動 stash はしない。** stash pop の競合で作業を黙って壊すため。ff-only が拒否したら
-    状況（behind 数・未コミット変更ファイル）を注入して判断を Claude/ユーザーに返す。
-  - **問題が無いときは完全に silent**（exit 0・出力なし）。毎 Bash コールで走るため。
-  - 判定は git の状態を直接見る（コネクタの結果は merge commit の SHA だけを使う）。
+Design promises:
+  - **Never auto-stash.** A conflicting stash pop silently wrecks work. If ff-only refuses,
+    inject the situation (commits behind, files with uncommitted changes) and hand the decision to Claude/the user.
+  - **Completely silent when all is well** (exit 0, no output). This runs on every Bash call.
+  - Judge by git's own state (from the connector result, only the merge commit SHA is used).
 """
 import json
 import os
@@ -67,8 +69,8 @@ def _current_branch(cwd):
 
 
 def _remote_default(cwd):
-    """origin が今いう既定ブランチ（ls-remote、読むだけ）。手元の origin/HEAD は fetch で更新されないため先に聞く。
-    繋がらない・認証が要るときは None（待たせない）。"""
+    """The default branch origin reports right now (ls-remote, read-only). Asked first because the local
+    origin/HEAD is not updated by fetch. None if unreachable or auth is needed (don't make anyone wait)."""
     try:
         r = subprocess.run(["git", "ls-remote", "--symref", "origin", "HEAD"], cwd=cwd, capture_output=True, stdin=subprocess.DEVNULL,
                            text=True, timeout=5, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
@@ -79,7 +81,7 @@ def _remote_default(cwd):
 
 
 def _default_branch(cwd):
-    """リポの既定ブランチ。origin に聞き、繋がらなければ手元の origin/HEAD、それも無ければ origin/main・origin/master の有る方。"""
+    """The repo's default branch. Ask origin; if unreachable, the local origin/HEAD; failing that, whichever of origin/main or origin/master exists."""
     name = _remote_default(cwd)
     if name:
         return name
@@ -94,8 +96,8 @@ def _default_branch(cwd):
 
 
 def _repo_state(cwd, branch):
-    """(behind, dirty_files) を返す。判定不能なら None。"""
-    # fetch は best-effort（offline なら素通り＝邪魔しない）
+    """Return (behind, dirty_files). None if it can't be determined."""
+    # fetch is best-effort (offline just passes through = stays out of the way)
     _git(["fetch", "--quiet", "origin", "--", branch], cwd)
     r = _git(["rev-list", "--count", f"HEAD..origin/{branch}"], cwd)
     if r.returncode != 0:
@@ -110,14 +112,14 @@ def _repo_state(cwd, branch):
 
 
 def _origin_slug(cwd):
-    """origin の owner/repo（小文字）。GitHub でなければ None。"""
+    """origin's owner/repo (lowercase). None if not GitHub."""
     r = _git(["config", "--get", "remote.origin.url"], cwd, timeout=5)
     m = re.search(r"github\.com[:/]([^/\s]+)/([^/\s]+?)(?:\.git)?/?$", r.stdout.strip()) if r.returncode == 0 else None
     return f"{m.group(1)}/{m.group(2)}".lower() if m else None
 
 
 def _origin_host_slug(cwd):
-    """origin の (host, owner/repo)（小文字）。GitHub Enterprise など github.com 以外のホストも読む。"""
+    """origin's (host, owner/repo) (lowercase). Also reads hosts other than github.com, such as GitHub Enterprise."""
     r = _git(["config", "--get", "remote.origin.url"], cwd, timeout=5)
     url = r.stdout.strip() if r.returncode == 0 else ""
     m = (re.match(r"^[a-z][a-z0-9+.-]*://(?:[^@/]+@)?([^/:]+)(?::\d+)?/(.+)$", url, re.I)
@@ -129,8 +131,8 @@ def _origin_host_slug(cwd):
 
 
 def _same_repo(cwd, repo):
-    """gh の -R（[HOST/]OWNER/REPO）が cwd の origin と同じリポか。
-    HOST 省略時は owner/repo だけで比べる（GitHub Enterprise の clone で `-R O/R` と書いても同じリポとみなす）。"""
+    """Whether gh's -R ([HOST/]OWNER/REPO) is the same repo as the cwd's origin.
+    Without HOST, compare owner/repo only (`-R O/R` in a GitHub Enterprise clone counts as the same repo)."""
     origin = _origin_host_slug(cwd)
     parts = repo.strip().rstrip("/").split("/")
     if not origin or len(parts) not in (2, 3):
@@ -142,7 +144,7 @@ def _same_repo(cwd, repo):
 
 # ------------------------------------------------------------ post-merge-pull
 GH_MERGE_RE = re.compile(r"\bgh\s+pr\s+merge\b([^;&|\n]*)")
-# gh pr merge で値を取るフラグ（セレクタと取り違えないため）
+# gh pr merge flags that take a value (so the value isn't mistaken for the selector)
 GH_MERGE_VALUE_FLAGS = {"-R", "--repo", "-b", "--body", "-F", "--body-file", "-t", "--subject",
                         "-A", "--author-email", "--match-head-commit"}
 
@@ -152,7 +154,7 @@ def _cwd():
 
 
 def _gh_merge_target(args: str):
-    """gh pr merge の引数から (セレクタ, -R のリポ) を取る。"""
+    """Get (selector, repo from -R) from the gh pr merge arguments."""
     try:
         toks = shlex.split(args)
     except ValueError:
@@ -173,12 +175,12 @@ def _gh_merge_target(args: str):
     if not repo and sel:
         u = re.match(r"^https?://([^/]+)/([^/]+)/([^/]+)/pull/\d+", sel)
         if u:
-            repo = "/".join(u.groups())  # URL のセレクタはそのリポを指す
+            repo = "/".join(u.groups())  # a URL selector points at that repo
     return sel, repo
 
 
 def _gh_base(cwd, sel, repo):
-    """gh pr view で PR のマージ先ブランチを引く。取れなければ None。"""
+    """Look up the PR's merge-target branch with gh pr view. None if unavailable."""
     cmd = ["gh", "pr", "view"] + ([sel] if sel else []) + (["-R", repo] if repo else []) \
         + ["--json", "baseRefName", "-q", ".baseRefName"]
     try:
@@ -201,7 +203,7 @@ def rule_post_merge_pull(command: str):
         if g:
             sel, repo = _gh_merge_target(g.group(1))
             if repo and not _same_repo(cwd, repo):
-                return None  # 別リポの PR をマージしただけ
+                return None  # only merged a PR in another repo
             base = _gh_base(cwd, sel, repo) or _default_branch(cwd)
         else:
             base = _default_branch(cwd)
@@ -211,7 +213,7 @@ def rule_post_merge_pull(command: str):
 
 
 def _merge_sha(resp):
-    """コネクタの結果から merge commit の SHA を探す（JSON 文字列の入れ子も開く）。"""
+    """Find the merge commit SHA in the connector result (also opens nested JSON strings)."""
     if isinstance(resp, str):
         t = resp.strip()
         if t[:1] in "{[":
@@ -234,7 +236,7 @@ def _merge_sha(resp):
 
 
 def rule_post_merge_pull_mcp(tool_input: dict):
-    """コネクタでマージした後。cwd が同じリポで、手元のブランチがマージ先のときだけ追従させる。"""
+    """After a connector merge. Catch up only when the cwd is the same repo and the local branch is the merge target."""
     owner, repo = tool_input.get("owner"), tool_input.get("repo")
     cwd = _cwd()
     if not (owner and repo and cwd):
@@ -250,55 +252,55 @@ def rule_post_merge_pull_mcp(tool_input: dict):
             return None
         _git(["fetch", "--quiet", "origin", "--", branch], cwd)
         if _git(["merge-base", "--is-ancestor", sha, f"origin/{branch}"], cwd).returncode != 0:
-            return None  # マージ先は手元のブランチではない
+            return None  # the merge target is not the local branch
     except (subprocess.TimeoutExpired, OSError):
         return None
     return _pull_branch(branch)
 
 
 def _pull_branch(base):
-    """手元で base を開いていて origin/base より遅れていれば --ff-only で追従する。"""
+    """If base is checked out locally and behind origin/base, catch up with --ff-only."""
     cwd = _cwd()
     if cwd is None or not base:
         return None
     try:
         if _current_branch(cwd) != base:
-            return None  # マージ先以外のブランチに origin/<base> を引き込まない
+            return None  # don't pull origin/<base> into a branch other than the merge target
         state = _repo_state(cwd, base)
         if state is None:
             return inject(
-                f"[git-freshness] origin/{base} と比べられず、ローカル {base} が最新か確かめられませんでした"
-                "（オフライン・認証切れ・リモートにブランチが無いなど）。"
-                f"必要なら `git pull --ff-only origin {base}` で追従してください。"
+                f"[git-freshness] Could not compare with origin/{base}, so it is unknown whether local {base} is up to date"
+                " (offline, expired auth, branch missing on the remote, etc.)."
+                f" If needed, catch up with `git pull --ff-only origin {base}`."
             )
         behind, dirty = state
         if behind == 0:
-            return None  # 既に最新＝silent
-        # --ff-only は衝突するローカル変更があれば自ら拒否する（勝手に壊さない）。
-        # 自動 stash は絶対にしない: stash pop の競合で作業を黙って壊すため。
+            return None  # already up to date = silent
+        # --ff-only refuses on its own if conflicting local changes exist (never breaks anything behind your back).
+        # Never auto-stash: a conflicting stash pop silently wrecks work.
         r = _git(["pull", "--ff-only", "origin", base], cwd, timeout=60)
         if r.returncode == 0:
             return inject(
-                f"[git-freshness] ローカル {base} を自動 pull しました（{behind} commits 追従）。"
-                "このチェックアウトを直に実行しているジョブがあれば、これでマージ済みのコードが動きます。"
+                f"[git-freshness] Auto-pulled local {base} (caught up {behind} commits)."
+                " Any job that runs this checkout directly now runs the merged code."
             )
         detail = (r.stderr or r.stdout).strip().splitlines()
-        detail = detail[-1] if detail else "(理由不明)"
-        files = ", ".join(l[3:] for l in dirty[:5]) or "(なし)"
+        detail = detail[-1] if detail else "(reason unknown)"
+        files = ", ".join(l[3:] for l in dirty[:5]) or "(none)"
         return inject(
-            f"[git-freshness] ⚠️ ローカル {base} が origin/{base} より {behind} commits 遅れていますが、"
-            f"自動 pull できませんでした: {detail}\n"
-            f"未コミット変更 {len(dirty)} 件: {files}\n"
-            "**自動 stash はしていません**（stash pop の競合で作業を壊さないため）。"
-            "変更を commit するか stash するか、ユーザーに確認して判断してください。"
-            "pull するまで、このチェックアウトは古いコードのままです。"
+            f"[git-freshness] ⚠️ Local {base} is {behind} commits behind origin/{base},"
+            f" but the automatic pull failed: {detail}\n"
+            f"{len(dirty)} uncommitted change(s): {files}\n"
+            "**Nothing was stashed automatically** (to avoid wrecking work with a conflicting stash pop)."
+            " Ask the user whether to commit or stash the changes."
+            " Until it is pulled, this checkout keeps the old code."
         )
     except (subprocess.TimeoutExpired, OSError):
         return None
 
 
-RULES = [rule_post_merge_pull]          # Bash のコマンドを見るルール
-MCP_RULES = {"merge_pull_request": rule_post_merge_pull_mcp}  # コネクタのツール名（末尾）→ ルール
+RULES = [rule_post_merge_pull]          # rules that look at the Bash command
+MCP_RULES = {"merge_pull_request": rule_post_merge_pull_mcp}  # connector tool name (suffix) -> rule
 
 
 def main() -> None:

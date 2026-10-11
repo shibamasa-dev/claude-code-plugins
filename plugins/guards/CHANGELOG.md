@@ -1,6 +1,11 @@
 # Changelog
 
-guards プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
+Changes to the guards plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
+
+## [0.6.0] - 2026-10-11
+
+### Changed
+- All hook messages (deny reasons, injected context), comments, tests and the example rule file are now in English. The test summary line is now `==== N as expected / M mismatches ====`.
 
 ## [0.5.0] - 2026-10-11
 
