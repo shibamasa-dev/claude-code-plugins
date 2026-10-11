@@ -6,7 +6,7 @@ export default function Home() {
   const [count, setCount] = useState(0)
 
   useEffect(() => {
-    console.log('Page mounted')  // CLAUDE.md 違反: console.log 使用
+    console.log('Page mounted')  // violates CLAUDE.md: uses console.log
   }, [])
 
   return (

@@ -11,7 +11,7 @@ class User(Base):
     email = Column(String)
 
 
-# マイグレーションツール未使用: 直接 CREATE TABLE
+# no migration tool: CREATE TABLE directly
 def init_db():
     engine = create_engine("sqlite:///./app.db")
     Base.metadata.create_all(engine)

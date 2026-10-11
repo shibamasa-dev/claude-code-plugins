@@ -20,11 +20,11 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' })
 })
 
-// エラー握りつぶし: 空の catch ブロック
+// swallowed error: empty catch block
 try {
   const config = JSON.parse(process.env.APP_CONFIG || '{}')
 } catch (e) {
-  // 意図的に空
+  // intentionally empty
 }
 
 const server = app.listen(PORT, () => {
