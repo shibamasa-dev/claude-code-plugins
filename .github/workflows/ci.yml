@@ -30,6 +30,9 @@ jobs:
       # Internal names (secret BLOCKED_PATTERNS) are checked by leak-scan.yml so the check also covers PRs from forks
       - name: SKILL.md name vs directory, personal environment leaks, README pairs
         run: python3 .github/scripts/check-repo.py
+      - name: Lines added by the PR are in English (no Japanese outside quotes)
+        if: github.event_name == 'pull_request'
+        run: python3 .github/scripts/check-repo.py --base "origin/${{ github.base_ref }}"
       - name: Plugins whose contents changed also bump their version
         if: github.event_name == 'pull_request'
         run: .github/scripts/check-version-bump.sh "origin/${{ github.base_ref }}"
