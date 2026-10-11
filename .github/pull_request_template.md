@@ -15,5 +15,6 @@ Arch-Review: not-needed —
 
 - [ ] Bumped the `version` of every plugin whose contents changed, and added a heading for that version to `CHANGELOG.md`
 - [ ] `claude plugin validate --strict` passes
+- [ ] If a `README.md` changed, its `README.ja.md` says the same (and vice versa)
 - [ ] If hooks changed, `plugins/<plugin>/tests/run-all.sh` passes
 - [ ] No personal paths, email addresses or internal names (`python3 .github/scripts/check-repo.py`)
