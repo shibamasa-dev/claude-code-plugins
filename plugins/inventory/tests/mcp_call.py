@@ -12,7 +12,8 @@ Each call prints one line: the tool's JSON result, or "ERROR: <message>" for a t
 With --value, a result with rows prints only the first column of the first row ("" if there are no rows,
 NULL for a SQL NULL), so a test can compare it as a plain word.
 
-Requests go one at a time: each waits for its reply before the next is sent.
+Requests go one at a time: each waits for its reply before the next is sent, at most REPLY_TIMEOUT_S
+seconds; after that the server is killed and this exits with an error.
 The server runs as `python3 server/inventory_mcp.py` unless INVENTORY_SERVER_CMD overrides it
 (the Postgres runner uses `uv run --script`, which brings psycopg). The environment is passed through.
 """
@@ -20,12 +21,15 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import shlex
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 SERVER = Path(__file__).resolve().parent.parent / "server" / "inventory_mcp.py"
+REPLY_TIMEOUT_S = 30
 
 
 def main():
@@ -45,13 +49,26 @@ def main():
 
     cmd = shlex.split(os.environ.get("INVENTORY_SERVER_CMD", "")) or [sys.executable]
     p = subprocess.Popen(cmd + [str(SERVER)], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    # Read replies on a thread so a server that goes quiet can't hang the test: each reply has a deadline
+    replies = queue.Queue()
+
+    def pump():
+        for ln in iter(p.stdout.readline, b""):
+            replies.put(ln)
+        replies.put(b"")  # EOF
+
+    threading.Thread(target=pump, daemon=True).start()
 
     def rpc(msg):
         p.stdin.write((json.dumps(msg, ensure_ascii=False) + "\n").encode("utf-8"))
         p.stdin.flush()
         if "id" not in msg:
             return None
-        line = p.stdout.readline()
+        try:
+            line = replies.get(timeout=REPLY_TIMEOUT_S)
+        except queue.Empty:
+            p.kill()
+            sys.exit(f"server did not answer {msg.get('method')} within {REPLY_TIMEOUT_S}s; killed it")
         if not line:
             sys.exit(f"server exited without answering {msg.get('method')} (exit {p.wait()})")
         return json.loads(line.decode("utf-8"))

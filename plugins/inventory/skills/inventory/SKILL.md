@@ -23,6 +23,8 @@ Saved settings: route = `${user_config.route}`, connector = `${user_config.conne
 
 **When the saved route doesn't work** (the server errors, the connector is gone), stop and tell the user. Never fall back to another store: the data would split across two places. Change the route only when the user asks to move the data.
 
+If a call fails because **the connection dropped while the statement ran**, the statement may or may not have been applied. Check the current state with a `SELECT` first, and run the statement again only if it didn't take effect.
+
 `database_url` is a secret. The user sets it in the plugin's settings (`/plugin`, or `claude plugin configure`) and then runs `/reload-plugins`. Don't ask for it in chat and don't write it anywhere.
 
 ## 2. Schema changes

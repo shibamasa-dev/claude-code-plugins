@@ -119,17 +119,27 @@ class Postgres:
         return self.conn.closed or self.conn.broken
 
     def query(self, sql: str):
-        """Run one statement. If the connection was lost (database restart, idle timeout, a network blip),
-        reconnect once and run it again. Other errors, such as a syntax error, are raised as they are."""
+        """Run one statement. A connection already known to be lost is replaced before anything is sent.
+        If the connection drops while the statement runs (database restart, idle timeout, a network blip),
+        the statement is not run again: with autocommit it may already be committed, and a second run
+        would apply a write twice. The connection is replaced for the next call and the call fails.
+        Other errors, such as a syntax error, are raised as they are."""
         if self.lost():
             self.conn = self.connect()
         try:
             cur = self.conn.execute(sql)
-        except self.psycopg.OperationalError:
+        except self.psycopg.OperationalError as e:
             if not self.lost():
                 raise
-            self.conn = self.connect()
-            cur = self.conn.execute(sql)
+            try:
+                self.conn = self.connect()
+            except self.psycopg.OperationalError:
+                pass  # the next call tries again
+            raise ConnectionError(
+                "the database connection dropped while this statement ran, so it may or may not have been "
+                "applied. Check the current state with a SELECT before running it again. "
+                f"({type(e).__name__}: {e})"
+            ) from e
         return cur.description, cur
 
     def run_script(self, sql: str):

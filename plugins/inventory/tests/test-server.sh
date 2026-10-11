@@ -14,20 +14,36 @@ if is_postgres; then
 
   # Cut the server's connection from outside between two calls (a database restart or an idle timeout looks the same)
   cut="!psql '$INVENTORY_PG_ADMIN_URL' -X -q -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${INVENTORY_DATABASE_URL##*/}' AND pid <> pg_backend_pid()\""
-  reconnected() {  # a new backend pid after the cut, and no error
-    local a b; a=$(sed -n 1p <<<"$1"); b=$(sed -n 2p <<<"$1")
-    [[ "$b" =~ ^[0-9]+$ ]] && [ "$a" != "$b" ]
-  }
-  row 'after the connection is cut, the next call reconnects and succeeds' "$(yesno reconnected "$(python3 "$CALL" --value "SELECT pg_backend_pid()" "$cut" "SELECT pg_backend_pid()")")" 'yes'
+  # pid, cut, the call that finds the connection gone, and the call after it
+  out=$(python3 "$CALL" --value "SELECT pg_backend_pid()" "$cut" "SELECT pg_backend_pid()" "SELECT pg_backend_pid()")
+  row 'the call after the cut is not re-run: it fails saying the connection dropped' "$(yesno grep -q '^ERROR: .*connection dropped while this statement ran' <<<"$(sed -n 2p <<<"$out")")" 'yes'
+  new_backend() { local a b; a=$(sed -n 1p <<<"$out"); b=$(sed -n 3p <<<"$out"); [[ "$b" =~ ^[0-9]+$ ]] && [ "$a" != "$b" ]; }
+  row 'the call after that succeeds on a new connection' "$(yesno new_backend)" 'yes'
   kept() {  # the error comes back, and the same backend serves the next call
     [ "$(sed -n 2p <<<"$1" | cut -c1-6)" = ERROR: ] && [ "$(sed -n 1p <<<"$1")" = "$(sed -n 3p <<<"$1")" ]
   }
   row 'a syntax error is returned as is and keeps the connection' "$(yesno kept "$(python3 "$CALL" --value "SELECT pg_backend_pid()" "SELEC 1" "SELECT pg_backend_pid()")")" 'yes'
 
-  # A host that never answers: the handshake must not wait for it, and the tool call gives up at the connect timeout
-  export INVENTORY_DATABASE_URL='postgresql://user@10.255.255.1/db'
+  # A server that accepts the TCP connection and then never answers: the MCP handshake must not wait for it,
+  # and the tool call gives up at the connect timeout
+  portfile=$(mktemp "${TMPDIR:-/tmp}/inventory-silent.XXXXXX")
+  python3 -c '
+import socket, sys
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+s.listen(8)
+with open(sys.argv[1], "w") as f:
+    f.write(str(s.getsockname()[1]))
+held = []
+while True:
+    held.append(s.accept()[0])  # keep every connection open and silent
+' "$portfile" &
+  silent=$!; disown "$silent"  # no "Terminated" line when it is killed
+  trap 'kill "$silent" 2>/dev/null; rm -f "$portfile"' EXIT
+  for _ in $(seq 50); do [ -s "$portfile" ] && break; sleep 0.1; done
+  export INVENTORY_DATABASE_URL="postgresql://user@127.0.0.1:$(cat "$portfile")/db"
   quick_list() { local t=$SECONDS; [ "$(python3 "$CALL" --list)" = execute_sql,apply_migrations ] && [ $((SECONDS - t)) -le 5 ]; }
-  row 'initialize and tools/list answer at once with an unreachable host' "$(yesno quick_list)" 'yes'
+  row 'initialize and tools/list answer at once with a server that never answers' "$(yesno quick_list)" 'yes'
   timed_out() { local t=$SECONDS; grep -qi '^ERROR: .*timeout' <<<"$(sql "SELECT 1")" && [ $((SECONDS - t)) -le 20 ]; }
   row 'the first tool call fails with a timeout error within the connect timeout' "$(yesno timed_out)" 'yes'
   echo '  (SQLite path rows skipped on Postgres)'
