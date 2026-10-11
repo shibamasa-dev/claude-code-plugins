@@ -1,36 +1,36 @@
 ---
 name: issue-ops
-description: GitHub issue を「作って」「issue にして」「issue 化して」「起票して」「タスク化して」「閉じて」「クローズして」「完了にして」「更新して」「親子に分けて」「親 issue / 子 issue / ゴール issue に分けたい」「大きい仕事を issue に割りたい」「Recurrence 付けて」「Arch Review にして」と言われたら、実行前に必ず読む手順。運用規約（Issue Fields の設定値、sub-issues の階層、body とコメントの書き分け、close 時の「## 結果」「## 次回への引き継ぎ」、Arch Review ゲート、日付・Priority の決め方、受け入れ基準の書式（Gherkin の使いどころ）、残件を issue にするか PR スタックの層にするかの判定）を含む。issue_write / gh issue create|edit|close を直接叩く前にこの skill を通す。
+description: Procedure to read before acting whenever asked to create, close, update, split, or tag GitHub issues. Covers the operating rules (Issue Fields values, sub-issue hierarchy, body vs. comments, the `## Result` and `## Notes for next time` sections at close, the Arch Review gate, choosing dates and Priority, acceptance-criteria format and when to use Gherkin, deciding whether a leftover becomes an issue or a PR stack layer). Go through this skill before calling issue_write / gh issue create|edit|close directly. Use for "make an issue", "close it", "split into parent/child issues", or in Japanese 「作って」「issue にして」「issue 化して」「起票して」「タスク化して」「閉じて」「クローズして」「完了にして」「更新して」「親子に分けて」「親 issue / 子 issue / ゴール issue に分けたい」「大きい仕事を issue に割りたい」「Recurrence 付けて」「Arch Review にして」.
 last_reviewed: 2026-10-06
 review_after: 2027-03-21
 ---
 
-# issue-ops — GitHub issue 運用手順
+# issue-ops — GitHub issue operations
 
-> issue 運用の規約の正典はここ。CLAUDE.md には「タスク発生時は issue を作り、手順はこの skill」の要点だけ置けばよい。
+> This is the source of truth for issue operating rules. CLAUDE.md only needs the gist: "when a task comes up, make an issue; the procedure is in this skill."
 
-### 概要
+### Overview
 
-タスクが発生したら **GitHub issue を作成し、Issue Fields がある組織ではそれでメタデータを設定**。プロジェクトボードへ auto-add で自動追加される設定なら Projects API は触らない。**操作は GitHub MCP が既定**（Issue Fields がある組織ではメタデータは組織レベルの Issue Fields を使う。ProjectV2 GraphQL は使わない）。**ただし MCP の `issue_write` が承認フォームを出す環境では、フォームを待たずに `gh` ＋ GraphQL で直接行う**（下の「MCP が承認フォームを出すとき」。issue の作成・更新・close にユーザー承認は要らない）。
+When a task comes up, **create a GitHub issue, and in organizations with Issue Fields, set the metadata with them**. If the project board auto-adds issues, don't touch the Projects API. **GitHub MCP is the default for operations** (in organizations with Issue Fields, use organization-level Issue Fields for metadata; don't use ProjectV2 GraphQL). **But in environments where MCP `issue_write` shows an approval form, don't wait for the form; do it directly with `gh` + GraphQL** (see "When MCP shows an approval form" below. Creating, updating, and closing issues needs no user approval).
 
-組織の値（GitHub 組織・issue の既定リポ・Issue Fields の表・プロジェクトボード）は、セッション文脈に「組織設定」という見出しの注入テキストがあればそれを使う。無ければプロジェクトの CLAUDE.md、それも無ければユーザーに聞く。推測で埋めない。対象リポジトリは github_repo など文脈から抽出し、不明なら組織設定の既定リポを使う。
+For organization values (GitHub organization, default issue repo, Issue Fields table, project board), use injected text in the session context headed "Organization settings" if present. Otherwise use the project's CLAUDE.md, and if that has none, ask the user. Don't fill them in by guessing. Take the target repository from the context (github_repo etc.); if unknown, use the default repo from the organization settings.
 
-### Issue Fields（Issue Fields がある組織のみ・組織レベル・全リポ共通）
+### Issue Fields (only in organizations that have them; organization-level; shared by all repos)
 
-以下はフィールド名と値の意味の運用ルール。フィールドの ID や組織ごとの差分は組織設定を見る（Issue Fields は組織所有リポでしか使えない）。
+Below are the operating rules for field names and the meaning of values. For field IDs and per-organization differences, see the organization settings (Issue Fields only work in organization-owned repos).
 
-| フィールド | 型 | 値 |
+| Field | Type | Values |
 |-----------|-----|-----|
 | Priority | single_select | Urgent / High / Medium / Low |
 | Start date / Target date | date | YYYY-MM-DD |
-| Effort | single_select | High / Medium / Low（任意） |
-| Recurrence | single_select | Weekly / Monthly / Quarterly / Semiannual / Yearly（未設定＝単発。繰り返しタスクには必ず設定） |
-| Arch Review | single_select | Pending / Approved（未設定＝レビュー対象外） |
-| Verification | single_select | Not needed / Pending / Verified（未設定＝Not needed 扱い）。実環境でしか確認できない受け入れ基準が残っているかを表す |
+| Effort | single_select | High / Medium / Low (optional) |
+| Recurrence | single_select | Weekly / Monthly / Quarterly / Semiannual / Yearly (unset = one-off. Always set it on recurring tasks) |
+| Arch Review | single_select | Pending / Approved (unset = not subject to review) |
+| Verification | single_select | Not needed / Pending / Verified (unset = treated as Not needed). Shows whether acceptance criteria that can only be checked in the real environment remain |
 
-MCP では**フィールド名で指定**（single_select は `field_option_name`、date 等は `value`。定義確認は `list_issue_fields`）。状態・分類のメタデータはラベルでなく Issue Field を第一選択（1フィールド=1軸・オプション最小限・上限25個/組織）。**値の設定・読み取りは MCP 可。フィールド定義の作成・変更は `admin:org` が要るので GitHub UI で**。
+In MCP, **specify fields by name** (single_select uses `field_option_name`, date etc. use `value`; check definitions with `list_issue_fields`). For state and classification metadata, prefer an Issue Field over labels (one field = one axis, minimal options, limit 25 per organization). **Setting and reading values works in MCP. Creating or changing field definitions needs `admin:org`, so do it in the GitHub UI**.
 
-### Issue 作成（MCP `issue_write` 1コール）
+### Creating an issue (one MCP `issue_write` call)
 
 ```
 issue_write(method: "create", owner: "<org>", repo: "<repo>", title: "...", body: "...",
@@ -41,178 +41,179 @@ issue_write(method: "create", owner: "<org>", repo: "<repo>", title: "...", body
   ])
 ```
 
-- 更新は `method: "update"` + `issue_number`。読み取りは `issue_read` の `field_values`／一覧・絞り込みは `list_issues(field_filters: [...])`。
+- Update with `method: "update"` + `issue_number`. Read with `issue_read`'s `field_values`; list and filter with `list_issues(field_filters: [...])`.
 
-### MCP が承認フォームを出すとき（gh ＋ GraphQL で直接）
+### When MCP shows an approval form (use gh + GraphQL directly)
 
-Claude デスクトップアプリの Code タブなど、`issue_write` が「interactive form has been shown」を返す環境では、ユーザーが Submit するまで何も起きない（フォームが溜まるだけで、作ったつもりの issue が作られていないことがある。Submit してもらっても Issue Fields が入らないことがある）。**フォームが 1 回出たら、そのセッションの issue 操作はすべて下の方法に切り替える**（読み取りの `issue_read` はフォームが出ないので MCP のままでよい）。
+In environments where `issue_write` returns "interactive form has been shown", such as the Code tab of the Claude desktop app, nothing happens until the user clicks Submit (forms just pile up, and an issue you think you created may not exist. Even after Submit, Issue Fields may not be set). **Once a form has appeared, switch all issue operations in that session to the methods below** (reading with `issue_read` shows no form, so it can stay on MCP).
 
-| 操作 | コマンド |
+| Operation | Command |
 |---|---|
-| 作成 | `gh issue create --repo <o>/<r> --title "…" --body-file <file>`（本文は先にファイルへ書く） |
-| 本文・タイトル更新 | `gh issue edit <n> --repo <o>/<r> --body-file <file>` |
-| コメント | `gh issue comment <n> --repo <o>/<r> --body-file <file>` |
-| close | `gh issue close <n> --repo <o>/<r> --reason completed`（`## 結果` を body に書いてから） |
-| 親子（sub-issue） | `gh api -X POST repos/<o>/<r>/issues/<親>/sub_issues -F sub_issue_id=<子の .id（数値。node_id ではない）>` |
-| Issue Fields 設定 | GraphQL `setIssueFieldValue(input:{issueId:<issue の node_id>, issueFields:[{fieldId:<id>, singleSelectOptionId:<id>}, {fieldId:<id>, dateValue:"YYYY-MM-DD"}]})` |
-| Issue Fields 読み取り | GraphQL `repository(…){issue(number:N){issueFieldValues(first:10){nodes{… on IssueFieldSingleSelectValue{name field{… on IssueFieldSingleSelect{name}}} … on IssueFieldDateValue{value field{… on IssueFieldDate{name}}}}}}}` |
+| Create | `gh issue create --repo <o>/<r> --title "…" --body-file <file>` (write the body to a file first) |
+| Update body/title | `gh issue edit <n> --repo <o>/<r> --body-file <file>` |
+| Comment | `gh issue comment <n> --repo <o>/<r> --body-file <file>` |
+| Close | `gh issue close <n> --repo <o>/<r> --reason completed` (after writing `## Result` in the body) |
+| Parent/child (sub-issue) | `gh api -X POST repos/<o>/<r>/issues/<parent>/sub_issues -F sub_issue_id=<child's .id (number, not node_id)>` |
+| Set Issue Fields | GraphQL `setIssueFieldValue(input:{issueId:<issue node_id>, issueFields:[{fieldId:<id>, singleSelectOptionId:<id>}, {fieldId:<id>, dateValue:"YYYY-MM-DD"}]})` |
+| Read Issue Fields | GraphQL `repository(…){issue(number:N){issueFieldValues(first:10){nodes{… on IssueFieldSingleSelectValue{name field{… on IssueFieldSingleSelect{name}}} … on IssueFieldDateValue{value field{… on IssueFieldDate{name}}}}}}}` |
 
-- フィールドとオプションの ID は `organization(login:"<org>"){issueFields(first:20){nodes{__typename … on IssueFieldSingleSelect{id name options{id name}} … on IssueFieldDate{id name}}}}` で引く（ID を推測で書かない）。
-- 設定したら上の読み取りで値が入ったことを確かめる。
+- Look up field and option IDs with `organization(login:"<org>"){issueFields(first:20){nodes{__typename … on IssueFieldSingleSelect{id name options{id name}} … on IssueFieldDate{id name}}}}` (don't guess IDs).
+- After setting, confirm the values with the read query above.
 
-### 受け入れ基準の書き方（Gherkin を使う / 使わない）
+### Writing acceptance criteria (with or without Gherkin)
 
-受け入れ基準は **body に inline**（正解を定義するもの＝閉じるまで変わらない）。**振る舞いが変わる issue だけ Gherkin（Given/When/Then）、それ以外は箇条書き。**
+Acceptance criteria go **inline in the body** (they define what is correct, so they don't change until close). **Use Gherkin (Given/When/Then) only for issues that change behavior; otherwise use bullet points.**
 
-30 秒判定: **Then に観測可能な実値（列名・フラグ・件数・ファイル名）を 2 行以上書けるか。** 書けないなら箇条書き。
+30-second test: **Can you write at least 2 lines of observable real values (column names, flags, counts, file names) under Then?** If not, use bullets.
 
-| Gherkin にする | 箇条書きのまま |
+| Use Gherkin | Keep bullets |
 |---|---|
-| 入力と期待出力を実値で書ける振る舞い変更 | 文書・設定・依存更新・リファクタ（Then が「変わらないこと」しか書けない） |
-| 分岐の網羅が主題（INSERT/UPDATE、正常/stale/競合/空/エンコーディング） | 正常系 1 本だけ。3 行の箇条書きで足りる |
-| バグ報告の再現条件（Given に実データ・実状態） | `Arch Review: Pending`（振る舞いが未確定。先に書くと決めた気になる） |
-| 委譲 seed の受け入れ基準（実装 agent が経緯ゼロで読む） | 時間軸・複数アクターの相互作用が主題 → `sequenceDiagram` の領域 |
+| Behavior changes whose input and expected output can be written as real values | Docs, config, dependency updates, refactors (Then can only say "nothing changes") |
+| Covering branches is the point (INSERT/UPDATE, normal/stale/conflict/empty/encoding) | A single normal path. Three bullet lines are enough |
+| Reproduction conditions in a bug report (real data and real state in Given) | `Arch Review: Pending` (behavior not settled yet; writing it first makes you feel it is decided) |
+| Acceptance criteria in a delegation seed (the implementing agent reads it with zero background) | The topic is a timeline or interaction between several actors → that is `sequenceDiagram` territory |
 
-書き方（UPDATE 経路だけ更新漏れがあっても全テストが緑になる、を構文で防ぐ形）:
+How to write it (a shape whose syntax prevents "all tests green even though only the UPDATE path misses an update"):
 
 ```gherkin
-Scenario Outline: 伝票ファイルの取込で印刷対象フラグが立つ
-  Given 受注番号 <受注番号> が <既存状態>
-  When  伝票ファイル <ファイル名> を取込処理に通す
-  Then  印刷対象フラグが '1' になる
-  And   <正典で定めた他の更新列> が更新される
+Scenario Outline: Importing a slip file sets the print-target flag
+  Given order number <order number> is <existing state>
+  When  slip file <file name> goes through the import
+  Then  the print-target flag becomes '1'
+  And   <other update columns defined in the spec> are updated
 
   Examples:
-    | 既存状態                     | 受注番号 | ファイル名 |
-    | 未登録（INSERT 経路）         | <実値>   | <実ファイル名> |
-    | 別経路で登録済み（UPDATE 経路） | <実値>   | <実ファイル名> |
+    | existing state                           | order number | file name        |
+    | not registered (INSERT path)             | <real value> | <real file name> |
+    | registered by another path (UPDATE path) | <real value> | <real file name> |
 ```
 
-（**Examples の列は全部ステップから参照する**。どのステップも使わない列＝飾りで、読み手が行の違いを判別できない。`<実値>` は実サンプルから引いて埋める — 埋められないなら合成せず実データを要求する）
+(**Reference every Examples column from a step.** A column no step uses is decoration, and readers cannot tell the rows apart. Fill `<real value>` from real samples — if you can't, don't synthesize; ask for real data)
 
-- **Then は正典（仕様）の更新列一覧から起こす。実装の SET 列を見て書かない** — 実装のバグが受け入れ基準に写り、緑が正しさの証拠でなくなる
-- **Examples は経路ごとに 1 行**（INSERT が通っても UPDATE は別に通す。分岐ごとに実ファイル起点の通しを持つ）
-- **Given には実ファイル名・実値を書く** — 中間状態を合成しないと書けないなら、それは実データ未入手のサイン（「無いので skip」を検証済みとして書かない）
-- **1 Scenario 3〜5 行。Given は 1 つ、And の連鎖は 3 つまで**（積み上げた 10 行は箇条書きより読みにくい）
-- **Scenario 名とテスト名を 1 対 1 にする。** 実行系（Cucumber/behave 等）が無いなら Gherkin は人間向けの書式でしかないので、対応が付けられないなら箇条書きで十分（飾りの feature ファイルは二重仕様になる）
-- 委譲 seed に入れるときは **「Scenario は受け入れ基準であってテストの実装形式ではない」を 1 行添える**（無いと、フレームワークが無いのに feature ファイルを作り始める）
-- **PR 本文に Gherkin は貼らない。** 受け入れ基準 ✅/❌ の行から Scenario 名を引用するだけにする（二重管理を作らない）。PR で書き起こしたくなったら、issue に受け入れ基準が無いまま実装したサイン
+- **Derive Then from the spec's (source of truth's) list of update columns. Don't write it by looking at the implementation's SET columns** — an implementation bug would be copied into the acceptance criteria, and green would no longer prove correctness
+- **One Examples row per path** (even if INSERT passes, run UPDATE separately. Keep a run that starts from a real file for each branch)
+- **Write real file names and real values in Given** — if you can only write it by synthesizing an intermediate state, that is a sign the real data is missing (don't write "skipped because missing" as verified)
+- **3–5 lines per Scenario. One Given, at most 3 chained Ands** (ten stacked lines are harder to read than bullets)
+- **Map Scenario names to test names 1:1.** Without a runner (Cucumber/behave, etc.), Gherkin is just a format for humans, so if you can't map them, bullets are enough (a decorative feature file becomes a second spec)
+- When putting it into a delegation seed, **add one line: "Scenarios are acceptance criteria, not the implementation format for tests"** (without it, the agent starts writing feature files with no framework)
+- **Don't paste Gherkin into the PR body.** Just quote the Scenario name from the acceptance-criteria ✅/❌ rows (avoid managing it twice). If you feel like writing it out in the PR, that is a sign you implemented without acceptance criteria on the issue
 
-### 残件を issue にするか PR スタックの層にするか
+### Leftovers: issue or PR stack layer
 
-**既定は層。issue は例外。** 「タスクが発生したら issue」を無条件に適用すると、同じ story の続きまで issue に積み上がる（実害: 1 PR で終わる残件が issue の山になり、後から読む agent がそれを未処理タスクとして扱う）。
+**The default is a layer; an issue is the exception.** Applying "task comes up → issue" unconditionally piles up issues even for continuations of the same story (real harm: leftovers that one PR would finish became a heap of issues, and agents reading them later treated them as open tasks).
 
-30 秒判定: **main に戻ったら作れないもの＝層、main からでも作れるもの＝issue。**
+30-second test: **Something you can't build once back on main = layer; something you can build from main = issue.**
 
-| 観点 | スタックの層（`gh-stack` skill） | issue |
+| Aspect | Stack layer (`gh-stack` skill) | Issue |
 |---|---|---|
-| 依存 | 今のブランチのコードに依存する（main 単独では作れない・レビューできない） | main から独立に作れる |
-| 時期 | この作業（スタックがマージされる前）で自分がやる | 別セッション・後日に回す |
-| story | 同じ issue の受け入れ基準を満たすための続き（backend→frontend→テスト→文書） | 別の目的・別リポ |
-| 判断 | 仕様が決まっていて作るだけ | ユーザーの設計判断・Arch Review が要る |
-| 性質 | 今の変更で必要になったもの | 既存コードのバグ・周辺改善（委譲の受け入れ基準「報告のみ」の対象） |
+| Dependency | Depends on the current branch's code (can't be built or reviewed from main alone) | Can be built independently from main |
+| Timing | You do it in this work (before the stack is merged) | Deferred to another session or a later day |
+| Story | Continuation to meet the same issue's acceptance criteria (backend → frontend → tests → docs) | A different goal or a different repo |
+| Decision | Spec is settled; it just needs building | Needs the user's design decision or Arch Review |
+| Nature | Needed because of the current change | A bug in existing code or a nearby improvement (the "report only" items in delegation acceptance criteria) |
 
-- 層にするなら `gh-stack` の設計指針どおり「別の関心事が今作ったものに依存する」単位で 1 層。層の名前は `<topic>/<concern>`。
-- どちらにも当てはまらないものは PR 本文の `## スコープ外の気づき` に置く。**ただし置きっぱなしにしない**: マージ前に 1 件ずつ「層 / issue / やらない（理由）」を書く。「やらない」は PR 本文に理由付きで残せば十分で、issue は作らない。
-- 委譲した subagent が残件を報告してきた場合も同じ表で振り分ける。「報告のみ」は subagent が勝手に直さないためのルールであって、報告された残件が自動的に issue になるルールではない。
+- For a layer, follow `gh-stack`'s design guidance: one layer per unit where "a separate concern depends on what was just built". Name layers `<topic>/<concern>`.
+- Anything that fits neither goes in the PR body's `## Out-of-scope notes`. **But don't leave it there**: before merging, write "layer / issue / won't do (reason)" for each item. For "won't do", recording it with the reason in the PR body is enough; don't create an issue.
+- Sort leftovers reported by a delegated subagent with the same table. "Report only" is a rule that keeps subagents from fixing things on their own; it does not mean reported leftovers automatically become issues.
 
-### issue の階層と依存
+### Issue hierarchy and dependencies
 
-**3件以上のステップがある／2週間以上かかる仕事は「ゴール issue ＋ 子 issue」に分ける。** GitHub ネイティブの sub-issues を使う（body のリンクで擬似的にやらない。親に進捗バーが出て、agent が `issue_read` で親→子を辿れる）。
+**Work with 3 or more steps, or that takes 2 weeks or more, is split into "goal issue + child issues".** Use GitHub-native sub-issues (don't fake it with links in the body. The parent gets a progress bar, and agents can follow parent → children with `issue_read`).
 
-| 層 | 何を書くか |
+| Level | What to write |
 |---|---|
-| **ゴール issue（親）** | 完了条件・今どこまで来たか・子の一覧（自動）。**作業内容は書かない** |
-| **子 issue** | ステップ／バグ／改善。1件＝1つの成果物（PR・レポート・調査メモ） |
+| **Goal issue (parent)** | Completion criteria, how far it has come, list of children (automatic). **Don't write work content** |
+| **Child issue** | A step, bug, or improvement. One issue = one deliverable (PR, report, research note) |
 
-- **深さは2段まで**。孫を作りたくなったらゴールの切り方が大きすぎるサイン
-- 親子は `issue_write` の `parent_issue_number`（起票時）か `sub_issue_write`（後付け）
-- **横の依存**（A が終わらないと B に着手できない）は GitHub の issue dependencies（*blocked by*）で表す。MCP に無いので GraphQL `addBlockedBy(input:{issueId, blockingIssueId})`／読み取りは `issue { blockedBy blocking }`
-- **やりすぎない**: 単発タスク（購入・提出・1回の調査）に親は要らない
-- 週次の「今週やること」は **open なゴール issue の子 issue 一覧**から出す（進捗レポートの「来週の予定」をゴールの代わりにしない）
-- 子を close するときも「issue close 時の記録ルール」どおり `## 結果` を body に。親の close は全子が閉じてから、親 body の「今どこまで来たか」を完了形に書き換えて
+- **At most 2 levels deep**. Wanting grandchildren is a sign the goal is cut too large
+- Parent/child via `issue_write`'s `parent_issue_number` (at creation) or `sub_issue_write` (afterwards)
+- **Sideways dependencies** (B can't start until A finishes) use GitHub issue dependencies (*blocked by*). MCP lacks them, so use GraphQL `addBlockedBy(input:{issueId, blockingIssueId})`; read with `issue { blockedBy blocking }`
+- **Don't overdo it**: one-off tasks (a purchase, a submission, a single investigation) don't need a parent
+- The weekly "this week's work" comes from **the child-issue list of open goal issues** (don't use the "next week" part of a progress report as a substitute for goals)
+- When closing a child, also write `## Result` in the body as in "Recording rules when closing an issue". Close the parent only after all children are closed, rewriting "how far it has come" in the parent body as complete
 
-### アーキテクチャレビュー・ゲート（Arch Review）
+### Architecture review gate (Arch Review)
 
-何が構造変更か、GO までに許されること、PR 本文の `Arch-Review:` 欄は `dev-flow` スキルが正典。ここには issue 側の操作だけ置く（dev-flow が無い環境でも、下の3行は守る）。
+What counts as a structural change, what is allowed before the GO, and the PR body's `Arch-Review:` line are defined in the `dev-flow` skill. Only the issue-side operations are here (follow the 3 lines below even where dev-flow is not installed).
 
-- 構造変更を伴う issue は起票時に `Arch Review: Pending` を設定し、body に採用案・設計要件を書く。`Pending` の間は実装 PR を出さない。委譲するときは seed にゲートの状態を書く。
-- 解除はユーザーが `Approved` に変更（または明示 GO）してから。フィールドが未設定でも、構造変更なら GO は要る。`Arch Review` を使えない（Issue Fields の無いリポ・個人アカウント）ときは、チャットで GO をもらう。
-- 機械抽出: `list_issues(field_filters: [{field_name:"Arch Review", value:"Pending"}])`。
+- For an issue involving a structural change, set `Arch Review: Pending` when creating it, and write the chosen approach and design requirements in the body. While it is `Pending`, don't open an implementation PR. When delegating, state the gate status in the seed.
+- It is lifted only after the user changes it to `Approved` (or gives an explicit GO). Even if the field is unset, a structural change needs a GO. When `Arch Review` is unavailable (repos without Issue Fields, personal accounts), get the GO in chat.
+- Machine extraction: `list_issues(field_filters: [{field_name:"Arch Review", value:"Pending"}])`.
 
-### 実機検証ゲート（Verification）
+### Real-environment verification gate (Verification)
 
-**「コードは終わったが、実環境に触れないので確かめていない」を追えるようにする軸。** GitHub の状態（PR が merged か・issue が open か）からは導出できないので Issue Field に置く。導出できるものはフィールドにしない（二重管理になり陳腐化する）。
+**An axis for tracking "the code is done, but it hasn't been checked because we can't touch the real environment".** It can't be derived from GitHub state (whether the PR is merged, whether the issue is open), so it lives in an Issue Field. Don't make fields for things that can be derived (they become duplicate records and go stale).
 
-| 値 | いつ付けるか |
+| Value | When to set it |
 |---|---|
-| `Pending` | 受け入れ基準のうち**実環境でしか確認できない項目**が未実施のまま close / マージする |
-| `Verified` | 実機で確認できた（実配線 issue の完了時に、関連 issue の値もここへ更新する） |
-| `Not needed`（未設定も同義） | 実機検証が要らない（文書・設定・リファクタ） |
+| `Pending` | Closing / merging while acceptance criteria **that can only be checked in the real environment** are still not done |
+| `Verified` | Confirmed on the real environment (when the real-wiring issue is completed, update related issues to this value too) |
+| `Not needed` (unset means the same) | No real-environment verification needed (docs, config, refactors) |
 
-- **`Pending` は close を妨げない。** `## 結果` に「やらなかったこと（意図的）」として未検証項目を書き、残件の行き先（実配線 issue 等）を示したうえで close してよい。フィールドは閉じた後も残るので追える。
-- 機械抽出: `list_issues(field_filters: [{field_name:"Verification", value:"Pending"}])`（**close 済みも対象にするため state は all**）。「動いているつもりだが誰も確かめていないもの」の一覧になる。
-- `Arch Review: Pending`（実装前のゲート）と値の名前が同じだが軸が別。**Arch Review は着手してよいかの事前ゲート、Verification は終わった後に実機で確かめたかの事後ゲート。**
+- **`Pending` does not block closing.** Write the unverified items in `## Result` as "not done (intentionally)", show where the leftovers go (a real-wiring issue, etc.), and you may close. The field remains after closing, so it can be tracked.
+- Machine extraction: `list_issues(field_filters: [{field_name:"Verification", value:"Pending"}])` (**use state all to include closed ones**). This gives the list of "things we think work but nobody has checked".
+- It shares a value name with `Arch Review: Pending` (the pre-implementation gate), but it is a different axis. **Arch Review is the gate before starting (may we start?); Verification is the gate after finishing (did we check on the real environment?).**
 
-### Priority 設定ルール
+### Priority rules
 
-ユーザー指定あり→その値／緊急・即対応→Urgent／Start date が近い・過去→High／指定なし→Medium。
+User specified → that value / urgent, needs immediate action → Urgent / Start date is near or past → High / not specified → Medium.
 
-### Status（プロジェクトボードのレーン）
+### Status (project board lanes)
 
-Todo / In Progress / Done は Project 組み込み Status フィールドで **MCP では操作不可**（レーンは手動運用）。自動化する場合のみ GraphQL `updateProjectV2ItemFieldValue`（projectId は組織設定）。同名の Issue Field を作っても代替にならない。
+Todo / In Progress / Done are the Project's built-in Status field and **cannot be operated from MCP** (lanes are moved by hand). Only if automating, use GraphQL `updateProjectV2ItemFieldValue` (projectId is in the organization settings). Creating an Issue Field with the same name is no substitute.
 
-### 繰り返しタスクの起票・実行の使い分け
+### Recurring tasks: when to create issues and how they run
 
-Recurrence は分類・絞り込み用で実行トリガーではない。**記録を残す価値がある実タスク**→スケジューラが周期毎に自動起票（Recurrence＋前回 issue リンク付き）／**単なるリマインド・定例**→issue を作らずリマインダー・定例ルーチン側で処理。
+Recurrence is for classification and filtering, not an execution trigger. **Real tasks worth keeping a record of** → a scheduler auto-creates an issue each cycle (with Recurrence and a link to the previous issue) / **simple reminders and routine meetings** → no issue; handle them in reminders or routine jobs.
 
-### issue 更新時の書き分け（body と コメント）
+### Body vs. comments when updating an issue
 
-**書くタイミングは「決定した瞬間」。セッション終了時にまとめて書かない。** 読んだ issue を更新しないまま数ターン経つと、workflow プラグインの hook `issue-writeback` が Stop を block して書き戻しを促す（issue ごと最大 3 回）。決定が本当に無い（要約だけ・実装の仕様として読んだだけ）なら、hook の指示文にある `dismiss` コマンドを理由付きで実行して終了する。`/clear`・compact・resume 後は未反映 issue を再通知する。全セッション横断の追跡状況は `issue-writeback status --pending`（`claude agents --json` と突合してセッション名・生死を出す。終了済みで未反映が残るものには resume コマンドが付く）。
+**Write at the moment a decision is made. Don't batch it up at the end of the session.** If several turns pass without updating an issue you read, the workflow plugin's `issue-writeback` hook blocks Stop and prompts you to write back (up to 3 times per issue). If there really is no decision (only summarized it, only read it as an implementation spec), run the `dismiss` command given in the hook's message with a reason, then finish. After `/clear`, compaction, or resume, unreflected issues are notified again. For tracking across all sessions, use `issue-writeback status --pending` (it matches against `claude agents --json` to show session names and whether they are alive; ended sessions with unreflected issues get a resume command).
 
-**body は「今どうなっているか」、コメントは「なぜそうなったか」**。
+**The body is "how things are now"; comments are "why it became so"**.
 
-| 置く場所 | 内容 |
+| Where | Content |
 |---|---|
-| **body** | 現在の設計・仕様・残タスク・前提・完了条件・一次情報の根拠 |
-| **コメント** | 変更の経緯・「なぜ書き直したか」・旧設計の説明・調査の途中経過 |
+| **Body** | Current design, spec, remaining tasks, assumptions, completion criteria, primary-source evidence |
+| **Comments** | History of changes, "why it was rewritten", explanation of the old design, interim findings |
 
-- **設計が変わったら body を書き換える**（訂正コメントを足して body を放置しない）。後続 agent は `issue_read` 1コールで **body しか読まない**ため、body が古いと誤った前提の上に作業が積まれる。
-- **経緯を body に残さない**。旧設計の説明が body にあると、ざっと読んだ人が現行仕様と誤読する。
-- **body に置くのは「閉じるまで変わらないもの」だけ。** 実測値・達成率・「今どこまで来たか」は再実行で変わるので、body には出し方（パス・再現コマンド）を書き、値は日付つきでコメントへ（例: 達成率は再実行で分子だけでなく母数まで変わることがある）。期待値・対応表・実サンプルは正解を定義するもので変わらないため body に inline する。
-- 検証は機械で: 書き換え後に `旧設計` `なぜ書き直` 等のキーワードが body に残っていないか grep する。
+- **When the design changes, rewrite the body** (don't add a correction comment and leave the body as is). Later agents read **only the body** with one `issue_read` call, so a stale body means work piles up on wrong assumptions.
+- **Don't keep history in the body**. If the old design is explained in the body, someone skimming will mistake it for the current spec.
+- **Put only "things that don't change until close" in the body.** Measured values, achievement rates, and "how far it has come" change on re-runs, so write how to get them (path, reproduction command) in the body and put the values, dated, in comments (e.g. an achievement rate can change not only its numerator but also its denominator on a re-run). Expected values, mapping tables, and real samples define what is correct and don't change, so they go inline in the body.
+- Verify by machine: after rewriting, grep the body for keywords like `old design` or `why it was rewritten`.
 
-### issue close 時の記録ルール（全 issue 対象）
+### Recording rules when closing an issue (all issues)
 
-close 後も別 issue・別 agent から参照される（agent は `issue_read` 1コールで body を読む。コメント散在は取りこぼす）。**結論はコメントでなく body に置く**:
+Even after closing, issues are referenced from other issues and other agents (agents read the body with one `issue_read` call and miss scattered comments). **Put the conclusion in the body, not in comments**:
 
-| 対象 | close 前にやること |
+| Target | What to do before closing |
 |------|------------------|
-| すべての issue（completed） | body 末尾に `## 結果`（1〜5行: 結論／やった・やらなかった／参照 PR） |
-| Recurrence 設定済みの再発性タスク | 詳細版 **`## 次回への引き継ぎ`**: 実施日／提出方法・提出先／使った画面・ツール／添付書類の要否と根拠／リードタイム／つまずき／改善メモ |
-| duplicate / not_planned | body 追記不要（`state_reason` と1行コメント） |
+| Every issue (completed) | `## Result` at the end of the body (1–5 lines: conclusion / done and not done / related PR) |
+| Recurring tasks with Recurrence set | The detailed **`## Notes for next time`**: date done / how and where it was submitted / screens and tools used / whether attachments were needed and why / lead time / stumbling points / improvement notes |
+| duplicate / not_planned | No body addition needed (`state_reason` and a one-line comment) |
 
-- 判定基準は「次にこの issue を開くのは誰で、何を知りたいか」。コメントは途中経過ログとして任意。
-- 自動化エージェントが代行 close する場合、記録が薄ければ close 前にユーザーへ1問だけ確認（未記録のまま close しない）。
-- 再発性タスクの次回 issue は前回リンクを張り、`## 次回への引き継ぎ` をコピーして叩き台に。
+- Older issues may use `## 結果` and `## 次回への引き継ぎ`; both are still accepted.
+- The test is "who will open this issue next, and what will they want to know". Comments are optional, as a log of interim progress.
+- When an automation agent closes on someone's behalf and the record is thin, ask the user one question before closing (don't close without a record).
+- The next issue of a recurring task links to the previous one and copies `## Notes for next time` as a starting draft.
 
-### PR と issue の連動（`Closes` / `Refs`）
+### Linking PRs and issues (`Closes` / `Refs`)
 
-**PR 本文には必ず `Closes <owner/repo#N>` か `Refs <owner/repo#N>` のどちらかを書く。** どちらも無い PR はマージ後に issue と辿れなくなる。**クロージングキーワードは別リポの issue にも効く**（GitHub Docs「Linking a pull request to an issue」: https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue ）。`Refs` は相互参照を張るだけで close しない。
+**Every PR body must contain either `Closes <owner/repo#N>` or `Refs <owner/repo#N>`.** A PR with neither can't be traced to its issue after merging. **Closing keywords also work for issues in other repos** (GitHub Docs "Linking a pull request to an issue": https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue ). `Refs` only creates a cross-reference and does not close.
 
-| 書くもの | 条件 |
+| What to write | Condition |
 |---|---|
-| **`Closes`** | その issue の**受け入れ基準が全項目 ✅** になる見込み。**マージ前に `## 結果` を issue の body に書き終える** |
-| **`Refs`** | 上のどちらかが欠ける。**PR 本文に「未達の項目」と「残件の行き先（層 / issue 番号 / やらない）」を書く** |
+| **`Closes`** | The issue's **acceptance criteria are all expected to be ✅**. **Finish writing `## Result` in the issue body before merging** |
+| **`Refs`** | Either of the above is missing. **Write "unmet items" and "where the leftovers go (layer / issue number / won't do)" in the PR body** |
 
-- **`## 結果` は `Closes` の PR をマージする前提条件**。自動 close は body に記録を残さないので、マージの後に書くと記録の無い close になる（PR を作る時点で `Closes` を書くのはよい）。同じプラグインの `dev-flow-gate` フックが、書いていないマージを止める。
-- **`Refs` にした issue のマージ後の始末は委譲元（main セッション）の責務。** 未達の受け入れ基準が残る間は閉じず、残件を終えたか、別 issue に移したか、やらないと決めた後に閉じる。 委譲先（subagent・別セッション）のスコープは「PR 作成まで」で、マージ後の始末は委譲先の担当ではない。ここが無主になると「PR マージ済み・issue open」が次に誰かが気づくまで残る。
-- 機械で拾う: `search_pull_requests`（`is:merged <issue番号>`）と issue の state の突き合わせ。朝の定期チェックを置いているならそれが安全網になるが、**ルールは「後で誰かが気づく」を「PR を出す時点で決まっている」に前倒しするためのもの**。
+- **`## Result` is a precondition for merging a `Closes` PR**. Auto-close leaves no record in the body, so writing it after the merge means a close without a record (writing `Closes` when opening the PR is fine). The `dev-flow-gate` hook in the same plugin blocks merges where it isn't written.
+- **Post-merge cleanup of an issue referenced with `Refs` is the responsibility of the delegating (main) session.** Don't close it while unmet acceptance criteria remain; close it after the leftovers are done, moved to another issue, or decided against. The delegate's (subagent's or other session's) scope is "up to opening the PR", and post-merge cleanup is not the delegate's job. If nobody owns this, "PR merged, issue open" stays until someone happens to notice.
+- Catch it by machine: compare `search_pull_requests` (`is:merged <issue number>`) with the issue state. A scheduled morning check, if you have one, is the safety net, but **the rule exists to move "someone notices later" forward to "decided when the PR is opened"**.
 
-### 日付フィールドの入力ルール
+### Date field rules
 
-**期限が明確**（年末調整・確定申告・契約更新等）→一般的な期限から能動的にスケジュール提示（例: 「Start date: 11/1、Target date: 11/30 で設定いたしましょうか？」）。**期限が不明確**→ユーザーに確認。
+**Clear deadline** (year-end tax adjustment, tax filing, contract renewal, etc.) → proactively propose a schedule from the usual deadline (e.g. "Shall I set Start date: 11/1 and Target date: 11/30?"). **Unclear deadline** → ask the user.
 
-### 補足
+### Notes
 
-MCP でカバーできないのはプロジェクトボードの Status レーン移動のみ（必要時だけ GraphQL）。Priority / 日付は Issue Fields（MCP）で完結。
+The only thing MCP can't cover is moving Status lanes on the project board (use GraphQL only when needed). Priority and dates are fully handled by Issue Fields (MCP).

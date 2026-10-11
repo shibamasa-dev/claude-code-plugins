@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""publish した Artifact をプロジェクトごとの .artifacts/ に記録する。
+"""Record published Artifacts in each project's .artifacts/.
 
-PostToolUse (matcher ^Artifact$) から呼ばれる。
-- publish  … ledger.jsonl に1行 append し、index.html を作り直す
-- list     … 応答の updatedAt を、**台帳に既にある id だけ** sync 行として追記
-              (list は全プロジェクト混在なので、新規行は絶対に作らない)
-何が起きても標準出力は空・常に exit 0。ツールの実行を止めない。
+Called from PostToolUse (matcher ^Artifact$).
+- publish  ... append one line to ledger.jsonl and rebuild index.html
+- list     ... append the response's updatedAt as sync lines, **only for ids already in the ledger**
+              (list mixes all projects, so it never creates new rows)
+Whatever happens, stdout stays empty and it always exits 0. It never stops the tool.
 """
 import json, os, sys, subprocess, pathlib, tempfile, html
 from datetime import datetime
 
 
 def project_root(cwd: str) -> str:
-    """worktree は親リポのルートに畳む（worktree を消しても台帳が消えないように）。"""
+    """Fold a worktree into the parent repo's root (so deleting the worktree does not delete the ledger)."""
     d = os.environ.get("CLAUDE_PROJECT_DIR") or cwd or os.getcwd()
     try:
         r = subprocess.run(
@@ -26,11 +26,11 @@ def project_root(cwd: str) -> str:
 
 
 def rel_src(path, root) -> str | None:
-    """台帳に残す src_path。**絶対パスをそのまま書かない。**
+    """The src_path kept in the ledger. **Never write an absolute path as is.**
 
-    台帳は git 追跡下なので、ローカルユーザー名・worktree ID・ディレクトリ構成が
-    リポジトリ閲覧者へ漏れる(過去の実例: PR レビューで CodeRabbit が指摘)。
-    プロジェクト配下ならリポジトリ相対へ、配下でなければ(scratchpad 等)ファイル名だけにする。
+    The ledger is tracked by git, so the local user name, worktree ID and directory layout would leak
+    to anyone reading the repo (this happened before: CodeRabbit flagged it in a PR review).
+    Inside the project it becomes repo-relative; outside (scratchpad etc.) only the file name is kept.
     """
     if not path:
         return None
@@ -66,7 +66,7 @@ def read_rows(ledger: pathlib.Path):
 
 
 def fold(rows):
-    """artifact_id で畳む。追加日=最初の publish / 最終更新=最後の publish と remote の新しいほう。"""
+    """Fold by artifact_id. Added = first publish / last updated = the later of the last publish and remote."""
     by = {}
     for r in rows:
         aid = r.get("artifact_id")
@@ -127,7 +127,7 @@ def render(entries, root: str) -> str:
             f'<td class="dt">{fmt(last_of(e))}</td></tr>')
     now = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M")
     name = html.escape(pathlib.Path(root).name)
-    return f"""<!doctype html><html lang="ja"><meta charset="utf-8">
+    return f"""<!doctype html><html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Artifacts — {name}</title>
 <style>
@@ -156,11 +156,11 @@ a:hover{{text-decoration:underline}}
 </style>
 <div class="wrap">
 <h1>Artifacts — {name}</h1>
-<div class="sub">{len(items)} 件 ・ {now} 時点 ・ 数字バッジは publish 回数</div>
+<div class="sub">{len(items)} items · as of {now} · the number badge is the publish count</div>
 <table>
-<thead><tr><th></th><th>タイトル / 説明</th><th>追加</th><th>最終更新</th></tr></thead>
+<thead><tr><th></th><th>Title / description</th><th>Added</th><th>Last updated</th></tr></thead>
 <tbody>
-{chr(10).join(rows) if rows else '<tr><td colspan="4" class="empty">まだありません</td></tr>'}
+{chr(10).join(rows) if rows else '<tr><td colspan="4" class="empty">Nothing yet</td></tr>'}
 </tbody></table>
 </div>
 """
@@ -208,7 +208,7 @@ def main():
             "src_path": rel_src(resp.get("path") or ti.get("file_path"), root),
             "session_id": d.get("session_id"),
         })
-    elif isinstance(resp.get("artifacts"), list):             # list → 既知 id の更新日だけ同期
+    elif isinstance(resp.get("artifacts"), list):             # list -> sync update dates of known ids only
         known = {r.get("artifact_id") for r in read_rows(ledger)}
         for a in resp["artifacts"] if known else []:
             url = a.get("url") or ""
@@ -221,19 +221,19 @@ def main():
                     "updated_at": a["updatedAt"],
                 })
     if not new:
-        # 追記が無くても、索引が消えていれば台帳から作り直す
+        # even with nothing appended, rebuild the index from the ledger if it is gone
         if ledger.exists() and not index.exists():
             atomic_write(index, render(fold(read_rows(ledger)), str(root)))
         return
 
     ledger.parent.mkdir(parents=True, exist_ok=True)
-    with ledger.open("a", encoding="utf-8") as f:            # append-only（同時 publish でも壊れない）
+    with ledger.open("a", encoding="utf-8") as f:            # append-only (safe with concurrent publishes)
         for r in new:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
     atomic_write(index, render(fold(read_rows(ledger)), str(root)))
 
 
-if __name__ == "__main__":      # import して index だけ作り直せるようにしておく
+if __name__ == "__main__":      # importable so the index alone can be rebuilt
     try:
         main()
     except Exception:

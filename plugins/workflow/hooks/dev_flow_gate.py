@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""dev-flow-gate: dev-flow スキルの手順のうち、飛ばすと事故になる3か所を止めるフック。
+"""dev-flow-gate: a hook that stops the three steps of the dev-flow skill that cause accidents when skipped.
 
-  - PreToolUse  (PR 作成): 本文に Closes / Refs（または `Refs: none (verbal request)`）と
-                           `Arch-Review:` の欄が無ければ deny
-  - PostToolUse (PR 作成): PR と Closes 先を記録し、次の段（レビュー待ち）を伝える
-  - Stop                 : このセッションで PR を作ったのに待ち（PR イベントの購読か Monitor）を
-                           始めていなければ、PR ごとに 1 回だけ block
-  - PreToolUse  (マージ) : 記録した Closes 先の issue に、このセッションで `## 結果` を
-                           書いた（または読んで確かめた）記録が無ければ deny
-  - PostToolUse (マージ) : 記録の無い PR（別セッションで作ったもの）をマージしたら、確かめるよう一言返す
+  - PreToolUse  (PR create): deny if the body lacks Closes / Refs (or `Refs: none (verbal request)`)
+                             and an `Arch-Review:` line
+  - PostToolUse (PR create): record the PR and the issues it Closes, and tell Claude the next step (waiting for review)
+  - Stop                   : if this session created a PR but never started waiting for it (a PR event subscription
+                             or a Monitor), block once per PR
+  - PreToolUse  (merge)    : deny if there is no record that this session wrote (or read and confirmed) a
+                             `## Result` section in the recorded Closes issues
+  - PostToolUse (merge)    : after merging a PR with no record (created in another session), reply with a one-line reminder to check
 
-GitHub を自分では読みに行かない。判定に使うのはセッション中のツール呼び出し（名前・入力・結果）だけ。
-コネクタ（mcp__*__create_pull_request など）と gh の両方を見る。
-状態は <CLAUDE_PLUGIN_DATA or ~/.claude/state>/dev-flow-gate/<session_id>.json。
-何が起きても例外で落ちず exit 0（deny と block だけが「止める」出力）。
+It never reads GitHub on its own. It decides only from the tool calls in the session (name, input, result).
+It looks at both the connector (mcp__*__create_pull_request etc.) and gh.
+State lives in <CLAUDE_PLUGIN_DATA or ~/.claude/state>/dev-flow-gate/<session_id>.json.
+Whatever happens it never raises and exits 0 (deny and block are the only outputs that stop anything).
 """
 import fcntl
 import json
@@ -32,16 +32,17 @@ TAG = "[dev-flow-gate]"
 
 CLOSE_RE = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+((?:[\w.-]+/[\w.-]+)?#\d+)", re.I)
 REFS_RE = re.compile(r"\brefs?\s*:?\s+(?:(?:[\w.-]+/[\w.-]+)?#\d+|none\s*\(verbal request\))", re.I)
-# 行の中の空白は [ \t]。\s だと改行をまたいで次の行の文字を「理由」と読んでしまう
+# Whitespace within a line is [ \t]. With \s it would cross the newline and read the next line as the "reason"
 ARCH_RE = re.compile(r"^[ \t]*Arch-Review:[ \t]*(?:not-needed|approved)[ \t]*[\u2014\u2013-]+[ \t]*\S", re.I | re.M)
-RESULT_RE = re.compile(r"^##[ \t]*(?:結果|次回への引き継ぎ|Results?)[ \t]*$", re.M)
+# `## Result` and `## Notes for next time` are canonical. Older issues use the Japanese headings, which stay accepted
+RESULT_RE = re.compile(r"^##[ \t]*(?:Results?|Notes for next time|結果|次回への引き継ぎ)[ \t]*$", re.M)
 HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
 FENCE_RE = re.compile(r"^[ \t]*(```|~~~).*?^[ \t]*\1[ \t]*$", re.S | re.M)
-# ヒアドキュメント: <<[-]['"]DELIM['"] の行の残り（group 4）、本文（group 5）、終わりの DELIM 行
+# Heredoc: the rest of the <<[-]['"]DELIM['"] line (group 4), the body (group 5), the closing DELIM line
 HEREDOC_RE = re.compile(r"(?<!<)<<(?!<)(-?)[ \t]*(['\"]?)(\w+)\2([^\n]*)\n(.*?)\n[ \t]*\3[ \t]*(?=\n|$)", re.S)
 HEREDOC_MARK_RE = re.compile(r"<<__HEREDOC_(\d+)__")
 ASSIGN_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", re.S)
-# gh の前に付くラッパーと、値を取るそのオプション（読み飛ばして中の gh を見る）
+# Wrappers that can precede gh, and their options that take a value (skipped so we can see the gh inside)
 _WRAPPERS = {
     "env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"},
     "command": set(), "builtin": set(), "exec": {"-a"}, "nohup": set(), "time": set(),
@@ -59,7 +60,7 @@ def _path(session_id):
 
 
 class State:
-    """flock 付き read-modify-write。並列のツール呼び出しで同時に来ても壊れない。"""
+    """Read-modify-write under flock. Safe when parallel tool calls arrive at the same time."""
 
     def __init__(self, session_id):
         os.makedirs(STATE_DIR, exist_ok=True)
@@ -137,7 +138,7 @@ def branch_from_cwd(cwd):
 
 
 def norm_ref(ref, default_repo):
-    """`#5` → `owner/repo#5`（大文字小文字は GitHub と同じく区別しない）。"""
+    """`#5` -> `owner/repo#5` (case-insensitive, like GitHub)."""
     if ref.startswith("#"):
         if not default_repo:
             return None
@@ -146,18 +147,18 @@ def norm_ref(ref, default_repo):
 
 
 def body_missing(body):
-    """PR 本文に足りない印のリスト。HTML コメントの中（テンプレートの説明）は数えない。"""
+    """List of markers missing from the PR body. Text inside HTML comments (template instructions) does not count."""
     text = HTML_COMMENT_RE.sub("", body or "")
     missing = []
     if not (CLOSE_RE.search(text) or REFS_RE.search(text)):
-        missing.append("`Closes #N` か `Refs #N`（issue の無い依頼なら `Refs: none (verbal request)`）")
+        missing.append("`Closes #N` or `Refs #N` (`Refs: none (verbal request)` for a request with no issue)")
     if not ARCH_RE.search(text):
-        missing.append("`Arch-Review: not-needed — <理由>` か `Arch-Review: approved — <GO の在りか>`")
+        missing.append("`Arch-Review: not-needed — <reason>` or `Arch-Review: approved — <where the GO is>`")
     return missing
 
 
 def has_result(text):
-    """`## 結果` の見出しがあるか。テンプレートの HTML コメントやコードブロックの中の見本は数えない。"""
+    """Whether there is a `## Result` heading. Samples inside template HTML comments or code blocks do not count."""
     return bool(RESULT_RE.search(FENCE_RE.sub("", HTML_COMMENT_RE.sub("", text or ""))))
 
 
@@ -172,7 +173,7 @@ def closes_of(body, repo):
 
 
 def text_of(tr):
-    """ツールの結果を検索用の1本の文字列にする（JSON 文字列の中の改行も戻す）。"""
+    """Flatten a tool result into one searchable string (also restores newlines inside JSON strings)."""
     if tr is None:
         return ""
     if isinstance(tr, str):
@@ -186,7 +187,7 @@ def text_of(tr):
 
     def walk(x):
         if isinstance(x, str):
-            # コネクタの結果は [{"type":"text","text":"<JSON>"}] の形が多い。中の JSON も開いて改行を戻す
+            # Connector results are often [{"type":"text","text":"<JSON>"}]. Open the inner JSON too and restore newlines
             if x[:1] in "{[":
                 try:
                     walk(json.loads(x))
@@ -205,7 +206,7 @@ def text_of(tr):
 
 
 def failed(tr):
-    """Bash の gh が失敗していたら True（成功したときだけ記録する）。"""
+    """True if gh in Bash failed (we only record successes)."""
     if isinstance(tr, dict):
         if tr.get("interrupted") or tr.get("is_error"):
             return True
@@ -217,7 +218,7 @@ def failed(tr):
 
 # --------------------------------------------------------------- gh parsing
 def split_heredocs(command):
-    """ヒアドキュメントの本文を取り出し、コマンドには `<<__HEREDOC_i__` の印だけを残す。"""
+    """Pull heredoc bodies out and leave only a `<<__HEREDOC_i__` marker in the command."""
     docs = []
 
     def repl(m):
@@ -227,7 +228,7 @@ def split_heredocs(command):
 
 
 def unwrap(c):
-    """1つの単純コマンドのトークンから、前置きの代入・キーワード・ラッパーを外す。(env, 残り)"""
+    """Strip leading assignments, keywords and wrappers from the tokens of one simple command. Returns (env, rest)."""
     env, i = {}, 0
     while i < len(c):
         t = c[i]
@@ -240,7 +241,7 @@ def unwrap(c):
         elif os.path.basename(t) in _WRAPPERS:
             name, vopts = os.path.basename(t), _WRAPPERS[os.path.basename(t)]
             if name == "command" and i + 1 < len(c) and c[i + 1] in ("-v", "-V"):
-                return env, []  # command -v gh は探すだけで実行しない
+                return env, []  # command -v gh only looks gh up, it does not run it
             i += 1
             while i < len(c) and c[i].startswith("-") and c[i] != "-":
                 if c[i] == "--":
@@ -248,7 +249,7 @@ def unwrap(c):
                     break
                 i += 2 if (c[i] in vopts and "=" not in c[i]) else 1
             if name == "timeout" and i < len(c) and re.fullmatch(r"[\d.]+[smhd]?", c[i]):
-                i += 1  # timeout の時間
+                i += 1  # the timeout duration
             if name == "nice" and i < len(c) and re.fullmatch(r"-?\d+", c[i]):
                 i += 1
         else:
@@ -257,7 +258,7 @@ def unwrap(c):
 
 
 def resolve_cd(args, cur):
-    """`cd` の行き先。分からないとき（変数・`cd -`・行き先が分からない所からの相対）は None。"""
+    """Where `cd` goes. None when unknown (a variable, `cd -`, or a relative path from an unknown place)."""
     dests = [a for a in args if not (a.startswith("-") and a != "-")]
     if not dests:
         return os.path.expanduser("~")
@@ -271,16 +272,16 @@ def resolve_cd(args, cur):
 
 
 def gh_commands(command, cwd=None, _depth=0):
-    """Bash コマンドから gh の呼び出しを [{"args", "env", "stdin", "docs"}] で返す。
+    """Return the gh calls in a Bash command as [{"args", "env", "stdin", "docs"}].
 
-    ヒアドキュメントの本文は字句解析の前に取り出す（本文の ' や # で崩さない）。stdin はその gh に
-    `<<` で渡したヒアドキュメントの番号。cwd はその gh が走るディレクトリ（前の `cd` を辿る。分からなければ None）。
-    env・command・timeout などのラッパーと `sh -c '…'` の中も見る。
-    shlex で読めないコマンドは空（止めない側に倒す。PR の本文にあり得る記号で誤爆させない）。"""
+    Heredoc bodies are pulled out before lexing (so a ' or # in the body cannot break it). stdin is the index of the
+    heredoc passed to that gh with `<<`. cwd is the directory that gh runs in (follows earlier `cd`s; None if unknown).
+    Also looks through wrappers such as env, command and timeout, and inside `sh -c '...'`.
+    A command that shlex cannot read yields nothing (lean towards not stopping, so symbols a PR body may contain don't misfire)."""
     command, docs = split_heredocs(command)
-    command = command.replace("\\\n", " ")  # 行末の \ は行の継続
+    command = command.replace("\\\n", " ")  # a trailing \ continues the line
     try:
-        # 改行もコマンドの区切り（引用の中の改行はそのまま残る）
+        # A newline also separates commands (newlines inside quotes are kept)
         lex = shlex.shlex(command, posix=True, punctuation_chars=";&|()\n")
         lex.whitespace = " \t\r"
         lex.whitespace_split = True
@@ -308,7 +309,7 @@ def gh_commands(command, cwd=None, _depth=0):
             continue
         env, rest = unwrap(c)
         if not rest:
-            exported.update(env)  # `A=B` だけの行はこのシェルの変数（export 済みの名前なら子にも渡る）
+            exported.update(env)  # a line with only `A=B` sets a shell variable (passed to children if the name was exported)
             continue
         env = {**exported, **env}
         exe = os.path.basename(rest[0])
@@ -332,7 +333,7 @@ def gh_commands(command, cwd=None, _depth=0):
     return out
 
 
-# 値を取る gh のオプション（読み飛ばすため。必要なものだけ値を拾う）
+# gh options that take a value (listed so we can skip them; we only pick up the values we need)
 _VALUE_OPTS = {
     "-R", "--repo", "-b", "--body", "-F", "--body-file", "-t", "--title", "-H", "--head", "-B", "--base",
     "-T", "--template", "-a", "--assignee", "-l", "--label", "-m", "--milestone", "-p", "--project",
@@ -343,7 +344,7 @@ _VALUE_OPTS = {
 
 
 def parse_args(args):
-    """(positional, opts)。opts は最後の値（`--x=v` 形も）。"""
+    """(positional, opts). opts keeps the last value (including the `--x=v` form)."""
     pos, opts, i = [], {}, 0
     while i < len(args):
         a = args[i]
@@ -357,7 +358,7 @@ def parse_args(args):
             opts[a] = args[i + 1] if i + 1 < len(args) else ""
             i += 1
         elif a.startswith("-") and len(a) > 2 and a[:2] in _VALUE_OPTS and not a.startswith("--"):
-            opts[a[:2]] = a[2:]  # -Ro/r の形
+            opts[a[:2]] = a[2:]  # the -Ro/r form
         elif a.startswith("-") and len(a) > 1:
             opts[a] = True
         else:
@@ -385,26 +386,26 @@ def read_file(path, cwd):
 
 
 def gh_body(opts, cwd, call):
-    """gh に渡した本文。確かめられない渡し方（変数・パイプの標準入力・--fill など）は None。"""
+    """The body passed to gh. None when it was passed in a way we cannot check (a variable, piped stdin, --fill, ...)."""
     docs = call["docs"]
     b = opt(opts, "-b", "--body")
     if b is not None:
         m = HEREDOC_MARK_RE.search(b)
         if m:
-            return docs[int(m.group(1))]  # --body "$(cat <<'EOF' … EOF)"。そのヒアドキュメントの本文だけ
-        # "$BODY" のような変数だけの本文は中身が分からない
+            return docs[int(m.group(1))]  # --body "$(cat <<'EOF' ... EOF)". Only that heredoc's body
+        # A body that is just a variable such as "$BODY" cannot be inspected
         return None if re.fullmatch(r"\s*\$\{?\w+\}?\s*", b) else b
     f = opt(opts, "-F", "--body-file")
     if f in ("-", "/dev/stdin"):
-        # `-F - <<'EOF'`。この gh に渡したヒアドキュメントの本文だけを見る（パイプなどは確かめられない）
+        # `-F - <<'EOF'`. Only look at the heredoc passed to this gh (a pipe and the like cannot be checked)
         return docs[call["stdin"]] if call["stdin"] is not None else None
     return read_file(f, cwd)
 
 
 def gh_calls(command, cwd):
-    """[(kind, info)] kind ∈ pr_create / pr_merge / issue_edit / issue_view
+    """[(kind, info)] kind is one of pr_create / pr_merge / issue_edit / issue_view
 
-    リポは gh と同じ順で決める：-R → この gh の前の GH_REPO → 引き継いだ環境の GH_REPO → gh が走るディレクトリの origin。"""
+    The repo is resolved in the same order as gh: -R -> GH_REPO set before this gh -> inherited GH_REPO -> origin of the directory gh runs in."""
     out = []
     for call in gh_commands(command, cwd):
         pos, opts = parse_args(call["args"])
@@ -432,7 +433,7 @@ def gh_calls(command, cwd):
 
 
 def merge_refs_from_gh(info, st_prs):
-    """gh pr merge が指す PR の候補。リポが決まらない番号指定は、記録した PR のうち同じ番号のものすべて。"""
+    """Candidate PRs that gh pr merge points at. A bare number with no resolvable repo matches every recorded PR with that number."""
     sel = info.get("selector")
     um = re.fullmatch(r"https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)(?:[/?#].*)?", sel or "")
     if um:
@@ -451,7 +452,7 @@ def merge_refs_from_gh(info, st_prs):
 FORM_RE = re.compile(r"(?i)interactive form|form has been shown|waiting for the user|pending (?:user )?(?:approval|confirmation)")
 
 
-# Monitor のコマンドで PR を指す書き方。番号だけ（sleep 30 など）は数えない
+# Ways a Monitor command can name a PR. A bare number (sleep 30 and the like) does not count
 MONITOR_PR_RE = re.compile(
     r"(?:pulls?|issues)/(?P<n>\d+)(?!\d)"
     r"|(?<![\w&])#(?P<n2>\d+)(?!\d)"
@@ -462,7 +463,7 @@ VALUE_FLAG_RE = re.compile(r"(?:^|\s)(?:-i|--interval|-l|--limit|-q|--jq|-t|--te
 
 
 def wait_targets(tool_name, tool_input, prs):
-    """待ちを始めた PR の ref。購読はその PR だけ、Monitor はコマンドに PR 番号（とリポ）が出てくるものだけ。"""
+    """Refs of PRs whose wait has started. A subscription covers only that PR; a Monitor covers only the PRs whose number (and repo) appear in its command."""
     if tool_name != "Monitor":
         o, r = tool_input.get("owner"), tool_input.get("repo")
         n = tool_input.get("pullNumber") or tool_input.get("pull_number") or tool_input.get("pr_number")
@@ -515,35 +516,35 @@ def emit(obj):
         print(json.dumps(obj, ensure_ascii=False))
 
 
-NEXT_STEP = (f"{TAG} PR を作った。次はレビューと CI を待つ（dev-flow の 5 段・手順は pr-review-triage）。"
-             "クラウドのセッションは PR イベントの購読（subscribe_pr_activity）、ローカルは Monitor を立てる。"
-             "マージの前に Closes 先の issue の body に `## 結果` を書く。")
+NEXT_STEP = (f"{TAG} PR created. Next, wait for review and CI (dev-flow step 5; the procedure is in pr-review-triage). "
+             "In a cloud session subscribe to PR events (subscribe_pr_activity); locally start a Monitor. "
+             "Before merging, write `## Result` in the body of each issue the PR Closes.")
 
 
 # ------------------------------------------------------------------- events
 def pre_create_check(body):
     if body is None:
-        return deny(f"{TAG} PR の本文を確かめられない。本文は --body か --body-file で渡す"
-                    "（--fill・--editor・--web・変数・ヒアドキュメント以外の標準入力では確かめられない）。")
+        return deny(f"{TAG} Cannot check the PR body. Pass the body with --body or --body-file "
+                    "(--fill, --editor, --web, a variable, or stdin other than a heredoc cannot be checked).")
     missing = body_missing(body)
     if missing:
-        return deny(f"{TAG} PR 本文に次の欄が無い（dev-flow の 4 段）:\n- " + "\n- ".join(missing)
-                    + "\n書き足してから作り直す。")
+        return deny(f"{TAG} The PR body is missing these lines (dev-flow step 4):\n- " + "\n- ".join(missing)
+                    + "\nAdd them and create the PR again.")
     return None
 
 
 def pre_merge_check(ref, st):
     pr = st["prs"].get(ref)
     if not pr:
-        return None  # 別セッションの PR は分からない。PostToolUse で一言返す
+        return None  # we cannot know about another session's PR. PostToolUse replies with a reminder
     missing = [i for i in pr.get("closes", []) if i not in st["results"]]
     if not missing:
         return None
-    return deny(f"{TAG} {ref} は {', '.join(missing)} を Closes するが、このセッションでは"
-                " その issue の body に `## 結果` を書いた・確かめた記録が無い（dev-flow の 7 段）。"
-                "マージで自動 close されると記録の無い close になる。issue_read で今の body を取り、"
-                "末尾に `## 結果` を足して issue_write（update）で書いてからマージする。"
-                "すでに書いてあるなら issue_read で読み直せば通る。")
+    return deny(f"{TAG} {ref} Closes {', '.join(missing)}, but this session has no record of writing or confirming"
+                " `## Result` in that issue's body (dev-flow step 7)."
+                " Merging would auto-close it with nothing recorded. Get the current body with issue_read,"
+                " append `## Result`, write it back with issue_write (update), then merge."
+                " If it is already there, reading it again with issue_read lets the merge through.")
 
 
 def on_pre_tool_use(inp):
@@ -611,8 +612,8 @@ def on_post_tool_use(inp):
         if not (o and r and n):
             return None
         if b == "issue_write":
-            # 承認フォームを出しただけ（ユーザーが送るまで更新されない）などは書けた記録にしない。
-            # 結果にその issue の URL が返ってきたときだけ数える（足りなければ issue_read で読み直せば通る）
+            # Merely showing an approval form (nothing is updated until the user submits it) is not a write.
+            # Count it only when the result returns that issue's URL (otherwise, reading it again with issue_read lets it through)
             done = re.search(rf"/issues/{int(n)}(?!\d)", text_of(tr)) and not FORM_RE.search(text_of(tr))
             text = (ti.get("body") or "") if ti.get("method") == "update" and done else ""
         else:
@@ -627,8 +628,8 @@ def on_post_tool_use(inp):
     if tn.startswith("mcp__") and b in ("merge_pull_request", "enable_pr_auto_merge"):
         o, r, n = ti.get("owner"), ti.get("repo"), ti.get("pullNumber") or ti.get("pull_number")
         if o and r and n and f"{o}/{r}#{int(n)}".lower() not in read_state(sid)["prs"]:
-            return inject(f"{TAG} このセッションで作っていない PR をマージした。Closes 先の issue に"
-                          " `## 結果` があるか確かめ、無ければ書く（dev-flow の 7 段）。")
+            return inject(f"{TAG} Merged a PR that this session did not create. Check that each issue it Closes"
+                          " has `## Result`, and write it if missing (dev-flow step 7).")
         return None
 
     if tn == "Bash":
@@ -645,7 +646,7 @@ def on_post_tool_use(inp):
                     out = inject(NEXT_STEP)
             elif kind in ("issue_edit", "issue_view"):
                 if kind == "issue_edit":
-                    # gh issue edit は成功すると issue の URL を出す
+                    # gh issue edit prints the issue URL on success
                     num = info["ref"].rsplit("#", 1)[1]
                     text = info["body"] if re.search(rf"/issues/{num}(?!\d)", text_of(tr)) else ""
                 else:
@@ -657,8 +658,8 @@ def on_post_tool_use(inp):
             elif kind == "pr_merge":
                 st = read_state(sid)
                 if not any(r in st["prs"] for r in merge_refs_from_gh(info, st["prs"])):
-                    out = inject(f"{TAG} このセッションで作っていない PR をマージした。Closes 先の issue に"
-                                 " `## 結果` があるか確かめ、無ければ書く（dev-flow の 7 段）。")
+                    out = inject(f"{TAG} Merged a PR that this session did not create. Check that each issue it Closes"
+                                 " has `## Result`, and write it if missing (dev-flow step 7).")
         return out
     return None
 
@@ -677,10 +678,11 @@ def on_stop(inp):
                 due.append(ref)
     if not due:
         return None
-    reason = (f"{TAG} {', '.join(due)} を作ったが、レビューと CI の待ちを始めていない（dev-flow の 5 段）。"
-              "クラウドのセッションは subscribe_pr_activity で PR イベントを購読してからターンを終える。"
-              "ローカルは pr-review-triage の手順で Monitor を立てる。"
-              "待たない理由（ユーザーが不要と言った等）があるなら、それを返答に書いて終えてよい（この PR では二度と止めない）。")
+    reason = (f"{TAG} Created {', '.join(due)} but has not started waiting for review and CI (dev-flow step 5)."
+              " In a cloud session, subscribe to PR events with subscribe_pr_activity before ending the turn."
+              " Locally, start a Monitor following pr-review-triage."
+              " If there is a reason not to wait (e.g. the user said it is unnecessary), say so in your reply and end"
+              " the turn (this PR will not be stopped again).")
     return {"decision": "block", "reason": reason}
 
 

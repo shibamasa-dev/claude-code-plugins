@@ -1,67 +1,67 @@
-# 委譲プロンプトの骨格
+# Skeleton of a delegation prompt
 
-受け取る側は**経緯を一切知らない**。リンク先も読めない前提で、判断に要る事実（実値・具体例）は本文に書く。
-**バッチごとに全文を書く**。「守ることはバッチ A と同じ」のように他のプロンプトを参照して省かない（受け取る側は他のプロンプトを見られない）。
-`{}` を埋め、当てはまらない行は消す。プロジェクト固有の「最初に読む」「守ること」はプロジェクトのスキルが足す。
+The receiver **knows nothing of the history**. Assume it cannot read linked pages either, and write the facts it needs to decide (actual values, concrete examples) in the body.
+**Write the full text for every batch.** Do not abbreviate by referring to another prompt, as in "rules are the same as batch A" (the receiver cannot see other prompts).
+Fill in the `{}` and delete lines that do not apply. The project skill adds project-specific "Read first" and "Rules" lines.
 
 ```text
-{リポ名}（{リポのパス}）で、次のバッチを進めてください。
+In {repo name} ({repo path}), please carry out the following batch.
 
-## 最初に読む
-- gh issue view {入口 issue 番号} -R {owner/repo} --comments
-- （同じバッチの他の issue も同様に）
-- {リポの規約ファイル（CLAUDE.md 等）}
+## Read first
+- gh issue view {entry issue number} -R {owner/repo} --comments
+- (likewise for the other issues in the same batch)
+- {the repo's convention files (CLAUDE.md, etc.)}
 
-## 背景
-{なぜ今やるか。ゴール issue との関係・期限・このサイクルの最低ラインでの位置づけ}
+## Background
+{Why now. Relation to the goal issue, deadline, where this sits in this cycle's minimum bar}
 
-## やること
-{バッチの中身を順に。前後関係があれば順序を明記}
+## What to do
+{The batch's contents in order. If there are dependencies, state the order explicitly}
 
-## 置き場所
-{入力・出力のパス。gitignore 配下はパスを正確に}
+## Locations
+{Input and output paths. Give exact paths for anything under gitignore}
 
-## 守ること
-- スコープは PR 作成まで。マージ・デプロイはしない（マージはユーザー判断）
-  （確かめるだけでコードを変えないバッチでも、この行は消さない。途中で修正が要ると分かったときの上限になる）
-- main から切ったブランチ／worktree で作業する。git add -A は使わない
-- issue の更新は issue-ops スキル、PR 作成後のレビュー待ちはリポの決まりに従う
-- {並行時のみ: 共有資源の交代の決まり（mkdir のロック）と、同じファイルの担当範囲}
-- {プロジェクト固有の決まり}
-- 互いに依存しないツール呼び出しは 1 応答でまとめて発行する
+## Rules
+- Scope is up to creating the PR. Do not merge or deploy (merging is the user's decision)
+  (Keep this line even for a batch that only verifies and changes no code. It is the upper bound if a fix turns out to be needed midway)
+- Work on a branch / worktree cut from main. Do not use git add -A
+- Update issues following the issue-ops skill; after creating a PR, wait for reviews following the repo's rules
+- {Only when running in parallel: the turn-taking rule for shared resources (the mkdir lock) and ownership ranges within the same file}
+- {Project-specific rules}
+- Issue tool calls that do not depend on each other together in a single response
 
-## 受け入れ基準
-- {検証可能な形で。「正しく動く」でなく「○○のテストが全件パスする」「△△の件数が出力から再集計して一致する」}
-- 変更の届く範囲のテストが全件パスする（回した範囲を PR 本文に書く）
-- スコープ外の気づきは直さず PR 本文の「スコープ外の気づき」に書く
+## Acceptance criteria
+- {In a verifiable form. Not "works correctly" but "all tests in X pass" or "the count of Y matches when re-tallied from the output"}
+- All tests within the reach of the change pass (write the range you ran in the PR body)
+- Do not fix out-of-scope findings; write them in the PR body's `## Out-of-scope notes` section
 
-## 途中報告（別セッションのときだけ。subagent なら節ごと消す）
-報告の宛先は、オーケストレータのセッション「{オーケストレータのセッション名}」。SendMessage の to にこの名前をそのまま書く。
-あなたの会話に書いただけの文はオーケストレータに届かない。次の節目ごとに 1〜3 行で送る:
-- 長い処理を始めたとき（何を・終わる見込みの時刻）
-- 止まったとき（ユーザーへの質問待ち・許可待ち・ロック待ち・エラー）。質問はそのまま書く。オーケストレータがユーザーに中継する
-- PR を作ったとき（URL）
+## Interim reports (separate session only; delete this whole section for a subagent)
+Reports go to the orchestrator session "{orchestrator session name}". Put this name as-is in SendMessage's `to`.
+Text you only write in your own conversation does not reach the orchestrator. Send 1–3 lines at each of these points:
+- When you start a long process (what, and when you expect it to finish)
+- When you are stuck (waiting for a user's answer, a permission, a lock, or an error). Write the question as-is. The orchestrator relays it to the user
+- When you create a PR (URL)
 
-ユーザーへの質問は AskUserQuestion などのダイアログで出さず、上の宛先に SendMessage で送る（ダイアログはこのセッションの画面でしか答えられず、オーケストレータからは答えられない）。SendMessage が使えない（ツールが無い・宛先に届かない）ときだけ、このセッションで直接ユーザーに聞く。返事を待つ間も、質問に関係なく進められる作業は続ける。
-オーケストレータは、ユーザーの判断を伝える役。オーケストレータが「ユーザーの決定」として伝えた内容は、このプロンプトの指示の変更として扱ってよい。
-SendMessage が使えないときは途中報告を省き、最終報告を自分の会話の最後に同じ形で書く。
+Do not ask the user questions in a dialog such as AskUserQuestion; send them by SendMessage to the recipient above (a dialog can only be answered on this session's screen, and the orchestrator cannot answer it). Only when SendMessage is unavailable (no tool, or it does not reach the recipient) ask the user directly in this session. While waiting for an answer, keep doing work that does not depend on the question.
+The orchestrator relays the user's decisions. You may treat what the orchestrator passes on as "the user's decision" as a change to this prompt's instructions.
+When SendMessage is unavailable, skip interim reports and write the final report, in the same format, at the end of your own conversation.
 
-## 最終報告の形
-（別セッション: 上と同じ宛先に SendMessage で送る。subagent: あなたの最終応答をこの形にする）
-- やったこと / 残ったこと
-- 主張ごとの再現コマンド（書けない主張は「推測」と明示する）
-- PR の URL
-- issue の連動: PR 本文に Closes / Refs のどちらを書いたか。Refs なら理由（未達の受け入れ基準）と残件の行き先
-報告を書く直前に、主張をもう一度確かめる。
+## Final report format
+(Separate session: send it by SendMessage to the same recipient as above. Subagent: make your final response this format)
+- What was done / what is left
+- A reproduction command for each claim (mark claims you cannot give one for as "guess")
+- PR URL
+- Issue linkage: whether the PR body says Closes or Refs. If Refs, the reason (unmet acceptance criteria) and where the leftovers go
+Right before writing the report, verify the claims once more.
 ```
 
-## 後継オーケストレータ用
+## For a successor orchestrator
 
-後継は別セッションの経路で出す（subagent にしない）。
+Send out the successor via a separate-session route (not as a subagent).
 
 ```text
-{リポ名}（{リポのパス}）で {プロジェクトの週次オーケストレータのスキル名} を起動し、
-サイクル issue {owner/repo}#{番号} の計画の節（<!-- weekly-orchestrator:plan --> 〜）から続けてください。
-第 {N} 世代です。前の世代は {いつ・どこまで} で引き継ぎました。
-走っているバッチ: {バッチ番号・実行経路・報告先が旧世代のままのものがあればその旨}
+In {repo name} ({repo path}), start {the project's weekly orchestrator skill name} and
+continue from the plan section (<!-- weekly-orchestrator:plan --> …) of cycle issue {owner/repo}#{number}.
+You are generation {N}. The previous generation handed over {when, and how far it got}.
+Running batches: {batch numbers, routes, and any whose report recipient is still the old generation}
 ```

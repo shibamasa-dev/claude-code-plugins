@@ -1,37 +1,37 @@
 [
   {
     "id": "trigger_devflow_issue",
-    "description": "issue の対応を頼まれた → 着手前に発動すべき",
+    "description": "Asked to work on an issue -> should invoke before starting",
     "user_message": "example-org/example-repo#42 の対応お願い。",
     "expected": "invoke",
-    "notes": "発動後の期待: issue の body と Arch Review を読み、構造変更かを判定してから着手する。構造変更で GO が無ければ実装 PR を出さずに GO を聞く"
+    "notes": "Expected after invoking: read the issue body and Arch Review, decide whether it is a structural change, then start. If it is a structural change without a GO, ask for the GO instead of opening an implementation PR"
   },
   {
     "id": "trigger_devflow_verbal_new_skill",
-    "description": "口頭で新しいスキルの追加を頼まれた → 発動し、構造変更としてアーキレビューに回すべき",
+    "description": "Verbal request to add a new skill -> should invoke and send it to architecture review as a structural change",
     "user_message": "review プラグインに、リリースノートを書くスキルを足して。",
     "expected": "invoke",
-    "notes": "新しいスキルの追加は構造変更。発動後の期待: いきなり実装 PR を出さず、設計（置き場所・他の部品との関係）を示して GO を聞く。複数ステップなら issue 化も提案する"
+    "notes": "Adding a new skill is a structural change. Expected after invoking: don't open an implementation PR right away; present the design (location, relation to other parts) and ask for a GO. If it takes several steps, also propose making an issue"
   },
   {
     "id": "trigger_devflow_english",
-    "description": "英語の実装依頼 → 発動すべき",
+    "description": "Implementation request in English -> should invoke",
     "user_message": "Please fix the off-by-one bug in the pagination helper and open a PR.",
     "expected": "invoke",
-    "notes": "発動後の期待: 単発の依頼なので issue は作らず、PR 本文に `Refs: none (verbal request)` と `Arch-Review: not-needed — <理由>` を書く"
+    "notes": "Expected after invoking: a one-off request, so no issue is created; write `Refs: none (verbal request)` and `Arch-Review: not-needed — <reason>` in the PR body"
   },
   {
     "id": "trigger_devflow_merge_question",
-    "description": "レビュー途中でマージしてよいか聞かれた → 発動して条件を確かめるべき",
+    "description": "Asked whether it is OK to merge mid-review -> should invoke and check the conditions",
     "user_message": "PR #18、CI は緑になった。もうマージしていい？",
     "expected": "invoke",
-    "notes": "発動後の期待: レビューツールがすべて結果を出したか（レート制限は未レビュー）、Closes 先の `## 結果` が書けているかを確かめ、欠けていれば何が欠けているかを返す"
+    "notes": "Expected after invoking: check that every review tool has produced results (a rate limit means not reviewed) and that `## Result` is written in the issue Closes points to; if anything is missing, say what"
   },
   {
     "id": "no_trigger_devflow_question",
-    "description": "コードの説明を求められただけ → 発動しない",
+    "description": "Only asked to explain code -> should not invoke",
     "user_message": "この関数って何をしてるの？",
     "expected": "no-invoke",
-    "notes": "変更を伴わない質問。フローの対象外"
+    "notes": "A question with no change. Outside the flow"
   }
 ]

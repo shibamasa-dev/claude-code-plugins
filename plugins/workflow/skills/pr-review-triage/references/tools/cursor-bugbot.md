@@ -1,13 +1,13 @@
-# Cursor Bugbot（id: `cursor-bugbot`）
+# Cursor Bugbot (id: `cursor-bugbot`)
 
-| 項目 | 中身 |
+| Item | Details |
 |---|---|
-| bot のアカウント名（login と完全一致） | `cursor[bot]` |
-| 起動のしかた | GitHub App の設定で PR 作成時に自動（従量課金に注意）。こちらから頼むときはコメント `bugbot run` |
-| 完了の合図 | レビュー（指摘つき） |
-| 「指摘なし」の合図 | レビュー（指摘なし） |
-| レート制限・上限の合図（未レビュー） | 上限到達のコメント |
-| 待ち時間 | 記録なし。上限はこちらから頼んでも返らないので、ユーザーに解除を頼む |
-| 重い指摘 | Critical・High 相当で数える（重大度の書き方はツールごとに違う） |
-| 再レビューの頼み方 | コメント `bugbot run`（ほかのツールへの依頼と 1 コメントにまとめる） |
-| 手元で回すコマンド | なし |
+| Bot account name (full match on login) | `cursor[bot]` |
+| How it starts | Automatic on PR creation per the GitHub App settings (watch out for usage-based billing). To request it ourselves, comment `bugbot run` |
+| Done signal | A review (with findings) |
+| "No findings" signal | A review (no findings) |
+| Rate-limit / quota signal (not reviewed) | A limit-reached comment |
+| Wait time | Not recorded. A limit gets no response to our requests, so ask the user to lift it |
+| Heavy findings | Count the Critical/High equivalent (each tool labels severity differently) |
+| How to request a re-review | Comment `bugbot run` (combined into one comment with requests to other tools) |
+| Command to run locally | None |

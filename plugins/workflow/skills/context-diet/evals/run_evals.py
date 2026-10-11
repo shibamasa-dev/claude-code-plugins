@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""context-diet evals: フィクスチャを $TMPDIR に自動生成して measure.py を3ケース検証。
+"""context-diet evals: generate fixtures in $TMPDIR automatically and verify measure.py on 3 cases.
 
-手作業ゼロ。evals.json がケース定義（期待 verdict・期待 breach 部分文字列）。
+Zero manual steps. evals.json defines the cases (expected verdict, expected breach substrings).
 """
 import json
 import os
@@ -21,19 +21,19 @@ def skill_md(dirpath: Path, name: str, desc: str) -> None:
 
 
 def build_inventory_fixture(root: Path, kind: str) -> tuple:
-    """疑似 HOME/プロジェクトを作る。戻り値 (home, project)。"""
+    """Create a fake HOME/project. Returns (home, project)."""
     home = root / "home"
     project = root / "proj"
     (project / ".claude").mkdir(parents=True)
 
     skills = home / ".claude" / "skills"
-    skill_md(skills / "keeper", "keeper", "残す想定のスキル")
-    skill_md(skills / "dropme", "dropme", "落とす想定のスキル。説明文はそこそこ長い。")
+    skill_md(skills / "keeper", "keeper", "Skill meant to be kept")
+    skill_md(skills / "dropme", "dropme", "Skill meant to be dropped. Its description is fairly long.")
 
     mkt = home / ".claude" / "plugins" / "marketplaces"
-    skill_md(mkt / "mp" / "plugins" / "demo" / "skills" / "helper", "helper", "プラグイン由来")
-    # enabledPlugins に載っていないプラグインは列挙されない、の対照
-    skill_md(mkt / "mp" / "plugins" / "ghost" / "skills" / "helper", "helper", "無効プラグイン")
+    skill_md(mkt / "mp" / "plugins" / "demo" / "skills" / "helper", "helper", "From a plugin")
+    # control: plugins not listed in enabledPlugins are not enumerated
+    skill_md(mkt / "mp" / "plugins" / "ghost" / "skills" / "helper", "helper", "Disabled plugin")
     (home / ".claude" / "settings.json").write_text(json.dumps(
         {"enabledPlugins": {"demo@mp": True, "ghost@mp": False}}))
 
@@ -45,7 +45,7 @@ def build_inventory_fixture(root: Path, kind: str) -> tuple:
         }))
     elif kind == "fresh":
         (project / ".claude" / "settings.json").write_text(json.dumps({"hooks": {}}))
-    # no_settings: .claude/settings.json を作らない
+    # no_settings: don't create .claude/settings.json
     return home, project
 
 
@@ -60,16 +60,16 @@ def run_inventory_case(case: dict) -> tuple:
         try:
             out = json.loads(r.stdout)
         except json.JSONDecodeError:
-            return False, f"JSON parse 失敗: {r.stdout[:120]!r} / stderr {r.stderr[:160]!r}"
+            return False, f"JSON parse failed: {r.stdout[:120]!r} / stderr {r.stderr[:160]!r}"
 
         errs = []
         names = [s["name"] for s in out.get("skills", [])]
         for want in case.get("expect_skill_names", []):
             if want not in names:
-                errs.append(f"{want!r} が skills に無い: {names}")
+                errs.append(f"{want!r} not in skills: {names}")
         for unwanted in case.get("expect_absent_skill_names", []):
             if unwanted in names:
-                errs.append(f"{unwanted!r} が列挙されている（無効プラグインのはず）")
+                errs.append(f"{unwanted!r} is listed (should be a disabled plugin)")
         for k, v in case.get("expect_totals", {}).items():
             if out.get("totals", {}).get(k) != v:
                 errs.append(f"totals.{k} {out.get('totals', {}).get(k)} != {v}")
@@ -80,7 +80,7 @@ def run_inventory_case(case: dict) -> tuple:
         for k, v in case.get("expect_overridden", {}).items():
             got = next((s["already_overridden"] for s in out["skills"] if s["name"] == k), None)
             if got != v:
-                errs.append(f"{k} の already_overridden {got!r} != {v!r}")
+                errs.append(f"already_overridden of {k} {got!r} != {v!r}")
         if "expect_settings_exists" in case:
             got = out.get("settings", {}).get("exists")
             if got != case["expect_settings_exists"]:
@@ -88,12 +88,12 @@ def run_inventory_case(case: dict) -> tuple:
         if "expect_live_desc_bytes_gt" in case:
             got = out.get("totals", {}).get("live_desc_bytes", 0)
             if not got > case["expect_live_desc_bytes_gt"]:
-                errs.append(f"live_desc_bytes {got} が {case['expect_live_desc_bytes_gt']} 以下")
+                errs.append(f"live_desc_bytes {got} is <= {case['expect_live_desc_bytes_gt']}")
         return (not errs), "; ".join(errs)
 
 
 def build_fixture(root: Path, kind: str) -> tuple:
-    """疑似 HOME/プロジェクトを作る。戻り値 (home, project)。"""
+    """Create a fake HOME/project. Returns (home, project)."""
     home = root / "home"
     project = root / "proj"
     (home / ".claude" / "rules").mkdir(parents=True)
@@ -101,36 +101,36 @@ def build_fixture(root: Path, kind: str) -> tuple:
     mem = home / ".claude" / "projects" / str(project).replace("/", "-").replace("_", "-") / "memory"
     mem.mkdir(parents=True)
 
-    (home / ".claude" / "CLAUDE.md").write_text("# global\nルール本文\n" * 20)
+    (home / ".claude" / "CLAUDE.md").write_text("# global\nrule body\n" * 20)
     (project / "CLAUDE.md").write_text("@AGENTS.md\n")
     (project / "AGENTS.md").write_text("# agents\n")
     (home / ".claude" / "rules" / "scoped.md").write_text('---\npaths:\n  - "**/*.py"\n---\n# scoped\n' + "x" * 5000)
 
     if kind == "healthy":
-        (mem / "MEMORY.md").write_text("# Memory Index\n\n- [A](a.md) — 短いフック\n")
-        (mem / "a.md").write_text("---\nname: a\n---\n本文 [[a]]\n")
+        (mem / "MEMORY.md").write_text("# Memory Index\n\n- [A](a.md) — short hook\n")
+        (mem / "a.md").write_text("---\nname: a\n---\nbody [[a]]\n")
     elif kind == "bloated_index":
-        long_hook = "- [A](a.md) — " + "とても長いフックの説明が延々と続く" * 12
+        long_hook = "- [A](a.md) — " + "a very long hook description that goes on and on " * 12
         (mem / "MEMORY.md").write_text("# Memory Index\n\n" + long_hook + "\n")
-        (mem / "a.md").write_text("---\nname: a\n---\n本文\n")
+        (mem / "a.md").write_text("---\nname: a\n---\nbody\n")
     elif kind == "broken_links":
         (mem / "MEMORY.md").write_text(
-            "# Memory Index\n\n- [A](a.md) — フック\n- [Ghost](ghost.md) — 本体が無い\n")
-        (mem / "a.md").write_text("---\nname: a\n---\n本文 [[no-such-memory]]\n")
-        (mem / "orphan.md").write_text("---\nname: orphan\n---\n索引に載っていない\n")
+            "# Memory Index\n\n- [A](a.md) — hook\n- [Ghost](ghost.md) — body is missing\n")
+        (mem / "a.md").write_text("---\nname: a\n---\nbody [[no-such-memory]]\n")
+        (mem / "orphan.md").write_text("---\nname: orphan\n---\nnot in the index\n")
     elif kind == "oversize":
         (home / ".claude" / "CLAUDE.md").write_text("x" * 200_000)
-        (mem / "MEMORY.md").write_text("# Memory Index\n\n- [A](a.md) — 短い\n")
-        (mem / "a.md").write_text("---\nname: a\n---\n本文\n")
+        (mem / "MEMORY.md").write_text("# Memory Index\n\n- [A](a.md) — short\n")
+        (mem / "a.md").write_text("---\nname: a\n---\nbody\n")
     return home, project
 
 
 def run_case(case: dict) -> tuple:
     with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as td:
-        # measure.py は project を resolve() してから memory dir を導出する。
-        # macOS では /tmp が /private/tmp への symlink なので、フィクスチャ側も
-        # resolve 済みパスで作らないと encode 名がズレて「索引なし」になる
-        # （初回実装で実際に踏んだ: healthy が索引なしのまま偶然 PASS していた）。
+        # measure.py resolve()s the project before deriving the memory dir.
+        # On macOS /tmp is a symlink to /private/tmp, so unless the fixture is also built
+        # from the resolved path, the encoded name drifts and you get "no index"
+        # (hit in the first implementation: healthy passed by accident with no index).
         home, project = build_fixture(Path(td).resolve(), case["fixture"])
         r = subprocess.run(
             [sys.executable, str(MEASURE), "--project", str(project), "--home", str(home)],
@@ -139,7 +139,7 @@ def run_case(case: dict) -> tuple:
         try:
             out = json.loads(r.stdout)
         except json.JSONDecodeError:
-            return False, f"JSON parse 失敗: {r.stdout[:120]!r} / stderr {r.stderr[:120]!r}"
+            return False, f"JSON parse failed: {r.stdout[:120]!r} / stderr {r.stderr[:120]!r}"
         errs = []
         if out.get("verdict") != case["expect_verdict"]:
             errs.append(f"verdict {out.get('verdict')!r} != {case['expect_verdict']!r}")
@@ -147,11 +147,11 @@ def run_case(case: dict) -> tuple:
             errs.append(f"exit {r.returncode} != {case['expect_exit']}")
         for frag in case.get("expect_breach_contains", []):
             if not any(frag in b for b in out.get("breaches", [])):
-                errs.append(f"breach に {frag!r} が無い: {out.get('breaches')}")
+                errs.append(f"{frag!r} not in breaches: {out.get('breaches')}")
         if case.get("expect_no_breach") and out.get("breaches"):
-            errs.append(f"breach が空でない: {out['breaches']}")
+            errs.append(f"breaches not empty: {out['breaches']}")
         if case.get("expect_index_exists") and not out.get("index", {}).get("exists"):
-            errs.append("索引が見つかっていない（フィクスチャ配線ミスの検知）")
+            errs.append("index not found (detects a fixture wiring mistake)")
         if "expect_unresolved_wiki" in case:
             got = len(out.get("index", {}).get("unresolved_wiki_links", []))
             if got != case["expect_unresolved_wiki"]:

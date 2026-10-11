@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
-"""runbook: computer use / browser use の手順を runbook に残す強制点。
+"""runbook: enforces leaving a runbook for computer use / browser use procedures.
 
-生ログは hook が機械で取り、手順書（runbook.md）は作業の最後に Claude が書く。書き忘れは Stop で止める。
-  - PostToolUse  (hook-post)          : 対象ツールの呼び出しを <root>/_inbox/<sid>.jsonl へ追記（batch は 1 アクション 1 行に展開）。
-                                        残すのはホワイトリストのキーだけで、それ以外の文字列・数値は文字数だけ残す
-                                        （type の text・form_input の value・javascript のコード・パスワードは 1 文字も残さない）
-  - Stop         (hook-stop)          : inbox に操作ステップが OP_MIN 件以上あり、new/use/dismiss で仕上げていなければ
-                                        K_STOPS 回ごとに block（仕上げるまでの 1 まとまりにつき最大 MAX_NAGS 回）
-  - SessionStart (hook-session-start) : 1 日 1 回だけ sweep --apply。何か消したときだけ 1 行出す
-保存先 <root> = $RUNBOOK_ROOT or ~/.claude/runbooks
-  _inbox/<sid>.jsonl   仕上げ前の生ログ（hook は作業名を知らない）
-  _state/<sid>.json    Stop の nag カウンタと仕上げ記録
-  <YYYY-MM-DD>_<slug>/ runbook.md ＋ steps.jsonl（2 回目以降の実行分は steps-<日付>.jsonl）
-何が起きても hook は例外で落ちず exit 0（Stop の block だけが唯一の「止める」出力）。
+The hook records the raw log mechanically; Claude writes the runbook (runbook.md) at the end of the work. Forgetting it is stopped at Stop.
+  - PostToolUse  (hook-post)          : append calls of the target tools to <root>/_inbox/<sid>.jsonl (a batch is expanded to one line per action).
+                                        Only whitelisted keys are kept; any other string or number keeps only its length
+                                        (type text, form_input values, javascript code and passwords leave not a single character)
+  - Stop         (hook-stop)          : if the inbox has at least OP_MIN operation steps and it was not finished with new/use/dismiss,
+                                        block every K_STOPS Stops (at most MAX_NAGS times per batch of work until it is finished)
+  - SessionStart (hook-session-start) : sweep --apply once a day. Print one line only when something was deleted
+Storage <root> = $RUNBOOK_ROOT or ~/.claude/runbooks
+  _inbox/<sid>.jsonl   raw log before it is finished (the hook doesn't know the task name)
+  _state/<sid>.json    the Stop nag counter and the finish record
+  <YYYY-MM-DD>_<slug>/ runbook.md + steps.jsonl (later runs go to steps-<date>.jsonl)
+Whatever happens the hook never raises and exits 0 (the Stop block is the only output that stops anything).
 
-CLI（Claude が実行する）:
-  new --session <id> --slug <作業名> --recurrence once|monthly|yearly [--title ...] [--gif <path>]
+CLI (run by Claude):
+  new --session <id> --slug <task-name> --recurrence once|monthly|yearly [--title ...] [--gif <path>]
   use <dir> --session <id>
   dismiss --session <id> --why "..."
-  promote <dir> --skill <スキルのディレクトリ>
+  promote <dir> --skill <skill directory>
   sweep [--apply]
   list
 """
@@ -29,26 +29,26 @@ ROOT = os.path.expanduser(os.environ.get("RUNBOOK_ROOT") or "~/.claude/runbooks"
 INBOX = os.path.join(ROOT, "_inbox")
 STATE_DIR = os.path.join(ROOT, "_state")
 SELF = "runbook"
-K_STOPS = 3            # 操作が OP_MIN 件に達してから（前回 nag から）この回数 Stop が来たら block
-MAX_NAGS = 3           # 仕上げるまでの 1 まとまりにつき block の上限（new/use/dismiss でリセット）
-OP_MIN = 3             # これ未満の操作しかないセッションは止めない
-INBOX_GC_DAYS = 14     # 仕上げられないまま放置された inbox ログ
+K_STOPS = 3            # block after this many Stops once operations reach OP_MIN (or since the last nag)
+MAX_NAGS = 3           # max blocks per batch of work until it is finished (reset by new/use/dismiss)
+OP_MIN = 3             # sessions with fewer operations than this are not stopped
+INBOX_GC_DAYS = 14     # inbox logs left unfinished
 STATE_GC_DAYS = 30
-GIF_MV_TIMEOUT = 10    # ~/Downloads はこのホストで読み書きがハングすることがある
+GIF_MV_TIMEOUT = 10    # reads/writes in ~/Downloads can hang on some hosts
 KEEP_DAYS = {"once": ("created", 60), "monthly": ("last_used", 45), "yearly": ("last_used", 400)}
 FM_KEYS = ["title", "created", "last_used", "uses", "recurrence", "keep_until", "status", "sessions", "gif"]
 DIR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_.+")
 SID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
-TOOL_RE = re.compile(r"^mcp__(claude-in-chrome|computer-use|remote-devices|Claude_Browser)__")  # Playwright は対象外
+TOOL_RE = re.compile(r"^mcp__(claude-in-chrome|computer-use|remote-devices|Claude_Browser)__")  # Playwright is out of scope
 
-# ------------------------------------------------------------ step 記録
-# 残してよいキー（値はそのまま）。これ以外は文字列・数値なら文字数だけ、IGNORE は捨てる
+# ------------------------------------------------------------ step recording
+# Keys we may keep (value as is). Other strings and numbers keep only their length; IGNORE is dropped
 KEEP = {"action", "ref", "ref_id", "element_index", "query", "label", "app", "window_id", "filter",
         "coordinate", "start_coordinate", "to_coordinate", "region", "scroll_direction"}
 IGNORE = {"tabId", "tabIds", "serverId", "deviceId", "scale", "duration", "scroll_amount", "repeat", "max_chars",
           "depth", "limit", "save_to_disk", "force", "width", "height", "preset", "colorScheme", "count", "dx", "dy",
           "foreground", "onlyErrors", "createIfEmpty", "pattern", "urlPattern", "requestId", "lines", "options", "download"}
-# 分類（判断はここ 1 箇所）: 画面・状態を変えうるものが「操作」、それ以外は「読み取り」
+# Classification (decided here only): anything that can change the screen or state is an "operation", the rest is a "read"
 OP_ACTIONS = {"left_click", "right_click", "middle_click", "double_click", "triple_click", "click", "type", "key",
               "scroll", "left_click_drag", "drag", "left_mouse_down", "left_mouse_up"}
 OP_TOOLS = {"navigate", "form_input", "file_upload", "upload_image", "javascript_tool", "shortcuts_execute",
@@ -61,11 +61,11 @@ def valid_sid(s): return isinstance(s, str) and bool(SID_RE.match(s))
 def inbox_path(sid): return os.path.join(INBOX, f"{sid}.jsonl")
 
 def clean_url(u):
-    """クエリ文字列・フラグメント・userinfo を落とす。javascript:/data: は中身を捨てる。"""
+    """Drop the query string, fragment and userinfo. For javascript:/data: drop the contents."""
     if not isinstance(u, str): return None
     s = u.strip()
     m = re.match(r"(?i)^(javascript|data):", s)
-    if m: return f"{m.group(0)}<{len(s)}文字>"
+    if m: return f"{m.group(0)}<{len(s)} chars>"
     s = re.sub(r"^([A-Za-z][A-Za-z0-9+.-]*://)?[^/@]*@", r"\1", s)
     return s.split("#", 1)[0].split("?", 1)[0]
 
@@ -108,7 +108,7 @@ def steps_from(tool, ti):
         if not isinstance(a, dict): continue
         if isinstance(a.get("name"), str) and isinstance(a.get("input"), dict):   # browser_batch: {name, input}
             out.append(_step(tool, a["name"].rsplit("__", 1)[-1], a["input"], sub=a["name"], app=app))
-        else:                                                                     # computer_batch / app_batch: フラット
+        else:                                                                     # computer_batch / app_batch: flat
             out.append(_step(tool, base, a, app=app))
     return out
 
@@ -126,7 +126,7 @@ def count_steps(path):
 
 # ---------------------------------------------------------------- state io
 class State:
-    """flock 付き read-modify-write。並列の hook / CLI が同時に来ても壊れない。"""
+    """Read-modify-write under flock. Safe when hooks / CLI calls run in parallel."""
     def __init__(self, sid):
         os.makedirs(STATE_DIR, exist_ok=True)
         self.p = os.path.join(STATE_DIR, f"{sid}.json"); self.lock = self.p + ".lock"
@@ -145,7 +145,7 @@ class State:
         fcntl.flock(self.lf, fcntl.LOCK_UN); self.lf.close()
 
 def finalize(sid, rec):
-    """new/use/dismiss の共通後処理: nag カウンタを戻し、何をしたかを残す。"""
+    """Common post-processing for new/use/dismiss: reset the nag counter and record what was done."""
     with State(sid) as st:
         st.d["stops_since"] = 0; st.d["nags"] = 0
         st.d["log"].append(dict(rec, at=now()))
@@ -195,19 +195,19 @@ def calc_keep(fm):
 BODY = """
 # {title}
 
-## 目的
+## Goal
 
-## 前提・入力値（秘密は書かない。パスワード・暗証番号・取引パスワードは『ユーザーが入力』とだけ書く）
+## Prerequisites and inputs (no secrets: for passwords, PINs and transaction passwords write only "entered by the user")
 
-## 手順（画面名・ボタンの文言・入れた値。座標は書かない）
+## Steps (screen names, button labels, values entered; no coordinates)
 
-## 分岐・つまずき
+## Branches and pitfalls
 
-## 止める地点（承認境界：決済・送信・確定の直前など）
+## Stop points (approval boundaries: right before paying, sending, confirming, etc.)
 
-## 検証（完了をどこで確かめたか）
+## Verification (where completion was confirmed)
 
-## 録画
+## Recording
 
 {rec}
 """
@@ -230,7 +230,7 @@ def on_post(inp):
 def on_stop(inp):
     if inp.get("stop_hook_active"): return
     sid = inp.get("session_id")
-    if not valid_sid(sid) or not os.path.exists(inbox_path(sid)): return  # ブラウザを触っていないセッションに状態を作らない
+    if not valid_sid(sid) or not os.path.exists(inbox_path(sid)): return  # don't create state for a session that never touched a browser
     n_all, n_op = count_steps(inbox_path(sid))
     if n_op < OP_MIN: return
     with State(sid) as st:
@@ -238,37 +238,37 @@ def on_stop(inp):
         if st.d["stops_since"] < K_STOPS or st.d["nags"] >= MAX_NAGS: return
         st.d["stops_since"] = 0; st.d["nags"] += 1
     reason = "\n".join([
-        f"[runbook] このセッションで computer use / browser use の操作を {n_op} 件した"
-        f"（ログ {n_all} 件は自動記録済み・入力値は伏せてある）が、まだ runbook に仕上げていない。次のどれかを実行してから終了する:",
-        f"  新規の手順:          {SELF} new --session {sid} --slug <作業名> --recurrence once|monthly|yearly --title \"<タイトル>\" [--gif <録画GIFのパス>]",
-        f"  既存 runbook の再実行: {SELF} use <フォルダ（{SELF} list で探す）> --session {sid}",
-        f"  記録不要（検証だけ等）: {SELF} dismiss --session {sid} --why \"<理由>\"",
-        "new / use の後は runbook.md の各見出しを steps.jsonl と会話から埋める（パスワード・暗証番号は『ユーザーが入力』とだけ書く）。"])
+        f"[runbook] This session made {n_op} computer use / browser use operations"
+        f" ({n_all} log entries recorded automatically, input values masked) but has not turned them into a runbook yet. Run one of these before ending:",
+        f"  new procedure:                   {SELF} new --session {sid} --slug <task-name> --recurrence once|monthly|yearly --title \"<title>\" [--gif <path to recorded GIF>]",
+        f"  rerun of an existing runbook:    {SELF} use <folder (find it with {SELF} list)> --session {sid}",
+        f"  nothing to record (just checks): {SELF} dismiss --session {sid} --why \"<reason>\"",
+        "After new / use, fill each heading of runbook.md from steps.jsonl and the conversation (for passwords and PINs write only \"entered by the user\")."])
     print(json.dumps({"decision": "block", "reason": reason,
                       "hookSpecificOutput": {"hookEventName": "Stop", "decision": "block", "reason": reason}}, ensure_ascii=False))
 
 def on_session_start(inp):
-    """1 日 1 回だけ掃除する（1 日に何十セッションも起動するので、掃除と報告は最初の 1 回だけ）。"""
+    """Clean up only once a day (dozens of sessions start per day, so only the first one sweeps and reports)."""
     os.makedirs(ROOT, exist_ok=True)
     with open(os.path.join(ROOT, ".sweep.lock"), "w") as lf:
         try: fcntl.flock(lf, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError: return   # 同時に起動した別セッションが掃除中
+        except OSError: return   # another session started at the same time is sweeping
         marker = os.path.join(ROOT, ".last_sweep")
         try:
             with open(marker) as f: last = f.read().strip()
         except Exception:
             last = ""
         if last == today().isoformat(): return
-        with open(marker, "w") as f: f.write(today().isoformat())  # 先に書く（掃除が落ちても毎セッション再試行しない）
+        with open(marker, "w") as f: f.write(today().isoformat())  # write first (if the sweep crashes, don't retry every session)
         rb, ib, _ = sweep(apply=True)
     parts = []
-    if rb: parts.append(f"期限切れ {len(rb)}件を削除（{', '.join(rb[:3])}{', …' if len(rb) > 3 else ''}）")
-    if ib: parts.append(f"仕上げられなかった inbox ログ {len(ib)}件を削除")
-    if parts: print("runbooks: " + "／".join(parts))
+    if rb: parts.append(f"deleted {len(rb)} expired ({', '.join(rb[:3])}{', ...' if len(rb) > 3 else ''})")
+    if ib: parts.append(f"deleted {len(ib)} unfinished inbox log(s)")
+    if parts: print("runbooks: " + " / ".join(parts))
 
 # ------------------------------------------------------------------- sweep
 def sweep(apply):
-    """(消す runbook, 消す inbox, 消す state) を返す。apply のときだけ実際に消す。"""
+    """Return (runbooks, inbox files, state files) to delete. Deletes them only with apply."""
     rb, ib, stf = [], [], []
     t = today()
     try: names = sorted(os.listdir(ROOT))
@@ -278,7 +278,7 @@ def sweep(apply):
         if not DIR_RE.match(n) or os.path.islink(d) or not os.path.isdir(d): continue
         fm, _ = read_fm(os.path.join(d, "runbook.md"))
         ku = pdate(fm.get("keep_until")) if fm else None
-        if fm and fm.get("status") == "draft" and ku and ku < t:   # 読めないもの・draft 以外は残す
+        if fm and fm.get("status") == "draft" and ku and ku < t:   # keep unreadable ones and anything not draft
             rb.append(n)
     for dirpath, days, out in ((INBOX, INBOX_GC_DAYS, ib), (STATE_DIR, STATE_GC_DAYS, stf)):
         cutoff = time.time() - days * 86400
@@ -301,7 +301,7 @@ def err(msg):
     print(msg, file=sys.stderr); return 1
 
 def resolve_dir(arg):
-    """root 直下の <YYYY-MM-DD>_<slug> で runbook.md を持つものだけ受け付ける（誤って他の場所を消さない）。"""
+    """Accept only <YYYY-MM-DD>_<slug> directly under root that holds runbook.md (so nothing else gets deleted by mistake)."""
     p = os.path.expanduser(arg)
     if not os.path.isabs(p): p = os.path.join(ROOT, p)
     p = os.path.realpath(p)
@@ -309,7 +309,7 @@ def resolve_dir(arg):
     return p if os.path.isfile(os.path.join(p, "runbook.md")) else None
 
 def move_inbox(sid, dst):
-    """今回の inbox を dst へ移す（既にあれば追記）。(全件, 操作) を返す。inbox が無ければ (0, 0)。"""
+    """Move this session's inbox to dst (append if it exists). Returns (all, operations); (0, 0) if there is no inbox."""
     src = inbox_path(sid)
     if not os.path.exists(src): return 0, 0
     n = count_steps(src)
@@ -321,29 +321,29 @@ def move_inbox(sid, dst):
     return n
 
 def move_gif(src, d):
-    """GIF を runbook フォルダへ mv する。ハング・失敗したら元のパスを返す（in-process で stat もしない）。"""
+    """mv the GIF into the runbook folder. On a hang or failure return the original path (no in-process stat either)."""
     src = os.path.abspath(os.path.expanduser(src))
     try:
         p = subprocess.Popen(["mv", src, d + "/"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as e:
-        return src, f"mv を起動できない: {e}"
+        return src, f"cannot start mv: {e}"
     try:
         rc = p.wait(timeout=GIF_MV_TIMEOUT)
     except subprocess.TimeoutExpired:
         p.kill()
         try: p.wait(timeout=2)
         except Exception: pass
-        return src, f"mv が {GIF_MV_TIMEOUT} 秒で終わらない"
-    if rc != 0: return src, f"mv が失敗（exit {rc}）"
+        return src, f"mv did not finish within {GIF_MV_TIMEOUT} seconds"
+    if rc != 0: return src, f"mv failed (exit {rc})"
     return os.path.join(d, os.path.basename(src)), None
 
 def cli_new(a):
-    if not valid_sid(a.session): return err("--session が不正")
+    if not valid_sid(a.session): return err("invalid --session")
     slug = re.sub(r"[\s/\\:]+", "-", a.slug).strip("-.")
-    if not slug: return err("--slug が空")
+    if not slug: return err("--slug is empty")
     t = today().isoformat()
     d = os.path.join(ROOT, f"{t}_{slug}")
-    if os.path.exists(d): return err(f"{d} は既にある。同じ作業の再実行なら use を使う")
+    if os.path.exists(d): return err(f"{d} already exists. For a rerun of the same task use `use`")
     os.makedirs(d)
     n_all, n_op = move_inbox(a.session, os.path.join(d, "steps.jsonl"))
     if not n_all: open(os.path.join(d, "steps.jsonl"), "a").close()
@@ -352,24 +352,24 @@ def cli_new(a):
     fm = {"title": title, "created": t, "last_used": t, "uses": 1, "recurrence": a.recurrence,
           "keep_until": None, "status": "draft", "sessions": [a.session], "gif": gif}
     fm["keep_until"] = calc_keep(fm)
-    rec = ("- なし（computer use には録画機能が無い。要所だけ手順に書く）" if not gif else
-           f"- GIF（移動できず元の場所のまま）: {gif}" if gif_err else f"- GIF: {gif}")
-    write_runbook(os.path.join(d, "runbook.md"), fm, BODY.format(title=title, rec=rec + "\n- 生ログ: steps.jsonl（入力値は伏せてある）"))
+    rec = ("- none (computer use cannot record; write only the key points in the steps)" if not gif else
+           f"- GIF (could not be moved, still at its original place): {gif}" if gif_err else f"- GIF: {gif}")
+    write_runbook(os.path.join(d, "runbook.md"), fm, BODY.format(title=title, rec=rec + "\n- raw log: steps.jsonl (input values masked)"))
     finalize(a.session, {"how": "new", "dir": d, "steps": n_all})
     print(d)
-    print(f"  steps.jsonl: {n_all} 件（操作 {n_op}）／ keep_until: {fm['keep_until']}（{a.recurrence}）")
-    if not n_all: print("  ⚠️ このセッションの inbox が無かった（steps.jsonl は空）")
-    if gif_err: print(f"  ⚠️ GIF を移せなかった（{gif_err}）。元のパスを frontmatter の gif: に記録した")
-    print("次: runbook.md の各見出しを steps.jsonl と会話から埋める（パスワード・暗証番号は『ユーザーが入力』とだけ書く）")
+    print(f"  steps.jsonl: {n_all} entries ({n_op} operations) / keep_until: {fm['keep_until']} ({a.recurrence})")
+    if not n_all: print("  ⚠️ this session had no inbox (steps.jsonl is empty)")
+    if gif_err: print(f"  ⚠️ could not move the GIF ({gif_err}). Recorded the original path in the frontmatter gif:")
+    print("Next: fill each heading of runbook.md from steps.jsonl and the conversation (for passwords and PINs write only \"entered by the user\")")
     return 0
 
 def cli_use(a):
-    if not valid_sid(a.session): return err("--session が不正")
+    if not valid_sid(a.session): return err("invalid --session")
     d = resolve_dir(a.dir)
-    if not d: return err(f"{a.dir} は runbook のフォルダではない（{SELF} list で探す）")
+    if not d: return err(f"{a.dir} is not a runbook folder (find it with {SELF} list)")
     rb = os.path.join(d, "runbook.md")
     fm, body = read_fm(rb)
-    if not fm or fm.get("recurrence") not in KEEP_DAYS: return err(f"{rb} の frontmatter が読めない")
+    if not fm or fm.get("recurrence") not in KEEP_DAYS: return err(f"cannot read the frontmatter of {rb}")
     t = today().isoformat()
     n_all, n_op = move_inbox(a.session, os.path.join(d, f"steps-{t}.jsonl"))
     try: fm["uses"] = int(fm.get("uses") or 1) + 1
@@ -384,39 +384,39 @@ def cli_use(a):
     write_runbook(rb, fm, body)
     finalize(a.session, {"how": "use", "dir": d, "steps": n_all})
     print(d)
-    print(f"  steps-{t}.jsonl: {n_all} 件（操作 {n_op}）／ uses: {fm['uses']} ／ keep_until: {fm['keep_until']}")
-    if not n_all: print("  ⚠️ このセッションの inbox が無かった（今回分のログなし）")
+    print(f"  steps-{t}.jsonl: {n_all} entries ({n_op} operations) / uses: {fm['uses']} / keep_until: {fm['keep_until']}")
+    if not n_all: print("  ⚠️ this session had no inbox (no log for this run)")
     if fm["uses"] >= 2:
-        print(f"{fm['uses']}回目の実行。スキル化を提案する（skill-creator に runbook.md を渡す）")
+        print(f"Run #{fm['uses']}. Propose turning it into a skill (give runbook.md to skill-creator)")
     return 0
 
 def cli_dismiss(a):
-    if not valid_sid(a.session): return err("--session が不正")
-    if not a.why.strip(): return err("--why に理由を書く")
+    if not valid_sid(a.session): return err("invalid --session")
+    if not a.why.strip(): return err("give a reason in --why")
     n_all, _ = count_steps(inbox_path(a.session))
     try: os.remove(inbox_path(a.session))
     except FileNotFoundError: pass
     finalize(a.session, {"how": "dismiss", "why": a.why, "steps": n_all})
-    print(f"dismissed: {n_all} 件のログを捨てた（理由: {a.why}）")
+    print(f"dismissed: discarded {n_all} log entries (reason: {a.why})")
     return 0
 
 def cli_promote(a):
     d = resolve_dir(a.dir)
-    if not d: return err(f"{a.dir} は runbook のフォルダではない。何も消していない")
+    if not d: return err(f"{a.dir} is not a runbook folder. Nothing was deleted")
     skill = os.path.realpath(os.path.expanduser(a.skill))
-    if not os.path.isfile(os.path.join(skill, "SKILL.md")): return err(f"{skill}/SKILL.md が無い。何も消していない")
-    if skill == d or skill.startswith(d + os.sep): return err("スキルが runbook フォルダの中にある。何も消していない")
+    if not os.path.isfile(os.path.join(skill, "SKILL.md")): return err(f"{skill}/SKILL.md does not exist. Nothing was deleted")
+    if skill == d or skill.startswith(d + os.sep): return err("the skill is inside the runbook folder. Nothing was deleted")
     shutil.rmtree(d)
-    print(f"promoted: {os.path.basename(d)} を削除した（以降の正本は {skill}）")
+    print(f"promoted: deleted {os.path.basename(d)} (from now on the source of truth is {skill})")
     return 0
 
 def cli_sweep(a):
     rb, ib, stf = sweep(apply=a.apply)
-    tag = "削除した" if a.apply else "[dry-run] 削除対象"
-    print(f"{tag}: 期限切れ draft {len(rb)} 件／仕上げられていない inbox（{INBOX_GC_DAYS}日超）{len(ib)} 件／古い状態ファイル {len(stf)} 件")
+    tag = "deleted" if a.apply else "[dry-run] would delete"
+    print(f"{tag}: {len(rb)} expired draft(s) / {len(ib)} unfinished inbox log(s) (older than {INBOX_GC_DAYS} days) / {len(stf)} old state file(s)")
     for n in rb: print(f"  runbook  {n}")
     for n in ib: print(f"  inbox    {n}")
-    if not a.apply and (rb or ib or stf): print("--apply で削除する")
+    if not a.apply and (rb or ib or stf): print("run with --apply to delete")
     return 0
 
 def cli_list(a):
@@ -426,15 +426,15 @@ def cli_list(a):
     for n in names:
         if not DIR_RE.match(n) or not os.path.isdir(os.path.join(ROOT, n)): continue
         fm, _ = read_fm(os.path.join(ROOT, n, "runbook.md"))
-        if not fm: rows.append((n, "(frontmatter が読めない)", "-", "-", "-", "-")); continue
+        if not fm: rows.append((n, "(frontmatter unreadable)", "-", "-", "-", "-")); continue
         rows.append((n, fm.get("title") or "", fm.get("status") or "-", str(fm.get("uses") or "-"),
                      fm.get("last_used") or "-", fm.get("keep_until") or "-"))
-    if not rows: print("runbook なし")
+    if not rows: print("no runbooks")
     for n, title, status, uses, last, keep in rows:
         print(f"{n}\n    {title}  status={status} uses={uses} last_used={last} keep_until={keep}")
     try: pend = [x for x in os.listdir(INBOX) if x.endswith(".jsonl")]
     except FileNotFoundError: pend = []
-    if pend: print(f"(未仕上げの inbox: {len(pend)} セッション)")
+    if pend: print(f"(unfinished inbox: {len(pend)} session(s))")
     return 0
 
 def cli(argv):
@@ -465,7 +465,7 @@ def main():
     if isinstance(inp, dict) or cmd == "hook-session-start":
         try:
             HOOKS[cmd](inp if isinstance(inp, dict) else {})
-        except Exception as e:  # hook は絶対に落とさない
+        except Exception as e:  # a hook must never crash
             print(f"runbook: {e}", file=sys.stderr)
     sys.exit(0)
 

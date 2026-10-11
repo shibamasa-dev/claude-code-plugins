@@ -1,21 +1,21 @@
-"""weekly-orchestrator-base の eval を手作業ゼロで回す（標準ライブラリのみ）。
+"""Run the weekly-orchestrator-base evals with zero manual steps (standard library only).
 
-  python3 evals/run_evals.py                          # 全ケース（直列）
-  python3 evals/run_evals.py --jobs 3                 # ケースを 3 本並行
+  python3 evals/run_evals.py                          # all cases (serial)
+  python3 evals/run_evals.py --jobs 3                 # run 3 cases in parallel
   python3 evals/run_evals.py --case 1 --case 4
-  python3 evals/run_evals.py --grade-only <run_dir>   # 既存の回答を採点し直す
+  python3 evals/run_evals.py --grade-only <run_dir>   # re-grade existing answers
 
-各ケースについて:
-  1. executor: まっさらな `claude -p` に SKILL.md を読ませ、ドライランでプロンプトを解かせて answer.md に保存
-  2. grader  : 別の `claude -p` が answer.md と assertions を突き合わせ grading.json を出す
-  3. 集計    : pass_rate を表示し、run_dir/summary.json に書く
+For each case:
+  1. executor: a fresh `claude -p` reads SKILL.md, solves the prompt as a dry run, and saves answer.md
+  2. grader  : a separate `claude -p` checks answer.md against the assertions and writes grading.json
+  3. tally   : print pass_rate and write run_dir/summary.json
 
-状況はすべて依頼文に書いた架空の設定（GitHub は見ない）。executor には Read/Glob/Grep しか渡さないので、
-gh も書き込みも物理的にできない（ドライランを道具の制限で守る）。executor の cwd は空の一時ディレクトリにして、
-どこかのプロジェクトの CLAUDE.md やスキルが混ざらないようにする。
-executor と grader を別プロセスに分けるのは、書いた本人に採点させないため。
+Every situation is a fictional setup written in the prompt (GitHub is not consulted). The executor only gets
+Read/Glob/Grep, so it physically cannot run gh or write anything (the dry run is enforced by tool limits).
+The executor's cwd is an empty temporary directory so that no project's CLAUDE.md or skills get mixed in.
+The executor and grader run as separate processes so the author does not grade its own answer.
 
-元はプロジェクト版 weekly-orchestrator の run_evals.py。依存: claude CLI（PATH）。
+Originally the run_evals.py of the project version of weekly-orchestrator. Requires: claude CLI (on PATH).
 """
 import argparse, json, os, subprocess, sys, tempfile, time
 from concurrent.futures import ThreadPoolExecutor
@@ -30,48 +30,48 @@ TOOLS = "Read,Glob,Grep"
 GRADER_TOOLS = "Read,Write"
 MAIN = (1, 2, 3, 4)
 
-EXECUTOR = """あなたは、あるプロジェクトの週次オーケストレータ agent です。次のスキルを読んで、その所作どおりに依頼へ答えてください。
+EXECUTOR = """You are a project's weekly orchestrator agent. Read the following skill and answer the request following its practices.
 
-スキル本体: {skill}/SKILL.md（references/ も同じディレクトリ）
+Skill: {skill}/SKILL.md (references/ is in the same directory)
 
-## これはドライランです
-- 依頼文の状況は架空の設定です。GitHub・セッション一覧などの実物は見ず、依頼文に書いた状態だけで答える
-- issue の作成・編集・close、PR 操作、subagent・spawn_task・別セッションの起動、SendMessage、archive_session、
-  ファイルの作成・編集は**しない**。代わりに「実際なら何を・どの内容で・どの順で実行するか」を回答に書く
-- ユーザーへの確認が要る場面では、確認する内容を回答に書き、そこで止まるべきか先へ進めてよいかをスキルに従って判断して書く
-- 今日は {today}
+## This is a dry run
+- The situation in the request is a fictional setup. Do not look at real things such as GitHub or session lists; answer only from the state written in the request
+- Do **not** create, edit, or close issues, operate on PRs, start subagents, spawn_task, or separate sessions, use SendMessage or archive_session,
+  or create or edit files. Instead, write in your answer "what you would actually run, with what content, and in what order"
+- Where confirmation from the user is needed, write what you would confirm in your answer, and decide per the skill, and write, whether to stop there or proceed
+- Today is {today}
 
-## 依頼
+## Request
 {prompt}
 
-## 出力
-スキルの所作に沿って、最終的な回答（判断と理由・実行する操作・書き込む内容・プロンプト）を1つのまとまった文章で返してください。
+## Output
+Following the skill's practices, return your final answer (decisions and reasons, operations to run, content to write, prompts) as one coherent piece of text.
 """
 
-GRADER = """あなたは eval の採点者です。回答を読み、assertions を1つずつ PASS / FAIL で判定してください。
+GRADER = """You are an eval grader. Read the answer and judge each assertion as PASS / FAIL, one by one.
 
-## 採点対象の回答
+## Answer to grade
 {answer_path}
-（Read ツールで全文を読んでください）
+(Read the full text with the Read tool)
 
-## 期待される内容（参考。assertions より優先しない）
+## Expected content (for reference; it does not take precedence over the assertions)
 {expected}
 
 ## assertions
 {assertions}
 
-## 判定基準
-- PASS: 回答の中に、その assertion が真だと分かる具体的な記述がある
-- FAIL: 記述が無い / 矛盾する / 表面的にしか満たしていない（結論だけ合っていて根拠が無い等）
-- 迷ったら FAIL。立証責任は assertion 側にある
-- evidence には回答からの**引用**を入れる（要約でなく原文の一部）
+## Criteria
+- PASS: the answer contains a concrete statement showing the assertion is true
+- FAIL: no such statement / it contradicts / it only satisfies it superficially (only the conclusion matches with no reasoning, etc.)
+- When in doubt, FAIL. The burden of proof is on the assertion
+- Put a **quote** from the answer in evidence (part of the original text, not a summary)
 
-## 出力
-{out_path} に、次の形の JSON **だけ**を Write ツールで書いてください（前後に説明を足さない）。
+## Output
+Using the Write tool, write **only** JSON of the following shape to {out_path} (add no explanation before or after).
 
 {{
   "expectations": [
-    {{"text": "<assertion の原文>", "passed": true, "evidence": "<回答からの引用>"}}
+    {{"text": "<the assertion's text, copied verbatim>", "passed": true, "evidence": "<quote from the answer>"}}
   ],
   "summary": {{"passed": 0, "failed": 0, "total": 0, "pass_rate": 0.0}}
 }}
@@ -79,58 +79,58 @@ GRADER = """あなたは eval の採点者です。回答を読み、assertions 
 
 
 def run_claude(prompt: str, cwd: Path, timeout: int, tools: str) -> str:
-    """CLAUDECODE を外して claude -p を呼ぶ（Claude Code の中から入れ子で起動するため）。"""
+    """Call claude -p with CLAUDECODE removed (because it is launched nested inside Claude Code)."""
     env = {k: v for k, v in os.environ.items() if k not in ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")}
     p = subprocess.run(
         ["claude", "-p", prompt, "--output-format", "text", "--allowedTools", tools],
-        # encoding を明示する。Windows の既定は CP932 で、claude の日本語回答は UTF-8
+        # Set encoding explicitly. Windows defaults to CP932, while claude's non-ASCII (e.g. Japanese) answers are UTF-8
         cwd=str(cwd), env=env, capture_output=True, text=True, encoding="utf-8", timeout=timeout,
     )
     if p.returncode != 0:
-        raise RuntimeError(f"claude -p が exit {p.returncode}: {p.stderr[-2000:]}")
+        raise RuntimeError(f"claude -p exited {p.returncode}: {p.stderr[-2000:]}")
     return p.stdout
 
 
 def read_grading(path: Path, asserts: list[str]) -> list[dict]:
-    """grading.json を読み、assertions と1対1で対応しているか確かめる。
+    """Read grading.json and check that it maps one-to-one to the assertions.
 
-    LLM の出力は非決定的で、7件中1件しか返さない・重複させる・passed を文字列で返す、が起こりうる。
-    返ってきた配列だけで分母を作ると、1件しか採点しなくても 1/1 = 100% になって主要ケースが通ってしまう。
-    照合に落ちたものは採点失敗として扱い、満点と区別する。
+    LLM output is nondeterministic: it may return only 1 of 7 items, duplicate items, or return passed as a string.
+    If the denominator came only from the returned array, grading just 1 item would give 1/1 = 100% and the main cases would pass.
+    Anything that fails this check is treated as a grading failure, kept distinct from a perfect score.
     """
     norm = lambda s: " ".join(str(s).split())
     g = json.loads(path.read_text(encoding="utf-8"))
-    # 型を先に確かめてから .get() を呼ぶ（grader は JSON なら何でも書けるので、配列・文字列・null が来うる）
+    # Check types before calling .get() (the grader can write any JSON, so an array, string, or null may come back)
     if not isinstance(g, dict):
-        raise ValueError(f"grading.json のルートがオブジェクトでない（{type(g).__name__}）")
+        raise ValueError(f"grading.json root is not an object ({type(g).__name__})")
     exps = g.get("expectations")
     if not isinstance(exps, list):
-        raise ValueError("expectations が配列でない")
+        raise ValueError("expectations is not an array")
     if not all(isinstance(e, dict) for e in exps):
-        raise ValueError("expectations にオブジェクト以外の項目がある")
+        raise ValueError("expectations contains non-object items")
     bad = [e for e in exps if not isinstance(e.get("passed"), bool)]
     if bad:
-        raise ValueError(f"passed が boolean でない項目が {len(bad)} 件（例 {bad[0].get('text')!r}）")
+        raise ValueError(f"{len(bad)} item(s) have a non-boolean passed (e.g. {bad[0].get('text')!r})")
     got, want = [norm(e.get("text")) for e in exps], [norm(a) for a in asserts]
     if sorted(got) != sorted(want):
-        raise ValueError(f"assertions と一致しない（採点 {len(got)} 件 / 期待 {len(want)} 件）"
-                         f"\n  採点されなかった: {[a for a in want if a not in got]}"
-                         f"\n  余分: {[t for t in got if t not in want]}")
+        raise ValueError(f"does not match the assertions (graded {len(got)} / expected {len(want)})"
+                         f"\n  not graded: {[a for a in want if a not in got]}"
+                         f"\n  extra: {[t for t in got if t not in want]}")
     return exps
 
 
 def exit_code(results: list[tuple], selected: bool) -> int:
-    """終了コード。results は [(case_id, 通った数, 総数)]、selected は --case を指定したか。
+    """Exit code. results is [(case_id, passed count, total)]; selected is whether --case was given.
 
-    --case を指定したら選んだケースそのもの、全ケース実行なら主要ケース（MAIN）で判定する。
-    判定対象が空なら 1（「対象が無い＝成功」にしない）。
+    With --case, judge the selected cases themselves; for a full run, judge the main cases (MAIN).
+    If nothing is left to judge, return 1 (do not treat "nothing to judge" as success).
     """
     judged = results if selected else [r for r in results if r[0] in MAIN]
     return 0 if judged and all(o == n for _, o, n in judged) else 1
 
 
 def run_case(c: dict, run_dir: Path, grade_only: bool, timeout: int) -> tuple[int, int, int, list[str]]:
-    """1 ケースを回す。戻り値 (case_id, 通った数, 総数, 表示する行)。並行時に出力が混ざらないよう行は返す。"""
+    """Run one case. Returns (case_id, passed count, total, lines to print). Lines are returned so parallel output does not interleave."""
     log = []
     d = run_dir / f"case-{c['id']}"
     d.mkdir(parents=True, exist_ok=True)
@@ -145,23 +145,23 @@ def run_case(c: dict, run_dir: Path, grade_only: bool, timeout: int) -> tuple[in
         answer.write_text(out, encoding="utf-8")
         log.append(f"[case {c['id']}] executor {time.time()-t0:.0f}s -> {answer}")
 
-    # 前回の採点結果を先に消す。残したままだと、grader が Write せず説明だけ返しても
-    # 存在確認が通り、古い採点を今回の結果として集計してしまう
+    # Delete the previous grading first. If it were left in place and the grader returned only an explanation
+    # without writing, the existence check would pass and the old grading would be tallied as this run's result
     grading.unlink(missing_ok=True)
     run_claude(GRADER.format(answer_path=answer, expected=c.get("expected_output", ""),
                              assertions="\n".join(f"{i+1}. {a}" for i, a in enumerate(asserts)),
                              out_path=grading), d, timeout, GRADER_TOOLS)
     if not grading.exists():
-        log.append(f"[case {c['id']}] 採点失敗: grading.json が書かれなかった")
+        log.append(f"[case {c['id']}] grading failed: grading.json was not written")
         return c["id"], 0, len(asserts), log
     try:
         exps = read_grading(grading, asserts)
     except (ValueError, json.JSONDecodeError) as e:
-        log.append(f"[case {c['id']}] 採点失敗: {e}")
+        log.append(f"[case {c['id']}] grading failed: {e}")
         return c["id"], 0, len(asserts), log
     g = json.loads(grading.read_text(encoding="utf-8"))
     ok = sum(1 for e in exps if e["passed"])
-    # grader が summary を書き間違えても集計は expectations から取り直す
+    # Even if the grader gets the summary wrong, recompute the tally from expectations
     g["summary"] = {"passed": ok, "failed": len(exps) - ok, "total": len(exps),
                     "pass_rate": round(ok / len(exps), 4) if exps else 0.0}
     grading.write_text(json.dumps(g, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -172,17 +172,17 @@ def run_case(c: dict, run_dir: Path, grade_only: bool, timeout: int) -> tuple[in
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--case", type=int, action="append", help="回す eval の id（複数可・既定は全部）")
-    ap.add_argument("--jobs", type=int, default=1, help="並行して回すケースの数（既定 1＝直列）")
-    ap.add_argument("--timeout", type=int, default=1800, help="1ケースあたりの秒数")
-    ap.add_argument("--grade-only", metavar="RUN_DIR", help="既存の run ディレクトリを採点し直す")
+    ap.add_argument("--case", type=int, action="append", help="eval id to run (repeatable; default is all)")
+    ap.add_argument("--jobs", type=int, default=1, help="number of cases to run in parallel (default 1 = serial)")
+    ap.add_argument("--timeout", type=int, default=1800, help="seconds per case")
+    ap.add_argument("--grade-only", metavar="RUN_DIR", help="re-grade an existing run directory")
     args = ap.parse_args()
 
     cases = json.loads((EVALS / "evals.json").read_text(encoding="utf-8"))["evals"]
     if args.case:
         cases = [c for c in cases if c["id"] in args.case]
     if not cases:
-        sys.exit("該当する eval が無い")
+        sys.exit("no matching eval")
 
     run_dir = Path(args.grade_only).resolve() if args.grade_only else \
         EVALS / "runs" / time.strftime("%Y%m%d-%H%M%S")
@@ -192,9 +192,9 @@ def main():
     def one(c):
         try:
             return run_case(c, run_dir, bool(args.grade_only), args.timeout)
-        except Exception as e:  # 1 ケースの失敗（timeout・exit≠0）で他のケースを止めない
+        except Exception as e:  # one case failing (timeout, exit != 0) must not stop the others
             n = len(c.get("assertions") or c.get("expectations") or [])
-            return c["id"], 0, n, [f"[case {c['id']}] 実行失敗: {e}"]
+            return c["id"], 0, n, [f"[case {c['id']}] run failed: {e}"]
 
     results = []
     with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as ex:
@@ -206,8 +206,8 @@ def main():
     tot = sum(r[2] for r in results)
     print("=" * 60)
     for cid, ok, n in results:
-        print(f"case {cid}: {ok}/{n}" + ("  ← 主要ケース" if cid in MAIN else ""))
-    print(f"pass_rate {tot_ok}/{tot} = {tot_ok/tot:.1%}" if tot else "pass_rate 測定不能")
+        print(f"case {cid}: {ok}/{n}" + ("  <- main case" if cid in MAIN else ""))
+    print(f"pass_rate {tot_ok}/{tot} = {tot_ok/tot:.1%}" if tot else "pass_rate not measurable")
     (run_dir / "summary.json").write_text(json.dumps(
         {"run": run_dir.name,
          "cases": [{"id": c, "passed": o, "total": n} for c, o, n in results],

@@ -1,184 +1,184 @@
 ---
 name: context-diet
-description: セッション開始時に毎回積まれるコンテキストを実測して減らすスキル。2層を扱う — (A) 常時ロードテキスト（CLAUDE.md・rules・メモリ索引）を measure.py で実測し閾値超過時だけ圧縮、(B) 注入層（MCP コネクタ・skills 一覧）を inventory.py で棚卸しし、プロジェクト .claude/settings.json の deniedMcpServers / skillOverrides で落とす。「コンテキスト減らして」「初期ロード重い」「CLAUDE.md 重い」「メモリ肥大してない？」「常時ロード計測」「このプロジェクトで使わない MCP/スキルを切りたい」「コネクタ整理」で発動。検知は機械・判断は LLM・対象確定は必ずユーザー承認。
+description: Measure and reduce the context loaded at the start of every session. Covers two layers — (A) always-loaded text (CLAUDE.md, rules, memory index), measured with measure.py and compressed only when over threshold; (B) the injected layer (MCP connectors, skills list), inventoried with inventory.py and trimmed via deniedMcpServers / skillOverrides in the project's .claude/settings.json. Use when the user says "reduce context", "startup load is heavy", "CLAUDE.md is too big", "is memory bloated?", "measure always-loaded context", "turn off MCP servers/skills this project doesn't use", "clean up connectors", or in Japanese 「コンテキスト減らして」「初期ロード重い」「CLAUDE.md 重い」「メモリ肥大してない？」「常時ロード計測」「このプロジェクトで使わない MCP/スキルを切りたい」「コネクタ整理」. Detection is mechanical, judgment is the LLM's, and the final target list always needs user approval.
 last_reviewed: 2026-09-06
 review_after: 2027-03-05
 ---
 
-# context-diet — 初期ロードの実測と削減
+# context-diet — measure and cut the startup load
 
-セッションが始まる前に積まれているものは2種類ある。**どちらか片方だけ見ると誤診する。**
+Two kinds of things are loaded before a session starts. **Looking at only one of them leads to a misdiagnosis.**
 
-| | Phase A: 常時ロードテキスト | Phase B: 注入層 |
+| | Phase A: always-loaded text | Phase B: injected layer |
 |---|---|---|
-| 中身 | CLAUDE.md・rules・メモリ索引 | MCP ツール名一覧・skills 一覧・MCP server instructions |
-| 太り方 | 書き足されて**徐々に**太る | 最初から**全部載っている**（プロジェクトと無関係なものも） |
-| 起動条件 | **閾値駆動**（超過時のみ） | **プロジェクト単位で一度棚卸し** |
-| 出力 | ファイルの圧縮・退避 | プロジェクト `.claude/settings.json` |
+| Contents | CLAUDE.md, rules, memory index | MCP tool name list, skills list, MCP server instructions |
+| How it grows | **Gradually**, as text is added | **Everything is there from the start** (including things unrelated to the project) |
+| Trigger | **Threshold-driven** (only when exceeded) | **One inventory per project** |
+| Output | Compress or move files | Project `.claude/settings.json` |
 
-体感で手を付けない。「ファイルが多い＝重い」は誤診（recall 時しか読まれないものは常時コストゼロ）。逆に **Phase A が ok でも Phase B が肥大していることがある**。片方の verdict をもう片方の結論にしない。
+Don't act on gut feeling. "Many files = heavy" is a misdiagnosis (files read only at recall time cost nothing on every session). Conversely, **Phase B can be bloated even when Phase A is ok**. Don't use one phase's verdict as the conclusion for the other.
 
 ---
 
-# Phase A — 常時ロードテキスト
+# Phase A — always-loaded text
 
-## A-1. 実測（機械・常に安全）
+## A-1. Measure (mechanical, always safe)
 
 ```bash
-python3 scripts/standing/measure.py --project <プロジェクトroot>   # 省略時 cwd
+python3 scripts/standing/measure.py --project <project root>   # defaults to cwd
 ```
 
-- 対象: グローバル CLAUDE.md／`~/.claude/rules/*.md`（frontmatter `paths:` 無しのみ）／プロジェクト CLAUDE.md・AGENTS.md・`.claude/CLAUDE.md`＋1階層 `@import`／`.claude/rules/`／メモリ索引 MEMORY.md
-- 出力: JSON（合計 KB・トークン概算・索引の行長分布・索引↔本体の整合・`[[リンク]]`切れ・上位ファイル）
-- exit 0=ok／1=超過（既定閾値: 常時合計 130KB・索引平均行長 100字。`--max-standing-kb` / `--max-index-avg` で変更）
-- ローカル read のみ・認証不要・sandbox 内で動く
+- Scope: global CLAUDE.md / `~/.claude/rules/*.md` (only those without frontmatter `paths:`) / project CLAUDE.md, AGENTS.md, `.claude/CLAUDE.md` plus one level of `@import` / `.claude/rules/` / memory index MEMORY.md
+- Output: JSON (total KB, token estimate, index line-length distribution, index ↔ body consistency, broken `[[links]]`, top files)
+- exit 0 = ok / 1 = over threshold (default thresholds: always-loaded total 130KB, index average line length 100 chars. Change with `--max-standing-kb` / `--max-index-avg`)
+- Local reads only, no auth needed, runs inside the sandbox
 
-**ok なら Phase A は1行報告で終了。** 閾値内の grooming は時間の無駄（判断基準は `references/criteria.md`）。**ただしここで会話を終えない —— Phase B へ進む。**
+**If ok, finish Phase A with a one-line report.** Grooming within the threshold is a waste of time (criteria in `references/criteria.md`). **But don't end the conversation here — move on to Phase B.**
 
-## A-2. Grooming（LLM 判断・超過時のみ）
+## A-2. Grooming (LLM judgment, only when over threshold)
 
-`references/criteria.md` の基準 1〜9 に従う。要点:
+Follow criteria 1–9 in `references/criteria.md`. Key points:
 
-- **テキスト層で効く手段は3つだけ**: 圧縮／非自動ロードパス（例 `~/.claude/reference/`）への退避＋ポインタ化／rules の `paths:` glob 化。**rules/ への分割は削減にならない**（auto-load のまま）
-- **運用ルールの実体は保持**。経緯・実例の長文は「日付＋結論1行」へ。承認日などの権威出典は残す
-- **hook 等の機械強制点に移った規約**は本文を1行ポインタに圧縮してよい
-- **索引は1行1フック**。全行 80字超が常態化したら書き直し
-- **削除は「完了した project state」と参照切れだけ**。重複クラスタは統合しない
-- **昇格は慎重に**（スリム化を打ち消す）
+- **Only three levers work on the text layer**: compress / move to a non-auto-loaded path (e.g. `~/.claude/reference/`) and leave a pointer / turn rules into `paths:` globs. **Splitting into rules/ does not reduce anything** (it is still auto-loaded)
+- **Keep the substance of operating rules.** Long history and examples become "date + one-line conclusion". Keep authoritative sources such as approval dates
+- **Rules that moved to a mechanical enforcement point such as a hook** may be compressed to a one-line pointer
+- **One hook per index line.** If all lines routinely exceed 80 chars, rewrite the index
+- **Delete only "finished project state" and broken references.** Don't merge duplicate clusters
+- **Be careful with promotion** (it undoes the slimming)
 
-## A-3. 検証（必須）
+## A-3. Verify (required)
 
-1. 編集前に `cp` でバックアップし、バイト一致を確認してから編集
-2. 圧縮後: 見出し parity（`diff <(grep -E "^#{2,3} " before) <(grep -E "^#{2,3} " after)` で消えた見出しゼロ）
-3. 索引: `measure.py` を再実行し、整合系 breach（missing_from_index / missing_bodies / broken_wiki_links）がゼロ
-4. before/after の KB を報告に併記
+1. Back up with `cp` before editing, and confirm the copy is byte-identical before you edit
+2. After compressing: heading parity (`diff <(grep -E "^#{2,3} " before) <(grep -E "^#{2,3} " after)` shows zero lost headings)
+3. Index: rerun `measure.py` and confirm zero consistency breaches (missing_from_index / missing_bodies / broken_wiki_links)
+4. Include before/after KB in the report
 
 ---
 
-# Phase B — 注入層
+# Phase B — injected layer
 
-レバーの仕様・検証コマンド・検証の限界は **[references/harness-levers.md](references/harness-levers.md)** に全部ある。**Phase B に入る前に必ず読む。**
+Lever specs, verification commands, and the limits of verification are all in **[references/harness-levers.md](references/harness-levers.md)**. **Always read it before starting Phase B.**
 
-## B-0. 絶対規則
+## B-0. Absolute rule
 
-> **対象の確定は必ずユーザー承認を得てから。無確認で settings.json を書かない。**
+> **Always get user approval before finalizing what to cut. Never write settings.json without confirmation.**
 
-何が要るかはプロジェクトの中身とユーザーの意図でしか決まらない。エージェントの推測は当たらない。
+What is needed depends only on the project's contents and the user's intent. The agent's guesses are not reliable.
 
-- 提案は**グループ単位**で出す: ①claude.ai コネクタ（`deniedMcpServers`）②personal skills（`skillOverrides`）
-- **グループごとに yes/no を取る**。「まとめて OK ですか」で済ませない
-- **プラグイン／アカウント側スキルは提案に含めない。** `skillOverrides` が効かないため（harness-levers.md）。落としたいならプラグインごと `enabledPlugins` を切る話になり、それは全プロジェクトに波及するので別議題として立てる
-- **迷ったものは残す。** 誤って切ると気づけない —— skills は一覧から消えるだけ、コネクタは tool が無いだけに見える
-- ユーザーが個別に外したいものを言ったら、それを最優先で反映する
+- Propose **by group**: ① claude.ai connectors (`deniedMcpServers`) ② personal skills (`skillOverrides`)
+- **Get a yes/no for each group.** Don't settle for "is all of this OK?"
+- **Don't include plugin or account-side skills in the proposal.** `skillOverrides` has no effect on them (harness-levers.md). Dropping them means disabling the whole plugin via `enabledPlugins`, which affects every project, so raise it as a separate topic
+- **When in doubt, keep it.** A wrong cut goes unnoticed — a skill just disappears from the list, and a connector just looks like a missing tool
+- If the user names specific things to remove, apply those first
 
-## B-1. 棚卸し（機械・収集のみ）
-
-```bash
-python3 scripts/injected/inventory.py --project <プロジェクトroot>
-python3 scripts/injected/inventory.py --no-connectors   # 高速・オフライン
-```
-
-- 出力: コネクタ一覧（名前・状態・既に denied か）／skills 一覧（名前・description バイト数・既に override 済みか）／現行 `.claude/settings.json` の設定／合計
-- **要否の判定は一切しない。** 判定はこのあと LLM とユーザーでやる
-- `claude mcp list` を叩くのでヘルスチェック分の待ちが出る（数秒〜数十秒）
-
-**inventory.py に出ないもの**（`not_enumerable` にも明記される）:
-- アカウント側スキル（`small-business:*` / `anthropic-skills:*` / `design:*` 等）— ディスク上に無い
-- 組み込みスキル（`code-review` / `simplify` / `schedule` 等）
-
-この2つは**エージェント自身の skills 一覧から拾う**こと。
-
-## B-2. 分類してユーザーへ提示
-
-プロジェクトの中身（README・CLAUDE.md・言語・依存）を読んでから、各候補を「使う／使わない／判断つかない」に分ける。提示は**バイト数を添えて**、グループごとに。
-
-判断の目安:
-
-- **コネクタ**: そのプロジェクトの運用ドキュメント（CLAUDE.md・AGENTS.md）が名指しで要求しているものは残す。「あると便利かも」は落とす側
-- **skills**: プロジェクト自前の `.claude/skills/` は絶対に触らない。他プロジェクトで現役のものも、このプロジェクトで発火しないなら `user-invocable-only`（`/名前` で呼べば動く）
-- **既定値は `user-invocable-only`。** `off` は「二度と使わない」と言い切れるものだけ
-
-## B-3. 生成と適用
-
-承認されたグループだけで `.claude/settings.json` を組み立てる。
-
-- **既存のキー（`hooks` 等）を壊さない。** 既存 JSON を読んで `deniedMcpServers` / `skillOverrides` を足すだけ
-- 書き込み前に `cp` でバックアップ、バイト一致を確認
-- 権限モードが `auto` だと分類器に拒否されることがある。その場合は完成ファイルをスクラッチパッドに出し、`cp` コマンドをユーザーに渡す（回避を試みない。詳細は harness-levers.md）
-
-## B-4. 検証（必須）
+## B-1. Inventory (mechanical, collection only)
 
 ```bash
-claude mcp list                                     # 落としたコネクタが消えていること
-claude mcp get "<残したコネクタ名>"                   # 残す側が生きていること
-claude -p --model haiku 'Output ONLY JSON: {"<落とした skill>":<listed?>, "<残した skill>":<listed?>}' < /dev/null
+python3 scripts/injected/inventory.py --project <project root>
+python3 scripts/injected/inventory.py --no-connectors   # fast, offline
 ```
 
-- **対照を必ず取る。** 「落とした側が false」だけでは、元から載っていなかった可能性を排除できない。**残す側が true であること**を同じ実行内で確認する
-- **さらに往復で確かめる。** 上の yes/no はモデルが幻覚する。false になった項目は **override を外して true に戻ることまで**見る。片道の観測を「実証」と呼ばない
-- **`skillOverrides` は personal skill にしか効かない**（プラグイン・アカウント側スキルには無効。harness-levers.md 参照）。無効なキーを設定に残さない —— 効いているように見えて何もしていない
-- headless では検証できないものがある（`name-only`・アカウント側スキル）。それは**未検証と明示して報告する**
-- 最終確認はユーザーに `/context` を叩いてもらう。スラッシュコマンドは非対話セッションから実行できない
+- Output: connector list (name, status, already denied or not) / skills list (name, description bytes, already overridden or not) / current `.claude/settings.json` settings / totals
+- **It makes no keep/drop decisions.** The LLM and the user decide afterwards
+- It calls `claude mcp list`, so expect a wait for health checks (a few seconds to tens of seconds)
 
-## B-5. ユーザーにしか実行できない操作の案内
+**What inventory.py does not show** (also stated in `not_enumerable`):
+- Account-side skills (`small-business:*` / `anthropic-skills:*` / `design:*`, etc.) — not on disk
+- Built-in skills (`code-review` / `simplify` / `schedule`, etc.)
 
-このスキルの手順には**エージェントが実行できないもの**が混ざる。黙って諦めたり「あとでやっておいてください」で流したりせず、**コピペできる形で案内し、実行待ちであることを報告の最後に明示する。**
+**Pick these two up from the agent's own skills list.**
 
-| 操作 | 誰が | なぜエージェントには無理か |
+## B-2. Classify and present to the user
+
+Read the project's contents (README, CLAUDE.md, languages, dependencies) first, then sort each candidate into "used / not used / can't tell". Present **with byte counts**, by group.
+
+Rules of thumb:
+
+- **Connectors**: keep those that the project's operating docs (CLAUDE.md, AGENTS.md) explicitly require. "Might be handy" goes on the drop side
+- **Skills**: never touch the project's own `.claude/skills/`. Skills that are active in other projects but never trigger in this one become `user-invocable-only` (they still work when called as `/name`)
+- **The default is `user-invocable-only`.** Use `off` only for things you can say will never be used again
+
+## B-3. Generate and apply
+
+Build `.claude/settings.json` from the approved groups only.
+
+- **Don't break existing keys (`hooks`, etc.).** Read the existing JSON and only add `deniedMcpServers` / `skillOverrides`
+- Back up with `cp` before writing, and confirm the copy is byte-identical
+- In `auto` permission mode the classifier may deny the write. If so, write the finished file to the scratchpad and give the user a `cp` command (don't try to work around it; details in harness-levers.md)
+
+## B-4. Verify (required)
+
+```bash
+claude mcp list                                     # the dropped connectors are gone
+claude mcp get "<connector you kept>"               # the kept side is alive
+claude -p --model haiku 'Output ONLY JSON: {"<dropped skill>":<listed?>, "<kept skill>":<listed?>}' < /dev/null
+```
+
+- **Always use a control.** "The dropped side is false" alone can't rule out that it was never listed. Confirm in the same run that **the kept side is true**
+- **Then check the round trip.** The model hallucinates on that yes/no. For each item that came back false, **remove the override and confirm it returns to true**. Don't call a one-way observation "proven"
+- **`skillOverrides` works only on personal skills** (not on plugin or account-side skills; see harness-levers.md). Don't leave ineffective keys in the settings — they look like they work but do nothing
+- Some things can't be verified headless (`name-only`, account-side skills). **Report them explicitly as unverified**
+- For the final check, ask the user to run `/context`. Slash commands can't be run from a non-interactive session
+
+## B-5. Guide the user through operations only they can run
+
+This skill's steps include **things the agent cannot run**. Don't silently give up or brush them off with "please do this later". **Give them in copy-paste form, and state at the end of the report that they are waiting on the user.**
+
+| Operation | Who | Why the agent can't |
 |---|---|---|
-| `/mcp disable <server>` | ユーザー | スラッシュコマンドは非対話セッションから実行できない。ビルトイン MCP を落とす唯一の手段 |
-| `/context` | ユーザー | 同上。固定費の実測はこれでしか取れない |
-| `/reload-skills` `/reload-plugins` | ユーザー | 同上。設定変更の即時反映に要る |
-| `.claude/settings.json` への書き込み | 場合による | 権限モードが `auto` だと分類器に拒否される。拒否されたら完成ファイルを出して `cp` を渡す |
-| コネクタの OAuth | ユーザー | 認証フローは対話が要る |
+| `/mcp disable <server>` | User | Slash commands can't be run from a non-interactive session. The only way to drop a built-in MCP |
+| `/context` | User | Same as above. The only way to measure the fixed cost |
+| `/reload-skills` `/reload-plugins` | User | Same as above. Needed to apply setting changes immediately |
+| Writing `.claude/settings.json` | Depends | In `auto` permission mode the classifier denies it. If denied, hand over the finished file and a `cp` command |
+| Connector OAuth | User | The auth flow needs interaction |
 
-**案内の型**（この5点を必ず添える）:
+**Guidance template** (always include these 5 points):
 
-1. **何をするコマンドか**を1行で
-2. **コピペできるブロック**（複数あるなら全部並べる。1つずつ小出しにしない）
-3. **スコープ** —— プロジェクト単位か、全体に波及するか
-4. **取り消し方**
-5. **実行後に何を確認するか**
+1. **What the command does**, in one line
+2. **A copy-paste block** (if there are several, list them all; don't dole them out one by one)
+3. **Scope** — project only, or affects everything
+4. **How to undo it**
+5. **What to check after running it**
 
-例:
+Example:
 
 ```
 /mcp disable claude-in-chrome
 /mcp disable computer-use
 ```
-- ビルトイン MCP をこのプロジェクトでだけ無効化します（合計 17.1k tokens 減）
-- **プロジェクトスコープ**。`~/.claude.json` の projects エントリに記録され、他プロジェクトには波及しません
-- 戻すのは `/mcp enable <name>`
-- 実行後 `/context` の MCP tools が減っていれば成功
+- Disables the built-in MCP servers for this project only (17.1k tokens less in total)
+- **Project scope.** Recorded in the projects entry of `~/.claude.json`; does not affect other projects
+- Undo with `/mcp enable <name>`
+- Success if MCP tools shrink in `/context` after running it
 
-## ⚠️ `.claude/settings.json` はブランチで揺れる
+## ⚠️ `.claude/settings.json` changes with the branch
 
-git 追跡下に置くと、**ブランチを切り替えた瞬間に diet が on/off する**（設定を入れたブランチにしか存在しないため）。適用直後にこれを踏むと「効かなくなった」と誤診する。
+If it is tracked by git, **the diet turns on/off the moment you switch branches** (the settings exist only on the branch where you added them). Hitting this right after applying leads to the misdiagnosis "it stopped working".
 
-- 恒久化するなら**早めに main へマージする**（以後のブランチが継承する）
-- ブランチをまたいで安定させたいだけなら `.claude/settings.local.json`（git 追跡外）に置く。ただし共有できず、稼働中セッションに書き戻される可能性がある
-- **検証中に「急に効かなくなった」ら、まず `git branch --show-current` を疑う**
+- To make it permanent, **merge to main early** (later branches inherit it)
+- If you only want it stable across branches, put it in `.claude/settings.local.json` (not tracked by git). It can't be shared, though, and a running session may write back to it
+- **If it "suddenly stopped working" during verification, suspect `git branch --show-current` first**
 
 ---
 
-## 報告の型
+## Report format
 
 ```
-Phase A: <合計KB> / <ok|超過>   （超過時のみ before→after）
-Phase B: コネクタ <before>→<after>、skillOverrides <件数>
-確認済み: <検証コマンドで確かめた事実>
-未確認: <headless で測れなかったもの>
-次: 再起動 → /context で確定
+Phase A: <total KB> / <ok|over>   (before→after only when over)
+Phase B: connectors <before>→<after>, skillOverrides <count>
+Verified: <facts confirmed by verification commands>
+Unverified: <things that couldn't be measured headless>
+Next: restart → confirm with /context
 ```
 
-推定と実測を同じ文体で並べない。数えただけのものは「推定」と書く。
+Don't present estimates and measurements in the same voice. Write "estimate" for anything that was only counted.
 
-## 定期実行
+## Scheduled runs
 
-**Phase A のみ**月次で回す（肥大は遅い）。スケジューラには「measure 実行 → ok なら1行で閉じる → 超過時のみ grooming」の薄タスクを登録する。**Phase B は定期実行しない** —— プロジェクトごとに一度やれば済み、やり直すのは新しいコネクタ／スキルが増えたときだけ。
+Run **Phase A only** monthly (bloat is slow). Register a thin task with the scheduler: "run measure → if ok, close with one line → groom only when over". **Don't schedule Phase B** — once per project is enough; redo it only when new connectors or skills are added.
 
 ## Evals
 
 ```bash
-python3 evals/run_evals.py   # フィクスチャを自動生成して検証・手作業ゼロ
+python3 evals/run_evals.py   # generates fixtures automatically and verifies; zero manual steps
 ```
