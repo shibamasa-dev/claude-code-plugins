@@ -1,69 +1,69 @@
 ---
 name: session-wrap
-description: セッションを閉じる前の残件確認。「閉じたい」「セッション終わる」「今日はここまで」「wrap up」「残件確認して」「片付けて終わる」で発動。起動したセッション自身の未コミット・未 push・open PR・未反映 issue・走っている subagent / Monitor を機械で集め、1 件ずつ「今やる／次回に残す／捨てる」を提案してから閉じる。頼まれたタスクが全部終わったときは指示が無くても自分から使い、残件が無ければ最後に選択ダイアログで「このセッションをアーカイブしますか？」と聞く。
+description: Check for leftovers before closing a session. Use when the user says "wrap up", "I'm done for today", "check what's left", or in Japanese 「閉じたい」「セッション終わる」「今日はここまで」「wrap up」「残件確認して」「片付けて終わる」. Mechanically collects the invoking session's own uncommitted changes, unpushed commits, open PRs, unreflected issues, and running subagents / Monitors, then proposes "do now / leave for next time / discard" for each item before closing. When every requested task is done, use it on your own without being asked, and if nothing is left, finish by asking in a choice dialog "Archive this session?".
 last_reviewed: 2026-09-22
 review_after: 2027-03-21
 ---
 
-# session-wrap — 閉じる前の残件確認
+# session-wrap — check for leftovers before closing
 
-対象は**この skill を起動したセッションだけ**。呼ばれなければ何もしない（`/exit` の瞬間に Claude が動く手段は無い）が、未コミットの変更はディスクに、issue-writeback の状態は resume で、subagent の成果物はファイルに残る。消えるのは Monitor（PR レビュー待ち）だけ。
+This covers **only the session that invoked this skill**. If it isn't called, nothing happens (Claude has no way to act at the moment of `/exit`), but uncommitted changes stay on disk, issue-writeback state survives a resume, and subagent output stays in files. Only Monitors (waiting for PR reviews) are lost.
 
-## 手順
+## Steps
 
-1. **機械で集める**（判断はしない）:
+1. **Collect mechanically** (no judgment):
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/skills/session-wrap/scripts/survey.py
    ```
-   session_id は Bash の親 `claude` プロセスの pid を `claude agents --json` と突き合わせて自動解決する。解決できなければ `--session <id>` を渡す。
-2. **自分の subagent / Monitor を数える**: `ListAgents` で走っているものを見る。Monitor はセッションと一緒に死ぬので、レビュー待ち中なら「閉じるとレビューを拾えない」とユーザーに伝える（`pr-review-triage` の規約）。
-3. **旗ごとに 1 件ずつ提案**して、ユーザーの返事で実行する:
+   The session_id is resolved automatically by matching the pid of Bash's parent `claude` process against `claude agents --json`. If it can't be resolved, pass `--session <id>`.
+2. **Count your own subagents / Monitors**: check what is running with `ListAgents`. A Monitor dies with the session, so if you are waiting for a review, tell the user "closing means the review won't be picked up" (the `pr-review-triage` rule).
+3. **Propose one item per flag**, and act on the user's answer:
 
-   | 旗 | 提案 |
+   | Flag | Proposal |
    |---|---|
-   | `DIRTY` | 今コミットするか（`commit-commands:commit`）、次回に残すか（残すなら何が未コミットかを最後の報告に書く）、捨てるか（`git stash` / `git checkout --`。**破壊的なので必ず確認**） |
-   | `UNPUSHED` | push するか（作業ブランチなら、既定ブランチより遅れていないか先に確かめ、遅れていれば取り込んでから push する。guards プラグインの bash-guard も遅れを数えられたときは止めるが、数えられないときは通すので、この確認は省かない） |
-   | `PR_OPEN` | レビュー待ちなら「閉じると Monitor が切れる」を伝える。対応表は PR 本文に書けているか |
-   | `PENDING_ISSUE` | 決定があれば body/コメントへ反映（`issue-ops`）。無ければ hook が示す `dismiss --why` |
-   | 走っている subagent | 報告を待つか、止めるか（成果物はファイルに残る） |
+   | `DIRTY` | Commit now (`commit-commands:commit`), leave for next time (if so, write what is uncommitted in the final report), or discard (`git stash` / `git checkout --`. **Destructive, so always confirm**) |
+   | `UNPUSHED` | Push? (On a working branch, first check whether it is behind the default branch; if it is, merge that in before pushing. The guards plugin's bash-guard also blocks when it can count how far behind it is, but lets it through when it can't, so don't skip this check) |
+   | `PR_OPEN` | If waiting for review, say "closing cuts off the Monitor". Is the response table written in the PR body? |
+   | `PENDING_ISSUE` | If there are decisions, reflect them in the body/comments (`issue-ops`). If not, the `dismiss --why` the hook shows |
+   | Running subagents | Wait for their reports, or stop them (output stays in files) |
 
-   提案して返事をもらった項目は **この skill の中で実行して完了させる**（コミット・push・issue 書き戻し・dismiss）。「後でやる」に回さない。skill が勝手に決めないのは「何を残すか」と破壊的操作だけ。
-4. **一時ファイル**: スクラッチパッドはセッション固有なので放置でよい。`/tmp/claude-<uid>/` 直下やプロジェクト内に自分で作った検証用ファイルがあれば消す（何を作ったかは会話を遡って自分で確認する。スクリプトは知らない）。
-5. **引き継ぎを機械に残す**（会話で「次回は #92 から」と言うだけでは、ユーザーも次の Claude も忘れる）。**残件を「このリポ」と「別リポ」に分けてから書く**。
+   For items you proposed and got an answer on, **carry them out to completion inside this skill** (commit, push, issue write-back, dismiss). Don't push them to "later". The only things the skill doesn't decide on its own are "what to leave" and destructive operations.
+4. **Temporary files**: the scratchpad is session-specific, so leave it. If you created verification files directly under `/tmp/claude-<uid>/` or inside the project, delete them (look back through the conversation to see what you created; the script doesn't know).
+5. **Leave the handoff in a machine-readable place** (just saying "next time start from #92" in the conversation is forgotten by both the user and the next Claude). **Split leftovers into "this repo" and "other repos" before writing**.
 
-   **(a) このリポの残件 — 入口 issue ＋ handoff**
-   - 「残した」と判定した項目は **必ず入口 issue の body に落とす**（`issue-ops`。「今どうなっているか」＝どこまで済み・次に何をするか。issue が無ければ作る）。
-   - 入口を handoff に書く（同じプロジェクトの次のセッション開始時に SessionStart hook が注入する）:
+   **(a) Leftovers in this repo — entry issue + handoff**
+   - Items judged "left" **must be written into the entry issue's body** (`issue-ops`: "how things are now" = what is done and what to do next. Create an issue if there is none).
+   - Write the entry into the handoff (the SessionStart hook injects it at the start of the next session in the same project):
      ```bash
-     handoff write --entry owner/repo#92 --state "○○まで済み" --next "まず △△"
+     handoff write --entry owner/repo#92 --state "done up to X" --next "start with Y"
      ```
-     1 プロジェクトに複数件持てる（同じ `--entry` なら更新・別の `--entry` なら追記。並行セッションが互いの入口を消さない）。中身の詳細は issue body に置き、handoff はポインタだけにする。
-   - 受け取り側は着手を宣言した直後に `handoff consume --entry <入口>` でその 1 件を消す（受け取った瞬間にクリーン。1 件しか無ければ `--entry` は省略可）。無関係な作業で開いたセッションは消さないので、次のセッションにも出る。14 日超は stale 表示。
-   - **「次にやること」が残っていたら、`spawn_task` を提案する**: 入口 issue と handoff を書いたうえで、「次にやることを `spawn_task` のチップにしますか？」とユーザーに、**バッチの切り方（どれを 1 チップにまとめるか）も添えて**聞く。**OK の返事をもらってから** Claude デスクトップの `mcp__ccd_session__spawn_task` を呼ぶ（チップが出るだけで、着手はユーザーがクリックした時。勝手に走り出さない）。
-     - **細かく分けすぎない。タスクの大きさと依存関係でバッチにする**（小さな文書 PR まで 1 件 1 チップにすると並行セッションが増え、調整の手間が増える）。まとめる目安: 同じファイル群を触る／同じ共有資源（例: 共有の検証環境・共有 DB）を使う／前後関係がある（A の結果を B が使う）／それぞれが小さい（文書修正・スキル追記など 1 PR で済む）。分けるのは、大きくて独立に進められ、触るファイルも資源も重ならないものだけ。目安は 1 回の wrap で 1〜2 チップ。
-     - 並行させる場合は、共有資源を取り合うものにはプロンプトに交代の決まり（ロック等）と、同じファイルの担当範囲を書く。
-     - プロンプトは経緯ゼロで読める自己完結にする: 入口 issue（`gh issue view <ref>` を最初に読ませる）・背景・置き場所（キット・サンプル等のパス）・守るルール（DB 直接変更禁止・マージはユーザー判断 等）・受け入れ基準・スコープ（PR 作成まで）。
-     - `spawn_task` が使えない環境（CLI 単体・クラウド等）では提案せず、handoff だけ残す。
-     - 作ったチップは task_id を最後の報告に書く。後で不要になったら `dismiss_task` で下げる。
+     A project can hold several entries (the same `--entry` updates, a different `--entry` appends; parallel sessions don't erase each other's entries). Keep the details in the issue body; the handoff is only a pointer.
+   - The receiving side removes that one entry with `handoff consume --entry <entry>` right after declaring it is starting on it (clean the moment it's picked up; if there is only one entry, `--entry` can be omitted). Sessions opened for unrelated work don't remove it, so it still shows in the next session. Entries older than 14 days are shown as stale.
+   - **If "what to do next" remains, propose `spawn_task`**: after writing the entry issue and handoff, ask the user "Make the next steps into `spawn_task` chips?", **including how you would batch them (which items go into one chip)**. **Only after getting an OK**, call Claude desktop's `mcp__ccd_session__spawn_task` (it only shows a chip; work starts when the user clicks it. It doesn't start running on its own).
+     - **Don't split too finely. Batch by task size and dependencies** (making every small doc PR its own chip multiplies parallel sessions and coordination work). Signs they belong together: they touch the same files / use the same shared resource (e.g. a shared test environment or shared DB) / have an order (B uses A's result) / each is small (a doc fix, a skill addition, done in one PR). Split only items that are large, can proceed independently, and share neither files nor resources. Aim for 1–2 chips per wrap.
+     - If they run in parallel, put a turn-taking rule (locks, etc.) for shared resources and the ownership of shared files into the prompts.
+     - Make the prompt self-contained for a reader with zero background: the entry issue (have it read `gh issue view <ref>` first), background, locations (paths of kits, samples, etc.), rules to follow (no direct DB changes, merging is the user's call, etc.), acceptance criteria, and scope (up to opening the PR).
+     - In environments where `spawn_task` is unavailable (CLI alone, cloud, etc.), don't propose it; just leave the handoff.
+     - Write the task_id of any chip you created in the final report. If it becomes unnecessary later, withdraw it with `dismiss_task`.
 
-   **(b) 別リポの残件 — handoff に書かない**
+   **(b) Leftovers in other repos — don't write them in the handoff**
 
-   handoff は cwd のプロジェクト単位で注入される。別リポの入口を書くと、このプロジェクトの次のセッションへ無関係な指示が注入される（ノイズ）。`handoff write` は `--entry` が cwd の origin と別リポなら機械で拒否する。代わりに:
+   The handoff is injected per project (by cwd). Writing another repo's entry injects unrelated instructions into this project's next session (noise). `handoff write` mechanically refuses an `--entry` whose repo differs from the cwd's origin. Instead:
 
-   1. **対象リポに issue を立てる（必須）**（`issue-ops`。「別リポ」は残件を issue に落とす側の判定）。別セッションはマシンの再起動などで消えることがあるので、消えない記録はここに残す。
-   2. **次に触るのが近いものだけ**、対象リポで作業する別セッションを待機状態で起動するよう**提案する**。別のセッションを、すぐには着手させず待機状態で起動できるスキルや仕組みが環境にあれば、それを使う（無ければ 1. の issue だけでよい）: 「対象リポで別セッションを待機状態で起動しますか？」→ **ユーザーが OK と言ってから**起動する。待機状態のセッションは起動しても着手せず止まり、ユーザーが「開始」と言った時に動く。seed には 1. で立てた issue ref とスコープ「PR 作成まで（マージ・デプロイしない）」を必ず入れる。その仕組みに即着手・無人で走らせる設定があっても使わない（別リポで権限確認なしに動き出す）。
-   3. **skill が勝手に起動しない**（その場の OK が「明示指示」に当たる）。**1 回の wrap で提案するのは 1 件まで**（待機状態のまま放置されたセッションが溜まると、同時に動かせるセッション数の上限に当たり、他のセッションまで動かなくなることがある）。起動したらセッション名を最後の報告に書く。
-6. **最後の報告**は「片付けた / 残した」の 2 部構成。残したものは、このリポ（入口 issue と handoff の内容・作った spawn_task チップ）と別リポ（issue ref・待機状態で起動したセッション名）を分けて書く。
-7. **アーカイブするか聞く**: 残件が無い（「残した」が 0 件、または残件が issue・handoff に落ちている）なら、最後の報告のあと **`AskUserQuestion` で「このセッションをアーカイブしますか？」**（選択肢: アーカイブする／しない）。「する」なら `mcp__ccd_session_mgmt__archive_session`（`session_id: "self"`、`reason` に 1 行）。「しない」は追加の依頼がある合図なので、何も片付けずに次の指示を待つ（その依頼が終わったらまた wrap を回す）。
-   - **聞かない**: 裏で動いているもの（Monitor・subagent・background の Bash）がある／未コミット・未 push がある／自分の PR にレビュー対応が残っている。先に片付けるか、残す理由を報告に書く
-   - アーカイブは会話を終わらせるので、報告と issue・handoff の書き込みを全部終えてから呼ぶ。Claude デスクトップ以外（ツールが無い環境）では聞かない
+   1. **Open an issue in the target repo (required)** (`issue-ops`; "other repo" is a case where the leftover becomes an issue). Separate sessions can disappear when the machine restarts, so the durable record goes here.
+   2. **Only for things that will be worked on soon**, **propose** starting a separate session in the target repo in a waiting state. If the environment has a skill or mechanism that can start another session in a waiting state without starting work right away, use it (if not, the issue from step 1 is enough): "Start a separate session in the target repo in a waiting state?" → start it **only after the user says OK**. A waiting session stops without starting work and moves when the user says "start". The seed must include the issue ref from step 1 and the scope "up to opening the PR (no merge, no deploy)". Even if the mechanism has a setting to start work immediately or run unattended, don't use it (it would start acting in another repo without permission checks).
+   3. **The skill doesn't start one on its own** (the OK given on the spot counts as the "explicit instruction"). **Propose at most 1 per wrap** (waiting sessions left behind pile up, hit the limit on concurrently running sessions, and can stop other sessions from working). If you start one, write the session name in the final report.
+6. **Final report** has two parts: "cleaned up / left". For what was left, separate this repo (the entry issue and handoff contents, the spawn_task chips created) from other repos (issue refs, names of sessions started in a waiting state).
+7. **Ask whether to archive**: if nothing is left ("left" is 0 items, or the leftovers are in issues and the handoff), after the final report **ask with `AskUserQuestion`: "Archive this session?"** (choices: archive / don't archive). On "archive", call `mcp__ccd_session_mgmt__archive_session` (`session_id: "self"`, a one-line `reason`). "Don't archive" signals more requests are coming, so clean nothing up and wait for the next instruction (when that request is done, run the wrap again).
+   - **Don't ask** when: something is running in the background (Monitor, subagent, background Bash) / there are uncommitted or unpushed changes / review responses remain on your own PR. Clean those up first, or write in the report why they are left
+   - Archiving ends the conversation, so call it only after the report and all issue and handoff writes are finished. Outside Claude desktop (environments without the tool), don't ask
 
-## やってはいけないこと
+## Don'ts
 
-- 確認なしに `git stash` / `checkout --` / worktree 削除（未マージ worktree は絶対に消さない）
-- 別リポの残件を handoff に書く（このプロジェクトの次のセッションに無関係な入口が混ざる。`--force` は別リポだと分かった上で意図して書く時だけ）
-- ユーザーの OK 無しに別セッションを待機状態で起動する／1 回の wrap で 2 件以上起動する
-- ユーザーの OK 無しに `spawn_task` を呼ぶ（提案はする・呼ぶのは返事の後）
-- ユーザーの OK 無しにセッションをアーカイブする（ダイアログの返事が「する」の時だけ）
-- 旗が無いのに「念のため」でコミットや push を積む
-- スクリプトの出力だけで「残件なし」と言う（subagent と一時ファイルはスクリプトの外）
+- `git stash` / `checkout --` / deleting worktrees without confirmation (never delete an unmerged worktree)
+- Writing another repo's leftovers into the handoff (an unrelated entry gets mixed into this project's next session. Use `--force` only when you know it is another repo and intend to write it)
+- Starting a separate session in a waiting state without the user's OK / starting 2 or more in one wrap
+- Calling `spawn_task` without the user's OK (propose it; call it only after the answer)
+- Archiving the session without the user's OK (only when the dialog's answer is "archive")
+- Piling up commits or pushes "just in case" when there is no flag
+- Saying "nothing left" based only on the script's output (subagents and temporary files are outside the script)

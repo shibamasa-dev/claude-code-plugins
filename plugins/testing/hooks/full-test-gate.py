@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
-"""full-test-gate: 全体テストを「前回からの変更量」で促し、成果物を出す前に関門にする。
+"""full-test-gate: nudge for the full test suite by "how much changed since last time", and gate releases on it.
 
-対象はリポジトリ直下に .claude/full-test.json を置いたプロジェクトだけ（無ければ何もしない）。
+Applies only to projects that put .claude/full-test.json at the repository root (does nothing otherwise).
 
   {
-    "command": "cd etl/database/stored_procedures && python -m pytest tests/ -q",  # 全体テスト（リポジトリ直下で実行）
-    "paths": ["etl/database"],            # 変更量を数える対象パス
-    "base": "origin/main",                # 省略時はリポの既定ブランチ（origin に問い合わせ。繋がらなければ origin/HEAD、無ければ origin/main）
-    "thresholds": {"lines": 500, "commits": 10, "days": 14},   # どれかを超えたら通知
-    "skipped_regex": "(\\d+) skipped",   # 出力から skip 件数を拾う（任意）
-    "max_skipped": 20,                    # これを超えたら記録しない（任意）
-    "gate": ["build-release\\.sh"]        # このコマンドは、前回の全体テスト以降に対象パスの変更があれば止める
+    "command": "cd etl/database/stored_procedures && python -m pytest tests/ -q",  # full test suite (run from the repository root)
+    "paths": ["etl/database"],            # paths whose changes are counted
+    "base": "origin/main",                # defaults to the repo's default branch (asks origin; if unreachable, origin/HEAD; if missing, origin/main)
+    "thresholds": {"lines": 500, "commits": 10, "days": 14},   # notify when any of these is exceeded
+    "skipped_regex": "(\\d+) skipped",   # picks the skip count out of the output (optional)
+    "max_skipped": 20,                    # do not record if the skip count exceeds this (optional)
+    "gate": ["build-release\\.sh"]        # block these commands if the target paths changed since the last full run
   }
 
-使い方:
-  full-test-gate run      全体テストを実行し、通れば記録する。記録するのは
-                          「対象パスが base と同じ内容」のときだけ（作業ブランチの結果は記録しない）。
-  full-test-gate status   前回の記録と、そこからの変更量を表示
-hook（stdin の hook_event_name で分岐）:
-  SessionStart         しきい値を超えていたら 1 行通知（止めない）
-  PreToolUse(Bash)     gate に当たるコマンドを、未検証の変更があれば deny
-状態: $FULL_TEST_STATE_DIR（既定 ~/.claude/state/full-test）/<project-key>.json
-      project-key = git common dir の sha1（worktree 間で共有）。形: {"sha", "at", "skipped"}
+Usage:
+  full-test-gate run      Run the full test suite and record it if it passes. It records only when
+                          "the target paths have the same content as base" (results from a work branch are not recorded).
+  full-test-gate status   Show the last record and how much has changed since
+As a hook (branches on hook_event_name from stdin):
+  SessionStart         Print a one-line notice when a threshold is exceeded (does not block)
+  PreToolUse(Bash)     Deny commands matching gate when there are unverified changes
+State: $FULL_TEST_STATE_DIR (default ~/.claude/state/full-test)/<project-key>.json
+       project-key = sha1 of the git common dir (shared across worktrees). Shape: {"sha", "at", "skipped"}
 """
 import hashlib, json, os, re, subprocess, sys, time
 
@@ -35,7 +35,7 @@ def git(cwd, *args):
 
 
 def load_project(cwd):
-    """(config, toplevel, state_path)。対象外なら (None, None, None)。"""
+    """(config, toplevel, state_path). (None, None, None) when the project is not opted in."""
     rc, top = git(cwd, "rev-parse", "--show-toplevel")
     if rc != 0:
         return None, None, None
@@ -50,8 +50,8 @@ def load_project(cwd):
 
 
 def _remote_default(top):
-    """origin が今いう既定ブランチ（ls-remote、読むだけ）。手元の origin/HEAD は fetch で更新されないため先に聞く。
-    繋がらない・認証が要るときは None（待たせない）。"""
+    """The default branch origin reports right now (ls-remote, read only). Asked first because the local origin/HEAD
+    is not updated by fetch. None when unreachable or authentication is needed (never makes the user wait)."""
     try:
         r = subprocess.run(["git", "ls-remote", "--symref", "origin", "HEAD"], cwd=top, capture_output=True, stdin=subprocess.DEVNULL,
                            text=True, timeout=5, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
@@ -65,7 +65,7 @@ _DEFAULT_BASE = {}
 
 
 def _has_remote_ref(top, name):
-    """origin/<name> が手元にあるか。無ければ1回だけ取ってくる（取れなければ False）。"""
+    """Whether origin/<name> exists locally. If not, fetch it once (False if that fails)."""
     if git(top, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{name}")[0] == 0:
         return True
     try:
@@ -77,8 +77,9 @@ def _has_remote_ref(top, name):
 
 
 def default_base(top):
-    """設定に base が無いときの比較先。origin に聞き、繋がらなければ手元の origin/HEAD、それも無ければ origin/main（無くて origin/master があればそちら）。
-    1回のフックの中では最初の結果を使い回す（問い合わせは1回だけ）。"""
+    """The comparison base when the config has no base. Ask origin; if unreachable, the local origin/HEAD; if that is missing too,
+    origin/main (or origin/master when origin/main is missing and origin/master exists).
+    Within one hook run, reuse the first result (origin is asked only once)."""
     if top not in _DEFAULT_BASE:
         name = _remote_default(top)
         if name and _has_remote_ref(top, name):
@@ -108,7 +109,7 @@ def load_state(path):
 
 
 def measure(top, cfg, sha, target):
-    """sha から target（ref。None なら作業ツリー）までの対象パスの変更量。比べられなければ None（0 件とは区別する）。"""
+    """How much the target paths changed from sha to target (a ref; None means the working tree). None if they cannot be compared (distinct from 0 changes)."""
     paths = cfg.get("paths") or ["."]
     rng = [sha, target] if target else [sha]
     rc, stat = git(top, "diff", "--shortstat", *rng, "--", *paths)
@@ -128,56 +129,56 @@ def measure(top, cfg, sha, target):
 
 def describe(state, m):
     days = int((time.time() - state["at"]) // 86400)
-    return (f"前回の全体テスト（{time.strftime('%Y-%m-%d', time.localtime(state['at']))}・{state['sha'][:8]}）から "
-            f"{m['lines']} 行 / {m['files']} ファイル / {m['commits']} コミット / {days} 日"), days
+    return (f"Since the last full test run ({time.strftime('%Y-%m-%d', time.localtime(state['at']))}, {state['sha'][:8]}): "
+            f"{m['lines']} lines / {m['files']} files / {m['commits']} commits / {days} days"), days
 
 
 def cmd_status(cwd):
     cfg, top, sp = load_project(cwd)
     if not cfg:
-        print("対象外（.claude/full-test.json が無い）"); return 0
+        print("Not configured (no .claude/full-test.json)"); return 0
     state = load_state(sp)
     if not state:
-        print("全体テストの記録なし。full-test-gate run"); return 0
+        print("No full test run recorded. Run: full-test-gate run"); return 0
     m = measure(top, cfg, state["sha"], base_of(top, cfg))
     if m is None:
-        print(f"比較できません（{base_of(top, cfg)} か記録の {state['sha'][:8]} が手元に無い）。git fetch してから再実行")
+        print(f"Cannot compare ({base_of(top, cfg)} or the recorded {state['sha'][:8]} is not available locally). Run git fetch and try again")
         return 1
     text, _ = describe(state, m)
-    print(text + f"（skip {state.get('skipped')}）")
+    print(text + f" (skipped {state.get('skipped')})")
     return 0
 
 
 def cmd_run(cwd):
     cfg, top, sp = load_project(cwd)
     if not cfg:
-        print("対象外（.claude/full-test.json が無い）"); return 1
+        print("Not configured (no .claude/full-test.json)"); return 1
     base, paths = base_of(top, cfg), cfg.get("paths") or ["."]
     rc_same, _ = git(top, "diff", "--quiet", base, "--", *paths)
     if rc_same > 1:
-        print(f"[full-test-gate] 比較先 {base} を読めません（手元に無い）。git fetch してから再実行"); return 1
+        print(f"[full-test-gate] Cannot read the comparison base {base} (not available locally). Run git fetch and try again"); return 1
     p = subprocess.Popen(cfg["command"], shell=True, cwd=top, stdout=subprocess.PIPE,
                          stderr=subprocess.STDOUT, text=True)
     out = []
     for line in p.stdout:
         sys.stdout.write(line); out.append(line)
     if p.wait() != 0:
-        print(f"[full-test-gate] 失敗（exit {p.returncode}）。記録しない"); return p.returncode
+        print(f"[full-test-gate] Failed (exit {p.returncode}). Not recorded"); return p.returncode
     skipped = None
     if cfg.get("skipped_regex"):
         found = re.findall(cfg["skipped_regex"], "".join(out))
         skipped = int(found[-1]) if found else 0
     if skipped is not None and cfg.get("max_skipped") is not None and skipped > cfg["max_skipped"]:
-        print(f"[full-test-gate] skip {skipped} 件 > 上限 {cfg['max_skipped']}。記録しない（実サンプル等の前提を確認）")
+        print(f"[full-test-gate] {skipped} skipped > limit {cfg['max_skipped']}. Not recorded (check preconditions such as real sample data)")
         return 1
     if rc_same != 0:
-        print(f"[full-test-gate] 成功。ただし対象パスが {base} と違うので記録しない（作業中の変更の結果）")
+        print(f"[full-test-gate] Passed, but not recorded because the target paths differ from {base} (this is a result of work in progress)")
         return 0
     _, sha = git(top, "rev-parse", base)
     os.makedirs(STATE_DIR, exist_ok=True)
     with open(sp, "w") as f:
         json.dump({"sha": sha, "at": time.time(), "skipped": skipped}, f)
-    print(f"[full-test-gate] 記録した: {base} {sha[:8]}（skip {skipped}）")
+    print(f"[full-test-gate] Recorded: {base} {sha[:8]} (skipped {skipped})")
     return 0
 
 
@@ -187,13 +188,13 @@ def hook_session_start(cwd):
         return
     state = load_state(sp)
     if not state:
-        print(f"[full-test] 全体テストの記録がありません。{base_of(top, cfg)} と同じ状態で "
-              "`full-test-gate run` を 1 回実行すると、以後は変更量で通知します。")
+        print(f"[full-test] No full test run is recorded. Run `full-test-gate run` once while in the same state as "
+              f"{base_of(top, cfg)}; after that you will be notified by how much has changed.")
         return
     m = measure(top, cfg, state["sha"], base_of(top, cfg))
     if m is None:
-        print(f"[full-test] 前回の全体テスト（{state['sha'][:8]}）と {base_of(top, cfg)} を比べられませんでした。"
-              "git fetch すると次から変更量で通知します。")
+        print(f"[full-test] Could not compare the last full test run ({state['sha'][:8]}) with {base_of(top, cfg)}. "
+              "Run git fetch and you will be notified by how much has changed from next time.")
         return
     text, days = describe(state, m)
     th = {**DEFAULT_THRESHOLDS, **(cfg.get("thresholds") or {})}
@@ -201,8 +202,8 @@ def hook_session_start(cwd):
     if m["lines"] and days >= th["days"]:
         over.append("days")
     if over:
-        print(f"[full-test] 全体テストの時期です。{text}（しきい値超過: {', '.join(over)}）。"
-              f"作業の切れ目に {base_of(top, cfg)} と同じ状態で `full-test-gate run` を実行してください。")
+        print(f"[full-test] Time for a full test run. {text} (thresholds exceeded: {', '.join(over)}). "
+              f"At a break in your work, run `full-test-gate run` while in the same state as {base_of(top, cfg)}.")
 
 
 def hook_pre_bash(cwd, command):
@@ -213,12 +214,12 @@ def hook_pre_bash(cwd, command):
     if state:
         m = measure(top, cfg, state["sha"], None)
         if m is None or m["lines"] == 0:
-            return  # 比べられないときは止めない（これまでどおり）
-        reason = (f"全体テスト未実施の変更があります（前回 {state['sha'][:8]} から対象パスで {m['lines']} 行 / "
-                  f"{m['files']} ファイル）。")
+            return  # do not block when it cannot be compared (as before)
+        reason = (f"There are changes not covered by a full test run ({m['lines']} lines / "
+                  f"{m['files']} files in the target paths since {state['sha'][:8]}).")
     else:
-        reason = "全体テストの記録がありません。"
-    reason += f" 先に {base_of(top, cfg)} と同じ状態で `full-test-gate run` を通してください。"
+        reason = "No full test run is recorded."
+    reason += f" First pass `full-test-gate run` while in the same state as {base_of(top, cfg)}."
     print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                              "permissionDecision": "deny",
                                              "permissionDecisionReason": "[full-test] " + reason}},
@@ -239,7 +240,7 @@ def main():
         elif data.get("hook_event_name") == "PreToolUse" and data.get("tool_name") == "Bash":
             hook_pre_bash(cwd, (data.get("tool_input") or {}).get("command", ""))
     except Exception:
-        pass  # hook は作業を止めない
+        pass  # a hook never stops the work
     return 0
 
 

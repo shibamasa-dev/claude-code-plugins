@@ -1,82 +1,84 @@
-# 計画の節（サイクル issue の body に置く）
+# The plan section (placed in the cycle issue body)
 
-オーケストレータの状態の**正本**。後継のオーケストレータはここだけを読んで続きから再開する。
-決めた瞬間・委譲した瞬間・結果を受け取った瞬間に書き換える。経緯はコメントへ。
-書き込みはすべて `issue-ops` スキルに従う。
+The orchestrator's **source of truth** for state. A successor orchestrator reads only this and resumes from where it left off.
+Rewrite it the moment you decide, the moment you delegate, and the moment you receive a result. History goes in comments.
+Every write follows the `issue-ops` skill.
 
-## マーカーの契約
+## Marker contract
 
-- 開始 `<!-- weekly-orchestrator:plan -->`、終了 `<!-- /weekly-orchestrator:plan -->`
-- どちらも**行頭に、その行に単独で**置く。説明文の中に書いたマーカー（行の途中・インラインコード）は節の境界として扱わない
-- 1 つの body に計画の節は 1 つだけ
-- プロジェクトのスクリプトがこの文字列で節を探すことがある。文字列を変えない
+- Start `<!-- weekly-orchestrator:plan -->`, end `<!-- /weekly-orchestrator:plan -->`
+- Put each **at the start of a line, alone on that line**. A marker written inside explanatory text (mid-line, inline code) does not count as a section boundary
+- Only one plan section per body
+- Project scripts may search for the section by these strings. Do not change them
 
-## 差し替えの契約
+## Splice contract
 
-計画の節を書き換えるとき（計画の確定・状態の更新・次サイクルの issue への書き込み）は、
-**マーカー間だけを差し替え、外側は 1 文字も変えない**。外側（自動起票の注記・レポートのチェックリスト等）は
-プロジェクトや workflow の持ち物で、オーケストレータの持ち物ではない。
+When rewriting the plan section (confirming the plan, updating status, writing into the next cycle's issue),
+**replace only what is between the markers and do not change a single character outside.** The outside (auto-creation notes,
+report checklists, etc.) belongs to the project or the workflow, not to the orchestrator.
 
-既にある issue（自動起票など）に次サイクルの計画を入れるとき:
+When putting the next cycle's plan into an existing issue (auto-created, etc.):
 
-1. 同じタイトルの issue があるかを確かめる。あれば新しく起票しない（重複させない）
-2. その issue の body を読み、計画の節を探す
-   - 節が無い → 書き込まずにユーザーに聞く（どこに置くかはプロジェクトの決め事）
-   - 節が既に記入済み（計画の状態が `確定 …`） → 誰かが計画を書き込み済み。書き換えずにユーザーに聞く
-3. マーカー間だけを新しい内容に置き換えた body を作り、`issue-ops` に従って書き込む
+1. Check whether an issue with the same title exists. If it does, do not create a new one (no duplicates)
+2. Read that issue's body and find the plan section
+   - No section → do not write; ask the user (where to put it is the project's call)
+   - The section is already filled in (plan status is `Confirmed …`) → someone has already written the plan. Do not rewrite it; ask the user
+3. Build a body where only the part between the markers is replaced with the new content, and write it following `issue-ops`
 
-body 全体を雛形で置き換えると、外側の注記が消える。それが「計画の節だけ差し替える」の理由。
+Replacing the whole body with the template erases the notes outside. That is why you "replace only the plan section".
 
-## 雛形（基本の型）
+## Template (the base shape)
 
-プロジェクトは見出しや欄を足してよい（マイルストーン・前回レポートの予定など）。基本の見出しは消さない。
-`{期間}` はプロジェクトのサイクルに合わせて埋める。
+Projects may add headings and fields (milestones, the plan for the previous report, etc.). Do not remove the base headings.
+Fill in `{period}` to match the project's cycle.
 
 ```markdown
 <!-- weekly-orchestrator:plan -->
-## 今サイクルの計画（{期間}）
+## Plan for this cycle ({period})
 
-**計画の状態**: 未確定（ユーザーの OK 前）
+**Plan status**: Draft (before the user's OK)
 
-### 対象ゴール
-| ゴール | 今サイクルで進める子 issue | 見送る子 issue（理由） |
+### Target goals
+| Goal | Child issues to advance this cycle | Deferred child issues (reason) |
 |---|---|---|
 
-### 最低ライン（サイクル末までに必ず終える。下限であって上限ではない）
+### Minimum bar (must finish by the end of the cycle; a floor, not a ceiling)
 - [ ] 
 
-### バッチ（実行単位）
-| # | バッチ | 入口 issue | 共有資源 | 前後関係 | 実行 | 状態 |
+### Batches (units of execution)
+| # | Batch | Entry issue | Shared resources | Order | Run via | Status |
 |---|---|---|---|---|---|---|
 
-### サブステップの調整
-- （切った・統合した・閉じた子 issue と理由を 1 行ずつ。無ければ「なし」）
+### Sub-step adjustments
+- (one line per child issue created, merged, or closed, with the reason; "none" if there are none)
 
-### 引き継ぎ
-- オーケストレータ: 第 1 世代（後継を出したら世代と起動方法を書く）
-- 次にやること: 
-- 待っているバッチ: （バッチ番号・報告先のセッション名）
+### Handover
+- Orchestrator: generation 1 (after sending out a successor, write the generation and how it was started)
+- Next: 
+- Waiting on batches: (batch number, session name the report goes to)
 <!-- /weekly-orchestrator:plan -->
 ```
 
-### 欄の書き方
+### How to fill the fields
 
-- **計画の状態**: 雛形のままは `未確定`。ユーザーの OK をもらって書き込んだら `確定 YYYY-MM-DD`。後継はこれで「計画を作る」か「続きから再開する」かを決める
-- **最低ライン**: チェックボックスで書く。締めたときに `- [ ]` のまま残ったものが持ち越しの候補になる
-- **実行の列**: `subagent <名前>` / `spawn_task <task_id>` / `<経路> <識別子>`（その他の別セッション） / `貼り付け用`
-- **状態の列**: `未着手` / `実行中` / `PR #N`（PR はあるがマージ前） / `完了`（マージ済み・受け入れ基準を確かめた） / `止まっている（理由）`
-- **引き継ぎ**: 代替わりの前に必ず書く。走っている別セッションのバッチに報告先の変更を伝えられなかったら「報告先が旧世代のまま」と書く
+- **Plan status**: `Draft` while it is still the template. Once you get the user's OK and write it in, `Confirmed YYYY-MM-DD`. The successor uses this to decide whether to "make the plan" or "resume from where it left off"
+- **Minimum bar**: write as checkboxes. Items still `- [ ]` at close-out become candidates for carry-over
+- **Run via column**: `subagent <name>` / `spawn_task <task_id>` / `<route> <identifier>` (other separate sessions) / `paste-in`
+- **Status column**: `Not started` / `Running` / `PR #N` (a PR exists but is not merged) / `Done` (merged and acceptance criteria verified) / `Blocked (reason)`
+- **Handover**: always write it before a handover. If you could not tell a running separate-session batch about the change of report recipient, write "report recipient is still the old generation"
+- Older cycle issues may use the Japanese template; read `未確定` / `確定` as `Draft` / `Confirmed`, and the statuses `未着手` / `実行中` / `完了` / `止まっている` as `Not started` / `Running` / `Done` / `Blocked`
 
-## close するときの `## 結果`
+## `## Result` when closing
 
-計画の節の外、body の末尾に足す（`issue-ops` の close 手順）。
+Append it outside the plan section, at the end of the body (the `issue-ops` close procedure).
 
 ```markdown
-## 結果
-- **締め**: YYYY-MM-DD HH:MM        ← 区切りの時刻。`**提出**:` を使うかはプロジェクトが決める
-- **集計起点**: YYYY-MM-DD HH:MM    ← 区切り以外を次サイクルの起点にするときだけ
-- 最低ライン: 達成 N / M（未達: …）
-- 送った項目: #… → 次サイクルへ持ち越し／#… → issue に戻す／#… → やめる（理由）
+## Result
+- **Cutoff**: YYYY-MM-DD HH:MM        ← the boundary time. The project decides whether to use `**Submitted**:` instead
+- **Tally start**: YYYY-MM-DD HH:MM   ← only when the next cycle starts counting from something other than the boundary
+- Minimum bar: met N / M (not met: …)
+- Pushed items: #… → carried over to the next cycle / #… → returned to an issue / #… → dropped (reason)
 ```
 
-区切りの時刻は次サイクルの起点になる。close の時刻では代わりにならない。
+The boundary time becomes the starting point of the next cycle. The close time does not substitute for it.
+Older cycle issues and project skills may use the Japanese `## 結果` with `**締め**:` / `**提出**:` / `**集計起点**:`; treat them as `## Result` with `**Cutoff**:` / `**Submitted**:` / `**Tally start**:`.

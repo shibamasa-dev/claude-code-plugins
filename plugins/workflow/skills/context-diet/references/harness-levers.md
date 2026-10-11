@@ -1,42 +1,42 @@
-# 注入層のレバー（実測で確定した仕様）
+# Injected-layer levers (specs confirmed by measurement)
 
-システムプロンプトに毎回積まれる「ツール名一覧」「skills 一覧」「MCP server instructions」を、**プロジェクト単位で**削るための設定キー。2026-08-29 に Claude Code 2.1.251 のバイナリを読み、実機で検証した結果。
+Settings keys for trimming, **per project**, the "tool name list", "skills list", and "MCP server instructions" that are added to the system prompt every time. Based on reading the Claude Code 2.1.251 binary and verifying on a real machine on 2026-08-29.
 
-> ⚠️ ここに書いてあるのは**この時点の実測**。バージョンが上がったら再確認すること。検証コマンドは各項に併記した。
+> ⚠️ What is written here is **measured at that point in time**. Recheck after a version upgrade. Each section includes its verification commands.
 
-## どの層に何が置けるか
+## What can be set in which layer
 
-| 層 | ホワイトリスト | ブラックリスト | 範囲 |
+| Layer | Allowlist | Denylist | Scope |
 |---|---|---|---|
-| ユーザー `~/.claude/settings.json` | — | **`deniedMcpServers`** | このマシンの全プロジェクト |
-| プロジェクト `.claude/settings.json` | — | **`deniedMcpServers`** / **`skillOverrides`** | プロジェクト |
-| `~/.claude.json` の projects エントリ | `enabledMcpServers`（**`computer-use` 専用**） | `disabledMcpServers`（それ以外の全部） | プロジェクト |
-| `.claude/settings.local.json` | `enabledMcpjsonServers` `enableAllProjectMcpServers` | `disabledMcpjsonServers` | `.mcp.json` 由来のみ |
-| `managed-settings.json`（企業ポリシー） | `allowedMcpServers` | `deniedMcpServers` `disableClaudeAiConnectors` | マシン全体 |
+| User `~/.claude/settings.json` | — | **`deniedMcpServers`** | All projects on this machine |
+| Project `.claude/settings.json` | — | **`deniedMcpServers`** / **`skillOverrides`** | Project |
+| Projects entry in `~/.claude.json` | `enabledMcpServers` (**`computer-use` only**) | `disabledMcpServers` (everything else) | Project |
+| `.claude/settings.local.json` | `enabledMcpjsonServers` `enableAllProjectMcpServers` | `disabledMcpjsonServers` | Only servers from `.mcp.json` |
+| `managed-settings.json` (enterprise policy) | `allowedMcpServers` | `deniedMcpServers` `disableClaudeAiConnectors` | Whole machine |
 
-ホワイト／ブラックはユーザーが選べない。**サーバー名で分岐が決まる**:
+The user can't choose allowlist vs. denylist. **The branch is decided by the server name**:
 
 ```js
 var e0 = "computer-use";
 function xve(e){ return e === e0 }
 function _i(e){                                              // isDisabled(serverName)
-  let t = li();                                              // プロジェクトエントリ
-  if (xve(e)) return !Nte(t.enabledMcpServers).includes(e);   // ホワイトリスト
-  return Nte(t.disabledMcpServers).includes(e);               // ブラックリスト
+  let t = li();                                              // project entry
+  if (xve(e)) return !Nte(t.enabledMcpServers).includes(e);   // allowlist
+  return Nte(t.disabledMcpServers).includes(e);               // denylist
 }
 ```
 
 ```bash
-BIN="$(readlink -f "$(command -v claude)")"   # 実体は versions/<ver>
+BIN="$(readlink -f "$(command -v claude)")"   # the real file is versions/<ver>
 strings -a "$BIN" | grep -c 'function _i(e){let t=li()'
 strings -a "$BIN" | grep -o 'e0="computer-use"'
 ```
 
-## `deniedMcpServers`（コネクタを個別に落とす）
+## `deniedMcpServers` (drop individual connectors)
 
-説明文は "Enterprise denylist" だが、**プロジェクト settings.json でもユーザー settings.json でも効く**（実測）。
+The description says "Enterprise denylist", but **it works in both project and user settings.json** (measured).
 
-**ユーザー `~/.claude/settings.json` に置けば「このマシンの全プロジェクト」に効く**（2026-09-15・Claude Code 2.1.272 で実測）。claude.ai 側のコネクタは有効なままなので、**他のデバイス・Web では使えるがこの PC だけ落とす**、という切り分けができる。用途例: 同じサービスをこの PC ではローカル MCP で使い、claude.ai のリモートコネクタと二重にならないようにする。
+**Put it in user `~/.claude/settings.json` and it applies to "all projects on this machine"** (measured on 2026-09-15 with Claude Code 2.1.272). The connector stays enabled on the claude.ai side, so you can **keep using it on other devices and the web while dropping it only on this PC**. Example use: on this PC you use the same service through a local MCP and don't want it duplicated by the claude.ai remote connector.
 
 ```json
 "deniedMcpServers": [
@@ -44,28 +44,28 @@ strings -a "$BIN" | grep -o 'e0="computer-use"'
 ]
 ```
 
-- entry は文字列でなく**オブジェクト**。`serverName` のほか `serverCommand`（配列）/ `serverUrl` も判定に使われる
-- 名前は `claude mcp list` の表示名と完全一致（claude.ai コネクタは `claude.ai <表示名>` 形式）
-- 落とすと**設定から消える**。接続断ではない（`claude mcp get "<名前>"` が "No MCP server named" を返す）
-- headless 実行時に `Warning: claude.ai MCP servers blocked by enterprise policy: <名前>, ...` が**1行**出る。文言は固定で、設定ミスではない。`claude mcp list` には出ない
+- Entries are **objects**, not strings. Besides `serverName`, `serverCommand` (array) / `serverUrl` are also used for matching
+- The name must exactly match the display name in `claude mcp list` (claude.ai connectors are in the form `claude.ai <display name>`)
+- A dropped server **disappears from the configuration**. It is not a disconnect (`claude mcp get "<name>"` returns "No MCP server named")
+- Headless runs print **one line**: `Warning: claude.ai MCP servers blocked by enterprise policy: <name>, ...`. The wording is fixed and does not mean a misconfiguration. It does not appear in `claude mcp list`
 
-⚠️ **CLI 所有のビルトインサーバーには効かない。** `claude-in-chrome` と `computer-use` を `deniedMcpServers` に入れても無視される（blocked 警告にも出ない）。バイナリ内の理由コードが並列に定義されている:
+⚠️ **It does not work on CLI-owned built-in servers.** Putting `claude-in-chrome` and `computer-use` in `deniedMcpServers` is ignored (they don't appear in the blocked warning either). The binary defines the reason codes side by side:
 
 ```js
-Pf = "Builtin server is CLI-owned; ignored"                              // ← ビルトインはこちらが優先
+Pf = "Builtin server is CLI-owned; ignored"                              // ← built-ins take this one first
 Af = "Blocked by enterprise policy (allowedMcpServers/deniedMcpServers)"
 ```
 
-ビルトインを落とすなら `/mcp disable <name>`（`~/.claude.json` の projects エントリに書かれる。`computer-use` だけは `enabledMcpServers` ホワイトリストからの除去になる）。**settings.json には書かない** —— 効かない設定を残すと、効いているつもりで放置される。
+To drop a built-in, use `/mcp disable <name>` (written to the projects entry in `~/.claude.json`; for `computer-use` only, it means removal from the `enabledMcpServers` allowlist). **Don't write it in settings.json** — an ineffective setting gets left in place because it looks like it works.
 
-**検証**:
+**Verify**:
 ```bash
-claude mcp list                     # 一覧から消えていること
-claude mcp get "claude.ai Notion"   # "No MCP server named" が返ること
-claude -p 'reply OK' </dev/null 2>&1 | grep blocked   # blocked 警告に名前が載ること
+claude mcp list                     # gone from the list
+claude mcp get "claude.ai Notion"   # returns "No MCP server named"
+claude -p 'reply OK' </dev/null 2>&1 | grep blocked   # the name appears in the blocked warning
 ```
 
-## `skillOverrides`（skills 一覧から落とす）
+## `skillOverrides` (drop from the skills list)
 
 ```json
 "skillOverrides": {
@@ -75,66 +75,66 @@ claude -p 'reply OK' </dev/null 2>&1 | grep blocked   # blocked 警告に名前�
 }
 ```
 
-| 値 | 挙動 |
+| Value | Behavior |
 |---|---|
-| `off` | モデルからも `/名前` からも消える |
-| `user-invocable-only` | **モデルからは消えるが `/名前` で手動起動できる** ← 削減目的の既定 |
-| `name-only` | 名前だけ残し description を落とす |
-| 未指定 | そのまま |
+| `off` | Hidden from both the model and `/name` |
+| `user-invocable-only` | **Hidden from the model, but can be started manually with `/name`** ← default for reduction |
+| `name-only` | Keeps only the name and drops the description |
+| Not set | Unchanged |
 
-- 削減量は description のバイト数がそのまま効く
+- The reduction equals the description's byte count
 
-⚠️ **効くのは personal skill（`~/.claude/skills/*`）だけ。プラグイン由来スキルには効かない。**
-`frontend-design` / `mcp-apps:*` / `coderabbit:*` で、`plugin:skill` 形式（`"frontend-design:frontend-design"`）と bare 形式（`"frontend-design"`）の両方を、`settings.json` と `settings.local.json` の両方に置いて試したが、いずれも一覧から消えなかった。**プラグインスキルを落とす手段は skillOverrides には無い**（プラグイン自体を `enabledPlugins` で無効化するしかない）。アカウント側スキル（`small-business:*` 等）も同様に効かないとみてよい。
+⚠️ **It works only on personal skills (`~/.claude/skills/*`). It does not work on plugin skills.**
+We tried `frontend-design` / `mcp-apps:*` / `coderabbit:*` in both `plugin:skill` form (`"frontend-design:frontend-design"`) and bare form (`"frontend-design"`), in both `settings.json` and `settings.local.json`; none disappeared from the list. **skillOverrides has no way to drop plugin skills** (the only way is to disable the plugin itself via `enabledPlugins`). Assume it doesn't work on account-side skills (`small-business:*`, etc.) either.
 
-**検証**（headless セッションは設定を読み直すので、本セッションを再起動しなくても測れる）:
+**Verify** (headless sessions reread settings, so you can measure without restarting this session):
 ```bash
-claude -p --model haiku 'Output ONLY JSON: {"<落とした skill>":<listed?>, "<残した skill>":<listed?>}' < /dev/null
+claude -p --model haiku 'Output ONLY JSON: {"<dropped skill>":<listed?>, "<kept skill>":<listed?>}' < /dev/null
 ```
 
-⚠️ **この yes/no 質問はモデルが幻覚する。** 「落とした側が false・残した側が true」が揃っても、それだけでは信用しない。**往復で確かめる** —— override を外して同じ質問をし、false だった側が true に戻ることまで見る。最終確認は `/context` の Skills 表（ユーザーに叩いてもらう）。
+⚠️ **The model hallucinates on this yes/no question.** Even if "dropped side false, kept side true" lines up, don't trust that alone. **Check the round trip** — remove the override, ask the same question, and confirm the side that was false returns to true. The final check is the Skills table in `/context` (ask the user to run it).
 
-## プラグイン由来の MCP サーバー・スキルのスコープ
+## Scope of plugin-provided MCP servers and skills
 
-プラグインが持ち込む MCP サーバー（`plugin:<plugin>:<server>`）とスキルは、**`enabledPlugins` を書いたスコープ**で効く。スキーマの記述:
+MCP servers (`plugin:<plugin>:<server>`) and skills that a plugin brings in take effect **in the scope where `enabledPlugins` is written**. The schema says:
 
 > Enabled plugins using plugin-id@marketplace-id format. **Settings precedence is user < project < local < flag < policy**, so to disable a plugin that project settings enable, set it to false in `.claude/settings.local.json` — setting false in `~/.claude/settings.json` is overridden by the project.
 
-つまり `~/.claude/settings.json` の `enabledPlugins` に書いたプラグインは**全プロジェクトで有効**になる。特定のリポでしか要らないプラグインは:
+So a plugin listed in `enabledPlugins` in `~/.claude/settings.json` is **enabled in every project**. For a plugin needed only in a specific repo:
 
-- user 設定から外し、**そのリポの project settings** に `{"<plugin>@<marketplace>": true}` を書く。`extraKnownMarketplaces` も一緒に移す（スキーマに "Typically used in repository `.claude/settings.json` to ensure team members have required plugin sources" とある）
-- ⚠️ **user 側に `false` を書いても効かない**（project が上書きする）。無効化は `.claude/settings.local.json`
+- Remove it from user settings and write `{"<plugin>@<marketplace>": true}` in **that repo's project settings**. Move `extraKnownMarketplaces` along with it (the schema says "Typically used in repository `.claude/settings.json` to ensure team members have required plugin sources")
+- ⚠️ **Writing `false` on the user side has no effect** (the project overrides it). Disable it in `.claude/settings.local.json`
 
-**受け皿の選び方** —— そのプラグインが常駐セッションの生命線なら **`.claude/settings.local.json`（git 追跡外）を選ぶ**。追跡下の `settings.json` に置くと、そのリポがブランチを切り替えた瞬間に設定ごと消え、常駐セッションが静かに機能を失う。共有が要るなら `settings.json`、切替耐性が要るなら `settings.local.json`。
+**Choosing where to put it** — if the plugin is a lifeline for a resident session, **choose `.claude/settings.local.json` (not tracked by git)**. If it's in the tracked `settings.json`, the setting vanishes the moment the repo switches branches, and the resident session quietly loses the feature. Use `settings.json` when it must be shared, `settings.local.json` when it must survive branch switches.
 
-⚠️ **移す前に、そのプラグインを使うセッションの cwd を確認する。** launchd や外部トリガから起動されるセッションは cwd が想定と違うことがあり、project settings が読まれずプラグインごと落ちる。plist の `WorkingDirectory` と起動スクリプトの WORKDIR 既定の両方を見る。
+⚠️ **Before moving it, check the cwd of the sessions that use the plugin.** Sessions started from launchd or external triggers may have an unexpected cwd, in which case project settings aren't read and the whole plugin drops out. Check both the plist's `WorkingDirectory` and the WORKDIR default in the startup script.
 
-**検証は3点セット**（移設後すぐ、常駐の再起動を待たずに測れる）:
+**Verify with a set of three** (measurable right after the move, without waiting for the resident session to restart):
 ```bash
-cd <使わせたいリポ>   && claude mcp list | grep plugin:   # 出ること
-cd <使わせたくないリポ> && claude mcp list | grep plugin:   # 出ないこと
-cd <第3のリポ>        && claude mcp list | grep plugin:   # 波及していないこと
+cd <repo that should use it>      && claude mcp list | grep plugin:   # shows up
+cd <repo that should not use it>  && claude mcp list | grep plugin:   # does not show up
+cd <a third repo>                 && claude mcp list | grep plugin:   # not leaking
 ```
 
-プラグイン MCP を1プロジェクトだけ落とすなら `deniedMcpServers` に `plugin:<plugin>:<server>` を書く方が影響が小さい（ビルトインと違いこちらは効く）。
+To drop a plugin MCP in just one project, writing `plugin:<plugin>:<server>` in `deniedMcpServers` has a smaller blast radius (unlike built-ins, this one works).
 
-## その他
+## Other
 
-- **`disableClaudeAiConnectors`**（bool）— スキーマ説明に "When true in **any settings source** … **a project can opt out**, but a project-level false cannot override a user-level true"。プロジェクト settings.json で使えるが**コネクタ全断**なので、GitHub 等を使うプロジェクトでは採れない
-- **`~/.claude.json` の `disabledMcpServers`** — `/mcp disable <server>` が書き込み口（`/mcp enable` で戻る）。プロジェクト単位。`claude mcp remove` は削除であって無効化ではないので使わない
-- **`disableBundledSkills`**（bool）— 同梱スキル・ワークフローを丸ごと落とす。粒度が粗すぎるので通常は使わない
+- **`disableClaudeAiConnectors`** (bool) — the schema says "When true in **any settings source** … **a project can opt out**, but a project-level false cannot override a user-level true". It can be used in project settings.json, but it **cuts all connectors**, so it's not an option for projects that use GitHub, etc.
+- **`disabledMcpServers` in `~/.claude.json`** — written by `/mcp disable <server>` (undo with `/mcp enable`). Per project. `claude mcp remove` deletes rather than disables, so don't use it
+- **`disableBundledSkills`** (bool) — drops all bundled skills and workflows at once. Too coarse, so normally not used
 
-## 検証の限界（ここは測れない）
+## Limits of verification (what can't be measured)
 
-- **`name-only` は headless では検証できない。** headless (`claude -p`) はそもそも skills 一覧に description を出さない（`- coderabbit:code-review` のみ）。確認するなら対話セッションを再起動して `/context` を見る
-- **アカウント側スキル（`small-business:*` / `anthropic-skills:*` / `design:*` 等）は headless に載らない**ため、override が効いたか headless では測れない。ディスク上にも無いので `inventory.py` にも出ない。エージェント自身の skills 一覧から拾い、効果は再起動後の `/context` で確認する
-- **`/context` はスラッシュコマンドなので非対話セッションからは実行できない。** ユーザーに叩いてもらって出力を貼ってもらうこと
+- **`name-only` can't be verified headless.** Headless (`claude -p`) doesn't show descriptions in the skills list to begin with (only `- coderabbit:code-review`). To check, restart an interactive session and look at `/context`
+- **Account-side skills (`small-business:*` / `anthropic-skills:*` / `design:*`, etc.) don't appear headless**, so you can't measure headless whether an override worked. They aren't on disk either, so they don't show in `inventory.py`. Pick them up from the agent's own skills list and confirm the effect with `/context` after a restart
+- **`/context` is a slash command, so it can't be run from a non-interactive session.** Ask the user to run it and paste the output
 
-## 書き込みについて
+## About writing
 
-`.claude/settings.json` への書き込みは、権限モードが `auto` のとき**分類器に拒否されることがある**（`Permission for this action was denied by the Claude Code auto mode classifier`）。ハーネスの構造的なブロックではないので、拒否されたら:
+Writes to `.claude/settings.json` **may be denied by the classifier** when the permission mode is `auto` (`Permission for this action was denied by the Claude Code auto mode classifier`). It isn't a structural block in the harness, so if denied:
 
-1. ユーザーに権限モード（`~/.claude/settings.json` の `permissions.defaultMode`）を伝える
-2. 完成ファイルをスクラッチパッドに出し、`cp` コマンドを渡す
+1. Tell the user the permission mode (`permissions.defaultMode` in `~/.claude/settings.json`)
+2. Write the finished file to the scratchpad and give them a `cp` command
 
-回避を試みない。設定変更はユーザーが承認する対象。
+Don't try to work around it. Settings changes are for the user to approve.

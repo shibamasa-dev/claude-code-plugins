@@ -1,21 +1,30 @@
 # creative
 
-画像・動画・デザインを作るときのスキルとフック。0.2.0 で docs から名前を変えた（中身は文書ではないため）。
+English | [日本語](README.ja.md)
 
-## スキル
+Skills and hooks for making images, videos and designs.
 
-| スキル | 使いどころ |
+## Install
+
+```text
+/plugin marketplace add shibamasa-dev/claude-code-plugins
+/plugin install creative@shibamasa-plugins
+```
+
+## Skills
+
+| Skill | Use it for |
 |---|---|
-| `image-generation-prompt` | 画像生成の指示文を構造化する。生成経路（Gemini API・OpenAI Image API・fal.ai など）に依存しない |
-| `motion-video` | 商品の画像・スクショ・ロゴ・実写クリップを載せたモーショングラフィックス動画を、コードで描いて書き出す |
+| `image-generation-prompt` | Structures prompts for image generation. Independent of the generator (Gemini API, OpenAI Image API, fal.ai, …) |
+| `motion-video` | Draws motion-graphics videos in code and renders them, with your product images, screenshots, logos or live-action clips |
 
-## フック
+## Hooks
 
-| フック | いつ | 何をするか |
+| Hook | When | What it does |
 |---|---|---|
-| design-lint | Edit・Write の後 | `DESIGN.md` を編集したら `npx @google/design.md lint` を走らせ、指摘を返す。ほかのファイルでは何もしない |
+| design-lint | After Edit or Write | When `DESIGN.md` is edited, runs `npx @google/design.md lint` and returns the findings. Does nothing for other files |
 
-## 前提
+## Requirements
 
-- `motion-video` は Node.js・Chrome・ffmpeg
-- `design-lint` は `npx`（ネット接続が要る）
+- `motion-video`: Node.js, Chrome, ffmpeg
+- `design-lint`: `npx` (needs network access)

@@ -1,10 +1,10 @@
 #!/bin/bash
-# Codex対話スクリプト
-# Usage: ./codex-chat.sh "プロンプト"
+# Script for chatting with Codex
+# Usage: ./codex-chat.sh "prompt"
 
 PROMPT="$1"
 if [ -z "$PROMPT" ]; then
-  echo "Usage: $(basename "$0") \"プロンプト\""
+  echo "Usage: $(basename "$0") \"prompt\""
   exit 1
 fi
 

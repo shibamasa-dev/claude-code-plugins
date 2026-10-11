@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""session-wrap survey: セッションの残件を機械で集める（判断はしない）。
+"""session-wrap survey: mechanically collect a session's leftovers (no judgment).
 
-  survey.py            # 現セッション（Bash の親 claude プロセス pid → claude agents --json で session_id を解決）
+  survey.py            # current session (Bash's parent claude process pid -> session_id via claude agents --json)
   survey.py --session <id>
-  --json               # 機械可読
+  --json               # machine-readable
 
-対象は起動したセッションだけ。集めるもの: cwd／git の未コミット・未追跡・未 push／現ブランチの open PR／
-issue-writeback の未反映 issue。判断はしない。旗（DIRTY / UNPUSHED / PR_OPEN / PENDING_ISSUE）を立てるだけ。
+Covers only the invoking session. Collects: cwd / git uncommitted, untracked, unpushed / open PR for the current
+branch / issue-writeback's unreflected issues. No judgment; it only raises flags (DIRTY / UNPUSHED / PR_OPEN / PENDING_ISSUE).
 """
 import argparse, json, os, subprocess, sys
 
@@ -26,7 +26,7 @@ def agents():
     except Exception: return []
 
 def own_session_id(sessions):
-    """Bash の祖先に居る claude プロセスの pid を agents 一覧と突き合わせる。"""
+    """Match the pid of the claude process among Bash's ancestors against the agents list."""
     by_pid = {str(s.get("pid")): s for s in sessions}
     p = os.getpid()
     for _ in range(12):
@@ -48,7 +48,7 @@ def git_state(cwd):
     lines = [l for l in st.splitlines() if l.strip()]
     untracked = sum(1 for l in lines if l.startswith("??")); dirty = len(lines) - untracked
     rc_u, ahead = sh(["git", "rev-list", "--count", "@{u}..HEAD"], cwd)
-    unpushed = int(ahead) if rc_u == 0 and ahead.isdigit() else None  # None = upstream 無し
+    unpushed = int(ahead) if rc_u == 0 and ahead.isdigit() else None  # None = no upstream
     return {"root": top, "branch": branch, "dirty": dirty, "untracked": untracked, "unpushed": unpushed}
 
 def open_pr(cwd):
@@ -77,19 +77,19 @@ def survey(s):
     return {"sessionId": sid, "name": s.get("name"), "cwd": cwd, "git": g, "pr": pr, "pending_issues": pend, "flags": flags}
 
 def fmt(r):
-    head = f"{r['name'] or '(無名)'}  {r['sessionId'][:8]}"
+    head = f"{r['name'] or '(unnamed)'}  {r['sessionId'][:8]}"
     lines = [head, f"    cwd: {r['cwd']}"]
     g = r["git"]
     if g:
-        up = "upstream無し" if g["unpushed"] is None else f"未push {g['unpushed']}"
-        lines.append(f"    git: {g['branch'] or '(detached)'}  変更 {g['dirty']} / 未追跡 {g['untracked']} / {up}")
+        up = "no upstream" if g["unpushed"] is None else f"unpushed {g['unpushed']}"
+        lines.append(f"    git: {g['branch'] or '(detached)'}  changed {g['dirty']} / untracked {g['untracked']} / {up}")
     else:
-        lines.append("    git: (リポジトリ外)")
+        lines.append("    git: (not a repository)")
     if r["pr"]:
         p = r["pr"]; lines.append(f"    PR: #{p['number']} {p['state']} review={p.get('reviewDecision') or '-'}{' draft' if p.get('isDraft') else ''}  {p['url']}")
     if r["pending_issues"]:
-        lines.append(f"    未反映 issue: {', '.join(r['pending_issues'])}")
-    lines.append(f"    flags: {' '.join(r['flags']) or '(なし)'}")
+        lines.append(f"    unreflected issues: {', '.join(r['pending_issues'])}")
+    lines.append(f"    flags: {' '.join(r['flags']) or '(none)'}")
     return "\n".join(lines)
 
 def main():
@@ -99,7 +99,7 @@ def main():
     ss = agents()
     sid = a.session or own_session_id(ss)
     if not sid:
-        print("session_id を特定できない（--session <id> を渡す。id は `claude agents --json`）", file=sys.stderr); sys.exit(2)
+        print("Could not determine session_id (pass --session <id>; get the id from `claude agents --json`)", file=sys.stderr); sys.exit(2)
     target = next((s for s in ss if s["sessionId"] == sid), {"sessionId": sid, "cwd": os.getcwd(), "name": None})
     r = survey(target)
     print(json.dumps(r, ensure_ascii=False, indent=1) if a.json else fmt(r))

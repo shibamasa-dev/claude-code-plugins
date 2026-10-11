@@ -1,75 +1,84 @@
 # workflow
 
-依頼からマージまでの開発フロー（PR のレビューの振り分けと待ち方を含む）と、issue とセッションの運用を型にするスキルとフック。テスト設計は [testing](../testing/README.md)、リポの立ち上げは [repo-setup](../repo-setup/README.md) に分けた。
+English | [日本語](README.ja.md)
 
-0.3.0 で review プラグインをここに統合した（`pr-review-triage` スキル・`dev-process` コマンド・review の userConfig）。review を入れていたら外して、設定を下の「設定（userConfig）」のキーに入れ直す。
+Skills and hooks that turn the path from request to merge (including routing and waiting for PR reviews), issue hygiene and session handling into a repeatable routine. Test design lives in [testing](../testing/README.md); repo bootstrapping lives in [repo-setup](../repo-setup/README.md).
 
-## スキル
+If you used the former `review` plugin, uninstall it and move its settings to the keys under [Configuration](#configuration-userconfig) below. The `pr-review-triage` skill, the `dev-process` command and the review settings now live here.
 
-| スキル | 使いどころ |
+## Install
+
+```text
+/plugin marketplace add shibamasa-dev/claude-code-plugins
+/plugin install workflow@shibamasa-plugins
+```
+
+## Skills
+
+| Skill | Use it for |
 |---|---|
-| `dev-flow` | 開発フローの入口。issue の対応も口頭の依頼も、構造変更の判定とアーキレビュー → 実装と自己レビュー → PR → レビュー待ち → `## 結果` → マージまでの順番と約束を持つ。レビューの段は `pr-review-triage` に任せる。自動マージはリポの `.claude/dev-flow.json` で有効にする |
-| `pr-review-triage` | PR を出した直後や push の後に、差分の重さでレビューの頼み先を振り分ける。軽い PR（文書だけ・200 行以内）は `review_light` に従う。既定の `claude` なら Claude がレビューして PR 本文に書き、CI だけ待つ。ツールの id を書けば（`claude` と並べたときも）そのツールの結果も待つ。重い PR はレビューツール（CodeRabbit・Codex など）にコネクタで頼み（ツールの自動レビューを ON にしたリポでは頼まずに、軽い PR だけ `review:light` ラベルで自動レビューから外す）、結果を待って評価・対応する。再レビューを頼むかの判断と依頼もここ |
-| `issue-ops` | issue の起票から close までの規約（本文の書き方、close 前の結果の書き戻し） |
-| `session-wrap` | セッションを閉じる前の残件確認と、次回への引き継ぎ |
-| `context-diet` | セッション開始時に毎回積まれるコンテキストを実測して減らす |
-| `weekly-orchestrator-base` | 週単位で「計画 → 委譲 → 確認 → 締め」を回すオーケストレータの土台 |
+| `dev-flow` | The entry point of the development flow, for issues and verbal requests alike. Holds the order and the commitments: deciding whether a change is structural and needs an architecture review → implementation and self-review → PR → waiting for reviews → `## Result` → merge. Delegates the review stage to `pr-review-triage`. Auto-merge is enabled per repo in `.claude/dev-flow.json` |
+| `pr-review-triage` | Right after opening a PR or pushing to one, routes the review by the size of the diff. Light PRs (docs only, or up to 200 lines) follow `review_light`: with the default `claude`, Claude reviews and writes the result in the PR body, then waits only for CI; list tool ids (alone or next to `claude`) to also wait for those tools. Heavy PRs are sent to review tools (CodeRabbit, Codex, …) through a connector — or, in repos where the tool's auto review is on, not requested, and only light PRs are excluded from auto review with the `review:light` label — then the results are awaited, assessed and addressed. Also decides whether to request a re-review |
+| `issue-ops` | Conventions from filing an issue to closing it (how to write the body, writing results back before closing) |
+| `session-wrap` | Checks for leftovers before closing a session and leaves a handoff for the next one |
+| `context-diet` | Measures and trims the context loaded at every session start |
+| `weekly-orchestrator-base` | A base for an orchestrator that runs a weekly plan → delegate → check → close loop |
 
-## フック
+## Hooks
 
-| フック | いつ | 何をするか |
+| Hook | When | What it does |
 |---|---|---|
-| handoff | セッション開始 | 前のセッションが残した「次の入口」を注入する。書く・消すは `handoff` コマンド |
-| issue-writeback | セッション開始・プロンプト送信・停止・終了、issue 操作の後 | 読んだ issue に決定事項を書き戻していなければ促す |
-| runbook | ブラウザ・画面操作の後、停止、セッション開始 | ブラウザ・画面操作の手順を記録し、手順書を書き忘れたら止める |
-| knowledge-freshness | セッション開始 | 見直し期限を過ぎたナレッジを 1 行で知らせる |
-| artifact-ledger | Artifact の後 | 公開した Artifact をプロジェクトの `.artifacts/` に記録する |
-| dev-flow-gate | PR を作る前 | 本文に `Closes #N` / `Refs #N`（issue の無い依頼は `Refs: none (verbal request)`）と `Arch-Review:` の欄が無ければ止める |
-| | PR を作った後 | 次の段（レビューと CI を待つ）を伝える |
-| | ターンを終える前 | このセッションで作った PR の待ち（PR イベントの購読か Monitor）を始めていなければ、PR ごとに1回だけ止める |
-| | マージの前 | このセッションで作った PR の `Closes` 先の issue に、`## 結果` を書いた・読んで確かめた記録が無ければ止める |
+| handoff | Session start | Injects the "next entry point" left by the previous session. Write and clear entries with the `handoff` command |
+| issue-writeback | Session start, prompt submit, stop, session end, after issue operations | Reminds you if decisions were not written back to an issue you read |
+| runbook | After browser or computer-use actions, on stop, at session start | Records browser and screen-operation steps, and stops if you forgot to write the runbook |
+| knowledge-freshness | Session start | Reports knowledge files past their review date in one line |
+| artifact-ledger | After Artifact | Records published Artifacts in the project's `.artifacts/` |
+| dev-flow-gate | Before creating a PR | Blocks if the body lacks `Closes #N` / `Refs #N` (`Refs: none (verbal request)` for requests without an issue) or the `Arch-Review:` field |
+| | After creating a PR | Tells Claude the next stage (wait for reviews and CI) |
+| | Before ending a turn | Blocks once per PR if waiting (a PR event subscription or a Monitor) has not started for a PR created in this session |
+| | Before a merge | Blocks if there is no record that the `## Result` section (the older `## 結果` also counts) of the issue the PR closes was written or read and confirmed |
 
-dev-flow-gate は GitHub コネクタ（`create_pull_request`・`merge_pull_request`・`enable_pr_auto_merge`・`issue_read`・`issue_write`）と `gh` の両方を見る。GitHub を自分では読みに行かず、判定に使うのはセッション中のツール呼び出しだけ（別のセッションで作った PR のマージは止めず、確かめるよう一言返す）。状態は `${CLAUDE_PLUGIN_DATA}/dev-flow-gate/<session_id>.json` に置き、30 日より古いものはセッションの開始時に消す。
+dev-flow-gate watches both the GitHub connector (`create_pull_request`, `merge_pull_request`, `enable_pr_auto_merge`, `issue_read`, `issue_write`) and `gh`. It never queries GitHub itself; it decides only from tool calls made in the session (merging a PR created in another session isn't blocked, it just asks Claude to check). State lives in `${CLAUDE_PLUGIN_DATA}/dev-flow-gate/<session_id>.json`, and files older than 30 days are removed at session start.
 
-## mod
+## Mods
 
-| mod | 動き |
+| Mod | What it does |
 |---|---|
-| `rate-limits` | 使用枠（5時間・週）を `/tmp/claude-<uid>/rate-limits.json` に書き出す。`<uid>` は `id -u`。週の残り枠を外のスクリプトが見張る用 |
+| `rate-limits` | Writes usage limits (5-hour and weekly) to `/tmp/claude-<uid>/rate-limits.json`, where `<uid>` is `id -u`. Lets an external script watch the remaining weekly quota |
 
-出力は `{"five_hour": {"used_percentage": 17, "resets_at": 1791553800, "seen_at": 1791552278}, "seven_day": {...}}`（`resets_at`・`seen_at` は epoch 秒）。枠ごとに `resets_at` が大きい方、同じなら `used_percentage` が大きい方を残す（ベストエフォート。プロセス間のロックは無いので、並列セッションがほぼ同時に書くと一時的に古い値へ戻ることがあり、次に使用率が動いたときに直る）。値が変わらなければ書かない。出力先は本人専用（700）のディレクトリで、無ければ作る。リンク・他人所有・700 以外なら何も書かない。中で一時ファイルに書いて `mv -f` で置き換える（失敗したら書かない）。mod が動くのは Claude Code の CLI（`$.process` を使うため）。0.3.0 で devtools（今の repo-setup）から移した。
+The output looks like `{"five_hour": {"used_percentage": 17, "resets_at": 1791553800, "seen_at": 1791552278}, "seven_day": {...}}` (`resets_at` and `seen_at` are epoch seconds). For each window it keeps the entry with the larger `resets_at`, or the larger `used_percentage` on a tie. This is best effort: there's no inter-process lock, so parallel sessions writing at almost the same time can briefly roll back to an older value, which is fixed the next time usage changes. Nothing is written when values don't change. The output directory is private to you (mode 700) and is created if missing; if it is a link, owned by someone else, or not 700, nothing is written. The file is written to a temporary file and replaced with `mv -f` (nothing is written on failure). The mod runs only in the Claude Code CLI (it uses `$.process`).
 
-## 設定（userConfig）
+## Configuration (userConfig)
 
-| キー | 既定 | 使いどころ |
+| Key | Default | Use |
 |---|---|---|
-| `review_heavy` | 空 | 重い PR に使うレビューツール（カンマ区切り。例: `coderabbit,codex`。`none` はツールなし）。リポの行も設定も無ければ `pr-review-triage` がユーザーに聞く |
-| `review_light` | `claude` | 軽い PR に使うもの。`claude` なら Claude がレビューする。ツールの id を書けば軽い PR も重い PR と同じ扱い（ラベルを付けない） |
-| `review_auto` | `off` | ツールの自動レビューが ON か（`on` / `off`）。下の「自動レビューを ON のまま使う」 |
-| `rereview_threshold` | 3 | 重い指摘（Critical・P1 相当）をこの件数以上直したときだけ再レビューを頼む |
+| `review_heavy` | empty | Review tools for heavy PRs (comma-separated, e.g. `coderabbit,codex`; `none` for no tool). If neither a repo line nor this setting exists, `pr-review-triage` asks you |
+| `review_light` | `claude` | What reviews light PRs. `claude` means Claude reviews. Listing tool ids treats light PRs like heavy ones (no label) |
+| `review_auto` | `off` | Whether the tool's auto review is on (`on` / `off`). See "Keeping auto review on" below |
+| `rereview_threshold` | 3 | Request a re-review only when you fixed at least this many severe findings (Critical / P1 or equivalent) |
 
-使えるツールの id は `skills/pr-review-triage/references/tools/` のファイル名（`codex`・`coderabbit`・`copilot`・`gemini`・`cursor-bugbot`）。
+Available tool ids are the file names in `skills/pr-review-triage/references/tools/` (`codex`, `coderabbit`, `copilot`, `gemini`, `cursor-bugbot`).
 
-リポごとに変えるなら、リポの CLAUDE.md（または AGENTS.md）に行で書く。行が userConfig より優先する。`review-notes:` は重点的に見てほしいことを自然言語で書く行で、依頼文と Claude のレビューに渡す（振り分けの判定には使わない）:
+To override per repo, add lines to the repo's CLAUDE.md (or AGENTS.md). Lines take precedence over userConfig. `review-notes:` is free text describing what reviewers should focus on; it goes into the request and into Claude's review (it isn't used for routing):
 
 ```
 review-heavy: coderabbit, codex
 review-light: claude
 review-auto: on
-review-notes: 権限まわりの変更は特に見てほしい
+review-notes: please look closely at permission changes
 ```
 
-### 自動レビューを ON のまま使う（`review-auto: on`）
+### Keeping auto review on (`review-auto: on`)
 
-ツールの自動レビューを ON のままにして、軽い PR だけラベルで外す。手動の `@coderabbitai review` も CodeRabbit の上限に 1 回ずつ数えられるので、自動レビューを止めても枠は節約できない。CodeRabbit は自動レビューの制御（ラベルなど）で外した PR を上限に数えない（[rate limits](https://docs.coderabbit.ai/management/rate-limits)）。
+Keep the tool's auto review on and exclude only light PRs with a label. A manual `@coderabbitai review` also counts against CodeRabbit's limit, so turning auto review off doesn't save quota. CodeRabbit doesn't count PRs excluded by its auto-review controls (such as labels) against the limit ([rate limits](https://docs.coderabbit.ai/management/rate-limits)).
 
-- 軽い PR（`review-light: claude` のとき）は、PR を作る前に判定して `review:light` ラベルを付けて作る。Claude がレビューする
-- 重い PR はツールが自動で走るので、依頼のコメントは投稿せず結果を待つ
-- push で軽い → 重いに変わったら、ラベルを外してツールに手動で頼む
-- `review-light: coderabbit, codex` のようにツールを書くと、軽い PR にもラベルを付けず、重い PR と同じ扱いになる（ラベルの運用をやめるときの戻し方）
-- `review-light: claude, codex` のように `claude` とツールを並べると、軽い PR にラベルを付けて Claude がレビューし、ラベルで外れないツール（Codex など）の自動レビューの結果も待つ。ラベルで外れるツール（CodeRabbit）を並べると自動では結果が来ないので並べない
+- Light PRs (with `review-light: claude`) are classified before creation and created with the `review:light` label. Claude reviews them
+- Heavy PRs are reviewed automatically by the tool, so no request comment is posted; the results are awaited
+- If a push turns a light PR into a heavy one, the label is removed and the tool is asked manually
+- Listing tools, as in `review-light: coderabbit, codex`, means light PRs get no label and are treated like heavy ones (this is how you stop using the label)
+- Listing `claude` and tools, as in `review-light: claude, codex`, labels light PRs, has Claude review them, and also waits for auto reviews from tools that a label doesn't exclude (such as Codex). Don't list tools that the label excludes (CodeRabbit): their results would never arrive
 
-ツール側には、ラベルの付いた PR を自動レビューから外す設定を入れる。CodeRabbit ならリポの `.coderabbit.yaml` に:
+Configure the tool to skip labeled PRs. For CodeRabbit, in the repo's `.coderabbit.yaml`:
 
 ```yaml
 reviews:
@@ -77,33 +86,33 @@ reviews:
     labels: ["!review:light"]
 ```
 
-`!` で始まるラベルは否定の一致（[configuration](https://docs.coderabbit.ai/reference/configuration)）。
+A label starting with `!` is a negative match ([configuration](https://docs.coderabbit.ai/reference/configuration)).
 
-**未確認**（実測していない）:
-1. PR を作るときに付けたラベルで、CodeRabbit が最初の自動レビューの前に外すか
-2. この設定を組織単位で入れられるか（入れられなければリポごとの `.coderabbit.yaml`）
-3. Codex をラベルで自動レビューから外せるか（外せなければ軽い PR でも Codex は走る）
+**Unverified** (not measured yet):
+1. Whether CodeRabbit skips a PR based on a label added at creation time, before its first auto review
+2. Whether this setting can be applied organization-wide (otherwise use a per-repo `.coderabbit.yaml`)
+3. Whether Codex can be excluded from auto review by a label (if not, Codex runs on light PRs too)
 
-## コマンド
+## Commands
 
-- `/workflow:dev-process:review-and-fix` — AI レビュー → 評価 → 修正計画 → 実装までを一続きで行う
+- `/workflow:dev-process:review-and-fix` — runs AI review → assessment → fix plan → implementation in one go
 
-## 組織の値
+## Organization values
 
-組織の値（GitHub 組織・既定リポ・Issue Fields・プロジェクトボード）はスキルに持たない。セッション文脈に「組織設定」という見出しの注入テキストがあればそれを、無ければプロジェクトの CLAUDE.md を読む。社内向けの値は別のプラグインから SessionStart フックで注入する想定。
+Organization values (GitHub org, default repo, Issue Fields, project board) aren't stored in the skills. The skills read an injected text block headed "Organization settings" (or 「組織設定」) from the session context if present, otherwise the project's CLAUDE.md. Internal values are meant to be injected by a separate plugin through a SessionStart hook.
 
-## 保存先
+## Storage
 
-| 環境変数 | 既定 | 中身 |
+| Environment variable | Default | Contents |
 |---|---|---|
-| `HANDOFF_STATE_DIR` | `~/.claude/state/handoff` | handoff の入口 |
-| `RUNBOOK_ROOT` | `~/.claude/runbooks` | runbook の生ログと手順書 |
+| `HANDOFF_STATE_DIR` | `~/.claude/state/handoff` | handoff entry points |
+| `RUNBOOK_ROOT` | `~/.claude/runbooks` | runbook raw logs and written runbooks |
 
-## 前提
+## Requirements
 
-macOS / Linux、`python3`、`git`、`gh`、`jq`
+macOS or Linux, `python3`, `git`, `gh`, `jq`
 
-## テスト
+## Tests
 
 ```bash
 bash plugins/workflow/tests/run-all.sh

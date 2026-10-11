@@ -1,7 +1,7 @@
 #!/bin/sh
-# motion-video の eval を全部流す。Chrome を起動するので Claude Code の Bash sandbox 外で実行する。
-#   sh <motion-video スキルのディレクトリ>/evals/run.sh [--only <name>] [--work <dir>]
-# 生成物は --work（既定 os.tmpdir() 配下）に置く。終了コード 0 = 全 assertion PASS。
+# Runs every motion-video eval. It launches Chrome, so run it outside Claude Code's Bash sandbox.
+#   sh <motion-video skill directory>/evals/run.sh [--only <name>] [--work <dir>]
+# Outputs go to --work (default under os.tmpdir()). Exit code 0 = every assertion PASSed.
 set -e
 DIR=$(cd "$(dirname "$0")" && pwd)
 exec node "$DIR/run_evals.mjs" "$@"

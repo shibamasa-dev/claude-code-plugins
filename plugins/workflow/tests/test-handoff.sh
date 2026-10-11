@@ -1,7 +1,7 @@
 #!/bin/bash
-# handoff.py の複数件化（2026-09-25）の回帰。並行セッションが互いの入口を上書きで消さないこと。
-# 背景: 1 プロジェクト 1 件の上書きだったため、後から閉じたセッションが
-#       別セッションの引き継ぎを黙って消した。
+# Regression test for multiple handoffs per project in handoff.py (2026-09-25): parallel sessions must not overwrite each other's entries.
+# Background: it used to keep one entry per project and overwrite it, so a session closed later
+#             silently erased another session's handoff.
 set -u
 H="$(cd "$(dirname "$0")/.." && pwd)/hooks/handoff.py"
 export HANDOFF_STATE_DIR=$(mktemp -d /tmp/handoff-test-state.XXXX)
@@ -16,33 +16,33 @@ print({0: "zero", 1: "one", 2: "two"}.get(n, "many"))
 PY
 }
 rc() { (cd "$REPO" && python3 "$H" "$@" >/dev/null 2>&1) && echo ok || echo refuse; }
-row() { printf '  %-52s -> %-5s (%s 期待)\n' "$1" "$2" "$3"; }
+row() { printf '  %-52s -> %-5s (expect %s)\n' "$1" "$2" "$3"; }
 
-echo '=== 追記・更新 ==='
+echo '=== add / update ==='
 rc write --entry example-org/handoff-test#1 --state s1 --next n1 >/dev/null
-row 'A を書く' "$(cnt)" one
+row 'write A' "$(cnt)" one
 rc write --entry example-org/handoff-test#2 --state s2 --next n2 >/dev/null
-row '別の入口 B を書く（追記される）' "$(cnt)" two
+row 'write another entry B (appended)' "$(cnt)" two
 rc write --entry example-org/handoff-test#1 --state s1b --next n1b >/dev/null
-row '同じ入口 A を書き直す（件数は増えない）' "$(cnt)" two
-got=$(cd "$REPO" && python3 "$H" show | grep -q 's1b' && ! (cd "$REPO" && python3 "$H" show | grep -q '状態: s1$') && echo ok || echo bad)
-row 'A の中身が新しい値に置き換わる' "$got" ok
+row 'rewrite the same entry A (count stays)' "$(cnt)" two
+got=$(cd "$REPO" && python3 "$H" show | grep -q 's1b' && ! (cd "$REPO" && python3 "$H" show | grep -q 'state: s1$') && echo ok || echo bad)
+row 'A now holds the new values' "$got" ok
 
-echo '=== SessionStart で全件注入 ==='
+echo '=== SessionStart injects all entries ==='
 got=$(printf '{"hook_event_name":"SessionStart","source":"startup","cwd":"%s"}' "$REPO" | python3 "$H" \
       | grep -c 'handoff-test#' | awk '{print ($1==2)?"two":"bad"}')
-row 'startup で 2 件とも出る' "$got" two
+row 'startup shows both entries' "$got" two
 
 echo '=== consume ==='
-row '複数あるとき --entry 無しの consume は拒否' "$(rc consume)" refuse
-row '無い入口の consume は拒否' "$(rc consume --entry example-org/handoff-test#9)" refuse
+row 'consume without --entry is refused when there are several' "$(rc consume)" refuse
+row 'consume of an unknown entry is refused' "$(rc consume --entry example-org/handoff-test#9)" refuse
 rc consume --entry example-org/handoff-test#1 >/dev/null
-row 'consume --entry A で A だけ消える' "$(cnt)" one
-row '1 件だけなら --entry 無しで consume できる' "$(rc consume)" ok
-row '最後の 1 件を消すとファイルも消える' "$(cnt)" zero
+row 'consume --entry A removes only A' "$(cnt)" one
+row 'with one entry left, consume works without --entry' "$(rc consume)" ok
+row 'removing the last entry removes the file' "$(cnt)" zero
 
-echo '=== 別リポの入口 ==='
-row '別リポの入口は書かない' "$(rc write --entry example-org/other#1 --state s --next n)" refuse
-row '--force なら書ける' "$(rc write --entry example-org/other#1 --state s --next n --force)" ok
+echo '=== entry for another repo ==='
+row 'an entry for another repo is not written' "$(rc write --entry example-org/other#1 --state s --next n)" refuse
+row '--force writes it' "$(rc write --entry example-org/other#1 --state s --next n --force)" ok
 
 rm -rf "$HANDOFF_STATE_DIR" "$REPO"

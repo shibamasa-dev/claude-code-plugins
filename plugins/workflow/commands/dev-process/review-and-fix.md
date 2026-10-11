@@ -1,104 +1,104 @@
 ---
-description: AIレビュー実行→評価→修正計画→実装まで一貫して行うワークフロー
+description: Workflow that runs AI review -> evaluation -> fix plan -> implementation end to end
 argument-hint: Optional review scope description
 ---
 
 # Review and Fix Workflow
 
-複数AgentによるAIレビューを実行し、結果を評価して適切な修正を行うワークフロー。
+A workflow that runs AI reviews with multiple agents, evaluates the results, and makes the appropriate fixes.
 
 ## Core Principles
 
-- **コードベース確認必須**: レビューは局所観点の指摘や、アーキテクチャ戦略に沿わない指摘もあるため、必ず関連コードを確認してから判断する
-- **CLAUDE.md遵守**: プロジェクトのアーキテクチャ方針・コーディング規約を最優先
-- **適切な取捨選択**: 全ての指摘を鵜呑みにせず、プロジェクト文脈で妥当性を評価
+- **Always check the codebase**: reviews can raise narrowly scoped points or points that go against the architecture strategy, so always check the related code before deciding
+- **Follow CLAUDE.md**: the project's architecture policy and coding conventions come first
+- **Choose sensibly**: don't take every finding at face value; judge its validity in the project's context
 
 ---
 
 ## Phase 1: Execute Review
 
-**Goal**: 複数Agentによる並列レビューを実行
+**Goal**: Run parallel reviews with multiple agents
 
 **Actions**:
-1. レビュースクリプトをバックグラウンドで実行:
+1. Run the review script in the background:
    ```bash
-   ${CLAUDE_PLUGIN_ROOT}/commands/dev-process/agent-review.sh [タイトル]
+   ${CLAUDE_PLUGIN_ROOT}/commands/dev-process/agent-review.sh [title]
    ```
-   - タイトルは任意（省略可）
-   - 出力ファイル: `.context/review/{YYYYMMDDHHMMSS}_review[_{タイトル}_by_{agent}].md`
-   - **重要**: Bashツールで以下のパラメータを指定すること
+   - The title is optional
+   - Output files: `.context/review/{YYYYMMDDHHMMSS}_review[_{title}_by_{agent}].md`
+   - **Important**: pass these parameters to the Bash tool
      - `run_in_background: true`
      - `dangerouslyDisableSandbox: true`
-2. 非同期でレビュースクリプトからメッセージが通知されるので、スクリプトの完了を待たずに一旦終了する。
+2. The review script notifies its messages asynchronously, so end for now without waiting for the script to finish.
 
 ---
 
 ## Phase 2: Evaluate Review Results
 
-**Goal**: レビュー結果を読み込み、各指摘の妥当性を評価
+**Goal**: Read the review results and evaluate the validity of each finding
 
 **Actions**:
-1. Phase 1で取得したstdout出力のレビュー結果を分析
-2. 各指摘について以下を確認:
-   - **関連するソースコードを必ず読む**
-   - CLAUDE.mdのアーキテクチャ方針との整合性
-   - プロジェクト固有の事情（将来用残置コード、意図的な設計など）
-   - 指摘の技術的妥当性
-3. 指摘を以下に分類:
-   - ✅ **採用**: プロジェクト方針に沿った有効な指摘
-   - ⚠️ **要検討**: 一部妥当だが調整が必要
-   - ❌ **不採用**: アーキテクチャ戦略に反する、または文脈を考慮していない
+1. Analyze the review results from the stdout output obtained in Phase 1
+2. For each finding, check:
+   - **Always read the related source code**
+   - Consistency with the architecture policy in CLAUDE.md
+   - Project-specific circumstances (code kept for future use, intentional design, etc.)
+   - The technical validity of the finding
+3. Classify the findings:
+   - ✅ **Adopt**: a valid finding in line with the project policy
+   - ⚠️ **Needs review**: partly valid but needs adjustment
+   - ❌ **Reject**: goes against the architecture strategy, or ignores the context
 
 ---
 
 ## Phase 3: Create Fix Plan
 
-**Goal**: 採用する修正について計画を立案
+**Goal**: Plan the fixes to adopt
 
 **Actions**:
-1. 採用・要検討の指摘をグルーピング（関連するファイル/機能ごと）
-2. 修正の優先順位を決定:
-   - 🔴 Critical: セキュリティ/データ整合性に関わる問題
-   - 🟡 Important: 機能的な問題/パフォーマンス
-   - 🟢 Nice-to-have: コード品質/可読性の改善
-3. 修正計画ファイルを作成:
-   - パス: `.context/plan/YYYYMMDDHHMMSS_fix_{概要タイトル}.md`
-   - 内容:
-     - 修正対象ファイル一覧
-     - 各修正の詳細と理由
-     - 不採用にした指摘とその理由
-     - 実装順序
+1. Group the adopted and needs-review findings (by related file / feature)
+2. Set the priority of the fixes:
+   - 🔴 Critical: issues involving security / data integrity
+   - 🟡 Important: functional issues / performance
+   - 🟢 Nice-to-have: code quality / readability improvements
+3. Create a fix plan file:
+   - Path: `.context/plan/YYYYMMDDHHMMSS_fix_{summary_title}.md`
+   - Contents:
+     - List of files to fix
+     - Details and reasons for each fix
+     - Rejected findings and why
+     - Implementation order
 
 ---
 
 ## Phase 4: Execute Fixes
 
-**Goal**: 計画に基づき修正を実装
+**Goal**: Implement the fixes according to the plan
 
 **Actions**:
-1. 修正計画ファイルを読み込み
-2. 優先順位順に修正を実施
-3. プロジェクトの CLAUDE.md の規約に従う
-4. 関連するテストがあれば実行確認
+1. Read the fix plan file
+2. Make the fixes in priority order
+3. Follow the conventions in the project's CLAUDE.md
+4. Run related tests, if any, to confirm
 
 ---
 
 ## Phase 5: Summary
 
-**Goal**: 完了報告とドキュメント更新
+**Goal**: Report completion and update documents
 
 **Actions**:
-1. 実施した修正のサマリーを作成:
-   - 修正したファイル一覧
-   - 採用した指摘と対応内容
-   - 不採用にした指摘とその理由
-2. 修正計画ファイルに結果を追記
-3. 必要に応じてCLAUDE.mdへのフィードバック提案
+1. Write a summary of the fixes made:
+   - List of files fixed
+   - Adopted findings and how they were addressed
+   - Rejected findings and why
+2. Append the results to the fix plan file
+3. Propose feedback to CLAUDE.md if needed
 
 ---
 
 ## Notes
 
-- 修正計画は `.context/plan/` に保存される
-- 迷った場合はユーザーに相談する
-- アーキテクチャ方針に反する指摘は理由を明記して不採用とする
+- Fix plans are saved in `.context/plan/`
+- Ask the user when unsure
+- Reject findings that go against the architecture policy, stating the reason

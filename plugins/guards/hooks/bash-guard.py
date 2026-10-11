@@ -1,39 +1,39 @@
 #!/usr/bin/env python3
-"""PreToolUse hook: Bash コマンドの汎用ガードディスパッチャ。
+"""PreToolUse hook: a generic guard dispatcher for Bash commands.
 
-matcher は "Bash"（ツール名しかマッチできない）なので全 Bash コールで起動し、
-コマンド内容のフィルタは本スクリプトの RULES で行う。ルール追加＝関数を1つ
-書いて RULES に登録するだけ（hook の追加登録は不要）。
+The matcher is "Bash" (it can only match tool names), so this runs on every Bash call
+and the RULES in this script filter on the command itself. Adding a rule = write one
+function and register it in RULES (no extra hook registration).
 
-現行ルール:
-  （merge-gate は 2026-10-06 に外した。マージの判断は workflow プラグインの dev-flow スキルと
-   dev-flow-gate フックへ移した。自動マージはリポの .claude/dev-flow.json で決める）
-  1. rm-guard    : 再帰 rm (-r/-rf) の破壊事故防止。
-                   - 壊滅的ターゲット(/, ~, $HOME, システムdir, 裸の* 等) → 無条件 deny
-                   - 相対パス / /tmp / $TMPDIR / 設定 worktree_dirs の配下 → allow
-                   - マージ済みでクリーンな linked worktree の root → allow（置き場は問わない）
-                   - それ以外(絶対パス・解決できない変数展開) → deny
-                   - `trash`(macOS のゴミ箱移動) は壊滅的ターゲット以外 allow。取り消せるので、
-                     ユーザーが承認した片付けを Claude が完了できる(2026-10-03 承認)。
-                     未マージ worktree は worktree-guard が止める（置き場は問わない）
-                   **通過マーカーは無い**(2026-09-23 廃止)。目的は「人に確認させる」
-                   ことなので、Claude が自己申告で通せるなら確認が起きない。
-                   同一コマンド内の単純な変数代入(`T=/tmp/x; rm -rf $T`)は解決してから
-                   判定する(解決できたぶんだけ誤爆が減る)。
-                   sudo/env/command/nohup/xargs 等のラッパー・`sh -c`・eval・( )・$( )・
-                   `find -delete`/`-exec rm` も中を展開して同じ判定にかける(2026-10-04)。
-                   ラッパーの長いオプション・短いオプションの束の値も読み飛ばす。開始パスを
-                   省いた find はカレントから、条件なしの `find . -delete` は `rm -rf .` と
-                   同じ扱い(2026-10-06)。
-  2. push-freshness : git push 前に origin/<既定ブランチ> より behind でないことを検証。
-                   既定ブランチは origin/HEAD（無ければ origin/main・origin/master）。
-                   spinoff 等で古い既定ブランチから切ったブランチを最新に追従させ、
-                   テキスト競合だけでなく意味的ドリフト(シグネチャ変更等)を
-                   merge+test で拾わせる。fetch できない(offline)/既定ブランチ上/behind=0
-                   なら素通り。behind>0 のみ deny。
-                   **通過マーカーは無い**(2026-09-22 廃止)。hook 自身が behind を
-                   再計算するので、「取り込んだ」という申告を信じる必要がない。
-                   マーカー方式は Claude が文字列を足すだけで検証ゼロで通過できた。
+Current rules:
+  (merge-gate was removed on 2026-10-06. Merge decisions moved to the workflow plugin's
+   dev-flow skill and dev-flow-gate hook. Auto-merge is configured in the repo's .claude/dev-flow.json)
+  1. rm-guard    : prevents destructive accidents with recursive rm (-r/-rf).
+                   - Catastrophic targets (/, ~, $HOME, system dirs, bare *, etc.) → always deny
+                   - Relative paths / /tmp / $TMPDIR / under the configured worktree_dirs → allow
+                   - Root of a merged, clean linked worktree → allow (wherever it lives)
+                   - Anything else (absolute paths, unresolvable variable expansions) → deny
+                   - `trash` (macOS move-to-Trash) is allowed except for catastrophic targets. It can be
+                     undone, so Claude can finish a cleanup the user approved (approved 2026-10-03).
+                     Unmerged worktrees are stopped by worktree-guard (wherever they live)
+                   **There is no bypass marker** (removed 2026-09-23). The point is to make a
+                   human confirm; if Claude could pass by self-declaration, no confirmation would happen.
+                   Simple variable assignments within the same command (`T=/tmp/x; rm -rf $T`)
+                   are resolved before judging (fewer false positives, as far as they resolve).
+                   Wrappers such as sudo/env/command/nohup/xargs, `sh -c`, eval, ( ), $( ),
+                   and `find -delete`/`-exec rm` are expanded and judged the same way (2026-10-04).
+                   Values of wrappers' long options and short-option bundles are skipped too. A find
+                   without a start path starts from the current directory, and an unfiltered
+                   `find . -delete` is treated like `rm -rf .` (2026-10-06).
+  2. push-freshness : before git push, verify the branch is not behind origin/<default branch>.
+                   The default branch is origin/HEAD (else origin/main or origin/master).
+                   Makes branches cut from a stale default branch (e.g. by spinoffs) catch up,
+                   so merge+test catches semantic drift (signature changes, etc.), not just
+                   text conflicts. Passes if fetch fails (offline), on the default branch, or
+                   behind=0. Denies only when behind>0.
+                   **There is no bypass marker** (removed 2026-09-22). The hook recomputes
+                   behind itself, so there is no need to trust a claim of "merged it in".
+                   With the marker, Claude could pass with zero verification just by adding a string.
 """
 import fnmatch
 import glob
@@ -45,10 +45,10 @@ import shlex
 import subprocess
 import sys
 
-# 実行中の Bash コールの cwd (main で hook 入力から設定)。git 系ルールが参照する。
+# cwd of the Bash call being checked (set from the hook input in main). Used by the git rules.
 _CWD = None
 
-HOME = os.path.normpath(os.path.expanduser("~"))   # $HOME の末尾 / や // で接頭辞判定が外れないように
+HOME = os.path.normpath(os.path.expanduser("~"))   # so a trailing / or // in $HOME doesn't break prefix checks
 
 SYSTEM_DIRS = {
     "/etc", "/usr", "/var", "/bin", "/sbin", "/opt",
@@ -57,9 +57,9 @@ SYSTEM_DIRS = {
 
 
 def _option_dirs(key: str) -> tuple:
-    """プラグインの設定（userConfig）に書いたフォルダの一覧。Claude Code がフックに
-    CLAUDE_PLUGIN_OPTION_<KEY> として渡す（カンマ区切り、`~` 可）。空なら ()。
-    ルート・ホーム・システムdir は置き場として受け付けない（丸ごと安全扱いになるため）。"""
+    """Folders listed in the plugin settings (userConfig). Claude Code passes them to hooks as
+    CLAUDE_PLUGIN_OPTION_<KEY> (comma-separated, `~` allowed). () if empty.
+    Root, home and system dirs are not accepted as locations (they would all become "safe")."""
     out = []
     for part in os.environ.get("CLAUDE_PLUGIN_OPTION_" + key.upper(), "").split(","):
         part = os.path.expandvars(os.path.expanduser(part.strip()))
@@ -72,7 +72,7 @@ def _option_dirs(key: str) -> tuple:
     return tuple(dict.fromkeys(out))
 
 
-# worktree をまとめて置くフォルダ（設定 worktree_dirs。既定は空）
+# Folders that hold worktrees (setting worktree_dirs; empty by default)
 WORKTREE_DIRS = _option_dirs("worktree_dirs")
 
 SAFE_PREFIXES = ("/tmp/", "/private/tmp/") + tuple(d + "/" for d in WORKTREE_DIRS)
@@ -90,7 +90,7 @@ def deny(reason: str) -> dict:
 
 
 def ask(reason: str) -> dict:
-    """ユーザーに許可の確認を出させる。deny と違い、ユーザーがその場で通せる。"""
+    """Make Claude Code ask the user for permission. Unlike deny, the user can allow it on the spot."""
     return {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -105,7 +105,7 @@ HEREDOC_RE = re.compile(r"(?<!<)<<(?!<)-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 
 
 def _strip_heredocs(command: str) -> str:
-    """heredoc の本文を落とす。本文はコマンドではなくデータ（issue 本文・SQL 等）。"""
+    """Drop heredoc bodies. A body is data (an issue body, SQL, etc.), not commands."""
     out, pending = [], []
     for line in command.split("\n"):
         if pending:
@@ -117,23 +117,23 @@ def _strip_heredocs(command: str) -> str:
     return "\n".join(out)
 
 
-SUBST = "$__SUBST__"   # コマンド置換を外側のセグメントに残すときの印（解決不能な変数として扱われる）
+SUBST = "$__SUBST__"   # marker left in the outer segment for a command substitution (treated as an unresolvable variable)
 
 
 def _parse_segments(command: str) -> list:
-    """コマンドを単純コマンド単位のセグメントに分ける。
+    """Split a command into segments, one per simple command.
 
-    返り値は dict(text, depth, before, after) のリスト。before/after は前後の区切り
-    （'^' 先頭, '$' 末尾, ';' '&&' '||' '|' '&' '\\n' '(' ')'）。
-    - 引用符の中では分割しない（中はデータ）。ただし `$( )` とバッククォートは
-      ダブルクォートの中でも実行されるので、中身を別セグメント(depth+1)として取り出す
-    - 引用符の外の `( )` もサブシェルとして中身を別セグメント(depth+1)にする
-    - `2>&1` `&>` の & は区切りではない
+    Returns a list of dict(text, depth, before, after). before/after are the surrounding separators
+    ('^' start, '$' end, ';' '&&' '||' '|' '&' '\\n' '(' ')').
+    - Don't split inside quotes (the contents are data). But `$( )` and backquotes run even
+      inside double quotes, so their contents become a separate segment (depth+1)
+    - `( )` outside quotes is a subshell; its contents also become a separate segment (depth+1)
+    - The & in `2>&1` and `&>` is not a separator
     """
     s = _strip_heredocs(command)
     out = []
     st = {"buf": [], "before": "^", "depth": 0, "quote": None}
-    stack = []   # (closer, 外側の状態)
+    stack = []   # (closer, outer state)
 
     def flush(sep):
         out.append({"text": "".join(st["buf"]), "depth": st["depth"],
@@ -149,7 +149,7 @@ def _parse_segments(command: str) -> list:
         flush(")")
         closer, outer = stack.pop()
         st.update(outer)
-        if closer != "(":           # $( ) / ` ` は外側の語の一部として印を残す
+        if closer != "(":           # $( ) / ` ` leave a marker as part of the outer word
             st["buf"].append(SUBST)
         else:
             st["before"] = ")"
@@ -190,11 +190,11 @@ def _parse_segments(command: str) -> list:
             if top in (")", "("):
                 close_subst()
             else:
-                flush(")")          # case のパターン等。区切りとして扱う
+                flush(")")          # case patterns etc. Treat as a separator
             i += 1
             continue
         if c == "(" and st["buf"] and st["buf"][-1] in "?*+@!":
-            # extglob（`@(a|b)` など）は語の一部。中の `|` で区切らない
+            # extglob (`@(a|b)` etc.) is part of the word. Don't split on the `|` inside
             j, d = i, 0
             while j < len(s):
                 d += {"(": 1, ")": -1}.get(s[j], 0)
@@ -214,7 +214,7 @@ def _parse_segments(command: str) -> list:
             flush(two); i += 2
             continue
         if c == "&" and (s[i + 1:i + 2] == ">" or (i > 0 and s[i - 1] in "<>")):
-            st["buf"].append(c); i += 1   # リダイレクト（2>&1 / &>）
+            st["buf"].append(c); i += 1   # redirection (2>&1 / &>)
             continue
         if c in "|;&\n":
             flush(c); i += 1
@@ -222,7 +222,7 @@ def _parse_segments(command: str) -> list:
         st["buf"].append(c)
         i += 1
     flush("$")
-    while stack:                      # 閉じていない括弧: 外側の残りも捨てずに評価する
+    while stack:                      # unclosed parentheses: still evaluate the rest of the outer levels
         _, outer = stack.pop()
         st.update(outer)
         flush("$")
@@ -230,18 +230,18 @@ def _parse_segments(command: str) -> list:
 
 
 def _split_segments(command: str):
-    """パイプ/セミコロン/&&/改行/サブシェル/コマンド置換で分割したテキストのリスト。"""
+    """List of text pieces split on pipes, semicolons, &&, newlines, subshells and command substitutions."""
     return [seg["text"] for seg in _parse_segments(command)]
 
 
-# `$NAME` と `${NAME}` だけ。`${NAME:-word}` のような演算子つきの展開は解決しない（＝$ が残り判定不能になる）。
-# 以前は `${NAME` の部分だけ置き換えて `:-/}` が残り、`T=; rm -rf ${T:-/}` が相対パスに見えていた
+# Only `$NAME` and `${NAME}`. Expansions with operators such as `${NAME:-word}` are not resolved (the $ stays = undecidable).
+# Previously only the `${NAME` part was replaced, leaving `:-/}`, so `T=; rm -rf ${T:-/}` looked like a relative path
 VAR_REF_RE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))")
 ASSIGN_TOKEN_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", re.S)
 
 
 def _resolve(raw: str, assigns: dict) -> str:
-    """判明している代入だけを展開する。未知の変数はそのまま残す（＝other に倒れる）。"""
+    """Expand only known assignments. Unknown variables stay as they are (= falls to other)."""
     if not assigns:
         return raw
 
@@ -252,16 +252,16 @@ def _resolve(raw: str, assigns: dict) -> str:
 
 
 def _resolved_value(raw: str, assigns: dict):
-    """代入の右辺を静的に解決する。解決できなければ None（＝その変数は以後 unknown）。"""
+    """Statically resolve the right-hand side of an assignment. None if it can't be resolved (= the variable is unknown from then on)."""
     v = _resolve(raw, assigns)
     if "$" in v or "`" in v:
         return None
     return os.path.expanduser(v) if v.startswith("~") else v
 
 
-# ------------------------------------------------- 単純コマンドの列挙（全ルール共通）
-# 実行を別コマンドへ渡すだけのラッパー。読み飛ばして中のコマンドを評価する。
-# 値を取るオプションは次のトークンも読み飛ばす。
+# ------------------------------------------ enumerating simple commands (shared by all rules)
+# Wrappers that just hand execution to another command. Skip them and evaluate the inner command.
+# For options that take a value, skip the next token too.
 _WRAPPER_OPTS_WITH_VALUE = {
     "sudo": {"-u", "-g", "-h", "-p", "-C", "-D", "-R", "-r", "-t", "-T", "-U",
              "--user", "--group", "--host", "--prompt", "--close-from", "--chdir", "--chroot",
@@ -284,8 +284,8 @@ _SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
 
 
 def _short_valued(a: str, with_val: set):
-    """短いオプションの束（`-nu root` / `-uroot`）を getopt と同じに読む。
-    returns (値を取る文字, 束に続けて書かれた値 or None)。値を取る文字が無ければ (None, None)。"""
+    """Read a short-option bundle (`-nu root` / `-uroot`) the way getopt does.
+    returns (the letter that takes a value, the value attached to the bundle or None). (None, None) if no letter takes a value."""
     for j, c in enumerate(a[1:], 1):
         if "-" + c in with_val:
             return c, (a[j + 1:] or None)
@@ -293,11 +293,11 @@ def _short_valued(a: str, with_val: set):
 
 
 def _takes_next(a: str, with_val: set) -> bool:
-    """オプション a が次のトークンを値として取るか。
+    """Whether option a takes the next token as its value.
 
-    `--user root` の長い形と、`-nu root` のように値を取る短いオプションが束の最後に来る形も
-    見る。読み落とすと値が実行コマンドに化ける（`sudo --user root rm -rf /` が
-    `root rm -rf /` になってガードを素通りした）。"""
+    Handles the long form `--user root` and a value-taking short option at the end of a bundle
+    such as `-nu root`. Missing these turns the value into the command (`sudo --user root rm -rf /`
+    became `root rm -rf /` and slipped past the guard)."""
     if a.startswith("--"):
         return "=" not in a and a in with_val
     c, attached = _short_valued(a, with_val)
@@ -306,13 +306,13 @@ _KEYWORDS = {"{", "}", "!", "if", "then", "else", "elif", "do", "while", "until"
 
 
 def _unwrap(tokens: list):
-    """ラッパーを剥がす。returns (env, tokens, nested, flags)
+    """Strip wrappers. returns (env, tokens, nested, flags)
 
-    env    : 先頭（とラッパー中）の環境変数代入
-    tokens : 実際に実行されるコマンド（空なら代入だけ or 中身は nested）
-    nested : `sh -c STR` / `eval ...` / `env -S STR` の文字列（再帰して評価する）
-    flags  : {'xargs': 引数が標準入力から来る, 'shell_state': eval/source のように
-              今のシェルの cwd・変数を書き換えうる, 'chdir': env -C で cwd が変わる}
+    env    : environment variable assignments at the start (and within wrappers)
+    tokens : the command actually executed (empty = assignments only, or the contents are in nested)
+    nested : strings from `sh -c STR` / `eval ...` / `env -S STR` (evaluated recursively)
+    flags  : {'xargs': arguments come from stdin, 'shell_state': may change the current shell's
+              cwd/variables like eval/source, 'chdir': env -C changes the cwd}
     """
     env, nested, flags = {}, [], {"xargs": False, "shell_state": False, "chdir": False}
     t = list(tokens)
@@ -332,7 +332,7 @@ def _unwrap(tokens: list):
             continue
         b = os.path.basename(h)
         if b in ("command", "builtin") and len(t) > 1 and t[1] in ("-v", "-V"):
-            break   # 実行ではなく問い合わせ
+            break   # a lookup, not an execution
         if b == "env":
             t.pop(0)
             while t:
@@ -344,7 +344,7 @@ def _unwrap(tokens: list):
                     t.pop(0)
                     break
                 if not a.startswith("-") or a == "-":
-                    if a == "-":    # `env -` は -i と同じ
+                    if a == "-":    # `env -` is the same as -i
                         t.pop(0)
                         continue
                     break
@@ -353,7 +353,7 @@ def _unwrap(tokens: list):
                     name, eq, attached = a.partition("=")
                     opt = {"--unset": "u", "--chdir": "C", "--split-string": "S"}.get(name)
                     attached = attached if eq else None
-                else:   # `-iu FOO` のような束も読む
+                else:   # also read bundles like `-iu FOO`
                     opt, attached = _short_valued(a, {"-u", "-C", "-S"})
                 if opt is None:
                     continue
@@ -378,7 +378,7 @@ def _unwrap(tokens: list):
                     break
                 if b == "sudo" and (a.startswith("--chdir") or
                                     (not a.startswith("--") and _short_valued(a, with_val)[0] == "D")):
-                    flags["chdir"] = True   # sudo -D/--chdir DIR で cwd が変わる
+                    flags["chdir"] = True   # sudo -D/--chdir DIR changes the cwd
                 if _takes_next(a, with_val) and t:
                     t.pop(0)
             if b in ("timeout", "gtimeout") and t:
@@ -409,16 +409,16 @@ def _unwrap(tokens: list):
 
 
 def _certain(seg: dict) -> bool:
-    """このセグメントが今のシェルで必ず実行されるか（cd・変数代入が後続に効くと言えるか）。
+    """Whether this segment is certain to run in the current shell (so a cd or assignment affects what follows).
 
-    サブシェルの中・条件付き（`a && cd x` / `a || cd x`）・パイプ・バックグラウンドの
-    cd や代入は、後続に効くとは限らない。"""
+    A cd or assignment inside a subshell, conditional (`a && cd x` / `a || cd x`), pipe or
+    background job does not necessarily affect what follows."""
     return (seg["depth"] == 0 and seg["before"] in ("^", ";", "\n", "&", ";;")
             and seg["after"] not in ("|", "|&", "&"))
 
 
 def _resolve_cd(tokens: list, cur, assigns: dict):
-    """`cd [-L|-P] [dir]` の移動先。判定不能なら None。"""
+    """Destination of `cd [-L|-P] [dir]`. None if undecidable."""
     args = [a for a in tokens[1:] if a not in ("-L", "-P", "-e", "-@")]
     if not args:
         return HOME
@@ -428,7 +428,7 @@ def _resolve_cd(tokens: list, cur, assigns: dict):
     if v is None:
         return None
     if not os.path.isabs(v):
-        # CDPATH があると相対名の行き先が変わる
+        # with CDPATH set, a relative name may go somewhere else
         if cur is None or (os.environ.get("CDPATH") and not v.startswith(".")):
             return None
         v = os.path.join(cur, v)
@@ -437,7 +437,7 @@ def _resolve_cd(tokens: list, cur, assigns: dict):
 
 
 class Cmd:
-    """列挙された単純コマンド1つ。cwd は実行される作業ディレクトリ（判定不能なら None）。"""
+    """One enumerated simple command. cwd is the directory it runs in (None if undecidable)."""
     __slots__ = ("env", "tokens", "cwd", "raw", "opaque", "xargs", "assigns")
 
     def __init__(self, env, tokens, cwd, raw, opaque, xargs, assigns):
@@ -449,8 +449,8 @@ _CMDS_CACHE = {}
 
 
 def _commands(command: str) -> list:
-    """command に含まれる単純コマンドを、ラッパー・`sh -c`・eval・サブシェル・コマンド置換の
-    中まで展開して列挙する（全ルール共通。メモ化）。"""
+    """Enumerate the simple commands in command, expanding wrappers, `sh -c`, eval, subshells
+    and command substitutions (shared by all rules; memoized)."""
     key = (command, _CWD)
     if key not in _CMDS_CACHE:
         start = _CWD if (_CWD and os.path.isdir(_CWD)) else None
@@ -463,8 +463,8 @@ def _walk(command: str, cwd, assigns: dict, level: int):
         yield Cmd({}, [], None, command, True, False, {})
         return
     cur, assigns = cwd, dict(assigns)
-    funcs = False   # 関数が定義された（cd 等が上書きされうる）
-    compound = 0    # if/while/until/for/select/case の中（中の cd・代入は実行されるとは限らない）
+    funcs = False   # a function was defined (cd etc. may be overridden)
+    compound = 0    # inside if/while/until/for/select/case (a cd or assignment inside may not run)
     for seg in _parse_segments(command):
         text = seg["text"].strip()
         if not text:
@@ -476,32 +476,33 @@ def _walk(command: str, cwd, assigns: dict, level: int):
             raw_tokens = text.split()
             opaque = True
         if (seg["after"] == "(" and len(raw_tokens) == 1) or raw_tokens[:1] == ["function"]:
-            # 関数定義（`cd() { :; }` / `function cd {…}`）。以後 cd 等の意味が変わりうるので
-            # 以後の cwd は判定不能にする（定義の本体は後続セグメントとして評価される）
+            # A function definition (`cd() { :; }` / `function cd {…}`). cd etc. may mean something else
+            # from here on, so the cwd becomes undecidable (the body is evaluated as the following segments)
             cur, funcs = None, True
             assigns = {k: None for k in assigns}
             continue
         head = raw_tokens[0] if raw_tokens else ""
         if head in ("if", "while", "until", "for", "select", "case"):
-            compound += 1   # 条件部の cd も失敗しうるので、開いた行から不確定にする
+            compound += 1   # a cd in the condition may fail too, so uncertainty starts at the opening line
         env, tokens, nested, flags = _unwrap(raw_tokens)
         certain = _certain(seg) and compound == 0
         b = os.path.basename(tokens[0]) if tokens else ""
         here = None if flags["chdir"] else cur
         yield Cmd(env, tokens, here, text, opaque, flags["xargs"], dict(assigns))
-        # `sh -c` 等は子シェルなので、export していない変数は見えない（`X=/tmp/a; bash -c 'rm -rf $X/*'`
-        # の $X は空）。export 済みかは静的に決めきれないので不明にする。eval は今のシェルで動く
+        # `sh -c` etc. run in a child shell, which doesn't see unexported variables (in
+        # `X=/tmp/a; bash -c 'rm -rf $X/*'`, $X is empty). Whether it was exported can't be decided
+        # statically, so mark them unknown. eval runs in the current shell
         child = assigns if flags["shell_state"] else {k: None for k in assigns}
         for n in nested:
             yield from _walk(n, here, child, level + 1)
         if b == "find":
-            # `-exec rm <パス> ;` の中のコマンドも単純コマンドとして評価する（開始パスだけ見ると、
-            # 開始パスと無関係なパスを消す action を見落とす）。`{}` は見つかった開始パス配下の
-            # エントリで、開始パスの判定がそれを受け持つので相対名のまま残す
+            # Also evaluate the command inside `-exec rm <path> ;` as a simple command (looking only at
+            # the start path misses actions that delete paths unrelated to it). `{}` is an entry found
+            # under the start path, which the start-path check covers, so it stays a relative name
             for action in _find_action_cmds(tokens):
                 yield from _walk(shlex.join(action), here, assigns, level + 1)
-        # ---- このセグメントが今のシェルの状態（変数・cwd）をどう変えるか
-        if not tokens and env:                      # 純粋な代入 `T=/tmp/x`
+        # ---- how this segment changes the current shell's state (variables, cwd)
+        if not tokens and env:                      # a plain assignment `T=/tmp/x`
             for k, v in env.items():
                 assigns[k] = _resolved_value(v, assigns) if certain else None
         elif b in ("export", "declare", "typeset", "local", "readonly"):
@@ -525,10 +526,10 @@ def _walk(command: str, cwd, assigns: dict, level: int):
 
 
 def _git_parse(tokens: list, cwd, assigns: dict):
-    """`git [global opts] <sub> <args>` を読む。returns (gitcwd, sub, subargs)。
+    """Read `git [global opts] <sub> <args>`. returns (gitcwd, sub, subargs).
 
-    -C は重ねると連結される（git -C a -C b == a/b）。--git-dir / --work-tree は
-    どのリポに作用するか静的に決めきれないので gitcwd=None。"""
+    Repeated -C options are joined (git -C a -C b == a/b). With --git-dir / --work-tree,
+    which repo is affected can't be decided statically, so gitcwd=None."""
     args, i, gcwd = tokens[1:], 0, cwd
     while i < len(args):
         a = args[i]
@@ -567,25 +568,25 @@ def _classify_target(raw: str, assigns: dict = None) -> str:
     if "$" in t or "`" in t:
         t = _resolve(t, assigns or {})
     if "$" in t or "`" in t:
-        return "other"  # 解決できなかった変数/コマンド置換は静的に判定不能
+        return "other"  # unresolved variables/command substitutions can't be judged statically
     expanded = os.path.expanduser(t) if t.startswith("~") else t
     norm = os.path.normpath(expanded)
     stripped_glob = norm[:-2] if norm.endswith("/*") else norm
-    # 壊滅的: ルート・ホーム・システムdir・裸のグロブ・カレント全体
+    # catastrophic: root, home, system dirs, bare globs, the whole current directory
     if t in {"*", ".", "./", "..", "../", ".*"}:
         return "catastrophic"
     if stripped_glob in {"/", HOME} or stripped_glob in SYSTEM_DIRS:
         return "catastrophic"
     if norm == "/*":
         return "catastrophic"
-    # 安全: 相対パス（.. を含まない）
+    # safe: relative paths (without ..)
     if not norm.startswith("/") and ".." not in norm.split(os.sep):
         return "safe"
-    # 安全: 一時領域・worktree の置き場の配下
+    # safe: under temp areas or worktree locations
     if norm.startswith(SAFE_PREFIXES) or (norm + "/").startswith(SAFE_PREFIXES):
         return "safe"
-    # 安全: マージ済みでクリーンな linked worktree の root（置き場は問わない。
-    # 未マージなら worktree-guard が先に止める。片付けのたびに確認を出さないため）
+    # safe: root of a merged, clean linked worktree (wherever it lives; an unmerged one is
+    # stopped earlier by worktree-guard. Avoids a prompt on every cleanup)
     if _is_linked_worktree_root(norm) and _worktree_state(norm) == "merged_clean":
         return "safe"
     return "other"
@@ -596,7 +597,7 @@ _FIND_ACTIONS = ("-exec", "-execdir", "-ok", "-okdir")
 
 
 def _find_action_cmds(tokens: list) -> list:
-    """find の `-exec`/`-execdir`/`-ok`/`-okdir` が実行するコマンド（トークン列）のリスト。"""
+    """List of commands (token lists) run by find's `-exec`/`-execdir`/`-ok`/`-okdir`."""
     out, i = [], 1
     while i < len(tokens):
         if tokens[i] in _FIND_ACTIONS:
@@ -616,9 +617,9 @@ def _is_recursive_rm(tokens: list) -> bool:
 
 
 def _find_delete_starts(tokens: list):
-    """`find <start>... -delete` / `-exec rm ...` なら開始パスのリスト、削除しない find なら None。
+    """The start paths for `find <start>... -delete` / `-exec rm ...`; None for a find that doesn't delete.
 
-    find は開始パス配下を再帰的にたどるので、削除アクション付きなら開始パスの再帰削除とみなす。"""
+    find walks the start paths recursively, so with a delete action it counts as a recursive delete of the start paths."""
     if not tokens or os.path.basename(tokens[0]) != "find":
         return None
     deleting = "-delete" in tokens
@@ -638,11 +639,11 @@ def _find_delete_starts(tokens: list):
         i += 1
     while i < len(tokens) and not tokens[i].startswith(("-", "(", "!", ")")):
         starts.append(tokens[i]); i += 1
-    # 開始パスを省くと GNU find はカレント（.）からたどる（`find -delete` が素通りしていた）
+    # Without a start path GNU find walks from the current directory (.) (`find -delete` used to slip through)
     return starts or ["."]
 
 
-# 条件で絞らない find の要素（大域オプション・アクション・演算子）。値を取るものは値の数
+# find elements that don't filter (global options, actions, operators). For value-taking ones, the number of values
 _FIND_NOFILTER = {"-depth": 0, "-d": 0, "-maxdepth": 1, "-mindepth": 1, "-xdev": 0, "-mount": 0,
                   "-follow": 0, "-noleaf": 0, "-ignore_readdir_race": 0,
                   "-noignore_readdir_race": 0, "-daystart": 0, "-regextype": 1, "-warn": 0,
@@ -651,7 +652,7 @@ _FIND_NOFILTER = {"-depth": 0, "-d": 0, "-maxdepth": 1, "-mindepth": 1, "-xdev":
 
 
 def _find_exec_deletes(tokens: list) -> bool:
-    """find の -exec / -execdir などで rm・unlink・trash を呼んでいるか。"""
+    """Whether find calls rm, unlink or trash via -exec / -execdir etc."""
     for i, a in enumerate(tokens):
         if a in _FIND_ACTIONS:
             action = []
@@ -665,13 +666,13 @@ def _find_exec_deletes(tokens: list) -> bool:
 
 
 def _find_filtered(tokens: list) -> bool:
-    """find に名前・種類などの条件が付いているか。`find . -name '*.pyc' -delete` は普通の掃除だが、
-    条件なしの `find . -delete` はカレントを丸ごと消す（`rm -rf .` と同じ）。"""
+    """Whether find has a filter such as a name or type. `find . -name '*.pyc' -delete` is ordinary cleanup,
+    but an unfiltered `find . -delete` wipes the whole current directory (same as `rm -rf .`)."""
     i = 1
     while i < len(tokens) and tokens[i] in ("-H", "-L", "-P", "-E", "-X", "-d", "-s", "-x"):
         i += 1
     while i < len(tokens) and not tokens[i].startswith(("-", "(", "!", ")")):
-        i += 1   # 開始パス
+        i += 1   # start paths
     while i < len(tokens):
         a = tokens[i]
         if a in _FIND_ACTIONS:
@@ -690,12 +691,12 @@ _OPAQUE_ABS_RE = re.compile(r"(^|\s)[\"']?(/|~|\$\{?HOME)")
 
 
 def rule_rm_guard(command: str):
-    # **通過マーカーは持たない**(2026-09-23 廃止)。以前は特定の環境変数を先頭に
-    # 付ければ素通りしたが、それは Claude 自身が立てられる「自己申告」だった。
-    # このルールの目的は**人に確認させること**なので、Claude が自分で通せるなら確認は起きない。
-    # push-freshness と違い rm には「安全である」ことを測る方法が無く、判断そのものが要る。
-    # だから判断する人に返す＝Claude には通させない。
-    # sudo/env/xargs 等のラッパー・`sh -c`・eval・サブシェル・コマンド置換の中も _commands が展開する。
+    # **No bypass marker** (removed 2026-09-23). Prefixing a certain env var used to let it through,
+    # but that was a "self-declaration" Claude could set by itself.
+    # The point of this rule is **to make a human confirm**; if Claude can pass on its own, no confirmation happens.
+    # Unlike push-freshness, there is no way to measure that an rm is "safe"; it takes judgment.
+    # So hand it back to the person who judges = Claude can't pass it.
+    # _commands also expands wrappers such as sudo/env/xargs, `sh -c`, eval, subshells and command substitutions.
     worst = None  # None < other < catastrophic
 
     def note(c):
@@ -708,15 +709,15 @@ def rule_rm_guard(command: str):
     for cmd in _commands(command):
         tokens, assigns = cmd.tokens, cmd.assigns
         if cmd.opaque and _OPAQUE_DELETE_RE.search(cmd.raw) and _OPAQUE_ABS_RE.search(cmd.raw):
-            note("other")   # 引用符が閉じていない等で正しく読めない削除は安全側
+            note("other")   # a delete that can't be parsed (unclosed quotes etc.) errs on the safe side
         if not tokens:
             continue
         cmd_name = os.path.basename(tokens[0])
         targets = [t for t in tokens[1:] if not t.startswith("-")]
         if cmd.xargs:
-            targets.append("$__XARGS__")   # 引数は標準入力から来る＝静的に判定不能
+            targets.append("$__XARGS__")   # arguments come from stdin = can't be judged statically
         if cmd_name == "trash":
-            # ゴミ箱へ移すだけで取り消せるので、安全領域外でも通す。壊滅的ターゲットだけ止める
+            # Moving to the Trash can be undone, so allow it outside the safe areas too. Stop only catastrophic targets
             if any(_classify_target(t, assigns) == "catastrophic" for t in targets):
                 note("catastrophic")
             continue
@@ -724,8 +725,8 @@ def rule_rm_guard(command: str):
         if starts is not None:
             filtered = _find_filtered(tokens)
             for t in starts:
-                # `find . -name x -delete` のように条件で絞るのが普通なので、カレントの . は相対扱い。
-                # 条件なしなら `rm -rf .` と同じく壊滅的
+                # Filtering like `find . -name x -delete` is the norm, so the current . counts as relative.
+                # Unfiltered, it is catastrophic like `rm -rf .`
                 note("safe" if t in (".", "./") and filtered else _classify_target(t, assigns))
             continue
         if cmd_name != "rm" or not _is_recursive_rm(tokens):
@@ -734,22 +735,22 @@ def rule_rm_guard(command: str):
             note(_classify_target(t, assigns))
     if worst == "catastrophic":
         return deny(
-            "🛑 rm-guard(グローバルhook): 壊滅的な再帰削除ターゲット(ルート/ホーム/システムdir/裸の * 等)を検出。"
-            "この操作は許可できない。本当に必要ならユーザーに明示承認を取り、対象を具体的なパスに絞って出し直すこと。"
+            "🛑 rm-guard (global hook): catastrophic recursive delete target detected (root, home, system dir, bare *, etc.)."
+            " This operation can't be allowed. If it is truly needed, get explicit user approval and retry with the target narrowed to a specific path."
         )
     if worst == "other":
         return deny(
-            "⚠️ rm-guard(グローバルhook): 一時領域・相対パス以外への再帰削除を検出。\n"
-            "**このゲートを黙らせる環境変数やマーカーは無い。rm -r では消せない。**\n"
-            "次のどれかにすること:\n"
-            "  (1) 対象が /tmp・$TMPDIR・設定した worktree の置き場の配下、または相対パスで済むなら書き直す\n"
-            "  (2) 変数で書いているなら、同じコマンドの中で代入するか、リテラルのパスに展開する\n"
-            "  (3) macOS なら `trash <パス>` でゴミ箱へ移す（取り消せるので通る。ユーザーが削除を承認済みのときに限る）\n"
-            "  (4) trash が無い環境（Linux 等）なら、**何をなぜ消すのかをユーザーに説明し、ユーザーに実行してもらう**\n"
-            "(確認すべきこと: 削除対象は目的の特定パスか / 未コミットの作業・"
-            "他セッションの worktree を巻き込まないか)"
-            "(ユーザー資産に触る場合は先にユーザー承認を取ること)。"
-            "sudo・xargs・sh -c・eval・find -delete 等で包んでも同じ判定になる。"
+            "⚠️ rm-guard (global hook): recursive delete outside temp areas and relative paths detected.\n"
+            "**No environment variable or marker silences this gate. This target can't be deleted with rm -r.**\n"
+            "Do one of the following:\n"
+            "  (1) If the target can be under /tmp, $TMPDIR, a configured worktree location, or a relative path, rewrite it that way\n"
+            "  (2) If it uses a variable, assign it in the same command or expand it to a literal path\n"
+            "  (3) On macOS, move it to the Trash with `trash <path>` (allowed because it can be undone; only when the user has approved the delete)\n"
+            "  (4) Where trash isn't available (Linux, etc.), **explain to the user what will be deleted and why, and have the user run it**\n"
+            "(Check: is the target exactly the intended path? / does it sweep up uncommitted work or "
+            "another session's worktree?)"
+            " (Get user approval first if it touches user assets.)"
+            " Wrapping it in sudo, xargs, sh -c, eval, find -delete, etc. gets the same verdict."
         )
     return None
 
@@ -759,10 +760,10 @@ PUSH_RE = re.compile(r"\bgit\s+push\b")
 
 
 def _effective_cwd(command: str):
-    """git 系ルールが見るべき作業ディレクトリ。ツールの cwd ではなく、コマンド内の
-    `cd <path> && …` や `git -C <path> …` を追って、実際に git が走るディレクトリを返す。
-    （実害: `cd ~/.claude/skills && git commit` を別リポの cwd で判定して誤 deny・2026-09-21）
-    判定不能ならツールの cwd。"""
+    """The working directory the git rules should look at. Rather than the tool's cwd, follow
+    `cd <path> && …` and `git -C <path> …` in the command and return where git actually runs.
+    (Incident: `cd ~/.claude/skills && git commit` was judged in another repo's cwd and wrongly denied, 2026-09-21)
+    Falls back to the tool's cwd if undecidable."""
     cwd = _CWD if (_CWD and os.path.isdir(_CWD)) else None
     if not command:
         return cwd
@@ -783,9 +784,9 @@ def _effective_cwd(command: str):
             return cur
     return cur
 
-# 消す先のパスを調べる git（worktree-guard）は「そのパスのリポ」を見たいので、フックが受け継いだ
-# GIT_DIR などを外した環境で動かす。push・commit の鮮度チェックは、実行されるコマンドと同じ環境
-# （受け継いだ値をそのまま）で見る
+# git calls that inspect the path being deleted (worktree-guard) want "that path's repo", so they run
+# without the GIT_DIR etc. the hook inherited. The push/commit freshness checks use the same
+# environment as the command being run (inherited values as is)
 _GIT_LOCAL_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
                    "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_PREFIX")
 GIT_ENV = {k: v for k, v in os.environ.items() if k not in _GIT_LOCAL_VARS}
@@ -798,8 +799,8 @@ def _git(args, cwd, timeout=8, env=None):
 
 
 def _remote_default(cwd, env=None):
-    """origin が今いう既定ブランチ（ls-remote、読むだけ）。手元の origin/HEAD は fetch で更新されないため先に聞く。
-    繋がらない・認証が要るときは None（待たせない）。"""
+    """The default branch origin reports right now (ls-remote, read-only). Asked first because the local
+    origin/HEAD is not updated by fetch. None if unreachable or auth is needed (don't make anyone wait)."""
     try:
         r = subprocess.run(["git", "ls-remote", "--symref", "origin", "HEAD"], cwd=cwd, capture_output=True, stdin=subprocess.DEVNULL,
                            text=True, timeout=5, env={**(env or os.environ), "GIT_TERMINAL_PROMPT": "0"})
@@ -810,8 +811,8 @@ def _remote_default(cwd, env=None):
 
 
 def _default_branch(cwd, online=True, env=None):
-    """リポの既定ブランチ。origin に聞き、繋がらなければ手元の origin/HEAD、それも無ければ origin/main・origin/master の有る方。
-    online=False は origin に聞かない（commit のたびに通信させないため）。"""
+    """The repo's default branch. Ask origin; if unreachable, the local origin/HEAD; failing that, whichever of origin/main or origin/master exists.
+    online=False doesn't ask origin (so commits don't hit the network every time)."""
     name = _remote_default(cwd, env) if online else None
     if name:
         return name
@@ -826,48 +827,48 @@ def _default_branch(cwd, online=True, env=None):
 
 
 def rule_push_freshness(command: str):
-    # **通過マーカーは持たない。** 以前は特定の環境変数を command の先頭に付ければ
-    # 検証の中身を一切見ずに素通りさせていたが、それは Claude 自身が文字列を足すだけで
-    # 立てられる「自己申告」だった（検証を1つも実施せずにゲートを通過できた）。
-    # このルールが求めているのは「最新を取り込んだ」という申告ではなく、その**結果**であり、
-    # 結果は下で behind 数として機械的に測れる。測れるものを申告で代替しない。
+    # **No bypass marker.** Prefixing a certain env var to the command used to let it through
+    # without checking anything, but that was a "self-declaration" Claude could make just by
+    # adding a string (the gate could be passed with zero checks).
+    # What this rule wants is not a claim of "merged the latest" but its **result**, and the
+    # result is measured mechanically below as the behind count. Don't replace a measurement with a claim.
     if not PUSH_RE.search(command):
         return None
     cwd = _effective_cwd(command)
     if cwd is None:
         return None
     try:
-        # git repo か / 現ブランチ
+        # is it a git repo / current branch
         r = _git(["rev-parse", "--abbrev-ref", "HEAD"], cwd)
         if r.returncode != 0:
             return None
         branch = r.stdout.strip()
         base = _default_branch(cwd)
         if base is None or branch in (base, "main", "master", "HEAD"):
-            return None  # 既定ブランチ自体を push するときは対象外
-        # origin/<既定ブランチ> を取得 (network。offline/slow は素通りさせる=push は元々 network 前提)
+            return None  # pushing the default branch itself is out of scope
+        # fetch origin/<default branch> (network; offline/slow passes through = push needs the network anyway)
         _git(["fetch", "--quiet", "origin", "--", base], cwd)
         r = _git(["rev-list", "--count", f"HEAD..origin/{base}"], cwd)
         if r.returncode != 0:
             return None
         behind = int(r.stdout.strip() or "0")
     except (subprocess.TimeoutExpired, ValueError, OSError):
-        return None  # 判定不能なら邪魔しない
+        return None  # if undecidable, stay out of the way
     if behind == 0:
         return None
     return deny(
-        f"🛑 push-freshness ゲート(グローバルhook): 現ブランチ '{branch}' は "
-        f"origin/{base} より {behind} commits 遅れています。\n"
-        f"古い {base} から切ったまま push すると、テキスト競合だけでなく "
-        "意味的ドリフト(関数シグネチャ変更等・自動マージは通るが実行時に壊れる)を "
-        "見落とします。push 前に最新を取り込み、テストで両立を確認すること:\n"
-        f"  (1) git merge origin/{base}   (競合は解消)\n"
-        "  (2) プロジェクトのテスト/ビルドをフル実行し pass を確認\n"
-        "  (3) そのまま push を再実行する\n"
-        f"(rebase 運用なら merge の代わりに git rebase origin/{base} でも可)。\n"
-        "**このゲートを黙らせる環境変数やマーカーは無い。** behind が 0 になれば自動的に通る。\n"
-        "古い base を意図して push する必要がある場合(backport 等)は、Claude ではなく"
-        "ユーザーが直接実行すること。"
+        f"🛑 push-freshness gate (global hook): the current branch '{branch}' is "
+        f"{behind} commits behind origin/{base}.\n"
+        f"Pushing a branch still cut from an old {base} misses not only text conflicts but "
+        "semantic drift (changed function signatures, etc.: the auto-merge succeeds but it breaks at run time). "
+        "Before pushing, bring in the latest and confirm with tests that both sides work together:\n"
+        f"  (1) git merge origin/{base}   (resolve any conflicts)\n"
+        "  (2) run the project's full test suite/build and confirm it passes\n"
+        "  (3) run the push again as is\n"
+        f"(If you work with rebase, git rebase origin/{base} instead of merge is fine.)\n"
+        "**No environment variable or marker silences this gate.** It passes automatically once behind is 0.\n"
+        "If you really need to push on an old base (a backport, etc.), the user should run it directly, "
+        "not Claude."
     )
 
 
@@ -876,24 +877,24 @@ COMMIT_RE = re.compile(r"\bgit\s+commit\b")
 
 
 def rule_main_commit_freshness(command: str):
-    """古い main の上に commit を積むのを止める。
+    """Stop commits on top of a stale main.
 
-    rule_push_freshness は feature ブランチ専用（main は明示的に対象外）なので、
-    「ローカル main 自体が古い」は誰も見ていなかった。マージは remote で起きるため
-    ローカル main は自動追従せず、pull を忘れると古い main の上に積む → push は
-    non-fast-forward で弾かれ、rebase のやり直しになる。
+    rule_push_freshness is for feature branches only (main is explicitly excluded), so nobody
+    was watching for "local main itself is stale". Merges happen on the remote, so local main
+    doesn't follow automatically; forget to pull and you commit on a stale main → the push is
+    rejected as non-fast-forward and you have to redo it with a rebase.
 
-    ここは PostToolUse の additionalContext ではなく deny が正しい: commit させてから
-    「古かったよ」と言うより、積む前に止める方が手戻りが無い。merge 後の pull 追従は
-    止める対象が無いので git-freshness.py(PostToolUse) が担当する。
+    A deny is right here, not PostToolUse additionalContext: stopping before the commit avoids
+    rework, rather than saying "that was stale" afterwards. Catching up with a pull after a merge
+    has nothing to block, so git-freshness.py (PostToolUse) handles that.
     """
     if not COMMIT_RE.search(command):
         return None
     commits = [c for c in _commands(command) if c.tokens
                and os.path.basename(c.tokens[0]) == "git"
                and _git_parse(c.tokens, c.cwd, c.assigns)[1] == "commit"]
-    # マーカーは commit コマンド自身の先頭の環境変数代入としてだけ効く（echo や
-    # コメントに書いた文字列では通らない）。
+    # The marker works only as an env var assignment at the start of the commit command itself
+    # (a string in an echo or a comment doesn't pass).
     if commits and all(_marker(c, "MAIN_FRESHNESS_OK") for c in commits):
         return None
     cwd = _effective_cwd(command)
@@ -905,36 +906,36 @@ def rule_main_commit_freshness(command: str):
             return None
         branch = r.stdout.strip()
         if branch not in ("main", "master", _default_branch(cwd, online=False)):
-            return None  # feature ブランチは rule_push_freshness が push 時に見る
-        # fetch は best-effort（offline なら素通り＝commit を邪魔しない）
+            return None  # feature branches are checked by rule_push_freshness at push time
+        # fetch is best-effort (offline passes through = doesn't get in the way of the commit)
         _git(["fetch", "--quiet", "origin", "--", branch], cwd)
         r = _git(["rev-list", "--count", f"HEAD..origin/{branch}"], cwd)
         if r.returncode != 0:
             return None
         behind = int(r.stdout.strip() or "0")
     except (subprocess.TimeoutExpired, ValueError, OSError):
-        return None  # 判定不能なら邪魔しない
+        return None  # if undecidable, stay out of the way
     if behind == 0:
         return None
     return deny(
-        f"🛑 main-freshness ゲート(グローバルhook): ローカル '{branch}' は "
-        f"origin/{branch} より {behind} commits 遅れています。\n"
-        "このまま commit すると push が non-fast-forward で弾かれ、積み直しになります。"
-        "さらに、このチェックアウトを直に実行しているジョブがあれば、"
-        "古いままだと**マージ済みのコードが動かない**穴もあります。\n"
-        f"  (1) git pull --ff-only origin {branch}   (未コミット変更があり衝突するなら先に commit/stash。"
-        "自動 stash は事故るので手動で判断すること)\n"
-        "  (2) 問題なければ commit を再実行\n"
-        f"意図的に古い {branch} の上に積む場合のみ、先頭に `MAIN_FRESHNESS_OK=1 ` を付けて再実行。"
+        f"🛑 main-freshness gate (global hook): local '{branch}' is "
+        f"{behind} commits behind origin/{branch}.\n"
+        "Committing now gets the push rejected as non-fast-forward, and you will have to redo it."
+        " Also, if a job runs this checkout directly, staying stale means "
+        "**the merged code never runs**.\n"
+        f"  (1) git pull --ff-only origin {branch}   (if uncommitted changes conflict, commit/stash them first; "
+        "decide by hand, auto-stash causes accidents)\n"
+        "  (2) if all is well, run the commit again\n"
+        f"Only if you deliberately commit on an old {branch}, retry with `MAIN_FRESHNESS_OK=1 ` at the start."
     )
 
 
 # ------------------------------------------------------------- worktree-guard
-# 未マージ worktree の削除禁止（未回収の作業を消さないための強制点。
-# rm-guard は設定 worktree_dirs の配下を SAFE 扱いするため、このルールが rm-guard より先に立つ必要がある）。
-# 置き場に関係なく（Claude Code 標準の <repo>/.claude/worktrees/ なども）、消す先が linked worktree
-# そのものか、それを含む上位のフォルダかを `git worktree list` と `.git` ファイルの走査で見て判定する。
-# worktree_dirs の配下は、判定できないパス（存在しない・変数で行き先が分からない）も止める（2026-10-06）
+# Forbid deleting unmerged worktrees (the enforcement point that keeps unrecovered work from being lost.
+# rm-guard treats paths under the configured worktree_dirs as SAFE, so this rule must run before rm-guard).
+# Wherever they live (including Claude Code's standard <repo>/.claude/worktrees/), it checks whether the
+# target is a linked worktree itself or a folder containing one, via `git worktree list` and a scan for `.git` files.
+# Under worktree_dirs, undecidable paths (missing, or a variable with an unknown destination) are stopped too (2026-10-06)
 
 
 def _worktree_state(path: str):
@@ -944,10 +945,10 @@ def _worktree_state(path: str):
         return "unknown"
     try:
         if _git(["status", "--porcelain"], p, env=GIT_ENV).stdout.strip():
-            return "unmerged"  # dirty＝未回収の作業がある
-        # どれか1つの base に HEAD が完全包含されていればマージ済み。
-        # 最初に解決できた base だけで判定しない — origin/main がローカル main より
-        # 古い repo では「ローカル main へ取り込み済み」を見逃して deny する（実測21コミット差）。
+            return "unmerged"  # dirty = there is unrecovered work
+        # Merged if HEAD is fully contained in any one base.
+        # Don't decide by the first base that resolves — in a repo where origin/main is older than local
+        # main, that misses "already merged into local main" and denies (measured: 21 commits apart).
         resolved = False
         default = _default_branch(p, env=GIT_ENV)
         bases = ([f"origin/{default}", default] if default not in (None, "main", "master") else []) \
@@ -958,9 +959,9 @@ def _worktree_state(path: str):
                 resolved = True
                 if int(r.stdout.strip() or "0") == 0:
                     return "merged_clean"
-        # squash merge は main に別 SHA の1コミットを作るので、トポロジーでは永久に未マージに見える。
-        # このブランチの MERGED PR の head が現 HEAD と一致すれば、作業は main に入っている
-        # （spinoff-session の reap.sh と同じ判定。gh が無い・失敗・不一致は従来どおり）
+        # A squash merge creates one commit with a different SHA on main, so by topology it looks unmerged forever.
+        # If the head of this branch's MERGED PR matches the current HEAD, the work is in main
+        # (same check as spinoff-session's reap.sh. No gh, a failure or a mismatch falls back to the above)
         if _squash_merged(p):
             return "merged_clean"
         return "unmerged" if resolved else "unknown"
@@ -985,18 +986,18 @@ def _squash_merged(p: str) -> bool:
 
 
 def _marker(cmd, name: str) -> bool:
-    """通過マーカー（`NAME=1 <cmd>`）がそのコマンド自身の先頭の環境変数代入として付いているか。
-    以前はコマンド文字列のどこかに含まれれば通していたので、echo やコメントでも通った。"""
+    """Whether the bypass marker (`NAME=1 <cmd>`) is an env var assignment at the start of that command itself.
+    It used to pass if it appeared anywhere in the command string, so an echo or a comment let it through."""
     return cmd.env.get(name) == "1"
 
 
 def _under_worktrees(p: str) -> bool:
-    """p が設定 worktree_dirs のどれかそのものか、その配下か。"""
+    """Whether p is one of the configured worktree_dirs or under one."""
     return any(p == d or p.startswith(d + "/") for d in WORKTREE_DIRS)
 
 
 def _is_linked_worktree_root(p: str) -> bool:
-    """p が linked worktree の root（`.git` が gitdir: …/worktrees/… を指すファイル）か。"""
+    """Whether p is the root of a linked worktree (its `.git` is a file pointing to gitdir: …/worktrees/…)."""
     try:
         with open(os.path.join(p, ".git"), errors="replace") as f:
             return "/worktrees/" in f.read(4096).replace("\\", "/")
@@ -1005,12 +1006,12 @@ def _is_linked_worktree_root(p: str) -> bool:
 
 
 def _linked_worktrees_under(p: str, follow: str = "") -> list:
-    """p 自身か p の下にある linked worktree の実パス（メインの作業ツリーは除く）。
-    p の属するリポの `git worktree list` と、p の中の `.git` ファイルの走査を合わせる。
-    走査が上限で打ち切られたときは None を混ぜる（判定不能として止める側）。
-    p が無い・読めないときは []（rm-guard の判定に任せる）。
-    follow は find のシンボリックリンクの扱い（"H" は開始パスだけ、"L" は中もたどる）。
-    rm はリンク自体しか消さないので、follow が無ければリンクの先は見ない。"""
+    """Real paths of linked worktrees that are p itself or below p (excluding the main working tree).
+    Combines `git worktree list` of the repo p belongs to with a scan for `.git` files inside p.
+    If the scan hits its limit, a None is mixed in (undecidable = block).
+    [] if p doesn't exist or can't be read (left to rm-guard).
+    follow is find's symlink handling ("H" follows start paths only, "L" follows inside too).
+    rm deletes only the link itself, so without follow the link target is not inspected."""
     if not os.path.isdir(p) or (os.path.islink(p) and not follow):
         return []
     if follow:
@@ -1025,29 +1026,29 @@ def _linked_worktrees_under(p: str, follow: str = "") -> list:
         rp = os.path.realpath(p)
         found = [w for w in (os.path.realpath(x) for x in paths[1:])
                  if w == rp or w.startswith(rp.rstrip("/") + "/")]
-    # 別のリポの worktree が中にある場合（git の管理下でない上位フォルダ・関係ないリポの中）も拾う
+    # Also catch worktrees of another repo inside p (a parent folder not under git, or inside an unrelated repo)
     scanned, complete = _scan_worktree_roots(p, follow_links=follow == "L")
     return list(dict.fromkeys(found + scanned + ([] if complete else [None])))
 
 
-# worktree を置く場所ではないので潜らない（中身が多く、走査の上限をすぐ使い切る）
+# Not places where worktrees live, so don't descend (they are large and would use up the scan budget fast)
 _SCAN_SKIP = {".git", "node_modules"}
 
 
-# 1回のフック呼び出しで見るフォルダの数の残り（glob の一致ごと・消す先ごとに戻さない）
+# Remaining number of folders to look at in one hook call (not reset per glob match or per target)
 _scan_budget = None
 
 
 def _scan_worktree_roots(p: str, follow_links: bool = False):
-    """p の下にある linked worktree の root（`.git` が gitdir: …/worktrees/… を指すファイルのフォルダ）と、
-    最後まで見られたか。サブモジュールの `.git` ファイルは modules/ を指すので数えない。
-    深さは決めず、見るフォルダの数をコマンド全体で 20000 までにする（巨大なフォルダや、
-    たくさん一致する glob の削除で待たせない）。
-    上限で打ち切ったら complete=False（見ていない所に worktree が無いとは言えない）。
-    follow_links は `find -L` 用で、フォルダへのリンクもたどる（同じ実体は1回だけ見る）。"""
+    """Roots of linked worktrees under p (folders whose `.git` is a file pointing to gitdir: …/worktrees/…),
+    and whether the scan finished. A submodule's `.git` file points to modules/, so it doesn't count.
+    No depth limit; instead at most 20000 folders per command in total (so deleting a huge folder
+    or a glob with many matches doesn't keep anyone waiting).
+    If cut off at the limit, complete=False (can't claim there is no worktree where we didn't look).
+    follow_links is for `find -L` and also follows links to folders (each real path is visited once)."""
     global _scan_budget
     if _scan_budget is None:
-        _scan_budget = int(os.environ.get("GUARDS_SCAN_LIMIT") or 20000)   # 環境変数はテスト用
+        _scan_budget = int(os.environ.get("GUARDS_SCAN_LIMIT") or 20000)   # the env var is for tests
     if os.path.basename(p.rstrip("/")) in _SCAN_SKIP:
         return [], True
     found, stack, visited = [], [p], set()
@@ -1066,7 +1067,7 @@ def _scan_worktree_roots(p: str, follow_links: bool = False):
         except FileNotFoundError:
             continue
         except OSError:
-            # 読めないフォルダの中は確かめられない（sudo rm なら消せる）
+            # can't check inside an unreadable folder (sudo rm could still delete it)
             return found, False
         for e in entries:
             if e.name == ".git":
@@ -1102,8 +1103,8 @@ _SEQ_RE = re.compile(r"^(-?\d+|[A-Za-z])\.\.(-?\d+|[A-Za-z])(?:\.\.(-?\d+))?$")
 
 
 def _brace_seq(body: str, limit: int = 256):
-    """`{1..3}`・`{a..c}`・`{01..10..2}` の中身を並べる（limit + 1 個まで。`{1..1000000000}` で
-    固まらないように）。範囲の形でなければ None。"""
+    """List the contents of `{1..3}`, `{a..c}`, `{01..10..2}` (up to limit + 1 items, so `{1..1000000000}`
+    doesn't hang). None if not a range."""
     m = _SEQ_RE.match(body)
     if not m:
         return None
@@ -1121,8 +1122,8 @@ def _brace_seq(body: str, limit: int = 256):
 
 
 def _brace_expand(s: str, limit: int = 256) -> list:
-    """bash のブレース展開（`a{b,c}d` → abd acd、入れ子も可、`{1..3}` などの範囲も）。
-    展開の数が limit を超えたら limit + 1 個で打ち切る（呼ぶ側は「確かめきれない」として扱う）。"""
+    """bash brace expansion (`a{b,c}d` → abd acd, nesting allowed, ranges like `{1..3}` too).
+    If the expansion exceeds limit, stop at limit + 1 items (the caller treats it as "can't fully check")."""
     depth, start = 0, None
     for i, c in enumerate(s):
         if c == "{" and not (i and s[i - 1] == "$"):
@@ -1147,7 +1148,7 @@ def _brace_expand(s: str, limit: int = 256) -> list:
     return [s]
 
 
-# extglob（`@(a|b)`・`!(x)` など）。中身は解釈せず、その階層を `*` として扱う
+# extglob (`@(a|b)`, `!(x)`, etc.). The contents are not interpreted; that level is treated as `*`
 _EXTGLOB_RE = re.compile(r"[?*+@!]\(")
 
 
@@ -1156,11 +1157,11 @@ def _has_glob(s: str) -> bool:
 
 
 def _glob_superset(b: str, limit: int = 256) -> list:
-    """glob b がシェルで当たりうるパスを、少なめにならない側で集める。
-    シェルの設定（dotglob・nocaseglob・extglob・globstar）で当たり方が変わるので、
-    `.` で始まる名前も含め、大文字小文字を区別せず、extglob の階層は何にでも当てる。
-    `**` は何階層でもたどるので、その手前のフォルダを丸ごと見る（下は worktree の走査が見る）。
-    当たりが limit を超えたら limit + 1 個で打ち切る（呼ぶ側は確かめきれないとする）。"""
+    """Collect the paths glob b could match in a shell, erring on the side of too many.
+    Shell options (dotglob, nocaseglob, extglob, globstar) change what matches, so include names
+    starting with `.`, ignore case, and let extglob levels match anything.
+    `**` descends any number of levels, so take the whole folder before it (the worktree scan covers what's below).
+    If matches exceed limit, stop at limit + 1 (the caller treats it as can't fully check)."""
     absolute = b.startswith("/")
     cur = ["/" if absolute else "."]
     for c in (c for c in b.split("/") if c):
@@ -1184,12 +1185,12 @@ def _glob_superset(b: str, limit: int = 256) -> list:
 
 
 def _worktrees_in_target(p: str, limit: int = 256, follow: str = "") -> list:
-    """消す先 p が消しうる linked worktree（None は確かめきれなかった印）。
-    ブレース展開はシェルと同じく、glob（`*` など）は当たりうるものを広めに展開してから見る。引用符で囲んだ `[` などは
-    シェルでは文字どおりに渡るが、ここには引用符が外れて届くので、文字どおりのパスも合わせて見る。"""
+    """Linked worktrees that deleting p could remove (None marks "couldn't fully check").
+    Brace expansion works as in the shell; globs (`*` etc.) are expanded broadly to whatever could match. A quoted `[`
+    etc. reaches the shell literally, but arrives here with the quotes stripped, so the literal path is checked too."""
     expanded = _brace_expand(p, limit)
     found = [None] if len(expanded) > limit else []
-    # 引用符で囲んだ `{a,b}` もシェルでは文字どおりに渡る
+    # a quoted `{a,b}` is also passed literally by the shell
     paths = [p] if expanded != [p] and os.path.lexists(p) else []
     for b in expanded[:limit]:
         if not _has_glob(b):
@@ -1199,7 +1200,7 @@ def _worktrees_in_target(p: str, limit: int = 256, follow: str = "") -> list:
         if os.path.lexists(b):
             paths.append(b)
     paths = list(dict.fromkeys(os.path.normpath(q) for q in paths))
-    if len(paths) > limit:   # 一致が多すぎる glob は、ひとつずつ git に聞かずに確かめきれないとする
+    if len(paths) > limit:   # a glob with too many matches counts as can't fully check, without asking git about each
         found.append(None)
         paths = paths[:limit]
     found += [w for q in paths for w in _linked_worktrees_under(q, follow)]
@@ -1207,7 +1208,7 @@ def _worktrees_in_target(p: str, limit: int = 256, follow: str = "") -> list:
 
 
 def _find_follow(tokens: list) -> str:
-    """find がシンボリックリンクをたどるか。"L"（-L・-follow）は中も、"H" は開始パスだけ、"" はたどらない。"""
+    """Whether find follows symlinks. "L" (-L, -follow) follows inside too, "H" start paths only, "" doesn't follow."""
     mode, i = "", 1
     while i < len(tokens) and tokens[i] in ("-H", "-L", "-P", "-E", "-X", "-d", "-s", "-x"):
         mode = {"-H": "H", "-L": "L", "-P": ""}.get(tokens[i], mode)
@@ -1219,8 +1220,8 @@ _TMPDIR_RE = re.compile(r"^\$(?:TMPDIR\b|\{TMPDIR\}|\{TMPDIR:?-([^}$`]*)\})(.*)$
 
 
 def _tmpdir_value(s: str):
-    """`$TMPDIR/x`・`${TMPDIR}/x`・`${TMPDIR:-/tmp}/x` を、フックが受け継いだ TMPDIR で解決する。
-    解決できなければ None。"""
+    """Resolve `$TMPDIR/x`, `${TMPDIR}/x`, `${TMPDIR:-/tmp}/x` with the TMPDIR the hook inherited.
+    None if it can't be resolved."""
     m = _TMPDIR_RE.match(s)
     if not m or "$" in m.group(2) or "`" in m.group(2):
         return None
@@ -1229,7 +1230,7 @@ def _tmpdir_value(s: str):
 
 
 def _inside_worktree(p: str) -> bool:
-    """p が worktree の中のサブパス（worktree の root そのものでも、root を含む上位でもない）か。"""
+    """Whether p is a subpath inside a worktree (neither the worktree root itself nor a folder containing the root)."""
     d = p
     while d and not os.path.isdir(d):
         d = os.path.dirname(d)
@@ -1241,7 +1242,7 @@ def _inside_worktree(p: str) -> bool:
         return False
     if r.returncode != 0 or not r.stdout.strip():
         return False
-    # git は実パスを返す（macOS の /var → /private/var 等）ので両辺を実パスで比べる
+    # git returns real paths (macOS /var → /private/var, etc.), so compare both sides as real paths
     top, rp = os.path.realpath(r.stdout.strip()), os.path.realpath(p)
     return any(top.startswith(os.path.realpath(d) + "/") for d in WORKTREE_DIRS) and rp.startswith(top + "/")
 
@@ -1250,10 +1251,10 @@ def rule_worktree_guard(command: str):
     cwd0 = os.path.normpath(_CWD) if _CWD else ""
     cwd_in_wt = bool(cwd0) and _under_worktrees(cwd0)
     if not cwd_in_wt and not any(w in command for w in ("worktree", "rm", "trash", "find")):
-        return None  # 高速素通し
-    # 相対パス・変数の行き先が分からないとき、worktree を巻き込みうる文脈かどうか
+        return None  # fast pass-through
+    # When a relative path's or variable's destination is unknown: could the context involve a worktree?
     risky_unknown = any(os.path.basename(d) in command for d in WORKTREE_DIRS) or cwd0 in WORKTREE_DIRS
-    targets = []   # (表示名, 絶対パス or None=判定不能)
+    targets = []   # (display name, absolute path or None = undecidable)
     for cmd in _commands(command):
         tokens = cmd.tokens
         if not tokens or _marker(cmd, "WORKTREE_RM_OK"):
@@ -1269,13 +1270,13 @@ def rule_worktree_guard(command: str):
                     targets.append((t, os.path.normpath(v) if v else None))
             continue
         starts = _find_delete_starts(tokens)
-        # 条件付きの `find … -delete`（`-name '*.pyc'` など）は開始パスを丸ごと消さない。
-        # -delete は中身のあるフォルダを消せないので、worktree_dirs の外では worktree の root を消す心配がない
+        # A filtered `find … -delete` (`-name '*.pyc'` etc.) doesn't wipe the start path.
+        # -delete can't remove non-empty folders, so outside worktree_dirs it can't remove a worktree root
         filtered = starts is not None and _find_filtered(tokens)
         filtered_delete_only = filtered and not _find_exec_deletes(tokens)
         follow = _find_follow(tokens) if starts is not None else ""
-        # このルールが守るのは worktree の丸ごとの削除。worktree の中のファイルを条件で消す
-        # （`find . -type f -delete` など）のは、サブパスの削除と同じく対象外（メインの作業ツリーでも同じ危険がある）
+        # This rule guards against deleting a whole worktree. Deleting files inside a worktree with a filter
+        # (`find . -type f -delete` etc.) is out of scope like deleting a subpath (the main working tree has the same risk)
         if starts is not None:
             paths = starts
         elif base == "trash" or (base == "rm" and _is_recursive_rm(tokens)):
@@ -1283,12 +1284,12 @@ def rule_worktree_guard(command: str):
         else:
             continue
         if cmd.xargs and (risky_unknown or cwd_in_wt):
-            targets.append(("(xargs の入力)", None))
+            targets.append(("(xargs input)", None))
         for t in paths:
             raw = t.strip('"').strip("'")
             v = _resolved_value(raw, cmd.assigns)
             if v is None and raw.startswith(SAFE_VAR_PREFIXES):
-                # rm-guard は $TMPDIR の下を安全扱いにするので、ここで行き先を確かめる（分からなければ止める）
+                # rm-guard treats paths under $TMPDIR as safe, so check the destination here (block if unknown)
                 v = _tmpdir_value(_resolve(raw, cmd.assigns))
                 if v is None:
                     targets.append((t, None))
@@ -1304,8 +1305,8 @@ def rule_worktree_guard(command: str):
                 elif not filtered_delete_only:
                     targets.extend((t, w) for w in _worktrees_in_target(exp, follow=follow))
                 continue
-            # 相対パス: 実行される cwd で解決する（`cd <worktree_dirs> && rm -rf name` 等）。
-            # worktree の中のサブパス（build/ 等の掃除）は対象外
+            # Relative path: resolve against the cwd it runs in (`cd <worktree_dirs> && rm -rf name` etc.).
+            # Subpaths inside a worktree (cleaning build/ etc.) are out of scope
             if cmd.cwd is None:
                 if risky_unknown:
                     targets.append((t, None))
@@ -1320,18 +1321,18 @@ def rule_worktree_guard(command: str):
     if not bad:
         return None
     return deny(
-        f"🛑 worktree-guard: 未マージか判定不能の worktree を削除しようとしている: {', '.join(bad[:3])}\n"
-        "未マージ worktree の削除は禁止(未回収の作業が消える)。既定ブランチに取り込み済みでクリーンなら自動で通る。"
-        "中身が多すぎて worktree が無いと確かめきれないフォルダも、判定不能として止める。"
-        "本当に消すならユーザー明示OKを取り、削除コマンド自身の先頭に `WORKTREE_RM_OK=1 ` を付けて再実行"
-        "（例: `WORKTREE_RM_OK=1 git worktree remove <path>`）。"
+        f"🛑 worktree-guard: trying to delete a worktree that is unmerged or can't be judged: {', '.join(bad[:3])}\n"
+        "Deleting unmerged worktrees is forbidden (unrecovered work would be lost). If it is merged into the default branch and clean, it passes automatically."
+        " A folder too large to confirm it holds no worktree is also blocked as undecidable."
+        " If it really must go, get the user's explicit OK and retry with `WORKTREE_RM_OK=1 ` at the start of the delete command itself"
+        " (e.g. `WORKTREE_RM_OK=1 git worktree remove <path>`)."
     )
 
 
 # ---------------------------------------------------------- gh-comments-guard
 def rule_gh_comments_guard(command: str):
     if "--comments" not in command:
-        return None  # 高速素通し
+        return None  # fast pass-through
     for seg in _split_segments(command):
         try:
             tokens = shlex.split(seg)
@@ -1345,8 +1346,8 @@ def rule_gh_comments_guard(command: str):
         if len(sub) >= 2 and sub[0] == "issue" and sub[1] == "view" and "--comments" in tokens \
                 and not any(t == "--json" or t.startswith("--json=") for t in tokens):
             return deny(
-                "🛑 gh-comments-guard: `gh issue view --comments` はコメント0件の issue で本文ごと空出力+exit 0"
-                "(gh 2.96.0 実測)。`--json title,body,comments` 形を使うこと。"
+                "🛑 gh-comments-guard: on an issue with zero comments, `gh issue view --comments` prints nothing,"
+                " body included, and exits 0 (measured with gh 2.96.0). Use the `--json title,body,comments` form."
             )
     return None
 
@@ -1354,21 +1355,22 @@ def rule_gh_comments_guard(command: str):
 # ------------------------------------------------------------ pip-freeze-guard
 def rule_pip_freeze_guard(command: str):
     if "freeze" not in command:
-        return None  # 高速素通し
+        return None  # fast pass-through
     for cmd in _commands(command):
         tokens = cmd.tokens
         if _marker(cmd, "PIP_FREEZE_OK"):
             continue
         if len(tokens) >= 2 and os.path.basename(tokens[0]) in ("pip", "pip3") and tokens[1] == "freeze":
             return deny(
-                "🛑 pip-freeze-guard: uv 製 venv には pip が無く `pip freeze` は無言で0件を返す(空の退避ファイル事故)。"
-                "`uv pip freeze` を使うこと。素の pip 環境で意図的なら `PIP_FREEZE_OK=1 ` を先頭に。"
+                "🛑 pip-freeze-guard: venvs created by uv have no pip, so `pip freeze` silently returns nothing"
+                " (the empty-backup-file accident). Use `uv pip freeze`. If you mean it in a plain pip environment,"
+                " prefix `PIP_FREEZE_OK=1 `."
             )
     return None
 
 
 RULES = [
-    rule_worktree_guard,      # rm-guard より先(SAFE_PREFIXES が worktree_dirs の配下を素通しするため)
+    rule_worktree_guard,      # before rm-guard (SAFE_PREFIXES lets paths under worktree_dirs through)
     rule_rm_guard,
     rule_push_freshness,
     rule_main_commit_freshness,
@@ -1391,16 +1393,16 @@ def main() -> None:
     _CWD = data.get("cwd") or os.getcwd()
     _PERMISSION_MODE = data.get("permission_mode") or ""
     command = (data.get("tool_input") or {}).get("command", "")
-    # deny は ask より強い。ask を返したルールがあっても残りのルールを評価し、
-    # どれかが deny なら deny を返す（ask になる操作と危険な操作を1行につないだものを ask で通さない）。
+    # deny beats ask. Even after a rule returns ask, evaluate the remaining rules and return deny
+    # if any denies (don't let an ask-worthy operation chained with a dangerous one through as ask).
     pending_ask = None
     for rule in RULES:
         try:
             result = rule(command)
         except Exception as e:  # noqa: BLE001
-            # hook の異常終了は「許可」扱いになるので、自分のバグでは安全側（確認）に倒す
-            msg = (f"⚠️ bash-guard: ルール {rule.__name__} の評価中に例外 "
-                   f"({type(e).__name__}: {e})。安全側に倒す（確認 or 拒否）。")
+            # an abnormal hook exit counts as "allow", so on our own bug err on the safe side (ask)
+            msg = (f"⚠️ bash-guard: exception while evaluating rule {rule.__name__} "
+                   f"({type(e).__name__}: {e}). Erring on the safe side (ask or deny).")
             result = deny(msg) if _PERMISSION_MODE == "bypassPermissions" else ask(msg)
         if not result:
             continue

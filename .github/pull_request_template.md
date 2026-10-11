@@ -1,19 +1,20 @@
-## 何が変わるか
+## What changes
 
-<!-- 利用者から見て何が変わるか。Before / After で書くと伝わりやすい -->
+<!-- What changes for users. Before / After is easiest to follow -->
 
-## 関連 issue
+## Related issue
 
-<!-- 次の2行を必ず書く（workflow プラグインの dev-flow スキルの約束）
-     Closes #N（受け入れ基準をすべて満たす）か Refs #N（一部だけ）。issue が無い依頼なら Refs: none (verbal request)
-     Arch-Review: not-needed — <理由>　か　Arch-Review: approved — <GO の在りか> -->
+<!-- Always fill in the next two lines (a convention of the workflow plugin's dev-flow skill)
+     Closes #N (meets every acceptance criterion) or Refs #N (only some). For a request without an issue: Refs: none (verbal request)
+     Arch-Review: not-needed — <reason>  or  Arch-Review: approved — <where the GO is> -->
 
 Refs #
 Arch-Review: not-needed — 
 
-## 確認したこと
+## Checked
 
-- [ ] 中身を変えたプラグインの `version` を上げ、`CHANGELOG.md` に同じ版の見出しを足した
-- [ ] `claude plugin validate --strict` が通る
-- [ ] フックを変えたら `plugins/<plugin>/tests/run-all.sh` が通る
-- [ ] 個人のパス・メールアドレス・社内の固有名が入っていない（`python3 .github/scripts/check-repo.py`）
+- [ ] Bumped the `version` of every plugin whose contents changed, and added a heading for that version to `CHANGELOG.md`
+- [ ] `claude plugin validate --strict` passes
+- [ ] If a `README.md` changed, its `README.ja.md` says the same (and vice versa)
+- [ ] If hooks changed, `plugins/<plugin>/tests/run-all.sh` passes
+- [ ] No personal paths, email addresses or internal names (`python3 .github/scripts/check-repo.py`)

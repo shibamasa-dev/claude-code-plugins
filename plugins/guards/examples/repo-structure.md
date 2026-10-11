@@ -1,49 +1,49 @@
-# リポジトリ構造ルール（docs/・scripts/・一時ファイル）
+# Repository structure rules (docs/, scripts/, temporary files)
 
-> guards プラグインの repo-structure-guard フックが、Write の前にこのファイルの `<!-- guard:… -->` ブロックを読んで判定する。docs/ 直下の .md・scripts/ 直下のスクリプトの新規作成を止める。
+> The guards plugin's repo-structure-guard hook reads the `<!-- guard:… -->` blocks in this file before each Write. It blocks creating a new .md directly under docs/ and a new script directly under scripts/.
 >
-> **これは見本。プラグインの中にあるこのファイルはフックに読まれない。** 使うなら下のどちらかへコピーして、自分の運用に合わせて直す。
-> - リポごと：`<repo>/.claude/rules/repo-structure.md`（コミットすればチームで共有できる。Claude もルールとして読む）
-> - 自分の全リポ：`~/.claude/rules/repo-structure.md`
+> **This is a sample. The copy inside the plugin is never read by the hook.** To use it, copy it to one of the locations below and adapt it to how you work.
+> - Per repo: `<repo>/.claude/rules/repo-structure.md` (commit it to share with the team; Claude also reads it as a rule)
+> - All your repos: `~/.claude/rules/repo-structure.md`
 >
-> 両方あればリポのほうを使う。環境変数 `REPO_STRUCTURE_SPEC` を設定するとそれだけを見る。値を変えるときはブロックを1行直せば、フックの挙動と deny メッセージが同時に変わる。
+> If both exist, the repo's copy wins. If the environment variable `REPO_STRUCTURE_SPEC` is set, only that file is used. To change a value, edit one line of a block; the hook's behavior and its deny message change together.
 
-## docs/ の構造
+## docs/ structure
 
-- **docs/ 直下に .md を置かない。** 例外は `docs/README.md` 1枚のみ（インデックス: 何がどこにあるかを1行ずつ。内容は書かない）。
+- **Don't put .md files directly under docs/.** The only exception is `docs/README.md` (the index: one line per item saying what is where; no content).
 
 <!-- guard:docs-allow-filenames -->
 - README.md
 <!-- /guard:docs-allow-filenames -->
-- **サブフォルダは「種類」で切る。** 規定セットから**必要になったものだけ**作る（空フォルダを先に掘らない）:
-  - `spec/` — 仕様・設計（何を作るか・どう作るか）【上書き型: 常に現在の正】
-  - `adr/` — 意思決定記録（なぜそうしたか）【追記型: `YYYYMMDD_` prefix】
-  - `research/` — 調査・検証・実測レポート（何がわかったか）【追記型: `YYYYMMDD_` prefix】
-  - `ops/` — 運用手順・runbook（どう動かすか）【上書き型】
-  - `reference/` — 外部契約・API・スキーマ（何が正か）【上書き型】
-- **迷ったら1問判定**: 下のブロックが規定セットと判定の正典（hook の deny メッセージもここから組み立てる）。
+- **Split subfolders by kind.** Create **only the ones you need** from the standard set (don't dig empty folders in advance):
+  - `spec/` — specs and design (what to build, how to build it) [overwrite: always the current truth]
+  - `adr/` — decision records (why we did it) [append: `YYYYMMDD_` prefix]
+  - `research/` — investigations, experiments, measurement reports (what we learned) [append: `YYYYMMDD_` prefix]
+  - `ops/` — operating procedures, runbooks (how to run it) [overwrite]
+  - `reference/` — external contracts, APIs, schemas (what is authoritative) [overwrite]
+- **When unsure, ask one question**: the block below is the authoritative standard set and the question for each folder (the hook's deny message is built from it too).
 
 <!-- guard:docs-subfolders -->
-- spec: 何を・どう作る
-- adr: なぜ
-- research: 何がわかった
-- ops: どう動かす
-- reference: 何が正か
+- spec: what to build and how
+- adr: why
+- research: what we learned
+- ops: how to run it
+- reference: what is authoritative
 <!-- /guard:docs-subfolders -->
-- **サブフォルダに README.md を作らない。** インデックスは `docs/README.md` に集約。サブツリーが深く複雑化して案内が要るなら README でなく **CLAUDE.md を置く**（ディレクトリスコープで agent が自動で読む）。
-- **フェーズで切らない。** プロジェクトは「調査→要件→構築→開発→テスト→調査→改善→…」とループするため、`01_research/` 等のフェーズ切りは2周目で破綻する。種類切りはフェーズと直交し、ループの成果物は追記型（research・adr＝履歴として積む）と上書き型（spec・ops・reference＝現在の正へ更新）に落ちる。0→1 は research＋spec 数枚から始まり、1→100 で spec が肥大したらトピック分割（例: `spec/auth/`）し、深くなった所へ CLAUDE.md でナビを置く。
-- 規定セットに収まらないトピック大物（例: `accounting/`）は並列に置いてよい。ただし `docs/README.md` に1行登録する。
-- **既存リポへの遡及リファクタはしない。** 新規文書から適用。既存文書は触ったついでに移動してよい（リンク切れに注意）。
+- **Don't create README.md in subfolders.** Keep the index in `docs/README.md`. If a subtree gets deep enough to need guidance, put a **CLAUDE.md** there instead of a README (agents read it automatically for that directory scope).
+- **Don't split by phase.** Projects loop (research → requirements → build → develop → test → research → improve → …), so phase folders like `01_research/` break on the second lap. Splitting by kind is orthogonal to phases: each loop's output lands in an append folder (research, adr = kept as history) or an overwrite folder (spec, ops, reference = updated to the current truth). 0→1 starts with research plus a few specs; in 1→100, when spec grows, split it by topic (e.g. `spec/auth/`) and add a CLAUDE.md for navigation where it gets deep.
+- Large topics that don't fit the standard set (e.g. `accounting/`) may sit alongside them, but register each with one line in `docs/README.md`.
+- **Don't retroactively refactor existing repos.** Apply this to new documents. Existing documents can be moved when you touch them (watch for broken links).
 
-## docs と実装の境界（二重管理の禁止）
+## The boundary between docs and code (no double bookkeeping)
 
-- **実装から機械的に読み取れるものは docs に書かない。** SoT は実装: DB スキーマ＝migration/DDL、型・API シグネチャ＝型定義、設定値・コマンド一覧＝コード/--help、ディレクトリ構成＝ls。docs にはポインタ1行（例: 「スキーマは `migrations/` が正」）まで。コピーを書かなければ陳腐化するものが最初から無い。
-- **docs に書くのは実装に現れないものだけ**: why（adr）／要件・意図・スコープ（spec）／コンポーネント跨ぎの流れ・シーケンス（spec）／調査・実測（research）／順序・タイミング・注意が本質の運用（ops）。
-- **判定1問**: 「コードを読めば正確に分かるか？」YES → 書かない。
+- **Don't write in docs what can be read mechanically from the code.** The code is the source of truth: DB schema = migrations/DDL, types and API signatures = type definitions, settings and command lists = code/--help, directory layout = ls. In docs, write at most a one-line pointer (e.g. "the schema lives in `migrations/`"). If you never write a copy, nothing can go stale.
+- **Write in docs only what doesn't show in the code**: why (adr) / requirements, intent, scope (spec) / flows and sequences across components (spec) / investigations and measurements (research) / operations where order, timing and caveats are the point (ops).
+- **One question**: "Can you tell this exactly by reading the code?" YES → don't write it.
 
-## scripts/ の構造
+## scripts/ structure
 
-- **scripts/ 直下にスクリプトを置かない。** 機能・ドメイン単位のサブフォルダで切る（例: `scripts/scheduler/`・`scripts/launcher/`・`scripts/deploy/`）。「スクリプト」と見なす拡張子:
+- **Don't put scripts directly under scripts/.** Split by feature or domain into subfolders (e.g. `scripts/scheduler/`, `scripts/launcher/`, `scripts/deploy/`). Extensions treated as "scripts":
 
 <!-- guard:script-extensions -->
 - .sh
@@ -56,19 +56,19 @@
 - .bash
 <!-- /guard:script-extensions -->
 
-- **例外: skill のレイアウト。** skill は `<skill>/scripts/` 直下にスクリプトを置くのが正しい形（`skill-creator` の型）なので、この規約の対象外にする。リポ直下の `scripts/` を機能別サブフォルダへ割る話とは別物。
+- **Exception: the skill layout.** A skill correctly keeps its scripts directly under `<skill>/scripts/` (the `skill-creator` layout), so it is exempt from this rule. That's a different matter from splitting the repo's top-level `scripts/` into feature subfolders.
 
 <!-- guard:exemptions -->
-- path-component-skills: リポのルートからのパス要素に `skills` がある `scripts/` 直下（skill は `<skill>/scripts/` 直下にスクリプトを置く形が正しいため。チェックアウト先のパスや docs/ には効かない）
-- sibling-skill-md: `scripts/` の親ディレクトリに `SKILL.md` がある場合（skill は `skills/` 配下とは限らないため）
+- path-component-skills: directly under a `scripts/` whose path from the repo root has a `skills` component (a skill correctly keeps scripts directly under `<skill>/scripts/`; doesn't apply to the checkout location or to docs/)
+- sibling-skill-md: when the parent directory of `scripts/` has a `SKILL.md` (skills aren't always under `skills/`)
 <!-- /guard:exemptions -->
 
-  ブロックから ID を消すとその例外は効かなくなる（hook は ID を読んで有効・無効を決める）。
-- エントリポイントと内部ヘルパーが混在してきたら、ヘルパーを `lib/` へ分離するか `_` prefix で区別する。
-- 案内が要るなら README でなく CLAUDE.md（docs と同じ方針）。
+  Removing an ID from the block turns that exemption off (the hook reads the IDs to decide).
+- When entry points and internal helpers start to mix, move the helpers to `lib/` or mark them with a `_` prefix.
+- If guidance is needed, use a CLAUDE.md rather than a README (same policy as docs).
 
-## 一時ファイル
+## Temporary files
 
-- 置き場はシステムプロンプトの scratchpad 指示に従う（リポ内に作ってよいのはコミット予定の成果物だけ）。以下はプロンプトに無い補足。
-- gitignore 済みパス（`.claude/state/` 等）は**永続 state の置き場**であって一時ファイル置き場ではない。一時物を「gitignore 内だから」とリポに置かない。
-- コミット前に `git status` で untracked の残骸ゼロを確認する。
+- Put them where the system prompt's scratchpad instructions say (only deliverables you intend to commit may be created inside the repo). The following adds what the prompt doesn't cover.
+- Gitignored paths (`.claude/state/` etc.) are **places for persistent state**, not for temporary files. Don't keep temporary files in the repo "because it's gitignored".
+- Before committing, check with `git status` that no untracked leftovers remain.

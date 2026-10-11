@@ -3,44 +3,44 @@
   "evals": [
     {
       "id": 0,
-      "prompt": "このリポジトリを claude.ai/code のクラウド環境でも触れるようにリモートセットアップを追加して。リモートセッション開始時に npm 依存が入っていて node が使える状態にしてほしい。ローカルセッションでは何も起きないようにすること。",
-      "expected_output": "scripts/remote-setup/{setup.sh,steps.sh} が生成され、.claude/settings.json に SessionStart hook が配線される。light_steps に npm ci 相当が入り、ローカルでは hook が無出力・exit 0 で即終了する。",
-      "files": ["用意するリポ: Node.js の最小構成（package.json と package-lock.json があり、src/index.js をエントリにする）"],
+      "prompt": "Add a remote setup so this repository can also be used in the claude.ai/code cloud environment. When a remote session starts, npm dependencies should be installed and node usable. Nothing should happen in local sessions.",
+      "expected_output": "scripts/remote-setup/{setup.sh,steps.sh} are generated, and a SessionStart hook is wired into .claude/settings.json. light_steps contains the equivalent of npm ci, and locally the hook exits immediately with no output and exit 0.",
+      "files": ["Repo to prepare: a minimal Node.js project (has package.json and package-lock.json, entry point src/index.js)"],
       "expectations": [
-        "セッション開始時に実行されるセットアップ経路が CLAUDE_CODE_REMOTE を用いてリモート判定している",
-        "リモート判定が許可リスト方式である(CLAUDE_CODE_REMOTE=true / ENTRYPOINT=remote_* を positive 判定。『cli でなければリモート』のような除外方式でない)",
-        "ローカル環境で hook コマンドを実行すると無出力・exit 0 で即終了する(副作用なし)",
-        ".claude/settings.json が valid JSON で、SessionStart hook が実在するスクリプトを指している",
-        "毎セッションの経路に npm 依存の同期(npm ci / npm install)が含まれる"
+        "The setup path run at session start detects remote using CLAUDE_CODE_REMOTE",
+        "Remote detection is allowlist-based (CLAUDE_CODE_REMOTE=true / ENTRYPOINT=remote_* are positive checks; not exclusion-based like 'remote if not cli')",
+        "Running the hook command in a local environment exits immediately with no output and exit 0 (no side effects)",
+        ".claude/settings.json is valid JSON and the SessionStart hook points at a script that exists",
+        "The every-session path includes syncing npm dependencies (npm ci / npm install)"
       ]
     },
     {
       "id": 1,
-      "prompt": "この CAD リポをクラウド環境(claude.ai/code / Cowork)で動かせるようにリモートセットアップを追加して。リモートセッションで build123d が import できる状態になっていてほしい。build123d はネイティブ依存が重くインストールに時間がかかるので、毎セッション全部入れ直しにならない工夫をして。ローカルでは一切何も実行しないこと。",
-      "expected_output": "重い導入(apt / build123d 本体)がリポ非依存で自己完結の環境層(environment-setup.sh)に分離され、毎セッションは軽量同期+verify のみ。Python 依存はリポ内 .venv(--system-site-packages)。verify で build123d の import を確認。",
-      "files": ["用意するリポ: Python の最小構成（pyproject.toml の依存に build123d、build123d を import する demo.py、CLAUDE.md がある）"],
+      "prompt": "Add a remote setup so this CAD repo can run in the cloud environment (claude.ai/code / Cowork). In a remote session, build123d should be importable. build123d has heavy native dependencies and takes long to install, so make sure it is not reinstalled from scratch every session. Do not run anything at all locally.",
+      "expected_output": "Heavy installs (apt / build123d itself) are split into a repo-independent, self-contained environment layer (environment-setup.sh); every session only does light sync + verify. Python dependencies go into the repo's .venv (--system-site-packages). verify checks that build123d imports.",
+      "files": ["Repo to prepare: a minimal Python project (build123d in pyproject.toml dependencies, a demo.py that imports build123d, and a CLAUDE.md)"],
       "expectations": [
-        "セッション開始時に実行されるセットアップ経路が CLAUDE_CODE_REMOTE を用いてリモート判定している",
-        "リモート判定が許可リスト方式である(CLAUDE_CODE_REMOTE=true / ENTRYPOINT=remote_* を positive 判定。『cli でなければリモート』のような除外方式でない)",
-        "ローカル環境で hook コマンドを実行すると無出力・exit 0 で即終了する(副作用なし)",
-        ".claude/settings.json が valid JSON で、SessionStart hook が実在するスクリプトを指している",
-        "重いネイティブ依存の導入が毎セッション経路から分離され、初回のみの経路にある",
-        "Python 依存はリポ内 .venv に入る設計である",
-        "build123d が import できるかの検証(verify)ステップがある"
+        "The setup path run at session start detects remote using CLAUDE_CODE_REMOTE",
+        "Remote detection is allowlist-based (CLAUDE_CODE_REMOTE=true / ENTRYPOINT=remote_* are positive checks; not exclusion-based like 'remote if not cli')",
+        "Running the hook command in a local environment exits immediately with no output and exit 0 (no side effects)",
+        ".claude/settings.json is valid JSON and the SessionStart hook points at a script that exists",
+        "Installing the heavy native dependencies is separated from the every-session path and lives in the first-time-only path",
+        "The design puts Python dependencies in the repo's .venv",
+        "There is a verify step that checks build123d can be imported"
       ]
     },
     {
       "id": 2,
-      "prompt": "リモート環境(Cowork のクラウド VM)用のセットアップをこのリポに入れて。既存の .claude/settings.json の設定(hook や permissions)は絶対に壊さないで。",
-      "expected_output": "SessionStart hook が既存 settings.json にマージ追記され、既存の PostToolUse hook と permissions.allow が保持される。",
-      "files": ["用意するリポ: Python の最小構成（requirements.txt・main.py と、既存の .claude/settings.json がある。settings.json には hooks.PostToolUse に command が `echo existing-lint-hook` の hook、permissions.allow に `Bash(python3 -m pytest:*)` を入れておく）"],
+      "prompt": "Add setup for the remote environment (Cowork cloud VM) to this repo. Never break the existing .claude/settings.json settings (hooks and permissions).",
+      "expected_output": "The SessionStart hook is merged into the existing settings.json, and the existing PostToolUse hook and permissions.allow are kept.",
+      "files": ["Repo to prepare: a minimal Python project (requirements.txt, main.py, and an existing .claude/settings.json. Put a hook with command `echo existing-lint-hook` under hooks.PostToolUse in settings.json, and `Bash(python3 -m pytest:*)` in permissions.allow)"],
       "expectations": [
-        "セッション開始時に実行されるセットアップ経路が CLAUDE_CODE_REMOTE を用いてリモート判定している",
-        "リモート判定が許可リスト方式である(CLAUDE_CODE_REMOTE=true / ENTRYPOINT=remote_* を positive 判定。『cli でなければリモート』のような除外方式でない)",
-        "ローカル環境で hook コマンドを実行すると無出力・exit 0 で即終了する(副作用なし)",
-        ".claude/settings.json が valid JSON で、SessionStart hook が実在するスクリプトを指している",
-        "既存の PostToolUse hook(echo existing-lint-hook)が保持されている",
-        "既存の permissions.allow(Bash(python3 -m pytest:*))が保持されている"
+        "The setup path run at session start detects remote using CLAUDE_CODE_REMOTE",
+        "Remote detection is allowlist-based (CLAUDE_CODE_REMOTE=true / ENTRYPOINT=remote_* are positive checks; not exclusion-based like 'remote if not cli')",
+        "Running the hook command in a local environment exits immediately with no output and exit 0 (no side effects)",
+        ".claude/settings.json is valid JSON and the SessionStart hook points at a script that exists",
+        "The existing PostToolUse hook (echo existing-lint-hook) is kept",
+        "The existing permissions.allow (Bash(python3 -m pytest:*)) is kept"
       ]
     }
   ]

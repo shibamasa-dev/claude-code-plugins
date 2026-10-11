@@ -1,15 +1,15 @@
-// eval (e): BGM つき。コード進行とスタイルを指定して作曲させ、効果音と混ぜる。8 秒・120bpm（1小節 2 秒）。
-// 映像の山（4 秒の小節頭で柱が揃う）と曲の山（meta.audio.peaks）を同じ時刻に置く。
+// eval (e): with BGM. Compose from a given chord progression and style, then mix with the sound effects. 8 s at 120bpm (one bar = 2 s).
+// The visual peak (the columns line up on the bar start at 4 s) and the music's peak (meta.audio.peaks) sit at the same time.
 export const meta = {
-  title: 'BGM つき',
+  title: 'With BGM',
   duration: 8,
   fps: 60,
   aspects: ['16:9'],
   scenes: [
-    { id: 's1', start: 0, end: 2, message: '静かな立ち上がり', screen: '中央に主色の柱が1本', motion: { enter: '柱が下から伸びる' }, sound: 'BGM（パッドとピアノ）と小節頭の thump', transition: '柱が2本に分かれる' },
-    { id: 's2', start: 2, end: 4, message: '要素が増える', screen: '柱が3本に増える', motion: { main: '柱が拍ごとに伸びる' }, sound: 'whoosh', transition: '柱の高さが揃って山になる' },
-    { id: 's3', start: 4, end: 6, message: '山（主役の登場）', screen: '揃った柱の上に円が着地する', motion: { enter: '円が heavy で着地', main: '柱が拍で弾む' }, sound: '曲の山・pop', transition: '柱が縮んで円だけが残る' },
-    { id: 's4', start: 6, end: 8, message: '締め', screen: '円が中央に残る', motion: { main: '円がゆっくり脈打つ', exit: '止め' }, sound: 'click と最後の和音', transition: '終わり（止め）' },
+    { id: 's1', start: 0, end: 2, message: 'Quiet opening', screen: 'One primary-color column in the center', motion: { enter: 'The column grows up from the bottom' }, sound: 'BGM (pad and piano) and a thump on the bar start', transition: 'The column splits into two' },
+    { id: 's2', start: 2, end: 4, message: 'More elements', screen: 'The columns grow to three', motion: { main: 'Columns stretch on each beat' }, sound: 'whoosh', transition: 'Column heights even out into a peak' },
+    { id: 's3', start: 4, end: 6, message: 'Peak (hero entrance)', screen: 'A circle lands on top of the aligned columns', motion: { enter: 'The circle lands with heavy', main: 'Columns bounce on the beat' }, sound: 'Music peak and pop', transition: 'The columns shrink, leaving only the circle' },
+    { id: 's4', start: 6, end: 8, message: 'Close', screen: 'The circle stays in the center', motion: { main: 'The circle pulses slowly', exit: 'Hold' }, sound: 'click and the final chord', transition: 'End (hold)' },
   ],
   audio: {
     bpm: 120,
@@ -32,9 +32,9 @@ export function render(ctx, t) {
   const n = 3;
   const colW = 9 * u;
   const base = L.safe.y + L.safe.h;
-  const spread = M.spring(t - 1.85, 'default'); // s1→s2: 1本から3本へ
-  const even = M.spring(t - 3.85, 'default'); // s2→s3: 高さが揃う
-  const shrink = M.spring(t - 5.85, 'heavy'); // s3→s4: 柱が縮む
+  const spread = M.spring(t - 1.85, 'default'); // s1->s2: from one column to three
+  const even = M.spring(t - 3.85, 'default'); // s2->s3: heights even out
+  const shrink = M.spring(t - 5.85, 'heavy'); // s3->s4: columns shrink
   const bounce = 1 + 0.06 * Math.sin(Math.PI * 2 * t) * M.progress(t, 4, 4.5) * (1 - shrink);
   for (let i = 0; i < n; i++) {
     const x = L.cx + (i - 1) * 14 * u * spread - colW / 2;
@@ -47,7 +47,7 @@ export function render(ctx, t) {
     g.fill();
   }
   g.globalAlpha = 1;
-  // 山: 4 秒の小節頭で円が着地
+  // Peak: the circle lands on the bar start at 4 s
   const land = M.spring(t - 4, 'heavy');
   if (t >= 4) {
     const top = base - 40 * u * (1 - 0.9 * shrink);

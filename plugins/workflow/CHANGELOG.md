@@ -1,6 +1,21 @@
 # Changelog
 
-workflow プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
+Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
+
+## [0.4.0] - 2026-10-11
+
+### Changed
+- Messages, skill bodies, references, comments and tests are now in English. Japanese stays only in the skill descriptions' trigger phrases, in data the features need (patterns that match Japanese text, fixtures for Japanese input) and in `README.ja.md`.
+- The issue section written at close / before merging a `Closes` PR is now `## Result` (was `## 結果`). dev-flow-gate still accepts `## 結果` and `## Results`.
+- The recurring-task handoff section is now `## Notes for next time` (was `## 次回への引き継ぎ`). dev-flow-gate accepts both (it now also counts `## Notes for next time`).
+- The PR-body section where Claude records its own review is now `## Review (Claude)` (was `## レビュー（Claude）`). No hook reads it; dev-flow and pr-review-triage still count the old heading in older PRs.
+- The PR-body section for out-of-scope findings is now `## Out-of-scope notes` (was `## スコープ外の気づき`). No hook reads it; pr-review-triage notes the old name.
+- weekly-orchestrator-base: the `## Result` first-line markers are now `**Cutoff**:` / `**Submitted**:` / `**Tally start**:` (were `**締め**:` / `**提出**:` / `**集計起点**:`), the plan status values are `Draft` / `Confirmed YYYY-MM-DD` (were `未確定` / `確定`), the batch Status values are `Not started` / `Running` / `PR #N` / `Done` / `Blocked (reason)` (were `未着手` / `実行中` / `完了` / `止まっている`), and the plan-section template headings and columns are English. The skill notes the old Japanese values for older cycle issues.
+- runbook: new `runbook.md` files get English headings (`## Goal`, `## Prerequisites and inputs`, `## Steps`, `## Branches and pitfalls`, `## Stop points`, `## Verification`, `## Recording`); existing runbooks are untouched. A masked `javascript:`/`data:` URL in `steps.jsonl` is now written as `<N chars>` (was `<N文字>`).
+- pr-review-triage: `classify.sh` reason lines are English (e.g. `- Non-document files: ...`, `- Changed lines: 262 > 200`), and `run_evals.sh` prints `==== PASS N / FAIL N ====`.
+- handoff: the injected and printed labels are English (`entry:` / `state:` / `next:`); the state file format is unchanged.
+- context-diet: `measure.py` breach strings read `<key>: N entries` (was `N件`).
+- tests: rows read `(expect X)` and `tests/run-all.sh` ends with `==== N as expected / N mismatches ====` (was `==== 期待どおり N 件 / 食い違い N 件 ====`).
 
 ## [0.3.0] - 2026-10-11
 

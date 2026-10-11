@@ -1,187 +1,187 @@
 ---
 name: pr-review-triage
-description: PR を作成した直後・既存 PR へ push した直後に、差分の重さでレビューの頼み先を振り分け、頼む→待つ→評価して直す→再レビューまでを回すワークフロー。軽い PR（README などの文書だけ・200 行以内）は Claude が code-review skill でレビューして PR 本文に記録し CI だけ待つ。重い PR（コード・設定・skills/hooks などの振る舞いを決める文書・200 行超）はそのリポのレビューツール（CodeRabbit・Codex・Copilot・Gemini・Cursor Bugbot など）にコネクタで頼み（ツールの自動レビューを ON にしたリポでは頼まずに、軽い PR だけ `review:light` ラベルで自動レビューから外す）、結果を待って評価・対応し、PR 本文に対応表を書く。再レビュー（指摘対応後にもう一度頼む）を投げるかの判断と依頼もここ。「PR 作った」「push した」「レビューして」「レビュー待って」「レビュー来た？」「再レビュー投げて」「重めでレビューして」、英語の "PR created", "opened a PR", "pushed", "review", "re-review", "request review" で発動。PR 作成・push 後は指示が無くても必ず起動する。
+description: Run right after creating a PR or pushing to one. Sorts the diff by weight to pick the reviewer, then runs request -> wait -> evaluate and fix -> re-review. Light PRs (docs only such as README, up to 200 lines) are reviewed by Claude with the code-review skill, recorded in the PR body, then only CI is awaited. Heavy PRs (code, config, behavior-defining docs such as skills/hooks, over 200 lines) go to the repo's review tools (CodeRabbit, Codex, Copilot, Gemini, Cursor Bugbot, etc.) via connectors (if the tools' automatic review is ON, don't request; just exclude light PRs via the `review:light` label), then results are evaluated and handled, with a response table in the PR body. Also decides on and sends re-review requests. Use when the user says "PR created", "opened a PR", "pushed", "review", "re-review", "request review", or in Japanese 「PR 作った」「push した」「レビューして」「レビュー待って」「レビュー来た？」「再レビュー投げて」「重めでレビューして」. Always run after creating or pushing to a PR, even without being asked.
 last_reviewed: 2026-10-10
 review_after: 2027-04-10
 ---
 
-# pr-review-triage — PR のレビューを重さで振り分けて回す
+# pr-review-triage — sort PR reviews by weight and run them
 
-> 同じプラグインの dev-flow の 5・6 段（頼む・待つ・評価して直す・再レビュー）の正典。ツールごとの違い（アカウント名・頼み方・完了と未レビューの合図）は [references/tools/](references/tools/) に 1 ツール 1 ファイル、ローカルで待つ Monitor の実体は [references/monitor-snippet.md](references/monitor-snippet.md)。
+> The canonical source for stages 5 and 6 of dev-flow in the same plugin (request, wait, evaluate and fix, re-review). Per-tool differences (account name, how to request, signals for done and not reviewed) live in [references/tools/](references/tools/), one file per tool. The Monitor used for waiting locally is in [references/monitor-snippet.md](references/monitor-snippet.md).
 
-**前提**: ツールの自動レビューの扱いはリポごとに 2 通りある（`review-auto:`。1 で決める）。
-- **`off`（既定）**: ツールの自動レビューは止めてある。自動のままだと README の 1 行修正でもツールが走り、プランの上限（1 時間あたりの回数）を軽い PR が食い潰す。止めた代わりに、PR ごとにここで頼み先を決めて頼む
-- **`on`**: ツールの自動レビューは ON のまま。軽い PR だけ、作るときに `review:light` ラベルを付けてツール側の設定で自動レビューから外す（2.1）。重い PR は自動で走るので頼まない。手動の `@coderabbitai review` も上限に 1 回ずつ数えられるので、止めても枠は節約できない。CodeRabbit はラベルなどで自動レビューから外した PR を上限に数えない（[rate limits](https://docs.coderabbit.ai/management/rate-limits)）
+**Premise**: repos handle the tools' automatic review in one of two ways (`review-auto:`, decided in 1).
+- **`off` (default)**: the tools' automatic review is turned off. Left on, the tools run even for a one-line README fix, and light PRs eat up the plan's limit (runs per hour). In exchange, this skill decides who to ask for each PR and asks
+- **`on`**: the tools' automatic review stays ON. Only light PRs get the `review:light` label when created, and the tool's settings exclude them from automatic review (2.1). Heavy PRs run automatically, so don't request. A manual `@coderabbitai review` also counts once against the limit, so turning automatic review off saves no quota. CodeRabbit does not count PRs excluded from automatic review (by label, etc.) against the limit ([rate limits](https://docs.coderabbit.ai/management/rate-limits))
 
-**起動するとき**: PR を作った直後（dev-flow-gate の案内）、既存 PR へ push した直後（再レビューを頼むかを 6 の基準で決める）、ユーザーが再レビューを明示で頼んだとき、レート制限が明けたとき。
+**When to run**: right after creating a PR (as dev-flow-gate prompts), right after pushing to an existing PR (decide by the criteria in 6 whether to request a re-review), when the user explicitly asks for a re-review, and when a rate limit has cleared.
 
-**待ち方はクラウドとローカルで違う**: クラウドのセッションは PR イベントの購読（`subscribe_pr_activity`）でターンを終える。ローカルは Monitor を立てる。Monitor はシェルのコマンドを回す仕組みなので、中では `gh` を使う（コネクタを使えない、CLI が残る例外）。**Monitor はセッションが生きている間だけ動く。** 長時間離席するなら「セッションを閉じるとレビュー待機も切れる」とユーザーに伝える。
+**Waiting differs between cloud and local**: a cloud session subscribes to PR events (`subscribe_pr_activity`) and ends the turn. Locally, start a Monitor. Monitor runs shell commands, so it uses `gh` inside (the exception where the CLI stays because connectors are unavailable). **Monitor only runs while the session is alive.** If the user will be away for a long time, tell them "closing the session also stops waiting for reviews".
 
-## 1. 使うツールを決める
+## 1. Decide which tools to use
 
 ```bash
 export CLAUDE_PLUGIN_OPTION_REVIEW_HEAVY='${user_config.review_heavy}' CLAUDE_PLUGIN_OPTION_REVIEW_LIGHT='${user_config.review_light}' CLAUDE_PLUGIN_OPTION_REVIEW_AUTO='${user_config.review_auto}'
 D=${CLAUDE_PLUGIN_ROOT}/skills/pr-review-triage/scripts/detect-bots.sh
-bash $D          # heavy の PR に使うツール
-bash $D --light  # light の PR に使うもの（claude とツールの id。どちらか一方でも両方でもよい）
-bash $D --auto   # ツールの自動レビュー（on / off）
+bash $D          # tools to use for heavy PRs
+bash $D --light  # what to use for light PRs (claude and tool ids; either one, or both)
+bash $D --auto   # the tools' automatic review (on / off)
 ```
 
-以降の節の `$D` はこのパス（別のシェルで回すときは環境変数と一緒に定義し直す）。
+`$D` in later sections is this path (when running in another shell, define it again together with the environment variables).
 
-リポの作業ツリーの中で実行する。キーごとに、上から最初に見つかったものを使う（結果は保存しない）:
+Run it inside the repo's working tree. For each key, the first one found from the top wins (the result is not saved):
 
-1. リポの CLAUDE.md（または AGENTS.md）の行
+1. A line in the repo's CLAUDE.md (or AGENTS.md)
 2. userConfig
 
-| 行 | userConfig | 例 | 意味 |
+| Line | userConfig | Example | Meaning |
 |---|---|---|---|
-| `review-heavy:` | `review_heavy` | `coderabbit, codex` | heavy の PR に使うツール（カンマ区切り）。`none` は「ツールなし」 |
-| `review-light:` | `review_light` | `claude` | light の PR に使うもの。既定は `claude`（3 の手順で Claude がレビュー）。ツールの id を書けば light も heavy と同じ扱い（ラベルを付けず、そのツールで 4 の手順）。`claude, codex` のように並べると、Claude がレビューし（3）、並べたツールの結果も待つ |
-| `review-auto:` | `review_auto` | `on` / `off` | ツールの自動レビューが ON か。既定は `off` |
-| `review-notes:` | — | 自然言語 | 重点的に見てほしいこと。行をそのまま読む（スクリプトは読まない） |
+| `review-heavy:` | `review_heavy` | `coderabbit, codex` | Tools for heavy PRs (comma-separated). `none` means "no tools" |
+| `review-light:` | `review_light` | `claude` | What to use for light PRs. Default `claude` (Claude reviews, per step 3). Writing tool ids treats light like heavy (no label; those tools, per step 4). Listing both, like `claude, codex`, means Claude reviews (3) and the listed tools' results are also awaited |
+| `review-auto:` | `review_auto` | `on` / `off` | Whether the tools' automatic review is ON. Default `off` |
+| `review-notes:` | — | Natural language | What reviewers should focus on. Read the line as is (the script does not read it) |
 
-- **id が出る**: その回に頼むツール。id は `references/tools/<id>.md` のファイル名
-- **何も出ずに exit 0**（`review-heavy: none`）: ツールのいないリポ。heavy でも 3 の手順で Claude がレビューする（`review-light: none` も同じく 3 の手順）
-- **exit 4**（`review-heavy:` の行も設定も無い）: どのツールを使うかをユーザーに聞き、リポの CLAUDE.md に `review-heavy:` 行を足す PR を提案する
-- **exit 5**（行か設定はあるが読めない。知っている id が 1 つも無い綴り違い、`review-auto:` が `on` / `off` 以外）: 「ツールなし」「off」とは扱わない。stderr をユーザーに見せて、どのつもりかを聞く（`none` の書き間違いで誰もレビューしない PR が出るのを防ぐ）
+- **Ids are printed**: the tools to ask this round. An id is a file name in `references/tools/<id>.md`
+- **Nothing printed, exit 0** (`review-heavy: none`): a repo without tools. Even heavy PRs are reviewed by Claude per step 3 (`review-light: none` also uses step 3)
+- **exit 4** (no `review-heavy:` line and no setting): ask the user which tools to use, and propose a PR that adds a `review-heavy:` line to the repo's CLAUDE.md
+- **exit 5** (a line or setting exists but cannot be read: a typo with no known id, or `review-auto:` other than `on` / `off`): do not treat it as "no tools" or "off". Show stderr to the user and ask what they meant (this prevents a mistyped `none` from producing PRs that nobody reviews)
 
-**`review-notes:`** は振り分け（2）の判定には使わない。渡し先は 2 つ:
-- Claude のレビュー（3）: `code-review` に重点として渡す
-- ツールへの依頼（4.1）: 依頼コメントのメンション行には混ぜない。メンションの無い説明コメントとして依頼コメントの前に投稿する（Codex は長い focus 文で反応しなくなる。`references/tools/codex.md`）。`review-auto: on` で依頼しない回は渡す先が無いので、ツールに常に伝えたいことはツール側の設定に書く
+**`review-notes:`** is not used for sorting (2). It goes to two places:
+- Claude's review (3): pass it to `code-review` as focus
+- Requests to tools (4.1): do not mix it into the mention lines of the request comment. Post it as an explanation comment without mentions before the request comment (Codex stops responding to long focus text; see `references/tools/codex.md`). In rounds where `review-auto: on` means no request is made, there is nowhere to pass it, so put anything the tools should always know in the tools' own settings
 
-**過去の PR に来た bot から推測しない。** 自動レビューを止めると軽い PR が bot の痕跡を残さないので、推測は空になり、誰もレビューしない PR が出る。
+**Do not guess from bots that showed up on past PRs.** With automatic review turned off, light PRs leave no bot trace, so the guess comes out empty and some PRs get no review at all.
 
-## 2. 振り分ける
+## 2. Sort
 
 ```bash
 git fetch origin <base>
 git diff --numstat origin/<base>...HEAD | bash ${CLAUDE_PLUGIN_ROOT}/skills/pr-review-triage/scripts/classify.sh
 ```
 
-入力は手元の差分（`gh` は使わない。クラウドでも手元に clone がある）。1 行目が `light` / `heavy`、2 行目以降が理由。判定は決定的で、同じ差分なら同じ結果になる。
+The input is the local diff (no `gh`; cloud sessions also have a local clone). Line 1 is `light` / `heavy`; the following lines are reasons. The decision is deterministic: the same diff gives the same result.
 
-**heavy**（どれか 1 つでも当たれば heavy。迷ったら heavy に倒す。見逃しの方がツール 1 回分より高くつく）:
-- 文章ファイル（`.md` `.markdown` `.txt` `.rst` `.adoc`）以外を含む。拡張子の無いファイル（`.gitignore` など）とバイナリも含む
-- パスに `skills/` `hooks/` `agents/` `commands/` `rules/` `.github/` がある文章、またはファイル名が `SKILL.md` `CLAUDE.md` `AGENTS.md`。プラグインのリポではこれらの md が中身そのもので、1 行の変更でエージェントの動作が変わる
-- 変更行数（追加＋削除）の合計が 200 行を超える。一度に読んで指摘の精度が落ちない量の目安
-- 差分が空（取得に失敗した可能性がある）
+**heavy** (any one of these makes it heavy. When in doubt, lean heavy: a miss costs more than one tool run):
+- Contains files other than documents (`.md` `.markdown` `.txt` `.rst` `.adoc`), including files without an extension (such as `.gitignore`) and binaries
+- Documents with `skills/` `hooks/` `agents/` `commands/` `rules/` `.github/` in the path, or named `SKILL.md` `CLAUDE.md` `AGENTS.md`. In plugin repos these md files are the content itself, and a one-line change alters agent behavior
+- Total changed lines (added + deleted) over 200. A rough limit on what can be read at once without findings getting less accurate
+- Empty diff (fetching it may have failed)
 
-**light**: それ以外（README などの文書だけで、200 行以内）。
+**light**: everything else (docs only such as README, up to 200 lines).
 
-light でも、ユーザーが「重めでレビューして」と頼んだら heavy の手順（4）で回す（重い方へ倒すのはよい。軽い方へは倒さない）。`review:light` ラベルが付いていれば外してから頼む（5 と同じ）。
+Even for light, if the user asks for a heavier review (e.g. 「重めでレビューして」), run the heavy steps (4) (leaning heavier is fine; never lean lighter). If the `review:light` label is set, remove it before requesting (same as 5).
 
-基準を変えたら `bash ${CLAUDE_PLUGIN_ROOT}/skills/pr-review-triage/evals/run_evals.sh` を回す（このリポの実 PR から取った差分で判定を確かめる。オフラインで動く）。fixture にはまだ light の実例が無い。**最初の light PR が出たら、そのマージの `git diff --numstat <merge>^1 <merge>` を fixture に足す**（合成した light ケースは作らない）。
+When you change the criteria, run `bash ${CLAUDE_PLUGIN_ROOT}/skills/pr-review-triage/evals/run_evals.sh` (checks the decision against diffs taken from real PRs in this repo; works offline). The fixtures have no light example yet. **When the first light PR appears, add `git diff --numstat <merge>^1 <merge>` of its merge as a fixture** (do not make up a synthetic light case).
 
-### 2.1 `review-auto: on` のとき — PR を作る前にラベルを決める
+### 2.1 With `review-auto: on` — decide the label before creating the PR
 
-`review-auto: on` のリポでは、ラベルを PR を作るときに付ける（作った後に付けても、ツールの最初の自動レビューに間に合わない可能性がある）。そのため 1・2 を **PR を作る前に** 回す（dev-flow の 4 段もここを指す）。
+In `review-auto: on` repos, set the label when creating the PR (setting it afterwards may be too late for the tool's first automatic review). So run 1 and 2 **before creating the PR** (dev-flow stage 4 also points here).
 
-1. `bash $D --auto` が `on` で、2 の判定が `light`、かつ `bash $D --light` に `claude` が含まれる（または何も出ない）ときだけ、`review:light` ラベルを付けて作る。それ以外はラベルを付けない
-   - **`review-light:` にツールを書いたリポ**（例: `review-light: coderabbit, codex`）では、light でもラベルを付けない。ツールの自動レビューがそのまま走り、heavy と同じ扱いになる（4 の手順。待つツールは `bash $D --light` の id）。ラベルの運用をやめたいときの戻し方もこれ
-   - **`claude` とツールを並べたリポ**（例: `review-light: claude, codex`）ではラベルを付ける。ラベルで外れるツール（CodeRabbit）は走らず、外せないツール（Codex など）は自動で走る。並べるのは外せないツールにする。外れるツールを並べたときは自動では結果が来ないので、3 の「ツールも並べたとき」のとおり 4.1 で手動で頼む
-2. ラベルはリポに無ければ先に作る: `gh label create review:light --force --description "light の PR。ツールの自動レビューから外す"`（`--force` は既にあっても上書きするだけ）
-3. PR は `gh pr create --label review:light ...` で作る。GitHub コネクタの `create_pull_request` はラベルを渡せないので、ここは `gh` を使う例外
-4. ツール側で、このラベルの PR を自動レビューから外す設定を入れておく。CodeRabbit の設定例と未確認の点は [references/tools/coderabbit.md](references/tools/coderabbit.md)。ラベルで外せないツールは light でも走る（Codex は未確認。`references/tools/codex.md`）
+1. Create it with the `review:light` label only when `bash $D --auto` is `on`, the decision in 2 is `light`, and `bash $D --light` includes `claude` (or prints nothing). Otherwise, no label
+   - **Repos that list tools in `review-light:`** (e.g. `review-light: coderabbit, codex`): no label even for light. The tools' automatic review runs as is, handled like heavy (step 4; the tools to wait for are the ids from `bash $D --light`). This is also how to back out of the label setup
+   - **Repos that list `claude` together with tools** (e.g. `review-light: claude, codex`): set the label. Tools the label excludes (CodeRabbit) don't run, and tools it can't exclude (Codex, etc.) run automatically. List only tools that can't be excluded. If you list one that the label excludes, no result arrives automatically, so request it manually via 4.1, as in "When tools are listed too" in 3
+2. Create the label first if the repo doesn't have it: `gh label create review:light --force --description "Light PR. Excluded from the tools' automatic review"` (`--force` just overwrites if it already exists)
+3. Create the PR with `gh pr create --label review:light ...`. The GitHub connector's `create_pull_request` cannot set labels, so this is an exception that uses `gh`
+4. Configure the tool to exclude PRs with this label from automatic review. CodeRabbit's example config and unverified points are in [references/tools/coderabbit.md](references/tools/coderabbit.md). Tools the label can't exclude run even on light PRs (unverified for Codex; see `references/tools/codex.md`)
 
-PR を作った後の流れ:
-- **light（ラベルあり）**: 3 のまま（`claude` とツールを並べたなら、3 の「ツールも並べたとき」）
-- **heavy**: ツールは自動で走るので、4.1 の依頼コメントは投稿しない。4.2〜4.4 はそのまま。4.4 の「4.1 で控えた head SHA と時刻」は、PR を作ったときの head SHA と時刻（`pull_request_read` の `get` の `head.sha` と `created_at`）に読み替える
+After creating the PR:
+- **light (with label)**: follow 3 as is (if `claude` is listed with tools, "When tools are listed too" in 3)
+- **heavy**: the tools run automatically, so don't post the 4.1 request comment. 4.2 to 4.4 are unchanged. For "the head SHA and time noted in 4.1" in 4.4, read the head SHA and time at PR creation instead (`head.sha` and `created_at` from `pull_request_read` `get`)
 
-## 3. light — Claude がレビューして CI だけ待つ
+## 3. light — Claude reviews and only CI is awaited
 
-1. 組み込みの `code-review` skill を PR 番号つきで起動する（例: `code-review <PR番号>`。`review-notes:` があれば重点として添える）。`coderabbit:code-review` ではない（あちらは CodeRabbit の枠を使う）。`--comment` は付けない（スレッドに書かない運用のため）。`code-review` が無い環境では、general-purpose subagent に `git diff origin/<base>...HEAD` を渡してレビューさせる
-2. 結果を **PR 本文** の `## レビュー（Claude）` 節に、対応表（指摘 / 判定 / 対応 / 根拠）で書く。**指摘ゼロでも節を置いて「指摘なし」と書く**（後から見た人が「レビューされていない」と誤読しないため）。本文の更新はコネクタの `update_pull_request`
-3. 対応する指摘を直して push する。ツールには頼まない（`review-light:` にツールも並べたときは下）
-4. **CI だけ待つ**: クラウドは `subscribe_pr_activity`、ローカルは Monitor で [references/monitor-snippet.md](references/monitor-snippet.md) の「CI だけ待つ」を回す。待たずに終えると dev-flow-gate の Stop の確認に止められる。チェックが 1 つも付かずに `NO_CHECKS` で抜けたら、CI が緑とは数えず「このリポ（この commit）にはチェックが無い」と報告する。取得の失敗が続いて `FETCH_GAVE_UP` で抜けたら、CI は「未確認」と報告し、取得し直して結果が出るまでマージの判断に進まない
+1. Start the built-in `code-review` skill with the PR number (e.g. `code-review <PR number>`; pass `review-notes:` as focus if present). Not `coderabbit:code-review` (that one uses CodeRabbit's quota). Don't add `--comment` (we don't write in threads). Where `code-review` is unavailable, give `git diff origin/<base>...HEAD` to a general-purpose subagent to review
+2. Write the result in the **PR body** under a `## Review (Claude)` section as a response table (finding / verdict / action / basis). **Even with zero findings, keep the section and write "No findings"** (so later readers don't misread it as "not reviewed"). Older PR bodies may have `## レビュー（Claude）` instead, which counts too. Update the body with the connector's `update_pull_request`
+3. Fix the findings you accept and push. Don't ask the tools (see below when tools are also listed in `review-light:`)
+4. **Wait only for CI**: in the cloud, `subscribe_pr_activity`; locally, run "Wait only for CI" from [references/monitor-snippet.md](references/monitor-snippet.md) in a Monitor. Finishing without waiting gets stopped by dev-flow-gate's Stop check. If it exits with `NO_CHECKS` because no check was ever attached, do not count CI as green; report "this repo (this commit) has no checks". If it exits with `FETCH_GAVE_UP` after repeated fetch failures, report CI as "unverified" and do not move on to the merge decision until a re-fetch gives a result
 
-**`review-light:` に `claude` とツールを並べたとき**（例: `review-light: claude, codex`）: 1〜4 に加えて、並べたツール（`bash $D --light` の `claude` 以外の id）の結果を 4.2〜4.4 で待ち、4.5 で評価して対応表に書く。`review-auto: on` なら、ラベルで外せないツール（Codex など）には依頼を出さずに自動レビューを待つ（4.4 の head SHA と時刻は 2.1 の読み替え）。ラベルで外れるツール（CodeRabbit）を並べたときは、自動では結果が来ないので 4.1 で手動で頼む（待ち続けない）。`off` なら全部 4.1 で頼む。Monitor の投稿者のフィルタは `bash $D --light --regex`。
+**When `review-light:` lists `claude` together with tools** (e.g. `review-light: claude, codex`): in addition to 1 to 4, wait for the listed tools' results (ids other than `claude` from `bash $D --light`) via 4.2 to 4.4, evaluate them in 4.5, and add them to the response table. With `review-auto: on`, don't request tools the label can't exclude (Codex, etc.); wait for their automatic review (for the head SHA and time in 4.4, use the substitution from 2.1). If you listed a tool the label excludes (CodeRabbit), no result arrives automatically, so request it manually via 4.1 (don't keep waiting). With `off`, request all of them via 4.1. The Monitor author filter is `bash $D --light --regex`.
 
-`review-heavy: none` のリポで heavy だった PR も同じ手順で回し、`## レビュー（Claude）` に heavy だった理由（classify.sh の理由行）も書く。
+In `review-heavy: none` repos, run heavy PRs through the same steps and also write in `## Review (Claude)` why it was heavy (the classify.sh reason lines).
 
-## 4. heavy — ツールに頼む → 待つ → 評価して直す
+## 4. heavy — request tools -> wait -> evaluate and fix
 
-### 4.1 頼む
+### 4.1 Request
 
-`review-auto: on` のリポで PR を作った直後は頼まない（2.1）。それ以外の頼み方は `references/tools/<id>.md` の「再レビューの頼み方」（初回も同じ）。**頼む直前に、今の head SHA（`pull_request_read` の `get` の `head.sha`）と時刻を控える**（4.4 で前の回の結果と分けるため）。
+In `review-auto: on` repos, don't request right after creating the PR (2.1). Otherwise, request as described under "How to request a re-review" in `references/tools/<id>.md` (same for the first time). **Right before requesting, note the current head SHA (`head.sha` from `pull_request_read` `get`) and the time** (to separate this round from earlier results in 4.4).
 
-- **コメントで頼むツール**は、コネクタの `add_issue_comment` で **1 コメントにまとめて**投稿する（例: `@coderabbitai review` と `@codex review` を 1 行ずつ）。本文はメンション行だけにする（focus の制約は各ツールのファイル。Codex は短い英語だけ）
-- **Copilot** はコネクタの `request_copilot_review`
-- スクリプトで `gh` から投稿しない
+- **Tools requested by comment**: post **one combined comment** with the connector's `add_issue_comment` (e.g. `@coderabbitai review` and `@codex review`, one per line). The body is mention lines only (focus constraints are in each tool's file; Codex takes only short English)
+- **Copilot**: the connector's `request_copilot_review`
+- Do not post from a script via `gh`
 
-### 4.2 既存の結果を先にさらう
+### 4.2 Sweep existing results first
 
-**必須。** Monitor・購読は起動した後の出来事しか拾わない。依頼より前に届いていた結果を取りこぼすと、結果が揃わないまま待ち続ける。
+**Required.** Monitor and subscriptions only catch events after they start. If you miss results that arrived before the request, you keep waiting for results that never complete.
 
-- 未解決スレッド: コネクタの `pull_request_read`（`get_review_comments`）。**投稿者で絞らない**（想定外の投稿者を取りこぼさないため。Monitor のフィルタだけがツールのアカウントで絞る）
-- レビューとコメント: `pull_request_read`（`get_reviews`・`get_comments`）
-- リアクション（Codex の 👍 など）: コネクタで取れないので `gh api repos/OWNER/REPO/issues/N/reactions`
+- Unresolved threads: the connector's `pull_request_read` (`get_review_comments`). **Do not filter by author** (so unexpected authors aren't missed; only the Monitor filter narrows to tool accounts)
+- Reviews and comments: `pull_request_read` (`get_reviews`, `get_comments`)
+- Reactions (Codex's 👍, etc.): not available from the connector, so `gh api repos/OWNER/REPO/issues/N/reactions`
 
-出てきた指摘は待たずに先に評価・対応する。「指摘なし」の合図が届いていればそのツールは結果が揃ったに数える。レート制限・上限の合図なら、そのツールは**未レビュー**として 4.4 に回す。
+Evaluate and handle any findings right away without waiting. If a "no findings" signal has arrived, count that tool's result as in. If it is a rate-limit or quota signal, treat that tool as **not reviewed** and go to 4.4.
 
-### 4.3 待つ
+### 4.3 Wait
 
-- **クラウド**: `subscribe_pr_activity` で PR イベントを購読してターンを終える
-- **ローカル**: Monitor（`persistent: true`）を立てる。実体は [references/monitor-snippet.md](references/monitor-snippet.md)。投稿者のフィルタは `bash $D --regex` の出力（1 と同じ環境変数を付ける。light をツールで回すときは `bash $D --light --regex`）。**ツール以外（自分の返信）は除外する**。自分の投稿を拾うと通知が溢れて本物のレビューが埋もれる
+- **Cloud**: subscribe to PR events with `subscribe_pr_activity` and end the turn
+- **Local**: start a Monitor (`persistent: true`). The implementation is in [references/monitor-snippet.md](references/monitor-snippet.md). The author filter is the output of `bash $D --regex` (with the same environment variables as in 1; when light runs with tools, `bash $D --light --regex`). **Exclude everything other than the tools (your own replies).** Picking up your own posts floods notifications and buries the real reviews
 
-通知本文は truncate されるので、新着を検知したら必ず全文を取り直してから評価する。満了通知が 0 件でも「まだ来ていない」と読まず、一次ソースを引き直す。
+Notification bodies are truncated, so when something new is detected, always re-fetch the full text before evaluating. Even if the timeout notification shows 0 items, don't read it as "nothing yet"; re-check the primary source.
 
-### 4.4 到着判定
+### 4.4 Deciding results are in
 
-- **その回に頼んだツールすべて**の結果が揃ったら待機を終える。結果とは、レビュー（指摘つき）か「指摘なし」の合図（ツールごとの合図は `references/tools/<id>.md`）。一部の結果だけで待機を終えない（先に届いた方の指摘は、もう片方を待つ間に評価・実装してよい）
-- **前の commit・前の回の結果を今回に数えない**。レビューは `commit_id` が 4.1 で控えた head SHA と一致し、かつ控えた時刻より後に出たもの（`submitted_at`）だけ、「指摘なし」のリアクションや状態コメント（walkthrough など）は 4.1 で控えた時刻より後のものだけ数える。前の push へのレビュー、同じ head のまま頼み直す前のレビュー、前の回の 👍 で待機を終えると、今の差分を誰も見ていないまま「揃った」と読んでしまう
-- **レート制限・上限は「未レビュー」**。結果に数えず待ち直す。これを「指摘なし」と数えると、誰もレビューしていない PR を「マージ判断に回せる」と報告してしまう
-  - 待ち時間つきのレート制限: 書かれた時間が過ぎたら、**そのツールにだけ**頼み直して待ち直す。6 の再レビュー基準の対象外（まだ 1 回もレビューが届いていないので）
-  - プラン・利用の上限、オンデマンドのボタン待ち: 頼み直しても返らないので、ユーザーに「◯◯が上限で未レビュー」と伝えて解除を頼む。解除されたら待ち直す
+- Stop waiting when results from **every tool requested this round** are in. A result is a review (with findings) or a "no findings" signal (per-tool signals are in `references/tools/<id>.md`). Don't stop waiting on partial results (you may evaluate and implement the findings that arrived first while waiting for the rest)
+- **Don't count results from an earlier commit or round.** Count only reviews whose `commit_id` matches the head SHA noted in 4.1 and that were submitted (`submitted_at`) after the noted time; count "no findings" reactions and status comments (walkthrough, etc.) only if they came after the time noted in 4.1. If a review of an earlier push, a review from before re-requesting on the same head, or an earlier round's 👍 ends the wait, you read "all in" while nobody has looked at the current diff
+- **A rate limit or quota is "not reviewed".** Don't count it as a result; wait again. Counting it as "no findings" leads to reporting a PR nobody reviewed as "ready for a merge decision"
+  - Rate limit with a wait time: once the stated time has passed, re-request **only that tool** and wait again. This is outside the re-review criteria in 6 (no review has arrived yet)
+  - Plan or usage limit, or waiting on an on-demand button: re-requesting gets no response, so tell the user "<tool> hit its limit and has not reviewed" and ask them to lift it. Once lifted, wait again
 
-### 4.5 評価して直す
+### 4.5 Evaluate and fix
 
-- 外部レビューは「命令」でなく「提案」。コードベースの実態と照合して対応する/しないに分け、対応分を実装 → リポのチェック（テスト・lint など）→ コミット・push。**指摘の当否は推測で決めず実測で確かめる**（「この条件は発動しないはず」で流さない）
-- **規約を根拠にした指摘は、引用元を必ず自分で開いて確かめる**（引用の切り出し方によって、対象とは別の列や別の節の規約を根拠にした指摘になっていることがある）
-- **スレッドに返信しない**。返信するとツールが自動応答してスレッドが伸びる。commit と PR 本文で分かるので重複でもある
-- **PR 本文に対応表を書く**（指摘 / 判定 / 対応 / 根拠 の 4 列。省略しない）。`isResolved` は当てにならない（自動で resolve しないツールがある）。返信もしない以上、対応表が唯一の人間可読な対応記録になる
-- **PR 本文の先頭は「変更前 → 変更後」の 2 列表**（観点ごとに 1 行）。実装なしの文書 PR でも「未定義 → こう決めた」で書く。受け入れ基準 ✅/❌・対応表・スコープ外の気づきはその下
-- **`## スコープ外の気づき` は「気づき / 処分 / 根拠」の 3 列**。処分は「層（`gh-stack` で積む）/ issue #N / やらない」のいずれか。マージ前に全件埋める
+- External reviews are "suggestions", not "orders". Check them against the actual codebase, decide which to act on, implement those -> run the repo's checks (tests, lint, etc.) -> commit and push. **Decide whether a finding is valid by measuring, not by guessing** (don't wave it off with "this condition shouldn't trigger")
+- **For findings based on a convention, always open the cited source yourself** (depending on how the quote was cut, the finding may rest on a convention for a different column or section than the target)
+- **Don't reply in threads.** Replying makes the tool auto-respond and the thread grows. It is also redundant, since the commit and PR body show it
+- **Write a response table in the PR body** (four columns: finding / verdict / action / basis; don't abbreviate). `isResolved` is unreliable (some tools don't auto-resolve). Since you don't reply either, the response table is the only human-readable record of what was done
+- **The PR body starts with a two-column "before -> after" table** (one row per aspect). Even for doc-only PRs without implementation, write "undefined -> decided this". Acceptance criteria ✅/❌, the response table, and out-of-scope notes go below it
+- **`## Out-of-scope notes` has three columns: note / disposition / basis** (older PR bodies may name it `## スコープ外の気づき`). The disposition is one of "layer (stack with `gh-stack`) / issue #N / won't do". Fill every row before merging
 
-### 4.6 報告
+### 4.6 Report
 
-「対応済み / 未対応（理由付き）」の 2 部構成。冒頭にツールごとの結果（指摘の件数と重さ・レビューしたコミット）を書く。「マージ判断に回せる」と書くのは、頼んだツールすべてが実際にレビューを返したと確かめた後だけ。未レビューのツールがあれば「◯◯がレート制限で未レビュー・頼み直し済み」のように書き、マージを頼まない。
+Two parts: "addressed / not addressed (with reasons)". Start with each tool's result (number and severity of findings, the commit it reviewed). Write "ready for a merge decision" only after confirming that every requested tool actually returned a review. If a tool has not reviewed, write something like "<tool> is rate limited and has not reviewed; re-requested", and don't ask for a merge.
 
-## 5. push の後 — もう一度振り分ける
+## 5. After a push — sort again
 
-指摘対応などで push したら、2 の振り分けをやり直す。
+After pushing (e.g. to address findings), redo the sorting in 2.
 
-- **light のまま**: light のレビュー役（`bash $D --light`）が `claude` だけ（または何も出ない）なら、push して CI だけ待つ。ツールが含まれていれば（`claude` と並べたときも）、heavy のままと同じく 6 の基準で、そのツールへ再レビューを頼むかを決める（新しい作業を足した push の例外も同じ）
-- **前回 light だった PR が heavy に変わった**: `review:light` ラベルが付いていれば先に外す（`gh pr edit <PR番号> --remove-label review:light`）。`review-heavy: none`（`bash $D` が何も出さない）なら 3 の手順で Claude がレビューする。ツールがあれば、ツールにとっては初回なので、6 の基準に関係なく 4 の手順で頼む。外しただけでツールの自動レビューが始まるかは未確認なので、`review-auto: on` でも 4.1 の手順で手動で頼む
-- **heavy のまま**: 6 の基準で再レビューを頼むかを決める。レビューの結果が返った後に指摘への対応以外の新しい作業を足した push は、6 の基準の例外で頼む
+- **Still light**: if the light reviewer (`bash $D --light`) is only `claude` (or prints nothing), push and wait only for CI. If tools are included (even alongside `claude`), decide whether to ask them for a re-review by the criteria in 6, same as still heavy (the exception for pushes that add new work also applies)
+- **Was light, now heavy**: remove the `review:light` label first if set (`gh pr edit <PR number> --remove-label review:light`). With `review-heavy: none` (`bash $D` prints nothing), Claude reviews per step 3. If there are tools, this is their first time, so request per step 4 regardless of the criteria in 6. It is unverified whether removing the label starts the tools' automatic review, so even with `review-auto: on`, request manually per 4.1
+- **Still heavy**: decide by the criteria in 6 whether to request a re-review. A push that adds new work other than addressing findings, after review results came back, is an exception to the criteria in 6 and gets a request
 
-## 6. 再レビュー
+## 6. Re-review
 
-**頼む**: その回に直した指摘のうち、重い指摘（CodeRabbit=Critical / Codex=P1。ほかのツールは Critical・High 相当。ツールごとの呼び方は `references/tools/<id>.md` の「重い指摘」）が **${user_config.rereview_threshold} 件以上**（userConfig `rereview_threshold`。既定 3）あったときだけ、その回に頼んだツールへ頼む（頼み方は 4.1、そのあと 4.2 から）。
+**Request**: only when the findings fixed this round include **${user_config.rereview_threshold} or more** heavy findings (CodeRabbit=Critical / Codex=P1; for other tools, the Critical/High equivalent; each tool's name for them is under "Heavy findings" in `references/tools/<id>.md`) (userConfig `rereview_threshold`, default 3). Then request the tools asked this round (request as in 4.1, then continue from 4.2).
 
-**それ以外は頼まない**: push して CI だけ待ち、マージ判断へ。push のたびに頼むと 1 PR で 5 巡になりコスト過大（過去の実例で実測）。多くのツールは push しても再レビューを自動では走らせないので、頼まずに待っても何も来ない。
+**Otherwise, don't request**: push, wait only for CI, and move to the merge decision. Requesting on every push leads to 5 rounds per PR, which costs too much (measured on a past case). Most tools don't re-review automatically on push, so waiting without requesting brings nothing.
 
-`review-auto: on` のリポで、ツールの設定で push ごとに自動でレビューが走る（CodeRabbit の incremental review など）なら、そのツールには頼まず 4.2 から待つ（同じ push に二重に枠を使わないため）。
+In `review-auto: on` repos, if the tool's settings run a review automatically on every push (e.g. CodeRabbit's incremental review), don't request that tool; wait from 4.2 (so the same push doesn't use quota twice).
 
-**基準の例外**（基準を満たさなくても頼んでよい）:
-- **ユーザーの明示指示**（「再レビュー投げて」）
-- **レビューの結果が返った後に、指摘への対応以外の新しい作業を足した push**。足した範囲はまだ誰も見ていないので、再レビューの基準に関係なく頼む。指摘への対応だけの push は従来の基準に従う。結果が返る前に足した分は初回のレビューに含まれる
-- **レート制限明けの頼み直し**（4.4。そのツールにだけ）
-- **自動マージのリポ**（リポの `.claude/dev-flow.json` が `{"autoMerge": true}`）で、**エージェント（委譲先のセッション等）が作った PR**。そのリポではマージ自体をユーザー以外の判断で認めているので、その前段の再レビューも同じ扱いにする。判断の目安はリポの CLAUDE.md に定めがあればそれ、無ければクリティカル/actionable な指摘（nit・style は除く）が多い、または PR のファイル数が多いときに頼む側へ倒す。総コメント数では測らない（ツールは nit を無限に出す）
-  - 対象外（基準か明示指示が要る）: client / product リポ（他組織のリポを含む）の PR／エージェントが作ったものでない PR／破壊的変更・後戻りしづらい変更を含む PR
+**Exceptions to the criteria** (you may request even if the criteria aren't met):
+- **An explicit instruction from the user** ("request a re-review")
+- **A push that adds new work other than addressing findings, after review results came back.** Nobody has looked at the added part yet, so request regardless of the re-review criteria. A push that only addresses findings follows the usual criteria. Work added before results came back is covered by the first review
+- **Re-requesting after a rate limit clears** (4.4; only that tool)
+- **PRs created by an agent (a delegated session, etc.) in an auto-merge repo** (the repo's `.claude/dev-flow.json` is `{"autoMerge": true}`). That repo already allows merging itself to be decided by someone other than the user, so the re-review before it is treated the same way. Follow the repo's CLAUDE.md if it sets a rule; otherwise lean toward requesting when there are many critical/actionable findings (excluding nits and style) or the PR touches many files. Don't measure by total comment count (tools produce endless nits)
+  - Not covered (needs the criteria or an explicit instruction): PRs in client / product repos (including other organizations' repos) / PRs not created by an agent / PRs with breaking or hard-to-reverse changes
 
-## マージ
+## Merge
 
-- **マージ（とマージの依頼）は、その回に頼んだツールすべての結果が揃ってから**（ユーザーがマージを任せている場合も同じ）。レート制限・上限は結果に数えない。一部の 👍 や指摘ゼロだけでマージすると、後から届いた他のツールの指摘を取りこぼす（実例: 👍 でマージした直後に別のツールの Major 指摘が届き、続きの PR で直すことになった）
-- **ユーザーに投げる**: 設計判断が割れる指摘／仕様・方針の変更を伴う指摘／自分が書いていないコードへの実害系の指摘／**マージ**（マージは常にユーザー判断）
-- **例外: 自動マージのリポ**（6 の例外と同じリポ）だけは、エージェントの判断でマージしてよい。レビュー 1 巡の対応後の「再レビュー or マージ」をエージェントが決める。判断の目安と実行の場所はそのリポ側の文書（例: `.claude/ARCHITECTURE.md`）があればそれが正典。client / product リポ・破壊的変更・後戻りしづらいものは対象外で、引き続きユーザーへ投げる
+- **Merge (and asking for a merge) only after results from every tool requested this round are in** (even when the user has delegated merging). Rate limits and quotas don't count as results. Merging on a partial 👍 or zero findings misses findings from other tools that arrive later (real case: right after merging on a 👍, another tool's Major finding arrived and had to be fixed in a follow-up PR)
+- **Hand to the user**: findings where design judgment is split / findings that change the spec or policy / findings about real harm in code you didn't write / **merging** (merging is always the user's decision)
+- **Exception: auto-merge repos** (the same repos as the exception in 6) are the only place the agent may merge on its own judgment. After handling one review round, the agent decides "re-review or merge". If the repo has its own document (e.g. `.claude/ARCHITECTURE.md`), that is the canonical source for the judgment criteria and where to run it. Client / product repos, breaking changes, and hard-to-reverse changes are excluded and still go to the user
 
-## やってはいけないこと
+## Don'ts
 
-- 再レビューの基準を満たさないまま、push / commit のたびに頼む（6 の例外を除く）
-- 自動マージのリポの例外を、自動マージにしていないリポやエージェントが作ったものでない PR へ広げる
-- 「念のため」を理由に、基準を満たさないまま頼む
-- 数分待っても来ないからもう一度頼む（到着待ちは 4.3 に任せる）
-- closed / merged の PR に頼む
-- 振り分けの結果を「軽そうだから」と手で light に変える（変えたいなら classify.sh の基準を直す PR を出す）。heavy へ倒す（ユーザーの「重めで」）のはよい
-- レート制限・上限で止まったツールを「レビュー済み」に数える
+- Request on every push / commit without meeting the re-review criteria (except the exceptions in 6)
+- Extend the auto-merge repo exception to repos without auto-merge, or to PRs not created by an agent
+- Request "just to be safe" without meeting the criteria
+- Request again because nothing came after a few minutes (leave waiting to 4.3)
+- Request on closed / merged PRs
+- Manually change the sorting result to light because it "looks light" (if you want to change it, open a PR that fixes classify.sh's criteria). Leaning heavy (the user's "review it heavier") is fine
+- Count a tool stopped by a rate limit or quota as "reviewed"

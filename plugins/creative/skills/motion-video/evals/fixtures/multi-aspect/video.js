@@ -1,15 +1,15 @@
-// eval (c): 同じシーン定義から 9:16 → 1:1 → 16:9 を書き出す（横のマスターを切り抜かない）。
-// ループ作品として作ってあり、最後のコマから最初のコマへ位置も速度もつながる（動きを t の周期関数で書く）。
+// eval (c): export 9:16 -> 1:1 -> 16:9 from the same scene definition (no cropping of a landscape master).
+// Built as a loop: position and velocity carry over from the last frame to the first (motion is written as periodic functions of t).
 const PERIOD = 4;
 export const meta = {
-  title: '3画角ループ',
+  title: 'Three-aspect loop',
   duration: PERIOD,
   fps: 60,
   loop: true,
   aspects: ['9:16', '1:1', '16:9'],
   scenes: [
-    { id: 's1', start: 0, end: 2, message: '1つの定義から3画角', screen: '主色の角丸タイルが画面の対角を回る', motion: { main: 'タイルが周回し、補助色の点が追いかける' }, sound: 'click', transition: 'タイルがそのまま次のシーンの位置へ回り込む' },
-    { id: 's2', start: 2, end: 4, message: 'ループで最初に戻る', screen: 'タイルが反対側を回る', motion: { main: '周回を続けて最初の位置へ戻る' }, sound: 'click', transition: '最初のコマへ連続してつながる（ループ）' },
+    { id: 's1', start: 0, end: 2, message: 'Three aspects from one definition', screen: 'A primary-color rounded tile circles across the diagonal of the screen', motion: { main: 'The tile orbits while support-color dots chase it' }, sound: 'click', transition: 'The tile keeps orbiting into its position in the next scene' },
+    { id: 's2', start: 2, end: 4, message: 'Loop back to the start', screen: 'The tile orbits the opposite side', motion: { main: 'Keeps orbiting back to the starting position' }, sound: 'click', transition: 'Connects seamlessly to the first frame (loop)' },
   ],
   audio: { bpm: 120, cues: [{ beat: 0, sfx: 'click' }, { beat: 4, sfx: 'click' }] },
 };
@@ -23,7 +23,7 @@ export function render(ctx, t) {
   const rx = L.safe.w * 0.3;
   const ry = L.safe.h * 0.3;
   const s = 22 * u;
-  // 主役のタイル
+  // The hero tile
   const x = L.cx + Math.cos(ph) * rx;
   const y = L.cy + Math.sin(ph) * ry;
   g.save();
@@ -33,7 +33,7 @@ export function render(ctx, t) {
   D.roundRect(g, -s / 2, -s / 2, s, s, 4 * u);
   g.fill();
   g.restore();
-  // 追いかける点（位相を遅らせる）
+  // Chasing dots (phase-delayed)
   for (let i = 1; i <= 3; i++) {
     const q = ph - i * 0.35;
     g.fillStyle = [C.support, C.secondary, C.accent][i - 1];
@@ -41,7 +41,7 @@ export function render(ctx, t) {
     g.arc(L.cx + Math.cos(q) * rx, L.cy + Math.sin(q) * ry, (5 - i) * u, 0, Math.PI * 2);
     g.fill();
   }
-  // 見出し（周期関数で濃さが入れ替わる）
+  // Headings (opacity alternates via a periodic function)
   const a = 0.5 + 0.5 * Math.cos(ph);
   ctx.text('ONE SCENE', L.cx, L.safe.y + 4 * u, { font: ctx.font('heading', 7 * u, 800), color: C.ink, align: 'center', alpha: 0.35 + 0.65 * a });
   ctx.text('THREE FRAMES', L.cx, L.safe.y + L.safe.h, { font: ctx.font('heading', 7 * u, 800), color: C.ink, align: 'center', baseline: 'bottom', alpha: 0.35 + 0.65 * (1 - a) });

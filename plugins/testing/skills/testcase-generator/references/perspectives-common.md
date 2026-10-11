@@ -1,125 +1,125 @@
 ---
 name: perspectives-common
-description: どのプロダクトでも変わらないテスト観点の共通層。testcase-generator が固有観点より先に読む。
+description: The common layer of test perspectives that stays the same for every product. testcase-generator reads it before the project-specific perspectives.
 last_reviewed: 2026-09-22
 review_after: 2027-03-22
 status: active
 ---
 
-# 共通テスト観点（プロダクト非依存）
+# Common test perspectives (product-independent)
 
-この表に載っているのは、**どのプロダクトでも変わらない観点**だけ。「この機能はここが壊れやすい」のような固有の勘所は、後述のプロジェクト固有層に置く。
+This list holds only **perspectives that stay the same for every product**. Product-specific know-how such as "this feature tends to break here" goes in the project-specific layer described below.
 
-## 使い方 — 全観点を「対象 / 対象外」に判定する
+## How to use — mark every perspective "In scope / Out of scope"
 
-観点を眺めて当てはまるものだけ拾う、という読み方をしない。**全項目に対象・対象外の判定を付け、対象外には理由を1行添える。**
+Do not skim the perspectives and pick only the ones that apply. **Mark every item In scope or Out of scope, and give each Out of scope item a one-line reason.**
 
-黙って落とすと、落としたこと自体が記録に残らない。後から「なぜこの観点が無いのか」を追えるかどうかで、テスト設計を読み直せるかが決まる。
+Dropping one silently leaves no record that it was dropped. Whether you can later trace "why is this perspective missing" decides whether the test design can be re-read.
 
 ---
 
-## 1. 入力値
+## 1. Input values
 
-- [ ] **正常値** — 区分・種別ごとに最低1件。1件で代表させない
-- [ ] **境界値** — 境界の**内側・ちょうど・外側**をそれぞれ別のケースにする。値の型で書き分ける:
+- [ ] **Valid values** — at least one per category or type. Do not let a single value represent all
+- [ ] **Boundary values** — make **inside, exactly on, and outside** the boundary separate cases. Choose by value type:
 
-| 値の型 | 4点の取り方 |
+| Value type | How to take the four points |
 |---|---|
-| 整数・件数 | 最小-1 / 最小 / 最大 / 最大+1 |
-| 列挙・区分 | 定義の外 / 先頭 / 末尾 /（あれば）未定義値 |
-| 連続値（小数・時刻・率） | 「-1／+1」は定義できない。**境界のすぐ外側 / 境界ちょうど**の2点を上下で取る。**どれだけ外側にしたかを Examples の値で示す** |
-| クランプ（上下で丸める） | 下限の外側 / 下限ちょうど / 上限ちょうど / 上限の外側。**丸められた後の値**を Then に書く |
+| Integers, counts | min-1 / min / max / max+1 |
+| Enumerations, categories | outside the definition / first / last / (if any) undefined value |
+| Continuous values (decimals, times, rates) | "-1 / +1" is undefined. Take two points on each side: **just outside the boundary / exactly on it**. **Show how far outside in the Examples values** |
+| Clamping (rounded at both ends) | outside the lower bound / exactly the lower bound / exactly the upper bound / outside the upper bound. Write the **value after clamping** in Then |
 
-連続値で読み替えたときは、**どう読み替えたかを出力に1行書く**。書かないと次に同じ関数を設計した人が別の解釈をして、結果が揃わない（それはこの観点表の目的に反する）
-- [ ] **異常値** — 型違い / 空文字 / null / 未入力 / 特殊文字
-- [ ] **桁あふれ・丸め** — 想定桁数を超える入力、小数の扱い
+When you reinterpret for continuous values, **write one line in the output saying how you did it**. Otherwise the next person designing the same function interprets it differently and the results diverge (which defeats the purpose of this list)
+- [ ] **Invalid values** — wrong type / empty string / null / missing / special characters
+- [ ] **Overflow and rounding** — input beyond the expected number of digits, handling of decimals
 
-境界値を1ケースにまとめない理由: まとめると実行結果が Fail になったときに**どの境界で落ちたのかが判別できない**。切り分けのために人がもう一度手で試すことになり、自動化した意味が薄れる。
+Why boundary values are not combined into one case: if the run fails, **you cannot tell which boundary failed**. Someone has to try again by hand to isolate it, which defeats the point of automating.
 
-## 2. 数値・金額計算
+## 2. Numeric and monetary calculations
 
-- [ ] 金額・数量・率の計算があれば、**他の観点より先に**ケース化する
-- [ ] **計算式の分岐ごとに値を選ぶ** — 端数処理（切り上げ/切り捨て/四捨五入）、税率や料率の境界、割引・加算の適用条件
-- [ ] 複数項目の合算・按分があれば、合計が一致することを確認する
+- [ ] If there are amount, quantity or rate calculations, turn them into cases **before any other perspective**
+- [ ] **Pick values per branch of the formula** — rounding (up / down / half), tax or rate boundaries, conditions for discounts and surcharges
+- [ ] If there is summing or proration across items, confirm the totals match
 
-ランダムな数値を1件入れて終わりにしない。金額の誤りは**画面上は正常に見えるまま流れていく**ので発見が遅れ、遅れるほど損害が大きい。
+Do not stop at one random number. Wrong amounts **flow through while looking normal on screen**, so they are found late, and the later they are found the bigger the damage.
 
-## 3. 前提条件と状態
+## 3. Preconditions and state
 
-- [ ] 前提が満たされないとき、**どのエラー状態へ倒れるか**
-- [ ] 権限・ロールの違いによる可否
-- [ ] 未ログイン / セッション切れ
-- [ ] 同じ操作を2回実行したとき（冪等性、二重登録）
-- [ ] 対象データが0件 / 1件 / 大量
+- [ ] When a precondition is not met, **which error state it falls into**
+- [ ] Allowed / denied by permission or role
+- [ ] Not logged in / session expired
+- [ ] Running the same operation twice (idempotency, double registration)
+- [ ] Target data with 0 / 1 / many records
 
-## 4. 検証をどこで行うか（UI か API か）
+## 4. Where to verify (UI or API)
 
-- [ ] **画面から確認できる項目は画面操作で検証する**（`@UI`）
-- [ ] **画面では再現できない条件だけ API 確認に回す**（`@API`）
+- [ ] **Items that can be checked on screen are verified by operating the screen** (`@UI`)
+- [ ] **Only conditions that cannot be reproduced on screen go to API checks** (`@API`)
 
-API が期待どおりの値を返すことと、その値が**ユーザーの見る画面で正しく表示・制御されること**は別問題。API 確認だけで合格にすると、画面側の表示や入力チェックの不備を素通りさせる。
+"The API returns the expected value" and "that value is **displayed and controlled correctly on the screen the user sees**" are separate problems. Passing on API checks alone lets screen-side display and input-check bugs through.
 
-**対象が画面を持たない場合はこの観点を「非適用」とする。** 全ケースが `@API` になるのは仕分けの失敗ではない。
+**If the target has no screen, mark this perspective "Not applicable".** All cases being `@API` is not a sorting failure.
 
 ---
 
-## 5. 生成後の自己検査（必ず実行する）
+## 5. Self-check after generation (always run)
 
-生成したテストケース一式を、次の観点で自分で点検する。これは外側の機械検証ではなく、**生成手順の内側に組み込んだ自己検査**。
+Inspect the whole set of generated test cases yourself against the items below. This is not external mechanical checking but **a self-check built into the generation procedure**.
 
-記録する値は4つ。**NG だけが書き直しの対象**で、非適用と留保はそのまま出してよい（ただし理由を書く）。
+There are four values to record. **Only NG requires a rewrite**; Not applicable and Deferred can be output as they are (but with a reason).
 
-| 値 | いつ使うか |
+| Value | When to use |
 |---|---|
-| OK | 満たしている |
-| NG | 満たしていない → **書き直してから出す** |
-| 非適用 | 構造上その観点が存在しない（画面を持たない対象の UI 項目など） |
-| 留保 | 実測しないと確定できない（例外メッセージの実文言、実行時にしか出ない値など） |
+| OK | It holds |
+| NG | It does not hold → **rewrite before output** |
+| Not applicable | The perspective structurally does not exist (UI items for a target with no screen, etc.) |
+| Deferred | Cannot be settled without measuring (the actual exception message text, values that only appear at run time, etc.) |
 
-二値（OK/NG）に押し込めると、判定できないものを判定したことにする嘘が混ざる。
+Forcing it into two values (OK/NG) mixes in the lie of claiming a verdict on something that cannot be judged.
 
-- [ ] **観点ごとのケース数が均等に並んでいないか**（1観点あたり5件ずつ、など）
-      均等になっているのは、観点ごとのリスクの差を見ずに機械的に割り当てた証拠。リスクの高い観点にはケースが多く付くはず
-- [ ] **金額・数値計算をランダムな値だけで確認していないか**（分岐ごとの値になっているか）
-- [ ] **画面操作を挟まず API 確認のみで合格としている項目が無いか**
-      ※ **対象が画面を持たない場合（バックエンド API・バッチ・ETL・CLI）はこの項目を「非適用」とする。**
-      画面が無い対象に UI 基準を当てると構造的に必ず不合格になる。満たせない項目を満たしたことにせず、
-      「非適用（画面を持たない対象のため）」と書く
-- [ ] 対象外と判定した観点すべてに理由が書かれているか
-- [ ] Then が観測可能な実値になっているか（スタイルガイド参照）
+- [ ] **Are the case counts per perspective evenly lined up?** (e.g. five per perspective)
+      Even counts are evidence of mechanical allocation that ignored the risk differences between perspectives. High-risk perspectives should get more cases
+- [ ] **Are amount or numeric calculations checked with random values only?** (are the values per branch?)
+- [ ] **Is anything passed on API checks alone, without a screen operation?**
+      * **If the target has no screen (backend API, batch, ETL, CLI), mark this item "Not applicable".**
+      Applying UI criteria to a target with no screen always fails structurally. Do not claim an item you cannot satisfy;
+      write "Not applicable (the target has no screen)"
+- [ ] Does every perspective marked Out of scope have a reason?
+- [ ] Is every Then an observable real value? (see the style guide)
 
-不都合が見つかったら、直すだけで終わらせず、**下の「過去の失敗から得た観点」に足す案を出力に書く**。
-ただし**このファイルを直接編集しない** — ここはグローバル（全プロジェクト共通）の知識なので、目の前の1プロダクトでの
-発見をそのまま流し込むと他のプロジェクトにも効いてしまう。追記するかはユーザーが決める。
+If you find a problem, do not stop at fixing it; **write a proposal in the output to add it to "Lessons from past failures" below**.
+But **never edit this file directly** — this is global knowledge (shared by every project), so pouring in a finding from the one product
+in front of you would affect other projects too. The user decides whether to add it.
 
 ---
 
-## 6. 過去の失敗から得た観点
+## 6. Lessons from past failures
 
-踏んだ穴をここに足し続ける。**この節が育つことが、この観点表が生きている証拠。**
+Keep adding the holes you fell into here. **This section growing is the evidence that this list is alive.**
 
-足すときは「いつ / どのプロダクトで / 何が漏れたか」を添える。抽象化しすぎると次に読んだときに使えない。
+When adding, include "when / which product / what was missed". Abstracted too far, it is useless the next time you read it.
 
-<!-- 追記例:
-- [ ] （2026-XX-XX / プロダクト名）〜の場合に〜を確認する。〜が漏れて〜になった
+<!-- Example:
+- [ ] (2026-XX-XX / product name) When ..., check .... ... was missed and ... happened
 -->
 
-（まだ無し）
+(none yet)
 
 ---
 
-## 7. プロジェクト固有の観点（2段参照）
+## 7. Project-specific perspectives (two-layer reference)
 
-ここまでが**共通層**。プロダクト固有の勘所は各リポに置き、**共通を読んでから固有を重ねる。**
+Everything above is the **common layer**. Product-specific know-how lives in each repo; **read the common layer first, then layer the specific one on top.**
 
-固有層の置き場（**この定義が正典。`testcase-generator` もプロジェクト側を整備する `codebase-doctor` も、ここを見て同じ場所を使う**）:
+Where the specific layer lives (**this definition is the single source. Both `testcase-generator` and `codebase-doctor`, which audits the project side, read it here and use the same locations**):
 
 ```
-$CLAUDE_PROJECT_DIR/.claude/knowledge/perspectives.md   # 固有のテスト観点
-$CLAUDE_PROJECT_DIR/.claude/knowledge/ui-terms.md       # 内部用語 ⇔ 画面表示名の対応辞書
-$CLAUDE_PROJECT_DIR/.claude/knowledge/playbook.md       # テスト実行の前提事項
+$CLAUDE_PROJECT_DIR/.claude/knowledge/perspectives.md   # project-specific test perspectives
+$CLAUDE_PROJECT_DIR/.claude/knowledge/ui-terms.md       # internal term ⇔ on-screen label mapping
+$CLAUDE_PROJECT_DIR/.claude/knowledge/playbook.md       # preconditions for running the tests
 ```
 
-`.claude/` 配下に置くのは、プロジェクトのエージェント設定（`settings.json`・プロジェクトスキル・hooks）と同じ場所にまとめて `codebase-doctor` が一括で面倒を見られるようにするため。
+They go under `.claude/` so they sit with the project's agent settings (`settings.json`, project skills, hooks) and `codebase-doctor` can look after them together.
 
-**固有層が無くても共通層だけで設計できる。** ただし無い場合は、生成物に「固有観点なし（共通層のみで設計）」と明記する。あるものと無いものを黙って同じ見た目にしない。
+**You can design with the common layer alone even without the specific layer.** But when it is missing, state "No project-specific perspectives (designed from the common layer only)" in the output. Do not silently make having it and not having it look the same.

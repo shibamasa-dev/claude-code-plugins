@@ -1,55 +1,55 @@
 #!/usr/bin/env python3
-"""PostToolUse hook: テストケース成果物がスタイルガイドに従っているかを機械検証する。
+"""PostToolUse hook: mechanically check that a test case artifact follows the style guide.
 
-matcher は "Edit|Write"（**ツール名しかマッチできない**ので、パスでは絞れない）。
-対象外のファイルは数 ms で exit 0・出力ゼロ＝完全に silent。
+The matcher is "Edit|Write" (**it can only match tool names**, so it cannot filter by path).
+Files out of scope exit 0 within a few ms with no output = completely silent.
 
-なぜ必要か:
-  ナレッジを構造化しても、それだけでは「ルールを知っている」状態にすぎず、守るかどうかは
-  AI 任せのまま。成果物が書き込まれるたびに機械検証して初めて「ルールを破れない」になる。
+Why it is needed:
+  Structuring the knowledge only gets you to "the rules are known"; whether they are followed is
+  still up to the AI. Only checking the artifact mechanically every time it is written makes the rules "impossible to break".
 
-**対象を絞る理由（グローバルに置いたことによる制約）**:
-  この種の Hook はプロジェクトの .claude/settings.json に置けば、そのプロジェクトのテスト成果物
-  だけに当たる。プラグインに入れると**全リポの全 Write/Edit に当たる**ので、
-  普通の日本語文書にあいまい語が1つ入っただけで止まり、実装コードの定数名が毎回 WARN される。
-  そこで**オプトイン**にした:
-    1. 拡張子 .feature / .gherkin
-    2. frontmatter に `testcase: true` を持つ .md
-  それ以外は即 exit 0。加えて本文に "Scenario" が無ければ何も検証しない（二重の安全弁）。
-  ※ この2条件により、禁止語を**例として列挙している** style-guide.md 自身は対象外になる
-    （.md かつ testcase フラグ無し）。自分自身で止まる事故を構造で防いでいる。
+**Why the scope is narrow (a constraint of living globally)**:
+  Put in a project's .claude/settings.json, a hook like this hits only that project's test artifacts.
+  Shipped in a plugin it hits **every Write/Edit in every repo**, so a single vague word in an ordinary
+  document would block, and constant names in implementation code would WARN every time.
+  So it is **opt-in**:
+    1. extension .feature / .gherkin
+    2. .md files whose frontmatter has `testcase: true`
+  Anything else exits 0 immediately. On top of that, nothing is checked if the body has no "Scenario" (a second safety valve).
+  * These two conditions put style-guide.md itself out of scope even though it **lists the forbidden words as examples**
+    (.md without the testcase flag). The structure prevents it from blocking on itself.
 
-**禁止語を持たない理由**:
-  禁止語の定義はこのスクリプトに書かず、SPEC（スタイルガイド）を実行時に読む。
-  定義が2箇所にあると片方だけ直してズレる。SPEC を1行足せば次回から hook の挙動も変わる。
+**Why the forbidden words are not in this file**:
+  The forbidden words are not defined in this script; it reads the SPEC (style guide) at run time.
+  With two definitions, one gets updated and the other drifts. Add one line to the SPEC and the hook changes from the next run.
 
-強度設計:
-  - あいまい語   → BLOCK (exit 2)。書いた本人以外には何を確認すればいいか判断できないため
-  - 内部用語     → WARN。突合先の UI 用語ガイドはプロジェクト固有＝グローバルには無い。
-                   突合先が無い状態で BLOCK すると直しようがないのに止まる
+Strength:
+  - vague words      → BLOCK (exit 2). Nobody but the author can tell what to check
+  - internal terms   → WARN. The UI-terms guide to check against is project-specific, so there is none globally.
+                       Blocking with nothing to check against would stop work with no way to fix it
 
-設計上の約束:
-  - **対象外は完全に silent**（exit 0・出力なし）。全 Edit/Write で走るため
-  - **SPEC が読めなければ黙って通さない**。検証できなかったことを明示して注入する
-    （silent pass は「検証済み」と誤認させる。design-lint.py と同じ方針）。ただし BLOCK はしない
-  - 何が起きても Write 自体は壊さない
+Design promises:
+  - **Out-of-scope files are completely silent** (exit 0, no output), since it runs on every Edit/Write
+  - **If the SPEC cannot be read, do not pass silently.** Inject a message saying it was not checked
+    (a silent pass would be mistaken for "checked"; same policy as design-lint.py). But do not BLOCK
+  - Whatever happens, never break the Write itself
 """
 import json
 import os
 import re
 import sys
 
-# 同梱の testcase-generator スキルのスタイルガイド（hooks/ の隣の skills/ 配下）
+# The style guide of the bundled testcase-generator skill (under skills/, next to hooks/)
 SPEC = os.path.normpath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..",
     "skills", "testcase-generator", "references", "style-guide.md",
 ))
 TARGET_EXT = (".feature", ".gherkin")
-MAX_BYTES = 512 * 1024  # 巨大ファイルは読まない（誤爆より無検証を選ぶ）
+MAX_BYTES = 512 * 1024  # do not read huge files (prefer unchecked over misfiring)
 
 
 def read_block(spec_text: str, tag: str) -> list[str]:
-    """SPEC 内の <!-- lint:TAG --> ... <!-- /lint:TAG --> から "- " 行を取り出す。"""
+    """Extract the "- " lines from <!-- lint:TAG --> ... <!-- /lint:TAG --> in the SPEC."""
     m = re.search(
         rf"<!--\s*lint:{re.escape(tag)}\s*-->(.*?)<!--\s*/lint:{re.escape(tag)}\s*-->",
         spec_text,
@@ -69,7 +69,7 @@ def is_target(path: str) -> bool:
         return True
     if not path.lower().endswith(".md"):
         return False
-    # frontmatter の testcase: true だけを対象にする（本文のどこかに書いてあっても拾わない）
+    # only frontmatter testcase: true counts (writing it somewhere in the body does not)
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             head = f.read(2048)
@@ -98,14 +98,14 @@ def main() -> None:
         sys.exit(0)
 
     if not is_target(path):
-        sys.exit(0)  # 対象外は完全に silent
+        sys.exit(0)  # out of scope: completely silent
 
     try:
         body = open(path, encoding="utf-8", errors="replace").read()
     except OSError:
         sys.exit(0)
     if "Scenario" not in body:
-        sys.exit(0)  # Gherkin が入っていなければ検証するものが無い
+        sys.exit(0)  # no Gherkin, nothing to check
 
     try:
         spec_text = open(SPEC, encoding="utf-8", errors="replace").read()
@@ -113,15 +113,15 @@ def main() -> None:
         patterns = read_block(spec_text, "internal-term-patterns")
     except OSError as e:
         warn(
-            f"【テストケース検証 未実行】{path}\n"
-            f"スタイルガイドを読めなかった（{type(e).__name__}）: {SPEC}\n"
-            f"禁止語の定義が取れないので検証していない。**検証済みとして扱わないこと。**"
+            f"[Test case check NOT RUN] {path}\n"
+            f"Could not read the style guide ({type(e).__name__}): {SPEC}\n"
+            f"The forbidden-word definitions are unavailable, so nothing was checked. **Do not treat this as checked.**"
         )
     if not vague and not patterns:
         warn(
-            f"【テストケース検証 未実行】{path}\n"
-            f"{SPEC} から禁止語ブロックを取り出せなかった（マーカーの破損か形式変更）。\n"
-            f"検証していないので、**検証済みとして扱わないこと。**"
+            f"[Test case check NOT RUN] {path}\n"
+            f"Could not extract the forbidden-word blocks from {SPEC} (broken markers or a format change).\n"
+            f"Nothing was checked, so **do not treat this as checked.**"
         )
 
     lines = body.splitlines()
@@ -136,45 +136,45 @@ def main() -> None:
         try:
             rx = re.compile(pat)
         except re.error:
-            continue  # SPEC 側の正規表現が壊れていても他の検証は続ける
+            continue  # keep checking the rest even if a regex in the SPEC is broken
         internal_hits += [
             (i, pat, ln.strip()) for i, ln in enumerate(lines, 1) if rx.search(ln)
         ]
 
     if vague_hits:
-        msg = [f"🛑 テストケース検証 BLOCK: {path}", "", "**あいまい語が残っている。**"]
-        msg += [f"  L{i}: 「{w}」 — {txt[:80]}" for i, w, txt in vague_hits[:15]]
+        msg = [f"🛑 Test case check BLOCK: {path}", "", "**Vague words remain.**"]
+        msg += [f"  L{i}: \"{w}\" — {txt[:80]}" for i, w, txt in vague_hits[:15]]
         if len(vague_hits) > 15:
-            msg.append(f"  （他 {len(vague_hits) - 15} 件）")
+            msg.append(f"  ({len(vague_hits) - 15} more)")
         msg += [
             "",
-            "Then に書くのは「人がその場で真偽を判定できるもの」。"
-            "上の語のままでは、書いた本人以外には何を確認すればいいか判断できない。",
-            "具体的な表示文言・数値・ステータスに書き換えること。",
-            f"（禁止語の定義: {SPEC}）",
+            "Then must state something a person can judge true or false on the spot. "
+            "With the words above, nobody but the author can tell what to check.",
+            "Rewrite them as concrete on-screen text, numbers or statuses.",
+            f"(forbidden words are defined in: {SPEC})",
         ]
         if internal_hits:
-            msg += ["", f"※ 内部用語の疑いも {len(internal_hits)} 件ある（下の WARN 参照）。"]
+            msg += ["", f"* There are also {len(internal_hits)} suspected internal terms (see the WARN below)."]
             msg += [f"  L{i}: {txt[:80]}" for i, _, txt in internal_hits[:5]]
         print("\n".join(msg), file=sys.stderr)
         sys.exit(2)
 
     if internal_hits:
-        msg = [f"⚠️ テストケース検証 WARN: {path}", "", "**内部用語が残っている可能性。**"]
+        msg = [f"⚠️ Test case check WARN: {path}", "", "**Internal terms may remain.**"]
         msg += [f"  L{i}: {txt[:80]}" for i, _, txt in internal_hits[:10]]
         if len(internal_hits) > 10:
-            msg.append(f"  （他 {len(internal_hits) - 10} 件）")
+            msg.append(f"  ({len(internal_hits) - 10} more)")
         msg += [
             "",
-            "テストケースを読むのはコードを見ていない手動テスト担当者。"
-            "API パスや内部定数名のままだと、画面で何を操作すればいいかわからない。",
-            "プロジェクトに UI 用語ガイド"
-            "（$CLAUDE_PROJECT_DIR/.claude/knowledge/ui-terms.md）があれば突き合わせる。",
-            "無い場合は推測で名前を作らず、「確認が必要な箇所」に残すこと。",
+            "Test cases are read by manual testers who have not seen the code. "
+            "With API paths or internal constant names, they cannot tell what to operate on screen.",
+            "If the project has a UI-terms guide "
+            "($CLAUDE_PROJECT_DIR/.claude/knowledge/ui-terms.md), check against it.",
+            "If not, do not invent names; leave them under \"Points to confirm\".",
         ]
         warn("\n".join(msg))
 
-    sys.exit(0)  # clean なら黙る
+    sys.exit(0)  # stay quiet when clean
 
 
 def warn(text: str) -> None:

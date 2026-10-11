@@ -1,7 +1,7 @@
 {
   "name": "guards",
-  "version": "0.5.0",
-  "description": "破壊的な Bash 操作・未マージ worktree の削除・古い既定ブランチからの push を止め、マージの後にローカルのマージ先ブランチを追従させるフック。リポ構成のルールはルールファイルを置いたときだけ効く",
+  "version": "0.6.0",
+  "description": "Hooks that stop destructive Bash operations, deletion of unmerged worktrees and pushes from a branch behind the default branch, and bring the local merge-target branch up to date after a merge. Repo layout rules apply only when you add a rule file",
   "author": {
     "name": "shibamasa-dev"
   },
@@ -17,8 +17,8 @@
   "userConfig": {
     "worktree_dirs": {
       "type": "string",
-      "title": "worktree をまとめて置くフォルダ",
-      "description": "カンマ区切り（例 ~/.worktrees）。ここの配下は再帰削除を通し、未マージか判定できないパスは止める。空なら置き場は特別扱いしない（未マージ worktree の削除はどこでも止める）",
+      "title": "Folders where you keep worktrees",
+      "description": "Comma-separated (e.g. ~/.worktrees). Recursive deletes under these are allowed, and paths that can't be confirmed as merged are blocked. If empty, no folder gets special treatment (deleting an unmerged worktree is blocked anywhere)",
       "required": false,
       "default": ""
     }

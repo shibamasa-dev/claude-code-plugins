@@ -1,28 +1,28 @@
 #!/usr/bin/env bash
-# このリポジトリ固有のセッション層手順。setup.sh から source される(リモートでのみ実行)。
-# 編集してよいのはこのファイルと environment-setup.sh。setup.sh は共通部(スキル再実行で上書き)。
+# Session-layer steps specific to this repository. Sourced by setup.sh (runs only remotely).
+# Edit only this file and environment-setup.sh. setup.sh is the shared part (overwritten when the skill runs again).
 #
-# 重い導入(apt・重量パッケージ・グローバル CLI)はここに書かない —
-# environment-setup.sh(環境層。claude.ai の Setup script に内容を貼る)へ。
+# Do not put heavy installs (apt, heavy packages, global CLIs) here —
+# they go in environment-setup.sh (the environment layer; its content is pasted into the Setup script on claude.ai).
 #
-# 必要なネットワークホスト(既定の Trusted allowlist 外のもの): なし
-#   ※ ある場合はここに列挙し、claude.ai 環境の Network access を Custom にして追加する。
+# Network hosts required (outside the default Trusted allowlist): none
+#   * If there are any, list them here and set Network access of the claude.ai environment to Custom and add them.
 
-# セッションに必須の環境変数(未設定なら WARNING を出す。値は claude.ai の環境ダイアログで設定)
+# Environment variables required for the session (WARNING if unset. Values are set in the claude.ai environment dialog)
 REQUIRED_ENV_VARS=()
 
-# 毎セッション実行(SessionStart hook 経由)。冪等かつ数十秒以内に保つこと。
-# ここに置くもの: リポジトリの状態に追従すべき軽い処理(依存同期・venv 作成など)。
+# Runs every session (via the SessionStart hook). Keep it idempotent and within a few tens of seconds.
+# What goes here: light work that should follow the repository's state (dependency sync, creating a venv, etc.).
 light_steps() {
   :
-  # 例(Node): cd "$REPO_ROOT" && npm ci --no-audit --no-fund
-  # 例(Python): 環境層で system に入れた重量パッケージを --system-site-packages で見せる
+  # Example (Node): cd "$REPO_ROOT" && npm ci --no-audit --no-fund
+  # Example (Python): expose heavy packages installed into the system by the environment layer via --system-site-packages
   #   [ -x "$REPO_ROOT/.venv/bin/python" ] || python3 -m venv --system-site-packages "$REPO_ROOT/.venv"
   #   "$REPO_ROOT/.venv/bin/pip" install -q -e "$REPO_ROOT"
 }
 
-# 環境が使える状態かの軽量チェック(exit 0 = OK)。毎セッション走るので数秒以内に保つこと。
+# Light check that the environment is usable (exit 0 = OK). Runs every session, so keep it within a few seconds.
 verify() {
   :
-  # 例: "$REPO_ROOT"/.venv/bin/python -c "import build123d" 2>/dev/null
+  # Example: "$REPO_ROOT"/.venv/bin/python -c "import build123d" 2>/dev/null
 }

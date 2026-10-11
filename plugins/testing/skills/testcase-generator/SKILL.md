@@ -1,232 +1,234 @@
 ---
 name: testcase-generator
-description: 仕様書・ソースコード・PR からテスト観点を判定し、Gherkin 形式のテストケースを生成する。テスト設計の属人化を防ぐため、チーム共通の観点とスタイルガイドを毎回参照させる。「テストケースを作って」「テスト観点を洗い出して」「この機能のテストを設計して」「テスト項目書を作って」「何をテストすればいい？」「テストケースをレビューして」「テスト設計」「QA 観点」と言われたら必ず使うこと。機能追加・バグ修正の PR に対して「テストどうする？」と聞かれた場合や、リグレッションテストの範囲を決める場面でも使う。テストコードの実装（Playwright/vitest/pytest を書く作業）そのものは対象外だが、その前段のケース設計はここで行う。
+description: Decides test perspectives from specs, source code or a PR and generates test cases in Gherkin. To keep test design from depending on one person, it makes Claude read the team's shared perspectives and style guide every time. Always use it when the user says "write test cases", "list test perspectives", "design tests for this feature", "make a test item list", "what should I test?", "review these test cases", "test design" or "QA perspectives", or in Japanese 「テストケースを作って」「テスト観点を洗い出して」「この機能のテストを設計して」「テスト項目書を作って」「何をテストすればいい？」「テストケースをレビューして」「テスト設計」「QA 観点」. Also use it when asked "how should we test this?" (「テストどうする？」) about a feature or bug-fix PR, or when deciding the scope of regression testing. Implementing test code itself (writing Playwright/vitest/pytest) is out of scope, but the case design before it happens here.
 last_reviewed: 2026-09-23
 review_after: 2027-03-22
 ---
 
 # testcase-generator
 
-テスト設計が属人化するのは、人の問題というより構造の問題。設計に必要な情報（仕様・コード・過去の不具合・チームの勘所）が別々の場所に散らばっていて、**それを毎回頭の中で突き合わせる作業そのものが暗黙知**になり、外から見えなくなる。
+Test design depends on one person less because of people than because of structure. The information design needs (specs, code, past bugs, the team's instincts) is scattered across different places, and **the work of cross-referencing it in your head every time is itself the tacit knowledge**, invisible from outside.
 
-このスキルは、その突き合わせを**毎回同じ知識ファイルを読ませる**ことで外に出す。だから最初にやることは決まっている。
+This skill brings that cross-referencing out into the open by **having the same knowledge files read every time**. So the first step is fixed.
 
-## 必ず最初に読むファイル
+## Files to read first, always
 
-生成を始める前に、この2つを読む。読まずに書き始めると、そのとき思いついた観点だけの設計になり、次に同じ対象を設計したときと結果が揃わない。
+Read these two before generating. Starting without them yields a design made only of whatever perspectives come to mind at the moment, and the next design of the same target will not match.
 
-1. `references/perspectives-common.md` — **どこを見るか**（プロダクト非依存の共通観点）
-2. `references/style-guide.md` — **どう書くか**（Gherkin 形式・ステップの書き方・タグ・禁止語）
+1. `references/perspectives-common.md` — **where to look** (product-independent common perspectives)
+2. `references/style-guide.md` — **how to write** (Gherkin format, writing steps, tags, forbidden words)
 
-## 固有観点を重ねる（2段参照）
+## Layer the project-specific perspectives (two-layer reference)
 
-共通層を読んだうえで、プロジェクト固有の観点があれば**重ねて**読む。置き場は `perspectives-common.md` の「プロジェクト固有の観点」節が正典（`$CLAUDE_PROJECT_DIR/.claude/knowledge/` 配下）。
+After the common layer, read the project-specific perspectives **on top** if they exist. Their location is defined by the "Project-specific perspectives" section of `perspectives-common.md` (under `$CLAUDE_PROJECT_DIR/.claude/knowledge/`).
 
-固有層が無くても共通層だけで設計できる。ただし**無いことを出力に明記する** — 「固有観点なし（共通層のみで設計）」。あるときと無いときを同じ見た目にすると、読み手が「このプロダクトの勘所も反映済み」と誤解する。
+You can design with the common layer alone. But **state that the specific layer is missing in the output** — "No project-specific perspectives (designed from the common layer only)". If having it and not having it look the same, readers assume "this product's know-how is already reflected".
 
-## 「判定できない」を書けるようにする
+## Make "cannot judge" writable
 
-この手順は何度も二値の判定を求める（対象/対象外、OK/NG）。**実作業では第3の状態が必ず出る。** 二値に押し込めると、判定できないものを判定したことにする嘘が混ざる。
+This procedure asks for binary verdicts again and again (in scope / out of scope, OK/NG). **Real work always produces a third state.** Forcing it into two values mixes in the lie of claiming a verdict on something that cannot be judged.
 
-| 状況 | 書く値 | 例 |
+| Situation | Value to write | Example |
 |---|---|---|
-| 構造上その観点が存在しない | **非適用** | 画面を持たない対象に「画面操作で検証したか」 |
-| 実測しないと確定できない | **留保** | 例外メッセージの実文言、実行時にしか出ない値 |
+| The perspective structurally does not exist | **Not applicable** | "Verified by screen operation?" for a target with no screen |
+| Cannot be settled without measuring | **Deferred** | The actual exception message text, values that only appear at run time |
 
-**非適用・留保には必ず理由を1行添える。** 理由の無い非適用は、判定を避けた言い訳と区別がつかない。
+**Always add a one-line reason to Not applicable and Deferred.** A Not applicable with no reason cannot be told apart from an excuse for avoiding the verdict.
 
-## まず対象の種類を見分ける
+## First, identify the kind of target
 
-**画面を持つ対象か、持たない対象か**で、実行方法タグの既定と自己検査の一部が変わる。最初に判定して出力に書く。
+Whether the target **has a screen or not** changes the default execution-method tag and part of the self-check. Decide it first and write it in the output.
 
-**判定規則はタグと同じ**: 「**手動テストの実行者が、そのケースを始めるときに何を操作するか**」。画面を操作して始められるなら画面あり、リクエストやコマンドを直接投げないと始められないなら画面なし。**結果をどこで見るかでは判定しない**（送信は API・確認は画面、という対象は「画面なし」）。
+**The rule is the same as for tags**: "**what does the manual tester operate to start the case?**" If it can be started by operating a screen, it has a screen; if it can only be started by sending a request or command directly, it has none. **Do not decide by where the result is viewed** (a target where sending is via API and checking is on screen "has no screen").
 
-**判定はケース単位。対象単位で1語に丸めない。** 1つの対象の中に、画面から始められるケースと始められないケースが混ざるのが普通（画面に導線が無いハンドラ、管理者しか叩かない経路など）。
+**Decide per case. Do not round the whole target into one word.** It is normal for one target to mix cases that can be started from a screen and cases that cannot (handlers with no screen entry point, paths only an administrator calls, etc.).
 
-出力には**集計して書く**: 「主に画面あり（20件中17件）。例外3件は画面に導線が無く `@API`」。
-1語に丸めると、例外が `@API` である理由が消える。逆に無理に `@UI` へ寄せると**存在しない画面操作を捏造する**ことになる。
+**Write it as a tally** in the output: "Mostly has a screen (17 of 20 cases). The 3 exceptions have no screen entry point and are `@API`".
+Rounding to one word erases why the exceptions are `@API`. Forcing them toward `@UI` instead **fabricates screen operations that do not exist**.
 
-| 対象 | 例 | 影響 |
+| Target | Examples | Effect |
 |---|---|---|
-| **画面あり** | Web アプリ、SPA、管理画面 | `@UI` が既定。UI 由来の自己検査が有効 |
-| **画面なし** | バックエンド API、バッチ、ETL、CLI、ライブラリ | 全ケースが `@API` で正常。UI 由来の自己検査は**非適用** |
+| **Has a screen** | Web app, SPA, admin console | `@UI` by default. UI-derived self-check items apply |
+| **No screen** | Backend API, batch, ETL, CLI, library | All cases being `@API` is normal. UI-derived self-check items are **Not applicable** |
 
-画面なしの対象に UI 基準を当てると、構造的に満たせない項目で毎回不合格になる。そこを無理に通そうとして嘘の判定を書かない。
+Applying UI criteria to a target with no screen fails every time on items it structurally cannot meet. Do not write a false verdict to force them through.
 
-## 入力
+## Input
 
-- 対象の仕様書のパス
-- 対象コードのパス
-- PR / プルリクエスト URL
+- Path to the target's spec
+- Path to the target code
+- PR / pull request URL
 
-仕様書が無い、あるいは古いのが普通。その場合はコードを読んで実際の挙動から起こす。**推測で仕様を埋めたら、埋めた箇所を出力で区別する。**
+Specs are usually missing or stale. In that case, read the code and derive behavior from what it actually does. **If you fill in the spec by guessing, mark the guessed parts distinctly in the output.**
 
-**「仕様書は無い」と言われても、仕様に相当する文書が隣にあることがある**（`CLAUDE.md` / `AGENTS.md` / `README` / API ドキュメント / 設計メモ）。見つけたら読み、**コードと食い違う箇所を「確認が必要な箇所」に必ず書く。** 食い違いはそれ自体がバグの在処であることが多い。
+**Even when told "there is no spec", a document equivalent to one may sit nearby** (`CLAUDE.md` / `AGENTS.md` / `README` / API docs / design notes). If you find one, read it and **always list where it disagrees with the code under "Points to confirm".** A disagreement is often where the bug is.
 
-### 何を「正」にするか — 外部に正解があるかで決まる
+### What counts as correct — decided by whether an external source of truth exists
 
-依頼者の指定があればそれに従う。指定が無いときは**対象の挙動ではなく、正解の所在**で決める。
+Follow the requester's instruction if there is one. Otherwise, decide by **where the source of truth is, not by the target's behavior**.
 
-| 状況 | 期待値の作り方 |
+| Situation | How to derive expected values |
 |---|---|
-| **外部に正解がある**（計算式・料率・規約・法令・API 仕様・設計ドキュメントの数式） | **その正解から期待値を手で起こす。** コードの出力を根拠にしない。食い違えばコード側がバグ |
-| **外部に正解が無い**（UI の見せ方、内部の取り決め、歴史的経緯で決まった挙動） | **コードを正として現状を固定する**（characterization）。文書との食い違いは「確認が必要な箇所」へ |
+| **An external source of truth exists** (formulas, rates, rules, laws, API specs, formulas in design docs) | **Derive expected values by hand from that source.** Do not use the code's output as evidence. If they disagree, the code has the bug |
+| **No external source of truth** (how the UI presents things, internal conventions, behavior settled by history) | **Treat the code as correct and pin the current behavior** (characterization). Disagreements with documents go to "Points to confirm" |
 
-**実装を見ながら期待値を書くと、実装のバグがそのままテストに写り、緑が正しさの証拠でなくなる。** だから外部に正解があるなら必ずそちらから起こす。逆に外部に正解が無いものまでコードを疑うと、何も書けなくなる。
+**Writing expected values while looking at the implementation copies the implementation's bugs into the tests, and green stops being evidence of correctness.** So when an external source of truth exists, always derive from it. Conversely, doubting the code even where there is no external source of truth leaves you unable to write anything.
 
-どちらとも言い切れない場合は**ケース化を保留し、「確認が必要な箇所」に何がわからないかを書く。** 推測で正解を作らない。
+If you cannot say which applies, **hold off on making it a case and write what is unknown under "Points to confirm".** Do not invent the correct answer.
 
-## 手順
+## Steps
 
-### 1. 対象範囲の線を引く
+### 1. Draw the scope line
 
-入力を読み、何が対象で何が対象外かを決める。**この線引きは出力の `## 対象` に表で書く**（頭の中だけで引かない）。曖昧なまま観点判定に進むと、範囲外のケースが混ざる。
+Read the input and decide what is in and out of scope. **Write this line as a table under `## Scope` in the output** (do not draw it only in your head). Moving on to perspective decisions while it is vague lets out-of-scope cases slip in.
 
-### 2. 全観点を「対象 / 対象外 / 非適用」に判定する
+### 2. Mark every perspective "In scope / Out of scope / Not applicable"
 
-**判定の粒度は、`perspectives-common.md` の §1〜§4 にあるチェックボックス（`- [ ]`）1つにつき1行。** §5 の自己検査は観点ではないので、この表には入れない（結果は `## 自己検査` に書く）。
+**The granularity is one row per checkbox (`- [ ]`) in §1–§4 of `perspectives-common.md`.** The §5 self-check is not a perspective, so it does not go in this table (its results go under `## Self-check`).
 
-見出し単位でまとめない。見出し単位だと1行に複数の観点が潰れ、どれを見てどれを落としたかが追えなくなる。
+Do not group by heading. Grouping by heading squashes several perspectives into one row, and you can no longer trace which were looked at and which were dropped.
 
-対象外・非適用には**理由を1行**添える。当てはまるものだけ拾う読み方をしない。黙って落とすと落としたことが記録に残らず、後から穴を見つけられない。
+Give Out of scope and Not applicable a **one-line reason**. Do not read it by picking only what applies. Dropping silently leaves no record of the drop, and the hole cannot be found later.
 
-### 3. 「対象」の観点ごとにテストケースを書く
+### 3. Write test cases for each "In scope" perspective
 
-Gherkin 形式。形式・ステップの書き方・タグはスタイルガイドに従う。
+In Gherkin. Follow the style guide for format, steps and tags. Write the cases in the user's language.
 
-**観点ごとのケース数は揃えない。** リスクの高い観点にはケースが多く付き、低い観点には少なく付くのが自然。均等に並んだら、観点ごとの差を見ずに機械的に割り当てた証拠。
+**Do not equalize the number of cases per perspective.** High-risk perspectives naturally get more cases and low-risk ones fewer. An even spread is evidence of mechanical allocation that ignored the differences between perspectives.
 
-### 4. タグを付ける
+### 4. Add tags
 
-各 Scenario の直上に、**優先度**（`@P1`/`@P2`/`@P3`）と**実行方法**（`@UI`/`@API`）。自動テスト専用なら `@AUTO` も足す。実行方法と自動化可否は**別の軸**なので、`@API @AUTO` のような併記が正しい。判定基準はスタイルガイドの「タグ」節。
+Directly above each Scenario, a **priority** (`@P1`/`@P2`/`@P3`) and an **execution method** (`@UI`/`@API`). Add `@AUTO` if it is for automated tests only. Execution method and automatability are **separate axes**, so a pair like `@API @AUTO` is correct. The criteria are in the style guide's "Tags" section.
 
-### 5. 自己検査してから出す
+### 5. Self-check before output
 
-`perspectives-common.md` の「生成後の自己検査」を実行する。結果は出力の `## 自己検査` に項目ごとに書く（実行した証拠が残らないと「やった」と言うだけになる）。
+Run the "Self-check after generation" in `perspectives-common.md`. Write the result item by item under `## Self-check` in the output (without evidence that it ran, "I did it" is just a claim).
 
-- **NG なら書き直してから出す**
-- **非適用・留保は書き直さずそのまま出す。ただし理由を書く**（画面を持たない対象の UI 項目、実測しないと確定できない期待値など）
+- **If NG, rewrite before output**
+- **Output Not applicable and Deferred as they are, without rewriting. But write the reason** (UI items for a target with no screen, expected values that cannot be settled without measuring, etc.)
 
-自己検査で新しい種類の穴を見つけたら、`perspectives-common.md` の「過去の失敗から得た観点」に足す**案を出力に書く**。ファイルは編集しない — ここはグローバル（全プロジェクト共通）の知識なので、目の前の1プロダクトでの発見をそのまま流し込むと、他のプロジェクトにも効いてしまう。追記するかはユーザーが決める。
+If the self-check reveals a new kind of hole, **write a proposal in the output** to add it to "Lessons from past failures" in `perspectives-common.md`. Do not edit the file — it is global (shared by every project) knowledge, so pouring in a finding from the one product in front of you would affect other projects too. The user decides whether to add it.
 
-## 出力の構成
+## Output structure
 
-**この frontmatter を必ず付ける。** 付けないと検証 Hook の対象から外れ、スタイルガイド違反が誰にも気づかれないまま通る。拡張子 `.feature` で出す場合は frontmatter は不要。
+**Always include this frontmatter.** Without it the checking hook skips the file, and style-guide violations go unnoticed. If you output a `.feature` file, no frontmatter is needed.
+
+Write the section contents in the user's language. Keep the headings as below.
 
 ```markdown
 ---
 testcase: true
 ---
 
-## 対象
-| 項目 | 内容 |
+## Scope
+| Item | Content |
 |---|---|
-| 使った入力 | <ファイルパス / PR> |
-| 対象 | <何を対象にしたか> |
-| 対象外 | <何を範囲から外したか＋理由> |
-| 選定理由 | <対象を自分で選んだ場合のみ。なぜこれを選んだか1行> |
-| 対象の種類 | 主に画面あり/なし（N件中M件）。例外があれば件数と理由 |
-| 固有観点 | あり（パス） / なし（共通層のみで設計） |
-| 仕様相当の文書 | あり（パス） / なし |
+| Input used | <file path / PR> |
+| In scope | <what was covered> |
+| Out of scope | <what was excluded, and why> |
+| Why chosen | <only if you chose the target yourself: one line on why> |
+| Kind of target | Mostly has a screen / has no screen (M of N cases). Count and reason for exceptions, if any |
+| Project-specific perspectives | Yes (path) / No project-specific perspectives (designed from the common layer only) |
+| Spec-equivalent documents | Yes (path) / None |
 
-## 観点の判定
-| 観点 | 対象/対象外/非適用 | 理由（対象以外の場合） |
+## Perspective decisions
+| Perspective | In scope / Out of scope / Not applicable | Reason (unless In scope) |
 
-## テストケース
+## Test cases
 <Gherkin>
 
-## 自己検査
-| 項目 | OK/NG/非適用/留保 | 理由（OK 以外の場合） |
+## Self-check
+| Item | OK / NG / Not applicable / Deferred | Reason (unless OK) |
 
-## 実行経路
-<このケース群を実行に渡す経路があるか。無ければ「無し」＋何が足りないか>
+## Execution path
+<Whether there is a path to hand these cases to execution. If not, "None" plus what is missing>
 
-## 確認が必要な箇所
-<仕様が無く挙動から推測した点／UI 用語が特定できなかった点／文書とコードが食い違う点／
- 内部用語 WARN を残した判断とその理由>
+## Points to confirm
+<Points guessed from behavior because there was no spec / UI terms that could not be identified /
+ places where documents and code disagree / why internal-term WARNs were left and the reasoning>
 
-## 共通観点への追記案
-<新しい種類の穴を見つけた場合のみ。無ければ「なし」>
+## Proposed additions to the common perspectives
+<Only if you found a new kind of hole. Otherwise "None">
 ```
 
-「確認が必要な箇所」を空にしない。仕様書が無い対象を扱う以上、推測はどこかに必ず入る。**推測を確定値と同じ見た目で出さない**のがこのスキルの前提。
+Do not leave "Points to confirm" empty. Handling a target without a spec means a guess goes in somewhere. **Not presenting guesses with the same look as settled values** is this skill's premise.
 
-`## 実行経路` を空にしない。設計しただけのテストケースには価値が無く、**実行に通して初めて価値が確定する**。渡す経路が無いなら、それは設計の山を積んでいる状態であり、そう書く。
+Do not leave `## Execution path` empty. Test cases that were only designed have no value; **their value is settled only when they go through execution**. If there is no path to hand them over, you are piling up designs, and you should say so.
 
-## 検証 Hook が本当に効いているかを確かめる
+## Confirm the checking hook actually works
 
-スタイルガイドの禁止語を機械的に守らせるには、testing プラグインの hook `testcase-lint` が有効になっている必要がある（プラグインの `hooks/hooks.json` で `Edit|Write` に配線される）。**プラグインを無効にしている・スキルだけを別の場所へコピーした場合は配線されない。**
+Enforcing the style guide's forbidden words mechanically requires the testing plugin's `testcase-lint` hook to be enabled (the plugin's `hooks/hooks.json` wires it to `Edit|Write`). **If the plugin is disabled, or only the skill was copied elsewhere, it is not wired.**
 
 ```bash
-command -v testcase-lint >/dev/null && echo 配線済み || echo 未配線   # プラグインの bin が PATH に無い＝プラグイン無効
+command -v testcase-lint >/dev/null && echo wired || echo not-wired   # the plugin's bin is not on PATH = plugin disabled
 ```
 
-**ただし配線の確認だけでは足りない。** 次の3つは配線済みでも起こる:
+**Checking the wiring alone is not enough.** These three happen even when wired:
 
-1. **成果物を Bash の heredoc（`cat > file <<EOF`）で書くと hook は発火しない。** matcher は `Edit|Write` でツール名しか見ないため、Bash 経由の書き込みは素通りする
-2. **frontmatter を付け忘れた `.md` は完全に silent で素通りする**（exit 0・出力ゼロ）。違反があっても何も起きない
-3. スタイルガイドが読めない状態でも、hook は Write を止めない
+1. **Writing the artifact with a Bash heredoc (`cat > file <<EOF`) does not fire the hook.** The matcher is `Edit|Write` and only looks at the tool name, so writes through Bash slip past
+2. **A `.md` missing the frontmatter passes completely silently** (exit 0, no output). Nothing happens even if it has violations
+3. Even when the style guide cannot be read, the hook does not stop the Write
 
-だから**書き終えたら成果物に対して hook を1回手動で走らせ、出力が出ることを目で確かめる**:
+So **after writing, run the hook once by hand against the artifact and confirm with your own eyes that it produces output**:
 
 ```bash
-printf '{"tool_name":"Write","tool_input":{"file_path":"<成果物のパス>"}}' \
+printf '{"tool_name":"Write","tool_input":{"file_path":"<path to the artifact>"}}' \
   | testcase-lint; echo "exit=$?"
 ```
 
-**出力ゼロは「合格」ではなく「検証されなかった」可能性がある。** 対象化に失敗しているのか、本当にクリーンなのかを区別すること。違反を1つ意図的に入れた一時ファイルで BLOCK が出ることを確かめれば切り分けられる。
+**No output may mean "not checked", not "passed".** Distinguish whether targeting failed or it is truly clean. You can tell them apart by confirming a BLOCK on a temporary file with one deliberate violation.
 
-⚠️ **成果物の中に禁止語そのものを書かない。** 自己検査欄やメモで「『〇〇』を使っていないか」と**ルール名を引用すると、その引用が検出されて BLOCK される**。「あいまい語の混入なし」のように、語を挙げずに書く。禁止語の一覧はスタイルガイド側にあるので、成果物に写す必要はない。
+⚠️ **Do not write the forbidden words themselves in the artifact.** If a self-check row or note **quotes a rule name**, such as "did not use '...'", that quote is detected and BLOCKed. Write it without listing the words, e.g. "no vague words". The list lives in the style guide; there is no need to copy it into the artifact.
 
-## プロジェクト固有層を用意する（初回のみ）
+## Set up the project-specific layer (first time only)
 
-repo-setup プラグインの `codebase-doctor` を使っているなら、その Check 6b が「固有層が無い」と報告したとき、あるいは設計を始めて固有観点が無いことに気づいたときに、ここを置く。**置き場の正典は `references/perspectives-common.md` の「プロジェクト固有の観点」節**（このファイルでパスを再定義しない）。
+If you use `codebase-doctor` from the repo-setup plugin, set this up when its Check 6b reports "the specific layer is missing", or when you notice there are no specific perspectives once design starts. **The single source for the location is the "Project-specific perspectives" section of `references/perspectives-common.md`** (this file does not redefine the paths).
 
-### 置くもの
+### What to put there
 
-| ファイル | 中身 | いつ要るか |
+| File | Content | When needed |
 |---|---|---|
-| `perspectives.md` | **このプロダクトで実際に壊れた場所**。「この画面はここが崩れやすい」「この計算はこの条件で狂う」 | 常に |
-| `ui-terms.md` | 内部の名前 ⇔ 画面に出ている名前の対応表 | 画面を持つプロジェクトのみ |
-| `playbook.md` | テストを実行するための前提（認証情報・初期データ・必要な権限）と、どの順で潰すと効くか | テストがある、または実行に進むとき |
+| `perspectives.md` | **Where this product actually broke**. "This screen tends to break here", "this calculation goes wrong under this condition" | Always |
+| `ui-terms.md` | Mapping between internal names ⇔ names shown on screen | Only for projects with a screen |
+| `playbook.md` | Preconditions for running the tests (credentials, initial data, required permissions) and which order pays off | When tests exist or you move on to execution |
 
-### ⚠️ 中身を推測で埋めない
+### ⚠️ Do not fill the contents by guessing
 
-**空のセクションと書き方の説明だけを置く。** 観点の中身は、このプロダクトが壊れるところを見た人から来る。
+**Put only empty sections and an explanation of how to write them.** The perspectives come from people who watched this product break.
 
-推測で埋めると**形だけ埋まって中身が無い**状態になり、しかもそれが「整備済み」に見える。`codebase-doctor` は存在の有無しか見ないので、埋まっていれば PASS が出てしまう。通過の印が中身を保証しない状態を、こちら側から作らない。
+Filling them by guessing produces something **filled in form but empty in substance**, and it looks "set up". `codebase-doctor` only checks presence, so once filled it reports PASS. Do not create, from this side, a state where the pass mark does not guarantee the content.
 
-同じ理由で、**共通層（`perspectives-common.md`）の内容をコピーしてこない**。2段参照は共通を読んだうえで固有を重ねる設計なので、複製すると固有側を直したつもりが共通側と食い違う。固有層に書くのは**共通層に無いものだけ**。
+For the same reason, **do not copy in the contents of the common layer (`perspectives-common.md`)**. The two-layer reference reads the common layer and layers the specific one on top, so a copy means fixing the specific side drifts from the common side. Write in the specific layer **only what the common layer does not have**.
 
-### 雛形の形
+### Template shape
 
 ```markdown
 ---
-last_reviewed: <置いた日>
-review_after: <置いた日 + 180日>
+last_reviewed: <date placed>
+review_after: <date placed + 180 days>
 ---
 
-# <プロダクト名> 固有のテスト観点
+# Test perspectives specific to <product name>
 
-共通観点（`${CLAUDE_PLUGIN_ROOT}/skills/testcase-generator/references/perspectives-common.md`）を
-読んだうえで、ここを重ねる。共通層にあるものは書かない。
+Read the common perspectives (`${CLAUDE_PLUGIN_ROOT}/skills/testcase-generator/references/perspectives-common.md`)
+first, then layer this on top. Do not repeat anything the common layer has.
 
-## 壊れやすいところ
-<!-- 実際に壊れた場所を、壊れた日と症状つきで足していく。
-     例: - （2026-XX-XX）〜の画面で〜すると〜になった。〜を確認する -->
-（まだ無し）
+## Where it tends to break
+<!-- Add places that actually broke, with the date and symptom.
+     Example: - (2026-XX-XX) Doing ... on the ... screen caused .... Check ... -->
+(none yet)
 
-## このドメイン固有の判断基準
-<!-- 何をもって合格とするか。計算規則・業務ルール・法令など -->
-（まだ無し）
+## Domain-specific criteria
+<!-- What counts as passing. Calculation rules, business rules, laws, etc. -->
+(none yet)
 ```
 
-`ui-terms.md` と `playbook.md` も同じ形（frontmatter ＋ 空のセクション ＋ 書き方の説明）。
+`ui-terms.md` and `playbook.md` take the same shape (frontmatter + empty sections + an explanation of how to write them).
 
-置いたら**何を置いたかと、中身が空であることをユーザーに伝える。** 黙って置くと、整備済みだと思われる。
+Once placed, **tell the user what you placed and that the contents are empty.** Placing them silently makes people think it is set up.
 
-## このスキルがやらないこと
+## What this skill does not do
 
-- **テストコードの実装**（Playwright / vitest / pytest を書く）— ケース設計の後段で、プロジェクトの構成に依存する
-- **テストの実行と合否判定**
-- **プロジェクト固有層の不足の検出** — repo-setup プラグインの `codebase-doctor`（Check 6b）が担当する（このスキルは設置の owner。上の「プロジェクト固有層を用意する」節）
+- **Implementing test code** (writing Playwright / vitest / pytest) — comes after case design and depends on the project's structure
+- **Running tests and judging pass/fail**
+- **Detecting a missing project-specific layer** — handled by `codebase-doctor` (Check 6b) in the repo-setup plugin (this skill owns setting it up; see "Set up the project-specific layer" above)

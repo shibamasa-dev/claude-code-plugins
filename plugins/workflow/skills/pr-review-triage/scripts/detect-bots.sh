@@ -1,17 +1,17 @@
 #!/bin/bash
-# そのリポのレビューの設定（heavy・light に使うツール、ツールの自動レビューが ON か）を出す。
-# 使い方: detect-bots.sh [--light | --auto] [--regex]   （リポの作業ツリーの中で実行する）
-#   （引数なし）: heavy の PR に使うツールの id を 1 行ずつ（id は references/tools/<id>.md のファイル名）
-#   --light: light の PR に使うもの。`claude`（Claude がレビュー。既定）とツールの id を 1 行ずつ（どちらか一方でも、両方でもよい）
-#   --auto:  ツールの自動レビューが ON か。`on` / `off`（既定 off）
-#   --regex: id の代わりに、jq の test() に渡す投稿者 login の正規表現（完全一致）を 1 行で出す（Monitor のフィルタ用）
-# 決め方（上から最初に見つかったもの。結果は保存しない）:
-#   1. リポの CLAUDE.md / AGENTS.md / .claude/CLAUDE.md の行（`review-heavy:` / `review-light:` / `review-auto:`。`review-heavy: none` は「ツールなし」）
-#   2. 環境変数 CLAUDE_PLUGIN_OPTION_REVIEW_HEAVY / _LIGHT / _AUTO（userConfig `review_heavy` / `review_light` / `review_auto`）
-#   3. 既定: light は `claude`、auto は `off`。heavy には既定が無い（exit 4）
-# 過去の PR に来た bot からは推測しない。自動レビューを止めると軽い PR が bot の痕跡を残さず、推測が空になるため。
-# exit: 0 = 決まった（「ツールなし」なら何も出さない）／ 4 = heavy の行も設定も無い ／ 5 = 書いてあるが読めない
-#       （知っている id が 1 つも無い、auto が on / off 以外）（4・5 は呼び出し側がユーザーに聞く）
+# Prints the repo's review settings (tools to use for heavy and light PRs, and whether the tools' automatic review is ON).
+# Usage: detect-bots.sh [--light | --auto] [--regex]   (run inside the repo's working tree)
+#   (no args): ids of the tools to use for heavy PRs, one per line (an id is a file name in references/tools/<id>.md)
+#   --light: what to use for light PRs. `claude` (Claude reviews; the default) and tool ids, one per line (either one, or both)
+#   --auto:  whether the tools' automatic review is ON. `on` / `off` (default off)
+#   --regex: instead of ids, print one line with a regex of author logins (full match) to pass to jq's test() (for the Monitor filter)
+# How it decides (the first one found, from the top; the result is not saved):
+#   1. A line in the repo's CLAUDE.md / AGENTS.md / .claude/CLAUDE.md (`review-heavy:` / `review-light:` / `review-auto:`; `review-heavy: none` means "no tools")
+#   2. Environment variables CLAUDE_PLUGIN_OPTION_REVIEW_HEAVY / _LIGHT / _AUTO (userConfig `review_heavy` / `review_light` / `review_auto`)
+#   3. Defaults: light is `claude`, auto is `off`. heavy has no default (exit 4)
+# Does not guess from bots that showed up on past PRs. With automatic review turned off, light PRs leave no bot trace, so the guess would be empty.
+# exit: 0 = decided (prints nothing for "no tools") / 4 = no heavy line and no setting / 5 = written but unreadable
+#       (not a single known id, or auto is neither on nor off) (on 4 or 5 the caller asks the user)
 set -u
 KEY=heavy; REGEX=0
 for a in "$@"; do
@@ -21,8 +21,8 @@ for a in "$@"; do
     --regex) REGEX=1 ;;
   esac
 done
-# id=投稿者の login（完全一致・bot アカウントのみ）。足すときは references/tools/<id>.md と両方直す。
-# 部分一致にすると、人間のアカウント（例: codex-fan）の投稿を bot のレビューとして拾い、その指示に従ってしまう余地ができる
+# id=author login (full match, bot accounts only). When adding one, update references/tools/<id>.md as well.
+# A partial match would leave room to pick up a human account's post (e.g. codex-fan) as a bot review and follow its instructions
 BOTS='coderabbit=coderabbitai\[bot\] codex=chatgpt-codex-connector\[bot\] copilot=Copilot|copilot-pull-request-reviewer\[bot\] gemini=gemini-code-assist\[bot\] cursor-bugbot=cursor\[bot\]'
 
 root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -47,7 +47,7 @@ elif [ "$KEY" = light ]; then
 elif [ "$KEY" = auto ]; then
   raw=off
 else
-  echo "detect-bots: review-heavy: 行も userConfig review_heavy も無い（推測しない）" >&2
+  echo "detect-bots: no review-heavy: line and no userConfig review_heavy (not guessing)" >&2
   exit 4
 fi
 norm=$(printf '%s\n' "$raw" | tr ',' '\n' | tr -d ' `' | tr 'A-Z' 'a-z' | grep -v -x '')
@@ -55,11 +55,11 @@ norm=$(printf '%s\n' "$raw" | tr ',' '\n' | tr -d ' `' | tr 'A-Z' 'a-z' | grep -
 if [ "$KEY" = auto ]; then
   case "$norm" in
     on|off) echo "$norm"; exit 0 ;;
-    *) echo "detect-bots: review-auto は on か off（'$(printf '%s' "$norm" | paste -sd, -)' は読めない）" >&2; exit 5 ;;
+    *) echo "detect-bots: review-auto must be on or off (cannot read '$(printf '%s' "$norm" | paste -sd, -)')" >&2; exit 5 ;;
   esac
 fi
-# light の `claude` はツールではない（Claude がレビューする）ので、ツールの id とは分けて先頭に出す。
-# ツールと並べたとき（例: claude, codex）は「Claude がレビューし、並べたツールの結果も待つ」。--regex には含めない
+# For light, `claude` is not a tool (Claude does the review), so print it first, separately from tool ids.
+# When listed together with tools (e.g. claude, codex) it means "Claude reviews and also waits for the listed tools' results". Not included in --regex
 CLAUDE=0
 if [ "$KEY" = light ] && printf '%s\n' "$norm" | grep -qx claude; then
   CLAUDE=1
@@ -70,25 +70,25 @@ if [ "$KEY" = light ] && printf '%s\n' "$norm" | grep -qx claude; then
   fi
 fi
 
-# 表に無い id は外す（macOS の bash 3.2 は $( ) の中の case を読み違えるので関数に出す）
+# Drop ids not in the table (macOS bash 3.2 misparses a case inside $( ), so it lives in a function)
 known() {
   while read -r id; do
     case " $BOTS" in
       *" $id="*) echo "$id" ;;
-      *) echo "detect-bots: 知らないツール '$id' は外す（references/tools/ に無い）" >&2 ;;
+      *) echo "detect-bots: dropping unknown tool '$id' (not in references/tools/)" >&2 ;;
     esac
   done
 }
 asked=$(printf '%s\n' "$norm" | grep -v -x none)
 ids=$(printf '%s\n' "$asked" | grep -v -x '' | known)
-# none 以外を書いたのに知っている id が 1 つも残らない（綴り違いなど）を「ツールなし」と同じ exit 0 にしない
+# Something other than none was written but no known id is left (a typo, etc.): do not treat it like "no tools" with exit 0
 if [ -n "$asked" ] && [ -z "$ids" ]; then
-  echo "detect-bots: 知っている id が 1 つも無い（ツールなしにするなら review-$KEY: none と書く）" >&2
+  echo "detect-bots: not a single known id (to use no tools, write review-$KEY: none)" >&2
   exit 5
 fi
 
 if [ "$REGEX" = 1 ]; then
-  # 完全一致の正規表現（^(...)$）にする。jq の test() に渡したときも部分一致にならない
+  # Make it a full-match regex (^(...)$) so it does not become a partial match when passed to jq's test()
   re=$(for b in $BOTS; do printf '%s\n' "$ids" | grep -qx "${b%%=*}" && printf '%s\n' "${b#*=}"; done | paste -sd'|' -)
   [ -n "$re" ] && printf '^(%s)$\n' "$re"
 else
