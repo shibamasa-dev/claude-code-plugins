@@ -55,7 +55,7 @@ Move your `review` settings (`review_heavy`, `review_light`, `review_auto`, `rer
 
 ## Language
 
-English is the base language, and the plugins are being translated from Japanese. Until a plugin's CHANGELOG has an entry saying its messages, skills and docs are now in English, its skill bodies and hook messages are still in Japanese. Claude replies in the language you write in either way, and skill descriptions also list Japanese trigger phrases. Japanese READMEs are in `README.ja.md` next to each `README.md`.
+English is the base language, and the plugins are being translated from Japanese. Until a plugin's CHANGELOG has an entry saying its messages and skill bodies are now in English, they are still in Japanese. Claude replies in the language you write in either way, and skill descriptions also list Japanese trigger phrases. Japanese READMEs are in `README.ja.md` next to each `README.md`.
 
 ## Requirements
 
