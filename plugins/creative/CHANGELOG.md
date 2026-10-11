@@ -5,7 +5,7 @@ Changelog of the creative plugin (named docs up to 0.1.4). Format: [Keep a Chang
 ## [0.3.0] - 2026-10-11
 
 ### Changed
-- All messages, skills and docs are now in English. Skill descriptions keep the Japanese trigger phrases.
+- Messages, skill bodies, references, comments and tests are now in English. Japanese stays only in the skill descriptions' trigger phrases, in data the features need (patterns that match Japanese text, fixtures for Japanese input) and in `README.ja.md`.
 
 ## [0.2.0] - 2026-10-11
 
