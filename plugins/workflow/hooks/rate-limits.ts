@@ -1,7 +1,7 @@
 import type { Engine, Register, SessionRateLimit } from 'claude-code'
 
-// 使用枠（rate limits）を /tmp/claude-<uid>/rate-limits.json に書き出す。
-// 週の残り枠を見張る外部スクリプトが読む。形式:
+// Write the usage limits (rate limits) to /tmp/claude-<uid>/rate-limits.json.
+// An external script that watches the remaining weekly quota reads it. Format:
 // {"five_hour": {"used_percentage": 17, "resets_at": 1791553800, "seen_at": 1791552278}, "seven_day": {...}}
 
 const KINDS = ['five_hour', 'seven_day'] as const
@@ -20,8 +20,8 @@ const isWindow = (v: unknown): v is Window => {
   )
 }
 
-// 新しい窓（resets_at が大きい）が勝ち、同じ窓なら使用率が大きい方が勝つ。使用率はリセットまで減らない。
-// 並列セッションの古い値で上書きしないための規則。
+// A newer window (larger resets_at) wins; within the same window the higher usage wins. Usage never drops until the reset.
+// This rule keeps stale values from parallel sessions from overwriting newer ones.
 const isNewer = (next: Window, prev: Window | undefined): boolean =>
   prev === undefined ||
   next.resets_at > prev.resets_at ||
@@ -42,16 +42,17 @@ const toWindows = (limits: readonly SessionRateLimit[], seenAt: number): Snapsho
   return out
 }
 
-// 出力は本人専用ディレクトリ /tmp/claude-<uid>/ の中に置く（uid は $.env に無いので id -u を叩く）。
-// /tmp 直下の予測できる名前だと、他ユーザーが先に置いたシンボリックリンクの先を書かされる。
-// ディレクトリは本人所有・700 の実体でなければ使わない。$.fs.stat は種別とリンクしか返さず所有者と権限が
-// 取れないので、find（開始点のリンクを辿らない）で「ディレクトリ・本人所有・700」を一度に確かめる。
+// The output goes inside the user's private directory /tmp/claude-<uid>/ (uid is not in $.env, so run id -u).
+// A predictable name directly under /tmp could make us write through a symlink another user planted first.
+// The directory is used only if it is a real directory owned by the user with mode 700. $.fs.stat returns only the
+// type and whether it is a link, not the owner and mode, so find (which does not follow a link at the starting
+// point) checks "directory, owned by the user, 700" in one go.
 async function filePath($: Engine) {
   const idRun = await $.process.run(['id', '-u'])
   const uid = idRun.stdout.trim()
   if (idRun.exitCode !== 0 || !/^\d+$/.test(uid)) throw new Error('uid unavailable')
   const dir = `/tmp/claude-${uid}`
-  // 無ければ 700 で作る。何かが既にあれば失敗するだけ（-p を付けないので既存のリンクの先には作らない）
+  // Create it with 700 if missing. If something already exists this just fails (no -p, so nothing is created through an existing link)
   await $.process.run(['mkdir', '-m', '700', dir]).catch(() => undefined)
   const found = await $.process.run(['find', dir, '-maxdepth', '0', '-type', 'd', '-user', uid, '-perm', '0700'])
   if (found.exitCode !== 0 || found.stdout.trim() !== dir) throw new Error('not a private directory')
@@ -74,7 +75,7 @@ async function exportLimits($: Engine, limits: readonly SessionRateLimit[]) {
       }
     }
   } catch {
-    current = {} // 無い・壊れている: 新しい値で書き直す
+    current = {} // missing or broken: rewrite with the new values
   }
 
   const merged: Snapshot = { ...current }
@@ -88,15 +89,15 @@ async function exportLimits($: Engine, limits: readonly SessionRateLimit[]) {
   }
   if (!changed) return
 
-  // 本人専用ディレクトリの中なので他ユーザーは何も置けない。一時ファイルに書いて mv -f（rename は原子的）。
-  // 失敗したら tmp を消して何もしない（直書きには落とさない。次の measure で再試行される）。
+  // Inside the private directory no other user can place anything. Write a temp file and mv -f it (rename is atomic).
+  // On failure remove the tmp and do nothing (never fall back to writing directly; the next measure retries).
   const tmp = `${file}.${seenAt}.${Math.random().toString(36).slice(2, 8)}.tmp`
   try {
     await $.fs.write(tmp, JSON.stringify(merged))
     const moved = await $.process.run(['mv', '-f', tmp, file])
     if (moved.exitCode === 0) return
   } catch {
-    // 下で tmp を片付ける
+    // the tmp is cleaned up below
   }
   await $.process.run(['rm', '-f', tmp]).catch(() => undefined)
 }
@@ -107,7 +108,7 @@ export const register: Register = on => {
     try {
       await exportLimits($, (await $.session.usage()).rateLimits)
     } catch {
-      // 書き出しの失敗でセッションを止めない
+      // a failed write must not stop the session
     }
     return started
   })
@@ -116,7 +117,7 @@ export const register: Register = on => {
     try {
       await exportLimits($, e.rateLimits)
     } catch {
-      // 同上
+      // same as above
     }
     return next(e)
   })

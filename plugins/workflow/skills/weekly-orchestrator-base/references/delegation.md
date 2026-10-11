@@ -1,56 +1,56 @@
-# 委譲先の選び方と、報告の受け方・畳み方
+# Choosing where to delegate, and receiving reports and winding down
 
-## 1. subagent か別セッションか
+## 1. Subagent or separate session
 
-| 問い | はい → | いいえ → |
+| Question | Yes → | No → |
 |---|---|---|
-| ユーザーへの質問・承認が要るか | 別セッション | 次へ |
-| computer use・リモート実機（許可ダイアログ・画面ロックが絡むもの）を触るか | 別セッション | 次へ |
-| 数時間以内に終わる見込みか／代替わりをまたがずに済むか | **subagent** | 別セッション |
+| Does it need questions to or approval from the user? | Separate session | Next |
+| Does it touch computer use or remote physical machines (anything involving permission dialogs or screen locks)? | Separate session | Next |
+| Is it expected to finish within a few hours / can it avoid running across a handover? | **subagent** | Separate session |
 
-理由:
+Why:
 
-- subagent はユーザーと対話できない。質問・承認待ちになると止まったまま報告も返らない
-- 実機の許可ダイアログや画面ロックは、人が画面を見て操作する前提。対話できない subagent では詰まる
-- **subagent は親セッションと一緒に止まる。** 長い作業を subagent に出すと、オーケストレータが代替わりした時点で作業も止まる
-- 逆に、対話が要らず短い作業は subagent のほうが軽い（チップのクリックや attach が要らず、報告が完了通知で自動的に返る）
+- A subagent cannot talk with the user. If it ends up waiting for an answer or approval, it stalls and no report comes back
+- Permission dialogs and screen locks on physical machines assume a person looking at the screen and operating it. A subagent that cannot talk gets stuck
+- **A subagent stops together with its parent session.** If you give long work to a subagent, the work stops as soon as the orchestrator hands over
+- Conversely, short work with no dialogue is lighter as a subagent (no chip to click or session to attach, and the report comes back automatically in the completion notification)
 
-迷ったら別セッションにする（止まる損のほうが大きい）。
+When in doubt, use a separate session (the cost of stalling is bigger).
 
-## 2. 出し方
+## 2. How to send out
 
 ### subagent
 
-- `Agent` ツールで、`run_in_background: true`（既定）、`isolation: "worktree"`（作業ツリーを分ける。オーケストレータの作業ツリーを汚さない）
-- `name` を付けておくと、走っている間に SendMessage で状況を聞ける
-- 最終報告は**完了通知の本文にそのまま載る**。プロンプトの「最終報告の形」で型を固定しておく
-- 計画の節の「実行」の列: `subagent <name>`
+- With the `Agent` tool, `run_in_background: true` (the default), `isolation: "worktree"` (separate working tree, so the orchestrator's working tree stays clean)
+- Give it a `name` so you can ask about its status with SendMessage while it runs
+- The final report **appears as-is in the body of the completion notification**. Fix its shape with the prompt's "Final report format"
+- "Run via" column in the plan section: `subagent <name>`
 
-### 別セッション（上から順に、使えるもの）
+### Separate session (the first one available, in this order)
 
-| 順 | 経路 | 使い方 |
+| Order | Route | How to use |
 |---|---|---|
-| 1 | `spawn_task`（Claude デスクトップ。`ToolSearch` で探す） | チップが出るだけで、着手はユーザーがクリックした時。`task_id` を計画の節に書く |
-| 2 | 別のセッションを待機状態で起動できるスキルや仕組み（環境にあれば） | 作業ツリーを分け、待機状態で起動する（ユーザーがそのセッションに入って「開始」と言うまで動かない）。**無人で走らせる設定にしない**（入口 issue を渡すと無人で着手する仕組みなら、その指定は使わない）。入口 issue はプロンプト本文に書く。起動したセッションの識別子を計画の節に書く |
-| 3 | どちらも無い（CLI 単体・クラウド等） | プロンプトを貼り付け用に出し、`handoff write --entry <owner>/<repo>#<サイクル issue>` で入口を残す。計画の節には `貼り付け用` |
+| 1 | `spawn_task` (Claude desktop; find it with `ToolSearch`) | It only shows a chip; work starts when the user clicks it. Write the `task_id` in the plan section |
+| 2 | A skill or mechanism that can start another session in a waiting state (if the environment has one) | Use a separate working tree and start it in a waiting state (it does not move until the user enters that session and says "start"). **Do not configure it to run unattended** (if the mechanism starts work unattended when given an entry issue, do not use that option). Write the entry issue in the prompt body. Write the started session's identifier in the plan section |
+| 3 | Neither is available (CLI alone, cloud, etc.) | Output the prompt for pasting and leave the entry point with `handoff write --entry <owner>/<repo>#<cycle issue>`. In the plan section, write `paste-in` |
 
-- 途中報告・最終報告は、プロンプトに書いた宛先（オーケストレータのセッション名）へ SendMessage で送らせる。送らせない限り、オーケストレータに届くのは「セッションが終わった」通知だけ
-- セッション名は `ListAgents` の先頭行（`This session is <名前> [ref]`）の `<名前>`。`[ref]` は付けない
+- Have interim and final reports sent by SendMessage to the recipient written in the prompt (the orchestrator's session name). Unless you have them sent, all the orchestrator receives is a "session ended" notification
+- The session name is the `<name>` in the first line of `ListAgents` (`This session is <name> [ref]`). Do not include `[ref]`
 
-## 3. 受け取り
+## 3. Receiving
 
-- 報告の主張ごとに、再現コマンドを自分で叩く: `gh pr diff <N>`／テストの実行／ファイルの直読。書けない主張（「推測」と書かれたもの）は確かめるまで事実として扱わない
-- 確かめてから計画の節の状態を書き換える。PR があってマージ前なら `PR #N`、マージ済みで受け入れ基準を確かめたら `完了`
-- 進捗が気になったら、ユーザーに見に行かせない。`ListAgents` で idle／busy を見て、SendMessage で本人に聞く
-- `idle` は空き通知であって完了通知ではない。報告が来るまでは走っている対象として扱い、途中の成果物を読んで判断しない
-- **subagent が作った PR のレビュー待ちはオーケストレータが持つ。** subagent は完了と同時に終わるので、PR を受け取ったら（確かめた後）`pr-review-triage` を自分で起動する。別セッションのバッチは、そのセッションがリポの決まりに従ってレビュー待ちをする
+- For each claim in a report, run the reproduction command yourself: `gh pr diff <N>` / running the tests / reading the files directly. Do not treat claims without one (those marked "guess") as fact until verified
+- Rewrite the status in the plan section only after verifying. If there is a PR that is not merged, `PR #N`; if merged and the acceptance criteria are verified, `Done`
+- If you want to know progress, do not make the user go and look. Check idle/busy with `ListAgents` and ask the agent itself by SendMessage
+- `idle` is a notice of being free, not a notice of completion. Until a report arrives, treat it as still running, and do not make decisions from reading its intermediate output
+- **The orchestrator owns review-waiting for PRs made by subagents.** A subagent ends as soon as it completes, so once you receive a PR (after verifying), start `pr-review-triage` yourself. For a separate-session batch, that session waits for reviews following the repo's rules
 
-## 4. 畳む
+## 4. Winding down
 
-用が済んだ別セッションを残すと並列の数が増え、Remote Control が切れる。
+Leaving separate sessions around after they are done increases parallelism and breaks Remote Control.
 
-- **畳んでよい**: PR がマージ済み（`list_sessions` で `prState: MERGED`）かつ `isRunning: false`
-  - Claude デスクトップのセッション: `archive_session`（PR・ブランチは残る）
-  - その他の経路: 起動に使った仕組みの終了方法で畳む
-- **畳まない**: PR が OPEN のもの／作業中（`isRunning: true`・PR がまだ無い）のもの。アーカイブはそのセッションの worktree も片付けるので、マージ前に畳むと未マージの作業を消す
-- subagent は完了すれば自分で終わるので畳む操作は無い。走っている間はオーケストレータを終えない（代替わりしない）
+- **OK to wind down**: the PR is merged (`prState: MERGED` in `list_sessions`) and `isRunning: false`
+  - Claude desktop sessions: `archive_session` (the PR and branch remain)
+  - Other routes: wind down with the shutdown method of whatever mechanism started it
+- **Do not wind down**: sessions whose PR is OPEN / sessions still working (`isRunning: true`, no PR yet). Archiving also cleans up that session's worktree, so winding down before merging erases unmerged work
+- A subagent ends by itself when it completes, so there is nothing to wind down. While one is running, do not end the orchestrator (do not hand over)

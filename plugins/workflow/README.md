@@ -36,7 +36,7 @@ If you used the former `review` plugin, uninstall it and move its settings to th
 | dev-flow-gate | Before creating a PR | Blocks if the body lacks `Closes #N` / `Refs #N` (`Refs: none (verbal request)` for requests without an issue) or the `Arch-Review:` field |
 | | After creating a PR | Tells Claude the next stage (wait for reviews and CI) |
 | | Before ending a turn | Blocks once per PR if waiting (a PR event subscription or a Monitor) has not started for a PR created in this session |
-| | Before a merge | Blocks if there is no record that the `## Result` section of the issue the PR closes was written or read and confirmed |
+| | Before a merge | Blocks if there is no record that the `## Result` section (the older `## 結果` also counts) of the issue the PR closes was written or read and confirmed |
 
 dev-flow-gate watches both the GitHub connector (`create_pull_request`, `merge_pull_request`, `enable_pr_auto_merge`, `issue_read`, `issue_write`) and `gh`. It never queries GitHub itself; it decides only from tool calls made in the session (merging a PR created in another session isn't blocked, it just asks Claude to check). State lives in `${CLAUDE_PLUGIN_DATA}/dev-flow-gate/<session_id>.json`, and files older than 30 days are removed at session start.
 
@@ -99,7 +99,7 @@ A label starting with `!` is a negative match ([configuration](https://docs.code
 
 ## Organization values
 
-Organization values (GitHub org, default repo, Issue Fields, project board) aren't stored in the skills. The skills read an injected text block headed "組織設定" (organization settings) from the session context if present, otherwise the project's CLAUDE.md. Internal values are meant to be injected by a separate plugin through a SessionStart hook.
+Organization values (GitHub org, default repo, Issue Fields, project board) aren't stored in the skills. The skills read an injected text block headed "Organization settings" (or 「組織設定」) from the session context if present, otherwise the project's CLAUDE.md. Internal values are meant to be injected by a separate plugin through a SessionStart hook.
 
 ## Storage
 

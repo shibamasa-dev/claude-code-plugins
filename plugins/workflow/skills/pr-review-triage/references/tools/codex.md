@@ -1,27 +1,27 @@
-# Codex（id: `codex`）
+# Codex (id: `codex`)
 
-| 項目 | 中身 |
+| Item | Details |
 |---|---|
-| bot のアカウント名（login と完全一致） | `chatgpt-codex-connector[bot]` |
-| 起動のしかた | 設定次第で PR 作成時に自動レビューする。自動レビューを止めたリポでは、コメント `@codex review` で頼む |
-| 完了の合図 | レビュー（指摘つき） |
-| 「指摘なし」の合図 | PR への 👍 リアクション（レビューには載らない）。👀 はレビュー中 |
-| レート制限・上限の合図（未レビュー） | 利用上限のコメント（「usage limit」「couldn't run」） |
-| 待ち時間 | 書かれていない。上限はこちらから頼んでも返らないので、ユーザーに解除を頼む |
-| 重い指摘 | P1 |
-| 再レビューの頼み方 | コメント `@codex review`（ほかのツールへの依頼と 1 コメントにまとめる）。focus を付けるなら短い英語だけ（下） |
-| 手元で回すコマンド | `codex exec`（Codex CLI） |
+| Bot account name (full match on login) | `chatgpt-codex-connector[bot]` |
+| How it starts | Depending on settings, reviews automatically on PR creation. In repos with automatic review turned off, request with the comment `@codex review` |
+| Done signal | A review (with findings) |
+| "No findings" signal | A 👍 reaction on the PR (does not appear in reviews). 👀 means reviewing |
+| Rate-limit / quota signal (not reviewed) | A usage-limit comment ("usage limit", "couldn't run") |
+| Wait time | Not stated. A limit gets no response to our requests, so ask the user to lift it |
+| Heavy findings | P1 |
+| How to request a re-review | Comment `@codex review` (combined into one comment with requests to other tools). Any focus must be short English only (below) |
+| Command to run locally | `codex exec` (Codex CLI) |
 
-## 注意
+## Notes
 
-- **未確認: ラベルで自動レビューから外せるか**（`review-auto: on` の `review:light`）。外せなければ、軽い PR でも自動レビューを ON にしていれば Codex は走る
-- **Codex は直ったスレッドを自動で resolve しない。** 直っていても未解決のまま残るので、`isResolved` で対応状況を判断しない（PR 本文の対応表が記録になる）。
-- **focus は短い英語だけ**（2026-07-29 実測）。`@codex review` の後ろに長い日本語の focus 文を付けると反応しないことがある。同一 PR・同一 commit での実測:
+- **Unverified: whether a label can exclude it from automatic review** (`review:light` with `review-auto: on`). If not, Codex runs even on light PRs whenever automatic review is ON
+- **Codex does not auto-resolve threads that were fixed.** They stay unresolved even when fixed, so don't judge progress by `isResolved` (the response table in the PR body is the record).
+- **Focus must be short English only** (measured 2026-07-29). Adding long Japanese focus text after `@codex review` can make it not respond. Measured on the same PR and commit:
 
-| 投稿本文 | Codex の反応 |
+| Posted body | Codex's response |
 |---|---|
-| `@coderabbitai review` ＋ `@codex review`（素） | 4 分で返答（1 回目） |
-| `@codex review <日本語の焦点説明 200 字超>` | 85 分たっても無反応（2 回目） |
-| `@coderabbitai review` ＋ `@codex review`（素・再投稿） | 4 分で返答（3 回目・P2 を 1 件検出） |
+| `@coderabbitai review` + `@codex review` (bare) | Replied in 4 minutes (1st) |
+| `@codex review <Japanese focus text, 200+ chars>` | No response after 85 minutes (2nd) |
+| `@coderabbitai review` + `@codex review` (bare, reposted) | Replied in 4 minutes (3rd; found one P2) |
 
-  素に戻した瞬間に返ってきたので、長い focus 文がトリガーを潰していたと判断した（別の commit を挟んでいない）。付けてよいのは `@codex review for transaction correctness` のような短い英語まで。長い説明が要るなら、bot をメンションしない説明コメントを先に置き、その後にメンションだけのコメントを投稿する。
+  It replied as soon as the comment went back to bare, so we concluded the long focus text was suppressing the trigger (no other commit in between). Allowed is short English like `@codex review for transaction correctness`. If a long explanation is needed, post an explanation comment that doesn't mention the bot first, then a comment with the mention only.

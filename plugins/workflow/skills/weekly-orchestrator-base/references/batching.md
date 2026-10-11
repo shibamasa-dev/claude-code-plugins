@@ -1,41 +1,41 @@
-# バッチの束ね方
+# How to bundle batches
 
-出どころは session-wrap スキル（`${CLAUDE_PLUGIN_ROOT}/skills/session-wrap/SKILL.md`）の手順 5(a)。あちらを直したらここも直す。
+The source is step 5(a) of the session-wrap skill (`${CLAUDE_PLUGIN_ROOT}/skills/session-wrap/SKILL.md`). If you change that one, change this one too.
 
-## 原則
+## Principle
 
-**細かく分けすぎない。タスクの大きさと依存関係でバッチにする。**
-小さな文書 PR まで 1 件 1 本にすると並行の数が増え、調整の手間が増える。
+**Do not split too finely. Form batches by task size and dependencies.**
+Making even small doc PRs one per item increases the number of parallel runs and the coordination effort.
 
-同じバッチにする目安（**どれか 1 つ**に当たれば同じバッチ）:
+Signs that items belong in the same batch (**any one** is enough):
 
-- 同じファイル群を触る
-- 同じ共有資源を使う（資源の一覧はプロジェクトのスキルが持つ）
-- 前後関係がある（A の結果を B が使う）
-- それぞれが小さい（文書修正・スキル追記など 1 PR で済む）
+- They touch the same set of files
+- They use the same shared resource (the project skill holds the list of resources)
+- One depends on the other (B uses A's result)
+- Each is small (doc fixes, skill additions, and so on that fit in one PR)
 
-分けるのは、**大きくて独立に進められ、触るファイルも資源も重ならないものだけ**。
+Split only **things that are large, can proceed independently, and do not overlap in files or resources**.
 
-**一度に出すのは 1〜2 本まで**。前のバッチの結果を見てから次を出す。
-並列を増やさない理由はもう 1 つある。並列のセッションが多すぎると、接続が不安定になることがある。
+**Send out at most 1–2 batches at a time.** Look at the results of the previous batch before sending the next.
+There is one more reason not to add parallelism: too many parallel sessions can make connections unstable.
 
-## 並行させるときにプロンプトへ書くこと
+## What to write in the prompts when running in parallel
 
-共有資源を取り合う可能性があるなら、次の 2 つを**両方の**プロンプトに入れる。
-片方にしか書かないと、書かれていない側は資源が共有だと知らない。
+If they might compete for a shared resource, put both of the following into **both** prompts.
+If only one prompt has them, the other side does not know the resource is shared.
 
-1. **交代の決まり**。ロックは `mkdir` で取る（原子的に作れるので取り合いにならない）:
+1. **The turn-taking rule.** Take the lock with `mkdir` (it is created atomically, so there is no race):
    ```bash
-   until mkdir /tmp/<project>-lock-<資源名> 2>/dev/null; do sleep 30; done   # 取る
-   # …資源を使う作業…
-   rmdir /tmp/<project>-lock-<資源名>                                         # 返す
+   until mkdir /tmp/<project>-lock-<resource> 2>/dev/null; do sleep 30; done   # take
+   # …work that uses the resource…
+   rmdir /tmp/<project>-lock-<resource>                                         # release
    ```
-   30 分以上ロックが空かなければ、待ち続けずにオーケストレータへ途中報告して止まる。
-   プロジェクトに資源ごとのロックの決まり（置き場所・時間の上限）があれば、そちらを使う。
-2. **同じファイルの担当範囲**。「`docs/spec/xxx.md` の §3 だけを書く。§1・§2 は触らない」のように、
-   ファイル・節・関数の単位で書く。
+   If the lock is not free for 30 minutes or more, do not keep waiting; send an interim report to the orchestrator and stop.
+   If the project has per-resource lock rules (location, time limit), use those instead.
+2. **Ownership ranges within the same file.** Write them at the level of file, section, or function, such as
+   "Write only §3 of `docs/spec/xxx.md`. Do not touch §1 or §2."
 
-## 前後関係のあるもの
+## Items with a dependency
 
-A の結果を B が使うなら、同じバッチに入れて順序をプロンプトに書くか、A の完了（報告を確かめた後）に B を出す。
-計画の節のバッチ表の「前後関係」の列に `A → B` と書く。
+If B uses A's result, either put them in the same batch and write the order in the prompt, or send out B after A completes (after verifying its report).
+Write `A → B` in the "Order" column of the plan section's batch table.

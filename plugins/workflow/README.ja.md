@@ -17,7 +17,7 @@
 
 | スキル | 使いどころ |
 |---|---|
-| `dev-flow` | 開発フローの入口。issue の対応も口頭の依頼も、構造変更の判定とアーキレビュー → 実装と自己レビュー → PR → レビュー待ち → `## 結果` → マージまでの順番と約束を持つ。レビューの段は `pr-review-triage` に任せる。自動マージはリポの `.claude/dev-flow.json` で有効にする |
+| `dev-flow` | 開発フローの入口。issue の対応も口頭の依頼も、構造変更の判定とアーキレビュー → 実装と自己レビュー → PR → レビュー待ち → `## Result` → マージまでの順番と約束を持つ。レビューの段は `pr-review-triage` に任せる。自動マージはリポの `.claude/dev-flow.json` で有効にする |
 | `pr-review-triage` | PR を出した直後や push の後に、差分の重さでレビューの頼み先を振り分ける。軽い PR（文書だけ・200 行以内）は `review_light` に従う。既定の `claude` なら Claude がレビューして PR 本文に書き、CI だけ待つ。ツールの id を書けば（`claude` と並べたときも）そのツールの結果も待つ。重い PR はレビューツール（CodeRabbit・Codex など）にコネクタで頼み（ツールの自動レビューを ON にしたリポでは頼まずに、軽い PR だけ `review:light` ラベルで自動レビューから外す）、結果を待って評価・対応する。再レビューを頼むかの判断と依頼もここ |
 | `issue-ops` | issue の起票から close までの規約（本文の書き方、close 前の結果の書き戻し） |
 | `session-wrap` | セッションを閉じる前の残件確認と、次回への引き継ぎ |
@@ -36,7 +36,7 @@
 | dev-flow-gate | PR を作る前 | 本文に `Closes #N` / `Refs #N`（issue の無い依頼は `Refs: none (verbal request)`）と `Arch-Review:` の欄が無ければ止める |
 | | PR を作った後 | 次の段（レビューと CI を待つ）を伝える |
 | | ターンを終える前 | このセッションで作った PR の待ち（PR イベントの購読か Monitor）を始めていなければ、PR ごとに1回だけ止める |
-| | マージの前 | このセッションで作った PR の `Closes` 先の issue に、`## 結果` を書いた・読んで確かめた記録が無ければ止める |
+| | マージの前 | このセッションで作った PR の `Closes` 先の issue に、`## Result`（以前の `## 結果` も可）を書いた・読んで確かめた記録が無ければ止める |
 
 dev-flow-gate は GitHub コネクタ（`create_pull_request`・`merge_pull_request`・`enable_pr_auto_merge`・`issue_read`・`issue_write`）と `gh` の両方を見る。GitHub を自分では読みに行かず、判定に使うのはセッション中のツール呼び出しだけ（別のセッションで作った PR のマージは止めず、確かめるよう一言返す）。状態は `${CLAUDE_PLUGIN_DATA}/dev-flow-gate/<session_id>.json` に置き、30 日より古いものはセッションの開始時に消す。
 
@@ -99,7 +99,7 @@ reviews:
 
 ## 組織の値
 
-組織の値（GitHub 組織・既定リポ・Issue Fields・プロジェクトボード）はスキルに持たない。セッション文脈に「組織設定」という見出しの注入テキストがあればそれを、無ければプロジェクトの CLAUDE.md を読む。社内向けの値は別のプラグインから SessionStart フックで注入する想定。
+組織の値（GitHub 組織・既定リポ・Issue Fields・プロジェクトボード）はスキルに持たない。セッション文脈に「Organization settings」か「組織設定」という見出しの注入テキストがあればそれを、無ければプロジェクトの CLAUDE.md を読む。社内向けの値は別のプラグインから SessionStart フックで注入する想定。
 
 ## 保存先
 

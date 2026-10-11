@@ -1,118 +1,118 @@
 ---
 name: weekly-orchestrator-base
-description: 「1 サイクル（週）の計画 → バッチに束ねて委譲 → 結果の確認 → 締めて次へ」を回すオーケストレータの基本所作（プロジェクトに依存しない部分だけ）。プロジェクトごとの週次オーケストレータのスキルが手順の最初で「weekly-orchestrator-base を読んで従う」と書いて土台にするので、そう書かれていたら必ずこれを先に読む。単独でも、「オーケストレータの基本所作」「オーケストレータとして計画と委譲だけして」「このバッチは subagent に出す？別セッションに出す？」「委譲先を subagent にするか別セッションにするか」「代替わりして」「後継に渡して」「コンテキストが重いので引き継いで」「サイクルを締めて次の issue に計画を書いて」「バッチの報告が来たので受け取って」で発動する。リポ・共有資源・サイクルの曜日・レポートの作り方は持たない（プロジェクト側のスキルが足す）。
+description: Base practices (the project-independent part only) for an orchestrator that runs a cycle (a week) as plan → bundle into batches and delegate → verify → close out and move on. Project weekly orchestrator skills build on it by saying "read and follow weekly-orchestrator-base" at the start; when you see that, always read this first. Also use it on its own for routing a batch to a subagent or a separate session, handing over to a successor, closing a cycle, or receiving a batch report, or in Japanese 「オーケストレータの基本所作」「オーケストレータとして計画と委譲だけして」「このバッチは subagent に出す？別セッションに出す？」「委譲先を subagent にするか別セッションにするか」「代替わりして」「後継に渡して」「コンテキストが重いので引き継いで」「サイクルを締めて次の issue に計画を書いて」「バッチの報告が来たので受け取って」. Holds no repos, shared resources, cycle weekdays, or report building (the project skill adds those).
 ---
 
-# weekly-orchestrator-base — オーケストレータの基本所作
+# weekly-orchestrator-base — base practices for an orchestrator
 
-**プロジェクトのスキルとの分担**: このスキルは、どのプロジェクトでも同じ「所作」だけを持つ。
-サイクルの区切り（曜日・提出）、共有資源の表、状況を集めるスクリプト、レポートの作り方、
-issue のタイトルや自動起票は、プロジェクトのスキルが持つ。プロジェクトは所作を具体化・追加する側で、
-具体化（資源ごとのロック・欄の追加など）はプロジェクトに従う。プロジェクトのスキルが基本所作
-（委譲先の振り分け・代替わりの順序・やってはいけないこと）を打ち消す記述を持っていたら、黙ってどちらかを採らず、ユーザーに聞く。
+**Split with the project skill**: this skill holds only the practices that are the same in every project.
+The cycle boundary (weekday, submission), the shared-resource table, scripts that gather status, how to build reports,
+and issue titles and auto-creation belong to the project skill. The project makes these practices concrete and adds to them,
+and for the concrete parts (per-resource locks, extra fields, and so on) follow the project. If the project skill contains
+something that contradicts a base practice (routing delegation, the order of a handover, the don'ts), do not silently pick one; ask the user.
 
-## 役割
+## Role
 
-オーケストレータは**計画・委譲・確認だけをし、実装はしない**。
-実装まで抱えるとコンテキストが一週間もたず、計画と進捗の記憶ごと失うため。
+The orchestrator **only plans, delegates, and verifies. It does not implement.**
+If it also takes on implementation, its context will not last a week, and it loses its memory of the plan and progress along with it.
 
-## 状態の正本
+## Source of truth for state
 
-**状態の正本はサイクル issue の body にある「計画の節」**（行頭の `<!-- weekly-orchestrator:plan -->` 〜 `<!-- /weekly-orchestrator:plan -->`）。
-型・マーカーの契約・差し替えの契約は `references/plan-section.md`。
+**The source of truth is the "plan section" in the cycle issue body** (from `<!-- weekly-orchestrator:plan -->` to `<!-- /weekly-orchestrator:plan -->`, each at the start of a line).
+The template, the marker contract, and the splice contract are in `references/plan-section.md`.
 
-- 会話にしか無い状態を作らない。後継のオーケストレータはこの節だけを読んで再開する
-- **決めた瞬間・委譲した瞬間・結果を受け取った瞬間に書き換える**。まとめて後で書くと、その間に代替わりしたとき失われる
-- body は「今どうなっているか」、経緯はコメントへ
-- **issue への書き込み（起票・本文の更新・close・コメント）はすべて `issue-ops` スキルに従う。** 書き込みの手段（MCP か gh か）はこのスキルでは決めない。計画や回答で書き込みを挙げるときも、手段のコマンドだけを書かず「issue-ops に従って」と明記する（読み手が手段を issue-ops で確かめられるように）
+- Do not create state that exists only in the conversation. A successor orchestrator resumes by reading only this section
+- **Rewrite it the moment you decide, the moment you delegate, and the moment you receive a result.** If you batch the writes for later, a handover in between loses them
+- The body says "where things stand now"; the history goes in comments
+- **Every write to an issue (creating, updating the body, closing, commenting) follows the `issue-ops` skill.** This skill does not decide the means of writing (MCP or gh). When a plan or answer lists a write, do not write only the command; state "following issue-ops" explicitly (so the reader can check the means in issue-ops)
 
-## 手順
+## Steps
 
-### 1. 計画を立てる
+### 1. Make the plan
 
-状況の集め方（どの issue・PR・前サイクルの記録を見るか）はプロジェクトのスキルに従う。集めたものから次の順で決める。
+How to gather the situation (which issues, PRs, and records of the previous cycle to look at) follows the project skill. From what you gathered, decide in this order.
 
-1. **対象を選ぶ**: ゴール issue と子 issue から、このサイクルで進めるものを選ぶ
-   - `Arch Review: Pending` の issue と、着手条件付きのゴール（「〜が進んでから着手」など）は外す。計画の節の「見送る」に**理由つきで**書く（黙って外すと、後継やユーザーが外した理由を追えない）
-2. **最低ラインを決める**: サイクル末までに必ず終えるもの
-   - 最低ラインは**下限であって上限ではない**。済んだらゴールに向かう次のバッチを出す
-   - 平日に収まらない分は黙って積み残さない。何を次へ送るかをユーザーに諮る
-   - **分かっていない前提（マイルストーンの範囲・何がどこまで要るか・期限の解釈）は推測で埋めず、ユーザーに聞く**
-3. **サブステップを調整する**: 最低ラインの項目に子 issue が無ければ切る。粒度が合わない子 issue は分ける・束ねる・閉じる。調整は計画の節の「サブステップの調整」に 1 行ずつ残す
-4. **バッチに束ねる**（手順 2）
-5. **計画をユーザーに一括で見せて OK をもらう**。OK をもらってから計画の節に書き込み、バッチを起動する。
-   この OK は、計画に並べたバッチの起動の指示を兼ねる。計画に無いバッチを足すときは、そのつど OK をもらう
+1. **Choose the targets**: from the goal issues and their child issues, choose what to advance this cycle
+   - Exclude issues with `Arch Review: Pending` and goals with a start condition ("start after ... progresses", etc.). Write them under "deferred" in the plan section **with the reason** (if you drop them silently, the successor and the user cannot trace why)
+2. **Set the minimum bar**: what must be finished by the end of the cycle
+   - The minimum bar is **a floor, not a ceiling**. Once it is done, send out the next batch toward the goal
+   - Do not silently carry over what does not fit in the weekdays. Consult the user on what to push to the next cycle
+   - **Do not fill unknown premises (milestone scope, what is needed and how far, how to read a deadline) with guesses; ask the user**
+3. **Adjust the sub-steps**: if an item on the minimum bar has no child issue, create one. Split, merge, or close child issues whose granularity does not fit. Record each adjustment as one line under "Sub-step adjustments" in the plan section
+4. **Bundle into batches** (step 2)
+5. **Show the whole plan to the user at once and get an OK.** Only after the OK, write it into the plan section and start the batches.
+   This OK also counts as the instruction to start the batches listed in the plan. To add a batch that is not in the plan, get an OK each time
 
-### 2. バッチに束ねる
+### 2. Bundle into batches
 
-規則の詳細と並行させるときのロックは `references/batching.md`。要点:
+The detailed rules and the locks for running in parallel are in `references/batching.md`. The gist:
 
-- 次の**どれか 1 つ**に当たれば同じバッチにする: 同じファイルを触る／同じ共有資源を使う／前後関係がある／それぞれが小さい
-- **一度に出すのは 1〜2 本まで**。前のバッチの結果を見てから次を出す
-- 並行させるときは、`mkdir` のロック（交代の決まり）と、同じファイルの担当範囲を両方のプロンプトに書く
-- 共有資源の表はプロジェクトのスキルが持つ
+- Put items in the same batch if **any one** of these holds: they touch the same files / they use the same shared resource / one depends on the other / each is small
+- **Send out at most 1–2 batches at a time.** Look at the results of the previous batch before sending the next
+- When running in parallel, write both the `mkdir` lock (the turn-taking rule) and the ownership ranges within shared files into both prompts
+- The shared-resource table belongs to the project skill
 
-### 3. 委譲先を選んで出す
+### 3. Choose where to delegate and send it out
 
-詳細（各経路の呼び方・報告の受け方・畳み方）は `references/delegation.md`。
+Details (how to call each route, how to receive reports, how to wind down) are in `references/delegation.md`.
 
-| 委譲先 | 選ぶ条件（すべて満たす） |
+| Delegate to | Choose when (all must hold) |
 |---|---|
-| **subagent**（`Agent` ツール・background・`isolation: "worktree"`） | ユーザーとの対話・承認が要らない／computer use やリモート実機（許可ダイアログ・画面ロックが絡むもの）を触らない／数時間以内に終わる見込み |
-| **別セッション** | 上のどれかを満たさない＝ユーザーへの質問・承認が要る／実機を触る／代替わりをまたいで走る長い作業 |
+| **subagent** (`Agent` tool, background, `isolation: "worktree"`) | No dialogue or approval with the user is needed / it does not touch computer use or remote physical machines (anything involving permission dialogs or screen locks) / it is expected to finish within a few hours |
+| **Separate session** | Any of the above does not hold = it needs questions to or approval from the user / it touches a physical machine / it is long work that runs across a handover |
 
-別セッションの経路は上から順に、使えるものを使う: ① `spawn_task` ② 別のセッションを、すぐには着手させず待機状態で起動できるスキルや仕組み（環境にあれば。無人で走らせる設定にしない）③ 貼り付け用のプロンプト＋ `handoff write` で入口を残す。
+For separate sessions, use the first route available, in this order: ① `spawn_task` ② a skill or mechanism that can start another session in a waiting state without starting work right away (if the environment has one; do not configure it to run unattended) ③ a prompt for pasting plus `handoff write` to leave the entry point.
 
-- プロンプトは `references/task-prompt.md` の骨格で、**バッチごとに全文を書く**（受け取る側は経緯も他のバッチのプロンプトも知らない）
-- 出したら計画の節のバッチ表の「実行」と「状態」（`実行中`）を書く。書く前に出さない
-- subagent の最終報告は完了通知に載る。別セッションの途中報告・最終報告は SendMessage で受ける（宛先＝オーケストレータのセッション名をプロンプトに書く）
+- Write each prompt from the skeleton in `references/task-prompt.md`, **in full for every batch** (the receiver knows neither the history nor the other batches' prompts)
+- Once sent, fill in "Run via" and "Status" (`Running`) in the plan section's batch table. Do not send before writing
+- A subagent's final report arrives in its completion notification. A separate session's interim and final reports arrive by SendMessage (write the recipient = the orchestrator's session name into the prompt)
 
-### 4. 結果を受け取る
+### 4. Receive the results
 
-- **報告の主張は自分で確かめてから状態を更新する**: `gh pr diff`・テストの実行・ファイルの直読。報告の「テスト全件パス」「完了」をそのまま `完了` にしない
-- 状態は `PR #N`（PR はあるがマージ前）と `完了`（マージ済み・受け入れ基準を満たした）を分ける。マージはユーザー判断で、オーケストレータもマージしない
-- 進捗はユーザーに見に行かせず、自分で聞く（`ListAgents` で名前と idle／busy を見て、SendMessage で聞く）
-- PR が Refs で閉じた（Closes でない）issue は、残件を確かめて閉じるか残すかを決め、`issue-ops` に従って処理する
-- 用が済んだ別セッションは畳む: **マージ済み（`prState: MERGED` かつ `isRunning: false`）**のものだけ。`archive_session`／起動に使った仕組みの終了方法で畳む。**PR が OPEN のもの・作業中のものは畳まない**（アーカイブは worktree も片付けるので、未マージの作業を消す）
-- 1 バッチが片付いたら、依存していた次のバッチを出す
+- **Verify the report's claims yourself before updating the status**: `gh pr diff`, running the tests, reading the files directly. Do not turn "all tests pass" or "done" in a report straight into `Done`
+- Keep `PR #N` (a PR exists but is not merged) separate from `Done` (merged and meeting the acceptance criteria). Merging is the user's decision; the orchestrator does not merge either
+- Do not make the user go and check progress; ask yourself (look at names and idle/busy with `ListAgents`, then ask by SendMessage)
+- For an issue that a PR referenced with Refs (not Closes), check what is left, decide whether to close or keep it, and handle it following `issue-ops`
+- Wind down separate sessions that are no longer needed: **only merged ones (`prState: MERGED` and `isRunning: false`)**. Wind them down with `archive_session` / the shutdown method of whatever mechanism started them. **Do not wind down sessions whose PR is OPEN or that are still working** (archiving also cleans up the worktree, which would erase unmerged work)
+- When one batch is cleared, send out the next batch that depended on it
 
-### 5. 締めて次のサイクルへ
+### 5. Close out and move to the next cycle
 
-区切り（曜日・提出）と「締め」と「提出」のどちらを使うかはプロジェクトが決める。
+The project decides the boundary (weekday, submission) and whether to use "cutoff" or "submission".
 
-1. サイクル issue を `issue-ops` の close 手順で閉じる。**close するときに body 末尾へ `## 結果` を書く**:
-   - 1 行目は区切りの時刻: `- **締め**: YYYY-MM-DD HH:MM`（または `- **提出**: …`）。close の時刻では代わりにならない（間が空くと、その間の作業がどちらのサイクルにも入らない）
-   - 続けて、最低ラインの達成状況と、送った項目の行き先（次サイクルへ持ち越す／issue に戻す／やめる）
-   - 区切り以外を次サイクルの起点にするときは `- **集計起点**: YYYY-MM-DD HH:MM` を足す
-2. 次のサイクルの issue: **同じタイトルのもの（自動起票など）が既にあれば起票しない**。その issue の **計画の節（マーカー間）だけを差し替え**（`issue-ops` に従って書き込む）、外側（自動起票の注記など）は残す。差し替える前に計画の節が既に記入済み（計画の状態が `確定`）なら書き換えず、ユーザーに聞く。無ければ `issue-ops` に従って起票する
-3. 締めの後はコンテキストが重いので、手順 6 で代替わりしてから次の計画を始めるのがよい
+1. Close the cycle issue with the `issue-ops` close procedure. **When closing, write `## Result` at the end of the body** (older cycle issues may have `## 結果`; see `references/plan-section.md`):
+   - The first line is the boundary time: `- **Cutoff**: YYYY-MM-DD HH:MM` (or `- **Submitted**: …`). The close time does not substitute for it (if there is a gap, the work in between falls into neither cycle)
+   - Then the status of the minimum bar and where the pushed items went (carried over to the next cycle / returned to an issue / dropped)
+   - When the next cycle starts counting from something other than the boundary, add `- **Tally start**: YYYY-MM-DD HH:MM`
+2. The next cycle's issue: **if one with the same title already exists (auto-created, etc.), do not create another.** Replace **only the plan section (between the markers)** of that issue (writing following `issue-ops`), and keep everything outside it (auto-creation notes, etc.). If the plan section is already filled in before you replace it (plan status is `Confirmed`), do not rewrite it; ask the user. If there is no such issue, create one following `issue-ops`
+3. After closing out, the context is heavy, so it is best to hand over in step 6 before starting the next plan
 
-### 6. 代替わり
+### 6. Handover
 
-目安は次のどれか: compaction が起きた／バッチの報告を 3 本以上読み込んだ／締めの後。機械では検知できないので、この目安で判断する。
+Hand over when any of these holds: a compaction happened / you have read 3 or more batch reports / right after closing out. This cannot be detected mechanically, so judge by these signs.
 
-1. **subagent が走っている間は代替わりしない。** 親セッションを終えると subagent も止まる。先に完了を待って、報告を受け取ってから進める
-2. **先に状態を書く。** 計画の節の「引き継ぎ」に世代・次にやること・待っているバッチ（報告先が誰か）を書く。書く前に後継を出さない
-3. 後継を手順 3 の**別セッションの経路**で出す（後継は長く走りユーザーと対話するので、subagent にはしない）。プロンプトは `references/task-prompt.md` の「後継オーケストレータ用」
-4. 走っている別セッションのバッチには、報告先が後継のセッション名に変わったことを SendMessage で伝える。伝えられなかったものは「引き継ぎ」に「報告先が旧世代のまま」と書く（後継が聞きに行く）
-5. 後継を出したら、自分は新しいバッチを出さない。計画の節の「オーケストレータ」の行を次の世代に書き換えて終える
+1. **Do not hand over while a subagent is running.** Ending the parent session also stops the subagent. Wait for it to finish first, receive its report, then proceed
+2. **Write the state first.** In the plan section's "Handover", write the generation, what to do next, and the batches being waited on (and who they report to). Do not send out the successor before writing
+3. Send out the successor via the **separate-session route** from step 3 (the successor runs long and talks with the user, so it is never a subagent). Use the "For a successor orchestrator" prompt in `references/task-prompt.md`
+4. Tell each running separate-session batch by SendMessage that its report recipient has changed to the successor's session name. For any you could not tell, write "report recipient is still the old generation" in "Handover" (the successor will go and ask)
+5. Once the successor is out, do not send out new batches yourself. Rewrite the "Orchestrator" line in the plan section to the next generation and finish
 
-## やってはいけないこと
+## Don'ts
 
-- 計画の節に書かずに委譲する（後継の知らないバッチが走る）
-- `Arch Review: Pending` の issue を実行させる
-- ユーザーの OK が無いバッチを、確認なしで動く起動方法（bypassPermissions の別セッションなど）で起動する
-- 1 件 1 本に細切れにして出す／一度に 3 本以上出す
-- 計画の節の外側を書き換える（外側はプロジェクトや自動起票の持ち物）
-- 締める前にサイクル issue を close する／締めた後の作業を閉じた issue に書き足す
-- subagent が走っている間に代替わりする
-- 報告を確かめずに状態を `完了` にする
+- Delegating without writing it in the plan section (a batch runs that the successor does not know about)
+- Letting an issue with `Arch Review: Pending` be executed
+- Starting a batch without the user's OK by a method that runs without confirmation (such as a separate session with bypassPermissions)
+- Chopping work into one batch per item / sending out 3 or more at once
+- Rewriting anything outside the plan section (the outside belongs to the project or to auto-creation)
+- Closing the cycle issue before closing out / appending post-cutoff work to the closed issue
+- Handing over while a subagent is running
+- Setting the status to `Done` without verifying the report
 
-## プロジェクトのスキルが足すもの
+## What the project skill adds
 
-- サイクルの区切り（曜日・提出）と、`## 結果` の 1 行目に `**締め**:` と `**提出**:` のどちらを使うか
-- 状況を集める手段（スクリプト・見る issue）、サイクル issue のタイトルと自動起票の有無
-- 計画の節に足す見出し・欄（マイルストーン・前回レポートの予定など）
-- 共有資源の表と、資源ごとのロック
-- 委譲プロンプトの「最初に読む」「守ること」のプロジェクト固有の行
-- レポートなど、サイクル内でやる報告タスク
+- The cycle boundary (weekday, submission), and whether the first line of `## Result` uses `**Cutoff**:` or `**Submitted**:`
+- The means of gathering the situation (scripts, issues to look at), the cycle issue title, and whether it is auto-created
+- Headings and fields added to the plan section (milestones, the plan for the previous report, etc.)
+- The shared-resource table and per-resource locks
+- Project-specific lines for "Read first" and "Rules" in delegation prompts
+- Reporting tasks done within the cycle, such as reports

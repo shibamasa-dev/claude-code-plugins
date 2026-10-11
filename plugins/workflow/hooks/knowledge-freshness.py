@@ -1,25 +1,26 @@
 #!/usr/bin/env python3
-"""SessionStart hook: ナレッジの鮮度切れを1行で知らせる。
+"""SessionStart hook: briefly flags stale knowledge files.
 
-なぜ必要か（実害の記録・2026-09-21）:
-  ユーザーのリファレンス文書の冒頭には、手書きでこう貼られていた —
-  「⚠️ 本文中の『畳むのは手動』は 2026-09-21 に撤回」。**人間が気づいて手で貼った訂正**
-  であって、構造では拾えていなかった。別のナレッジベースでは INDEX.md に last_reviewed /
-  review_after を持ってスキルが鮮度を見ているのに、`~/.claude` 側には同じしくみが
-  無かった。古くなったことに人間が気づくしくみをナレッジ自身に組み込み、鮮度管理を
-  運用者の善意ではなく構造で担保する。
+Why it exists (a real incident, 2026-09-21):
+  The top of one of the user's reference documents carried a hand-written note:
+  "⚠️ The 'closing is manual' rule in this document was withdrawn on 2026-09-21". It was **a correction a human
+  noticed and pasted by hand**; nothing structural caught it. Another knowledge base kept last_reviewed /
+  review_after in its INDEX.md and a skill checked freshness, but `~/.claude` had no such mechanism.
+  This builds "a human notices it has gone stale" into the knowledge itself, so freshness is guaranteed by
+  structure rather than by the operator's goodwill.
 
-**強度は WARN のみ。BLOCK しない**（重大なものは止め、育てる途中のものは気づかせる）。ナレッジが古いことでセッションを
-  止めるのは過剰で、止められた側は消すか期限を延ばすかしかできない。
+**Strength is WARN only. It never BLOCKs** (serious things are stopped; things still growing are just flagged).
+  Stopping a session because knowledge is old is too much; the only things the stopped side can do are
+  delete the file or push the date out.
 
-設計上の約束:
-  - **期限切れが1件も無ければ完全に silent**（exit 0・出力ゼロ）。毎セッション走るため
-  - **何が起きてもセッション開始をブロックしない**。frontmatter の YAML が壊れていても、
-    ファイルが消えていても、例外を握って exit 0
-  - **last_reviewed が無いファイルも「鮮度未設定」として挙げる**。設定漏れは、期限切れより
-    見つけにくい（永久に警告が出ないため）
-  - 初期値は最終編集日からの機械的なブートストラップであって「読み直して確認した日」では
-    ないので、WARN 文でそのことを明示する（そうしないと「確認済み」と誤解される）
+Design promises:
+  - **Completely silent when nothing is stale** (exit 0, no output), since it runs every session
+  - **Never blocks session start, whatever happens**. Broken frontmatter YAML or a missing file is caught,
+    and it exits 0
+  - **Files without last_reviewed are also listed, as "freshness not set"**. A missing setting is harder to spot
+    than an expired one (it would never warn)
+  - The initial value is a mechanical bootstrap from the last-edited date, not "the day someone re-read and
+    confirmed it", so the WARN text says so (otherwise it would be mistaken for "confirmed")
 """
 import datetime
 import json
@@ -76,29 +77,29 @@ def main() -> None:
             expired.append((rel, (today - due).days))
 
     if not expired and not unset:
-        sys.exit(0)  # 期限切れゼロなら完全に silent
+        sys.exit(0)  # completely silent when nothing is stale
 
-    lines = ["【ナレッジ鮮度】"]
+    lines = ["[knowledge freshness]"]
     if expired:
         expired.sort(key=lambda x: -x[1])
-        lines.append(f"review_after を過ぎたファイルが {len(expired)} 件:")
-        lines += [f"  - {rel}（{days} 日超過）" for rel, days in expired[:MAX_LIST]]
+        lines.append(f"{len(expired)} file(s) past review_after:")
+        lines += [f"  - {rel} ({days} days overdue)" for rel, days in expired[:MAX_LIST]]
         if len(expired) > MAX_LIST:
-            lines.append(f"  - （他 {len(expired) - MAX_LIST} 件）")
+            lines.append(f"  - (and {len(expired) - MAX_LIST} more)")
     if unset:
-        lines.append(f"鮮度が未設定のファイルが {len(unset)} 件:")
+        lines.append(f"{len(unset)} file(s) with no freshness set:")
         lines += [f"  - {rel}" for rel in unset[:MAX_LIST]]
         if len(unset) > MAX_LIST:
-            lines.append(f"  - （他 {len(unset) - MAX_LIST} 件）")
+            lines.append(f"  - (and {len(unset) - MAX_LIST} more)")
     lines += [
         "",
-        "これは警告であって作業を止めるものではない。**今すぐ直す必要は無い。**",
-        "ただしこれらのファイルを今回のセッションで参照するなら、書いてある内容が"
-        "現状と合っているかを疑って読むこと。",
-        "読み直して内容が正しいと確認できたら `last_reviewed` を今日の日付へ、"
-        "`review_after` をその先へ更新する。",
-        "（`last_reviewed` の初期値は最終編集日から機械的に入れたブートストラップであって、"
-        "誰かが読み直して確認した日ではない）",
+        "This is a warning, not a stop. **No need to fix it right now.**",
+        "But if you rely on any of these files in this session, read them with suspicion: "
+        "check that what they say still matches reality.",
+        "Once you have re-read one and confirmed it is correct, set `last_reviewed` to today "
+        "and move `review_after` further out.",
+        "(The initial `last_reviewed` is a mechanical bootstrap from the last-edited date, "
+        "not a day someone re-read and confirmed it.)",
     ]
 
     print(json.dumps({
@@ -114,4 +115,4 @@ if __name__ == "__main__":
     try:
         main()
     except Exception:
-        sys.exit(0)  # 何が起きてもセッション開始を止めない
+        sys.exit(0)  # never stop session start, whatever happens

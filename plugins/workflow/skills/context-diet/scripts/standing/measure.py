@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""context-diet 機械層: 常時ロードコンテキストの実測と閾値判定。
+"""context-diet mechanical layer: measure the always-loaded context and check thresholds.
 
-毎セッション読み込まれるファイル（グローバル/プロジェクト CLAUDE.md・@import・
-paths 無し rules・メモリ索引）を列挙して実測し、閾値超過を判定する。
-判断（何を削る・圧縮する）は LLM 側の仕事 — このスクリプトは検知だけ。
+Lists and measures the files loaded on every session (global/project CLAUDE.md, @import,
+rules without paths, memory index) and checks whether thresholds are exceeded.
+Judgment (what to cut or compress) is the LLM's job — this script only detects.
 
-recall 時のみ読まれるもの（メモリ本体・reference/）は standing に数えない。
-ここを混ぜると「ファイルが多い＝重い」の誤診になる（criteria.md 基準1）。
+Files read only at recall time (memory bodies, reference/) are not counted as standing.
+Mixing them in leads to the "many files = heavy" misdiagnosis (criteria.md rule 1).
 
 usage: measure.py [--project DIR] [--home DIR] [--max-standing-kb 130]
                   [--max-index-avg 100] [--json]
-exit 0: ok / 1: over_threshold / 2: 実行エラー
+exit 0: ok / 1: over_threshold / 2: runtime error
 """
 import argparse
 import json
@@ -46,7 +46,7 @@ def has_paths_frontmatter(body: str) -> bool:
 
 
 def resolve_imports(p: Path, seen: set) -> list:
-    """1階層の @import 解決（@<file> 形式）。循環・重複は seen で止める。"""
+    """Resolve one level of @import (@<file> form). Cycles and duplicates are stopped by seen."""
     out = []
     for m in IMPORT_RE.finditer(text(p)):
         t = (p.parent / m.group(1)).resolve()
@@ -57,7 +57,7 @@ def resolve_imports(p: Path, seen: set) -> list:
 
 
 def memory_dir(project: Path, home: Path) -> Path:
-    # Claude Code の projects ディレクトリ命名: パスの / と _ を - に置換
+    # Claude Code's projects directory naming: replace / and _ in the path with -
     enc = re.sub(r"[/_]", "-", str(project))
     return home / ".claude" / "projects" / enc / "memory"
 
@@ -96,9 +96,10 @@ def collect(project: Path, home: Path) -> dict:
         hooks = [ln for ln in itext.splitlines() if ln.startswith("- [")]
         linked = set(INDEX_LINK_RE.findall(itext))
         names = {re.sub(r"\.md$", "", n) for n in body_files}
-        # メモリ名に解決しない [[link]]。skill 名・ドキュメント名への意図的な
-        # 名前空間外参照と、書かれなかったメモリへの本物のリンク切れは機械では
-        # 区別できないため、breach にせず情報として出す（grooming 時に人が見る）。
+        # [[link]]s that don't resolve to a memory name. A deliberate out-of-namespace
+        # reference to a skill or doc name can't be told apart mechanically from a real
+        # broken link to a memory that was never written, so report it as info, not a
+        # breach (a human looks at it during grooming).
         unresolved_wiki = sorted({
             w for f in mem.glob("*.md") if f.name != "MEMORY.md"
             for w in WIKI_RE.findall(text(f)) if w not in names
@@ -124,10 +125,10 @@ def main() -> int:
     ap.add_argument("--project", default=os.getcwd())
     ap.add_argument("--home", default=str(Path.home()))
     ap.add_argument("--max-standing-kb", type=float, default=130.0)
-    # 既定120: 日本語のフックは整えた直後でも平均 100 字を超えやすい。
-    # 100 だと「書き直した直後に超過」の矛盾になる。80字は理想・120字が実務線。
+    # Default 120: Japanese hooks tend to average over 100 chars even right after tidying.
+    # 100 would mean "over the limit right after a rewrite". 80 chars is ideal; 120 is the practical line.
     ap.add_argument("--max-index-avg", type=float, default=120.0)
-    ap.add_argument("--json", action="store_true", help="互換用（出力は常に JSON）")
+    ap.add_argument("--json", action="store_true", help="for compatibility (output is always JSON)")
     a = ap.parse_args()
 
     project, home = Path(a.project).resolve(), Path(a.home).expanduser().resolve()
@@ -145,14 +146,14 @@ def main() -> int:
         breaches.append(f"index_avg_line {idx['avg_line_chars']} > {a.max_index_avg}")
     for key in ("missing_from_index", "missing_bodies"):
         if idx.get(key):
-            breaches.append(f"{key}: {len(idx[key])}件")
+            breaches.append(f"{key}: {len(idx[key])} entries")
 
     out = {
         "verdict": "over_threshold" if breaches else "ok",
         "breaches": breaches,
         "standing_total_bytes": total,
         "standing_total_kb": round(total / 1024, 1),
-        "tokens_estimate": total // 3,  # 日本語主体の概算。英語主体なら /4
+        "tokens_estimate": total // 3,  # rough estimate for mostly-Japanese text; use /4 for mostly-English
         "counts": {"standing_files": len(data["standing"]),
                    "conditional_rules": len(data["conditional"])},
         "index": idx,

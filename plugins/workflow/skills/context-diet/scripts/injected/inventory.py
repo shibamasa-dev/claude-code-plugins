@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""注入層（MCP コネクタ・skills）の棚卸し。収集のみ — 要否の判定はしない。
+"""Inventory of the injected layer (MCP connectors, skills). Collection only — no keep/drop decisions.
 
-判定を機械に持たせないのは意図的。「このプロジェクトで何が要るか」は
-プロジェクトの中身とユーザーの意図を読まないと決まらない。
-このスクリプトは「候補と、それぞれが何バイト食っているか」だけを出す。
+Keeping the decision out of the machine is deliberate. "What this project needs" can't be
+decided without reading the project's contents and the user's intent.
+This script only outputs "the candidates, and how many bytes each one takes".
 
   python3 inventory.py [--project PATH] [--no-connectors]
 
-出力: JSON（stdout）
+Output: JSON (stdout)
 """
 from __future__ import annotations
 
@@ -22,12 +22,12 @@ from pathlib import Path
 HOME = Path.home()
 DESC_RE = re.compile(r"^description:\s*(.*?)(?=\n\w+:|\Z)", re.S | re.M)
 FM_RE = re.compile(r"\A---\n(.*?)\n---", re.S)
-# "name: url-or-command - status" 形式の1行
+# one line in the form "name: url-or-command - status"
 MCP_LINE_RE = re.compile(r"^(?P<name>.+?):\s+(?P<target>.*?)\s+-\s+(?P<status>.+)$")
 
 
 def description_bytes(skill_dir: Path) -> tuple[int, str]:
-    """SKILL.md の description の長さと先頭を返す。読めなければ (0, "")。"""
+    """Return the length and head of the SKILL.md description. (0, "") if unreadable."""
     try:
         body = (skill_dir / "SKILL.md").read_text(encoding="utf-8", errors="replace")
     except OSError:
@@ -62,7 +62,7 @@ def personal_skills(home: Path) -> list[dict]:
 
 
 def enabled_plugin_skills(home: Path) -> list[dict]:
-    """enabledPlugins に載っているプラグインの skills だけを列挙する。"""
+    """List skills only from plugins listed in enabledPlugins."""
     settings = home / ".claude" / "settings.json"
     try:
         enabled = json.loads(settings.read_text(encoding="utf-8")).get("enabledPlugins", {})
@@ -95,7 +95,7 @@ def enabled_plugin_skills(home: Path) -> list[dict]:
 
 
 def connectors(timeout: int) -> dict:
-    """`claude mcp list` を叩く。ヘルスチェックが走るので数秒〜数十秒かかる。"""
+    """Run `claude mcp list`. Health checks run, so it takes a few seconds to tens of seconds."""
     try:
         p = subprocess.run(["claude", "mcp", "list"], capture_output=True,
                            text=True, timeout=timeout)
@@ -138,9 +138,9 @@ def current_settings(project: Path) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--project", default=os.getcwd())
-    ap.add_argument("--home", default=None, help="疑似 HOME（evals 用）")
+    ap.add_argument("--home", default=None, help="fake HOME (for evals)")
     ap.add_argument("--no-connectors", action="store_true",
-                    help="claude mcp list を叩かない（オフライン・高速）")
+                    help="don't run claude mcp list (offline, fast)")
     ap.add_argument("--timeout", type=int, default=90)
     args = ap.parse_args()
 
@@ -172,9 +172,9 @@ def main() -> int:
             "live_desc_bytes": sum(s["desc_bytes"] for s in live),
         },
         "not_enumerable": [
-            "アカウント側スキル（small-business:* / anthropic-skills:* / design:* 等）は "
-            "ディスク上に無く、ここには出ない。エージェント自身の skills 一覧から読むこと。",
-            "組み込みスキル（code-review / simplify / schedule 等）も同様にここには出ない。",
+            "Account-side skills (small-business:* / anthropic-skills:* / design:*, etc.) are "
+            "not on disk and don't appear here. Read them from the agent's own skills list.",
+            "Built-in skills (code-review / simplify / schedule, etc.) don't appear here either.",
         ],
     }
     json.dump(report, sys.stdout, ensure_ascii=False, indent=1)

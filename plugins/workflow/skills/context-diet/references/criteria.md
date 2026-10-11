@@ -1,16 +1,16 @@
-# 常時ロード削減の判断基準（11箇条）
+# Criteria for cutting the always-loaded context (11 rules)
 
-1〜9 は**常時ロードテキスト層**（Phase A）、10〜11 は**注入層**（Phase B）の基準。
+1–9 are criteria for the **always-loaded text layer** (Phase A); 10–11 are for the **injected layer** (Phase B).
 
-1. **実測から入る。** 毎セッション読み込まれるファイルを列挙して bytes を測る（体感禁止）。常時ロード＝グローバル/プロジェクト CLAUDE.md・@import 群・`paths:` 無し rules・メモリ索引。メモリ本体・reference/ は recall 時のみ＝常時コストゼロ。
-2. **移動は削減ではない。** rules/ への「分割」は auto-load なので合計が減らない。**テキスト層**で効くのは ①圧縮 ②非自動ロードパスへの退避＋ポインタ化 ③rules の frontmatter `paths:` glob 化（read 時発火に変わる）の3つだけ。**テキスト層以外のレバーは 10 と [harness-levers.md](harness-levers.md) を見ること。**
-3. **運用ルールの実体は保持、経緯・実例は結論1行に圧縮。** 長文の事故記録は「日付＋結論」の引用へ。承認日・出典は権威として残す。保全検証は before/after の見出し diff（消えた見出しゼロを機械確認）。
-4. **機械強制点（hook 等）に移った規約は本文から削れる。** 強制が機械にあるなら、文書側は1行ポインタで足りる。
-5. **索引は1行1フック。** 全行80字超が常態化したら書き直しどき。本体との件数一致・リンク実在を機械検証してから確定する。
-6. **インベントリは委譲・判断は main。** 参照先の生死・重複クラスタ・日付・索引整合の収集は subagent（判断させない・事実のみ）。削除・昇格・保持を決めるのは main。
-7. **削除は「完了した project state」と参照切れだけ。** 重複クラスタは統合しない（本体は常時コストゼロで、統合は recall の粒度を失うだけ）。経過日数より「目標日超過＋全ピース実装済み」のような完了判定が効く。
-8. **昇格は慎重に。** 索引→CLAUDE.md への昇格はスリム化を打ち消す。recall で機能しているものはメモリのまま置く。
-9. **必ずバックアップ→編集→検証。** cp バックアップ（バイト一致確認）→編集→サイズ・見出し parity・件数一致の機械検証。検証は落ちる条件を1度見せてから信用する。
+1. **Start from measurement.** List the files loaded on every session and measure their bytes (no gut feeling). Always loaded = global/project CLAUDE.md, @import files, rules without `paths:`, memory index. Memory bodies and reference/ are read only at recall time = zero standing cost.
+2. **Moving is not reducing.** "Splitting" into rules/ is auto-loaded, so the total doesn't shrink. On the **text layer** only three things work: ① compress ② move to a non-auto-loaded path and leave a pointer ③ turn rules into frontmatter `paths:` globs (they then fire on read). **For levers outside the text layer, see 10 and [harness-levers.md](harness-levers.md).**
+3. **Keep the substance of operating rules; compress history and examples to a one-line conclusion.** Long incident write-ups become a "date + conclusion" quote. Keep approval dates and sources as authority. Verify preservation with a before/after heading diff (mechanically confirm zero lost headings).
+4. **Rules that moved to a mechanical enforcement point (hooks, etc.) can be cut from the text.** If enforcement is mechanical, a one-line pointer in the doc is enough.
+5. **One hook per index line.** When all lines routinely exceed 80 chars, it's time to rewrite. Mechanically verify that counts match the bodies and that links exist before finalizing.
+6. **Delegate the inventory; decide in main.** Collecting whether references are alive, duplicate clusters, dates, and index consistency goes to a subagent (facts only, no judgment). main decides what to delete, promote, or keep.
+7. **Delete only "finished project state" and broken references.** Don't merge duplicate clusters (the bodies have zero standing cost, and merging only loses recall granularity). A completion test like "past the target date + all pieces implemented" works better than elapsed days.
+8. **Be careful with promotion.** Promoting from the index to CLAUDE.md undoes the slimming. Leave things that work through recall as memory.
+9. **Always back up → edit → verify.** `cp` backup (confirm byte-identical) → edit → mechanically verify size, heading parity, and count match. Trust a check only after you've seen it fail once.
 
-10. **注入層は閾値駆動にしない。** ツール名一覧・skills 一覧は「太る」のではなく**最初から全部載っている**。新規プロジェクトほど不要物の比率が高いので、閾値ではなく**プロジェクト単位で一度棚卸しする**のが正しい起動条件。レバーは `deniedMcpServers` と `skillOverrides`（[harness-levers.md](harness-levers.md)）。
-11. **対象の確定は必ずユーザー承認を得てから。無確認で settings.json を書かない。** 何が要るかはプロジェクトの中身とユーザーの意図でしか決まらず、エージェントの推測は当たらない。提案はグループ単位（コネクタ／personal skills／plugin skills／アカウント側 skills）で出し、**グループごとに yes/no を取る**。迷ったものは残す —— 誤って切ると、切れていること自体に気づけない（skills は一覧から消え、コネクタは tool が無いだけに見える）。
+10. **Don't make the injected layer threshold-driven.** The tool name list and skills list don't "grow" — **everything is there from the start**. The newer the project, the higher the share of unneeded items, so the right trigger is **one inventory per project**, not a threshold. The levers are `deniedMcpServers` and `skillOverrides` ([harness-levers.md](harness-levers.md)).
+11. **Always get user approval before finalizing what to cut. Never write settings.json without confirmation.** What is needed depends only on the project's contents and the user's intent; the agent's guesses are not reliable. Propose by group (connectors / personal skills / plugin skills / account-side skills) and **get a yes/no for each group**. When in doubt, keep it — a wrong cut means you can't even notice it was cut (a skill disappears from the list, a connector just looks like a missing tool).

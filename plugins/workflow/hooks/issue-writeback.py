@@ -1,34 +1,35 @@
 #!/usr/bin/env python3
-"""issue-writeback: 「読んだ issue に決定事項を書き戻す」の強制点。
+"""issue-writeback: enforces "write decisions back to the issues you read".
 
-セッション内で GitHub issue を読んだ（issue_read / gh issue view）のに、その後
-書いていない（issue_write update / add_issue_comment / sub_issue_write /
-gh issue edit|comment|close）issue を追跡し、
-（PR は追わない。読んだ結果が /pull/N なら記録せず、gh pr edit|comment 等は番号なし・ブランチ指定も含めて書き込みに数える）
-  - Stop            : 未反映のまま K ターン経ったら 1 回 block して書き戻しを促す（issue ごと最大 MAX_NAGS 回）
-  - UserPromptSubmit: 未反映がある間だけ 1 行リマインドを注入（無ければ無出力）
-  - SessionStart    : compact/resume 後に未反映を再注入。clear 後は「未反映のまま clear された」を 1 回通知
-  - SessionEnd      : clear のときだけ未反映を通知ファイルへ引き継ぐ。状態ファイルは消さない（exit→resume で同じ session_id が戻る）。掃除は GC_DAYS の mtime GC
-状態は ~/.claude/state/issue-writeback/<session_id>.json（セッション単位・並行セッションは混ざらない）。
-何が起きても例外で落ちず exit 0（Stop の block だけが唯一の「止める」出力）。
+Tracks GitHub issues that were read in the session (issue_read / gh issue view) but not written afterwards
+(issue_write update / add_issue_comment / sub_issue_write / gh issue edit|comment|close).
+(PRs are not tracked. A read whose result is /pull/N is not recorded, and gh pr edit|comment etc. count as writes,
+including the forms with no number or with a branch name.)
+  - Stop            : after K turns with no write-back, block once to prompt it (at most MAX_NAGS times per issue)
+  - UserPromptSubmit: inject a one-line reminder only while something is pending (no output otherwise)
+  - SessionStart    : re-inject pending issues after compact/resume. After clear, notify once that they were cleared while pending
+  - SessionEnd      : only on clear, hand pending issues over to a notice file. The state file is kept (exit -> resume brings
+                      back the same session_id). Cleanup is an mtime GC after GC_DAYS
+State is ~/.claude/state/issue-writeback/<session_id>.json (per session; parallel sessions don't mix).
+Whatever happens it never raises and exits 0 (the Stop block is the only output that stops anything).
 
-CLI: issue-writeback dismiss OWNER/REPO#N --session <id> [--why "..."]   # Claude が実行
-     issue-writeback status [--pending]                                   # 全セッションの追跡状況（claude agents --json と突合）
+CLI: issue-writeback dismiss OWNER/REPO#N --session <id> [--why "..."]   # run by Claude
+     issue-writeback status [--pending]                                   # tracking status of all sessions (joined with claude agents --json)
 """
 import fcntl, hashlib, json, os, re, sys, time
 from datetime import datetime, timedelta
 
 STATE_DIR = os.path.expanduser("~/.claude/state/issue-writeback")
-K_STOPS = 3          # 読んでから（前回 nag から）この回数 Stop が来たら block
-MAX_NAGS = 3         # issue ごとの block 上限（それ以降は黙る）
-GC_DAYS = 30         # 古い状態ファイルの掃除（SessionEnd では消さない。resume で同じ session_id が戻ってくるため）
-CLEAR_NOTICE_TTL = 600  # clear 通知の有効秒
+K_STOPS = 3          # block after this many Stops since the read (or since the last nag)
+MAX_NAGS = 3         # max blocks per issue (silent after that)
+GC_DAYS = 30         # clean up old state files (not deleted at SessionEnd, since resume brings back the same session_id)
+CLEAR_NOTICE_TTL = 600  # seconds a clear notice stays valid
 
 # ---------------------------------------------------------------- state io
 def _path(session_id): return os.path.join(STATE_DIR, f"{session_id}.json")
 
 class State:
-    """flock 付き read-modify-write。並列ツール呼び出しで同時に来ても壊れない。"""
+    """Read-modify-write under flock. Safe when parallel tool calls arrive at the same time."""
     def __init__(self, session_id):
         os.makedirs(STATE_DIR, exist_ok=True)
         self.p = _path(session_id); self.lock = self.p + ".lock"
@@ -64,7 +65,7 @@ def repo_from_cwd(cwd):
     return None
 
 def refs_from_mcp(tool_name, ti):
-    """(kind, ref) kind∈{read,write,None}"""
+    """(kind, ref) with kind in {read, write, None}"""
     base = tool_name.rsplit("__", 1)[-1]
     o, r, n = ti.get("owner"), ti.get("repo"), ti.get("issue_number")
     if not (o and r and n): return None, None
@@ -76,16 +77,16 @@ def refs_from_mcp(tool_name, ti):
     return None, None
 
 def is_pr_response(ref, tr):
-    """読んだ結果に `github.com/OWNER/REPO/pull/N` が出ていれば、その番号は PR。
-    issue_read や `gh api repos/.../issues/N`（PR のコメントもこの API）は PR も読めるが、
-    PR の書き戻し先は本文の対応表で issue-writeback の対象ではない。"""
+    """If the read result contains `github.com/OWNER/REPO/pull/N`, that number is a PR.
+    issue_read and `gh api repos/.../issues/N` (PR comments use this API too) can read PRs as well,
+    but a PR's write-back target is the response table in its body, which issue-writeback does not cover."""
     repo, n = ref.rsplit("#", 1)
     text = tr if isinstance(tr, str) else json.dumps(tr, ensure_ascii=False)
     return re.search(rf"github\.com/{re.escape(repo)}/pull/{n}(?!\d)", text, re.I) is not None
 
-_GH_REPO = r"(?:-R\s*=?\s*|--repo(?:\s+|=))([\w.-]+/[\w.-]+)"  # -R o/r・-Ro/r・--repo o/r・--repo=o/r
-# gh pr の書き込み系サブコマンドで、次の引数を値に取るオプション（-R/--repo は共通）。
-# 同じ短いオプションでもサブコマンドで意味が違う（close の -c は値つき、review の -c は値なし）ので分けて持つ
+_GH_REPO = r"(?:-R\s*=?\s*|--repo(?:\s+|=))([\w.-]+/[\w.-]+)"  # -R o/r, -Ro/r, --repo o/r, --repo=o/r
+# Options of the writing gh pr subcommands that take the next argument as a value (-R/--repo are shared).
+# The same short option can mean different things per subcommand (close -c takes a value, review -c does not), so keep them apart
 _PR_VALUE_FLAGS = {
     "edit": {"-b", "--body", "-F", "--body-file", "--attach", "-t", "--title", "-B", "--base", "-m", "--milestone",
              "--add-assignee", "--remove-assignee", "--add-label", "--remove-label",
@@ -99,7 +100,7 @@ _PR_VALUE_FLAGS = {
 }
 
 def _pr_selector(sub, rest):
-    """`gh pr <sub>` の後ろから PR の指定（番号・URL・ブランチ）を取り出す。無ければ None（今のブランチの PR）。"""
+    """Extract the PR selector (number, URL or branch) after `gh pr <sub>`. None if absent (the current branch's PR)."""
     import shlex
     try:
         toks = shlex.split(rest)
@@ -118,7 +119,7 @@ def _pr_selector(sub, rest):
     return None
 
 def _resolve_pr(sel, repo, cwd, tr):
-    """番号や URL で指していない PR（今のブランチ・ブランチ名）の番号を、出力 → `gh pr view` の順で引く。"""
+    """Resolve the number of a PR not given by number or URL (current branch or a branch name): from the output first, then `gh pr view`."""
     out = (tr.get("stdout") or "") if isinstance(tr, dict) else (tr if isinstance(tr, str) else "")
     if repo:
         m = re.search(rf"github\.com/{re.escape(repo)}/pull/(\d+)|\b{re.escape(repo)}#(\d+)\b", out, re.I)
@@ -137,9 +138,9 @@ def _resolve_pr(sel, repo, cwd, tr):
 def refs_from_bash(cmd, cwd, tr=None):
     out = []
     for seg in re.split(r"[|;&]+|\n", cmd):
-        # PR は追わない（PR の書き戻し先は本文の対応表で、pr-review-triage が担う）。
-        # ただし issues API 経由で PR を読んだ記録が残っていても、PR への書き込みで解消する。
-        # PR はオプションの後ろの番号・URL・ブランチ名でも、指定なし（今のブランチ）でも指せる
+        # PRs are not tracked (a PR's write-back target is the response table in its body, handled by pr-review-triage).
+        # But if a PR read through the issues API was recorded, a write to that PR clears it.
+        # A PR can be named by a number, URL or branch name after the options, or not at all (the current branch)
         m = re.search(r"\bgh\s+pr\s+(edit|comment|close|reopen|merge|review|ready)\b(.*)", seg)
         if m:
             sel = _pr_selector(m.group(1), m.group(2))
@@ -175,7 +176,7 @@ def on_post_tool_use(inp):
     if tn == "Bash":
         tr = inp.get("tool_response") or {}
         refs = refs_from_bash(ti.get("command", ""), inp.get("cwd", ""), tr)
-        # gh の書き込みが失敗していたら「書いた」にしない（誤って nag を抑止する方向の誤検知だけ防ぐ。read の誤検知は無害）
+        # A failed gh write does not count as written (only guards against wrongly suppressing the nag; a false read is harmless)
         err = (tr.get("stderr") or "") if isinstance(tr, dict) else ""
         if err and re.search(r"(?i)\b(error|failed|could not|HTTP [45]\d\d|GraphQL)\b", err):
             refs = [(k, r) for k, r in refs if k != "write"]
@@ -197,7 +198,7 @@ def on_post_tool_use(inp):
 
 def on_stop(inp):
     if inp.get("stop_hook_active"): return
-    if not os.path.exists(_path(inp["session_id"])): return  # issue を読んでいないセッションに空ファイルを作らない
+    if not os.path.exists(_path(inp["session_id"])): return  # don't create an empty file for a session that read no issue
     with State(inp["session_id"]) as st:
         due = []
         for ref, it in pending(st.d).items():
@@ -206,12 +207,13 @@ def on_stop(inp):
                 due.append(ref); it["stops_since"] = 0; it["nags"] = it.get("nags", 0) + 1
     if not due: return
     sid = inp["session_id"]
-    lines = [f"[issue-writeback] {', '.join(due)} を読んだが、その後 issue を更新していない。"
-             "この会話で決まったこと・変わった前提があるなら今すぐ反映する: "
-             "現在の設計・残タスク・完了条件は body を書き換え（「今どうなっているか」）、経緯・理由はコメント（「なぜそうなったか」）。"
-             "反映すべき決定が本当に無いなら、次を実行して理由を残してから終了する:"]
+    lines = [f"[issue-writeback] You read {', '.join(due)} but have not updated the issue since. "
+             "If this conversation decided anything or changed an assumption, write it back now: "
+             "rewrite the body for the current design, remaining tasks and done criteria (\"where things stand now\"), "
+             "and add a comment for the history and reasons (\"why it ended up this way\"). "
+             "If there really is nothing to write back, run the following to record why, then end:"]
     for ref in due:
-        lines.append(f"  issue-writeback dismiss {ref} --session {sid} --why \"<理由>\"")
+        lines.append(f"  issue-writeback dismiss {ref} --session {sid} --why \"<reason>\"")
     reason = "\n".join(lines)
     print(json.dumps({"decision": "block", "reason": reason,
                       "hookSpecificOutput": {"hookEventName": "Stop", "decision": "block", "reason": reason}}, ensure_ascii=False))
@@ -223,8 +225,8 @@ def on_user_prompt(inp):
         return
     p = pending(d)
     if not p: return
-    items = ", ".join(f"{k}（読込 {v['read_at'][11:16]}）" for k, v in p.items())
-    print(f"[issue-writeback] 未反映: {items} — 決定が出たらその場で body/コメントへ（セッション終了時にまとめない）")
+    items = ", ".join(f"{k} (read {v['read_at'][11:16]})" for k, v in p.items())
+    print(f"[issue-writeback] Not written back: {items} — write each decision to the body/a comment as soon as it is made (don't batch them at session end)")
 
 def gc():
     try:
@@ -247,8 +249,8 @@ def on_session_start(inp):
             with open(fp) as f: n = json.load(f)
             os.remove(fp)
             if time.time() - n["at"] < CLEAR_NOTICE_TTL and n["pending"]:
-                print(f"[issue-writeback] ⚠️ 直前の会話で読んだ {', '.join(n['pending'])} が未反映のまま /clear された。"
-                      "決定事項があったなら issue に載っていない可能性がある（この通知は 1 回だけ）。")
+                print(f"[issue-writeback] ⚠️ {', '.join(n['pending'])}, read in the previous conversation, was /clear-ed without being written back. "
+                      "Any decisions made there may be missing from the issue (this notice appears only once).")
         except Exception:
             pass
         return
@@ -259,11 +261,11 @@ def on_session_start(inp):
             return
         p = pending(d)
         if p:
-            hint = "要約に決定事項が残っているなら今のうちに" if reason == "compact" else "前回の会話で決めたことがあるなら続きに入る前に"
-            print(f"[issue-writeback] {reason} 前に読んだ {', '.join(p)} が未反映。{hint} body/コメントへ反映する。")
+            hint = "If the summary still holds decisions, do it now:" if reason == "compact" else "If the previous conversation decided anything, before continuing:"
+            print(f"[issue-writeback] {', '.join(p)}, read before {reason}, is not written back. {hint} write it to the body/a comment.")
 
 def on_session_end(inp):
-    """状態ファイルは残す（resume で戻ってくる）。clear だけは次の会話へ通知を引き継ぎ、状態はリセットする。"""
+    """Keep the state file (resume comes back to it). Only on clear, hand a notice to the next conversation and reset the state."""
     sid = inp["session_id"]; fp = _path(sid)
     if inp.get("reason") != "clear" or not os.path.exists(fp): return
     try:
@@ -286,16 +288,16 @@ def cli_dismiss(argv):
         elif argv[i] == "--why": why = argv[i + 1]; i += 2
         else: i += 1
     if not sid:
-        print("--session <id> が要る（Stop の指示文に載っている）", file=sys.stderr); return 2
+        print("--session <id> is required (it is in the Stop message)", file=sys.stderr); return 2
     with State(sid) as st:
         it = st.d["issues"].get(ref)
         if not it:
-            print(f"{ref} はこのセッションの追跡対象に無い", file=sys.stderr); return 1
+            print(f"{ref} is not tracked in this session", file=sys.stderr); return 1
         it["dismissed"] = {"at": now(), "why": why}
-    print(f"dismissed {ref}: {why or '(理由なし)'}"); return 0
+    print(f"dismissed {ref}: {why or '(no reason)'}"); return 0
 
 def cli_status(argv):
-    """状態ファイル × `claude agents --json --all` → セッション名・生死・未反映 issue を一覧。"""
+    """State files x `claude agents --json --all` -> list session name, alive/ended, and pending issues."""
     import subprocess
     only_pending = "--pending" in argv
     live = {}
@@ -303,7 +305,7 @@ def cli_status(argv):
         r = subprocess.run(["claude", "agents", "--json", "--all"], capture_output=True, text=True, timeout=10)
         live = {x["sessionId"]: x for x in json.loads(r.stdout or "[]")}
     except Exception as e:
-        print(f"(claude agents を引けなかった: {e} — 生死は不明として表示)", file=sys.stderr)
+        print(f"(could not query claude agents: {e} — showing alive/ended as unknown)", file=sys.stderr)
     rows = []
     for n in sorted(os.listdir(STATE_DIR)):
         if not n.endswith(".json") or n.startswith("clear-"): continue
@@ -317,17 +319,17 @@ def cli_status(argv):
         a = live.get(sid)
         rows.append((0 if a else 1, sid, a, d, p))
     if not rows:
-        print("追跡中の issue なし"); return 0
+        print("no tracked issues"); return 0
     for _, sid, a, d, p in sorted(rows, key=lambda r: (r[0], r[1])):
         if a:
-            head = f"● {a.get('name') or '(無名)'}  [{a.get('kind')}/{a.get('status') or '-'}]"
+            head = f"● {a.get('name') or '(unnamed)'}  [{a.get('kind')}/{a.get('status') or '-'}]"
         else:
-            head = "○ 終了済み（resume 可）"
+            head = "○ ended (resumable)"
         print(f"{head}  {sid[:8]}  {d.get('cwd') or ''}")
         for ref, it in d.get("issues", {}).items():
-            st = "書き戻し済み" if it.get("written_at") else ("dismiss: " + (it["dismissed"].get("why") or "-")) if it.get("dismissed") else "★未反映"
+            st = "written back" if it.get("written_at") else ("dismiss: " + (it["dismissed"].get("why") or "-")) if it.get("dismissed") else "★pending"
             when = (it.get("read_at") or it.get("written_at") or "")[5:16]
-            print(f"    {ref:<32} {'読込' if it.get('read_at') else '書込'} {when}  {st}")
+            print(f"    {ref:<32} {'read ' if it.get('read_at') else 'wrote'} {when}  {st}")
         if p and not a:
             print(f"    → claude --resume {sid}")
     return 0
@@ -342,7 +344,7 @@ def main():
     except Exception:
         return
     if not inp.get("session_id"): return
-    if os.path.exists(os.path.join(STATE_DIR, ".debug")):  # touch state/.debug で生入力をログ（デバッグ用）
+    if os.path.exists(os.path.join(STATE_DIR, ".debug")):  # touch state/.debug to log raw input (for debugging)
         with open(os.path.join(STATE_DIR, ".debug.log"), "a") as f:
             f.write(json.dumps(inp, ensure_ascii=False)[:4000] + "\n")
     ev = inp.get("hook_event_name")
@@ -352,6 +354,6 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except Exception as e:  # hook は絶対に落とさない
+    except Exception as e:  # a hook must never crash
         print(f"issue-writeback: {e}", file=sys.stderr)
     sys.exit(0)

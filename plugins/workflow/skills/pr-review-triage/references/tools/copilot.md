@@ -1,13 +1,13 @@
-# Copilot（id: `copilot`）
+# Copilot (id: `copilot`)
 
-| 項目 | 中身 |
+| Item | Details |
 |---|---|
-| bot のアカウント名（login と完全一致） | `Copilot` / `copilot-pull-request-reviewer[bot]` |
-| 起動のしかた | リポ・組織の設定次第で自動。こちらから頼むときはレビュアーに指定する（コネクタの `request_copilot_review`） |
-| 完了の合図 | レビュー（COMMENTED） |
-| 「指摘なし」の合図 | 記録なし |
-| レート制限・上限の合図（未レビュー） | 記録なし |
-| 待ち時間 | 記録なし |
-| 重い指摘 | Critical・High 相当で数える（重大度の書き方はツールごとに違う） |
-| 再レビューの頼み方 | `request_copilot_review`（コメントでは頼まない） |
-| 手元で回すコマンド | なし |
+| Bot account name (full match on login) | `Copilot` / `copilot-pull-request-reviewer[bot]` |
+| How it starts | Automatic depending on repo / organization settings. To request it ourselves, add it as a reviewer (the connector's `request_copilot_review`) |
+| Done signal | A review (COMMENTED) |
+| "No findings" signal | Not recorded |
+| Rate-limit / quota signal (not reviewed) | Not recorded |
+| Wait time | Not recorded |
+| Heavy findings | Count the Critical/High equivalent (each tool labels severity differently) |
+| How to request a re-review | `request_copilot_review` (not by comment) |
+| Command to run locally | None |

@@ -1,30 +1,30 @@
 [
   {
     "id": "trigger_wrap_1",
-    "description": "「セッション閉じたい」→ 発動",
+    "description": "\"I want to close the session\" -> invoke",
     "user_message": "セッション閉じたいのだけど後片付けとかいる？",
     "expected": "invoke",
-    "notes": "閉じる意図が明示"
+    "notes": "Explicit intent to close"
   },
   {
     "id": "trigger_wrap_2",
-    "description": "「今日はここまで」→ 発動",
+    "description": "\"That's it for today\" -> invoke",
     "user_message": "今日はここまでにする。残ってるものある？",
     "expected": "invoke",
-    "notes": "終了＋残件確認"
+    "notes": "Ending plus checking for leftovers"
   },
   {
     "id": "trigger_no_wrap_1",
-    "description": "作業中の通常依頼 → 発動しない",
+    "description": "Ordinary request mid-work -> do not invoke",
     "user_message": "このテストが落ちる原因を調べて。",
     "expected": "no-invoke",
-    "notes": "終了の文脈なし"
+    "notes": "No closing context"
   },
   {
     "id": "trigger_no_wrap_2",
-    "description": "git status を見たいだけ → 発動しない",
+    "description": "Only wants to see git status -> do not invoke",
     "user_message": "git status 見せて。",
     "expected": "no-invoke",
-    "notes": "単発コマンドで足りる"
+    "notes": "A single command is enough"
   }
 ]
