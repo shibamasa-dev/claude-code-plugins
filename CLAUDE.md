@@ -24,6 +24,7 @@ This is a public repo for users worldwide, so English is the base language.
   - Data the feature needs: regexes or keywords that match Japanese text, fixtures and eval prompts that represent Japanese input, detectors that still accept an older Japanese marker
   - CHANGELOG entries written before the switch to English (don't rewrite history)
 - Where a skill says which language to answer in, say "the user's language", not a fixed language
+- CI enforces this on PRs: `check-repo.py --base` fails on Hiragana / Katakana in added lines outside quotes. Allowed without changes: `README.ja.md`, `tests/`, `evals/`, `fixtures/`, SKILL.md frontmatter, and quoted text (`code`, 「quotes」, '...', "..."). Japanese data that can't be quoted (a plain list of Japanese keywords) gets `ja-ok` on the line. Run it locally before pushing: `python3 .github/scripts/check-repo.py --base origin/main`
 
 ## READMEs
 

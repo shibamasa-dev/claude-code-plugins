@@ -10,6 +10,12 @@
 3. README pairs: the root and every plugins/<name>/ with a README.md also have a README.ja.md next to it,
    line 3 of each is the language switcher linking to the other, and README.md has no Hiragana or
    Katakana (Japanese text belongs in README.ja.md; Han alone is allowed for the switcher label)
+4. With --base <ref> (CI on PRs): lines added since the base have no Japanese prose, i.e. no Hiragana /
+   Katakana outside quotes. English is the base language (CLAUDE.md "Language"); only added lines are
+   checked, so the Japanese data already in the repo doesn't need listing. Allowed: README.ja.md, files under
+   tests/, evals/ or fixtures/, SKILL.md frontmatter (the description's Japanese trigger phrases), quoted text
+   (`code`, 「quotes」, '...', "...": user phrases, old Japanese markers, string literals, regexes) and lines
+   containing `ja-ok` (unquoted data such as a list of Japanese keywords)
 """
 import os
 import re
@@ -84,6 +90,46 @@ for f in filter(None, FILES):
         for rx, what in LEAKS:
             if rx.search(line):
                 errors.append(f"{f}:{n}: {what}")  # don't print the matched text (the log is public too)
+# Single quotes count only as a literal, not as contractions: the opening quote follows a non-word character
+# (or a string prefix such as r / b / f) and the closing one isn't followed by a word character. Backslash
+# escapes inside '...' and "..." don't end the literal
+QUOTED = re.compile(r"`[^`]*`|「[^」]*」|(?:(?<!\w)|(?<=(?<!\w)[rRbBuUfF]))'(?:\\.|[^'\\])*'(?!\w)|\"(?:\\.|[^\"\\])*\"")
+LANG_EXEMPT = re.compile(r"(^|/)(README\.ja\.md$|tests/|evals/|fixtures/)")
+
+
+def git(*args):
+    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+
+
+def frontmatter_end(f):
+    """Last line number of a SKILL.md frontmatter at HEAD (0 if none)."""
+    try:
+        lines = git("show", f"HEAD:{f}").splitlines()
+    except subprocess.CalledProcessError:
+        return 0
+    if not lines or lines[0].strip() != "---":
+        return 0
+    return next((n for n, line in enumerate(lines[1:], 2) if line.strip() == "---"), 0)
+
+
+if "--base" in sys.argv:
+    base = git("merge-base", sys.argv[sys.argv.index("--base") + 1], "HEAD").strip()
+    # Paths come from -z (never quoted); each file's diff is read on its own, and only lines after the first
+    # @@ are content, so an added line starting with "++ " can't be mistaken for a file header
+    for f in filter(None, git("diff", "--name-only", "-z", "--diff-filter=d", base, "HEAD").split("\0")):
+        if LANG_EXEMPT.search(f):
+            continue
+        fm = frontmatter_end(f) if f == "SKILL.md" or f.endswith("/SKILL.md") else 0
+        n = None
+        for line in git("diff", "-U0", "--no-color", base, "HEAD", "--", f).splitlines():
+            if line.startswith("@@"):
+                n = int(re.search(r"\+(\d+)", line).group(1))
+            elif n is not None and line.startswith("+"):
+                text = line[1:]
+                if not (n <= fm or "ja-ok" in text) and KANA.search(QUOTED.sub("", text)):
+                    errors.append(f"{f}:{n}: Japanese outside quotes (write it in English, quote it, or add ja-ok to the line)")
+                n += 1
+
 # Don't print the location or count of BLOCKED_PATTERNS matches. If the public log showed which line
 # matched, an external PR could probe candidate terms to guess internal names (see locations in the local pre-commit)
 blocked = [e for e in errors if e.endswith(": BLOCKED_PATTERNS")]

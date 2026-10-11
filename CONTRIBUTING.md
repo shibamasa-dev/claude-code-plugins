@@ -29,6 +29,7 @@ for t in plugins/*/tests/run-all.sh; do bash "$t"; done   # tests assume macOS
 
 - Write everything in English: skills, hook messages, comments, tests, manifests and CHANGELOG entries
 - Skill `description` fields also list the Japanese trigger phrases, so Japanese prompts still trigger the skill
+- CI fails a PR whose added lines contain Japanese outside quotes. Quote Japanese data (`code`, 「quotes」, string literals) or add `ja-ok` to the line; `README.ja.md`, `tests/`, `evals/` and `fixtures/` are not checked. Check locally with `python3 .github/scripts/check-repo.py --base origin/main`
 - Every `README.md` has a Japanese `README.ja.md` next to it, linked from a language switcher on line 3. Update both in the same PR. `check-repo.py` enforces the pair
 
 ## Versions and CHANGELOG
