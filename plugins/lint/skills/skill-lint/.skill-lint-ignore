@@ -1,2 +1,2 @@
-# 意図的に漏れを含むテスト用データ（evals が一時ディレクトリに展開して検査する）
+# Test data that leaks on purpose (the evals expand it into a temporary directory and check it there)
 evals/fixtures/

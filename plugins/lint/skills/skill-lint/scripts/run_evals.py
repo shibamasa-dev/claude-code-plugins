@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""グループ A（決定論）: lint.py をフィクスチャに流し、evals/evals.json の期待カテゴリと突き合わせる。
+"""Group A (deterministic): run lint.py on the fixture and compare against the expected categories in evals/evals.json.
 
-  python3 scripts/run_evals.py [ケース ID ...]
+  python3 scripts/run_evals.py [case ID ...]
 
-採点: 陽性は lint_expect ⊆ その行で出たカテゴリ（lint_expect_match があれば、その文字列を含む match も要る）、陰性・陽性とも lint_forbid ∩ 出たカテゴリ = ∅。
-行は file と anchor（行内の一意な断片）で特定する。anchor が無いケースは line 0（ファイル単位の指摘）。
-フィクスチャのうち 2 行は、公開リポの漏れ検査（ホームの絶対パス・メールアドレス）に当たる部分を
-トークン（{{USERS_DIR}}・{{AT}}）にして置いてある。materialize() が一時ディレクトリへ展開してから流すので、
-lint が見る行は逐語どおり。展開済みのファイルはリポ内に残さない。
-exit 0 = 全件 PASS / 1 = FAIL あり。
+Grading: for positives, lint_expect ⊆ the categories reported on that line (if lint_expect_match is set, a match containing
+that string is also required); for both negatives and positives, lint_forbid ∩ the reported categories = ∅.
+A line is located by file and anchor (a fragment unique within the line). A case with no anchor means line 0 (a file-level finding).
+Two fixture lines store the parts that would trip the public repo's leak check (home absolute path, email address)
+as tokens ({{USERS_DIR}}, {{AT}}). materialize() expands them into a temporary directory before linting, so the lines
+lint sees are verbatim. The expanded files are never left in the repo.
+exit 0 = all PASS / 1 = some FAIL.
 """
 import contextlib, json, os, shutil, sys, tempfile
 
@@ -17,13 +18,13 @@ sys.path.insert(0, os.path.join(SKILL_DIR, "scripts"))
 import lint  # noqa: E402
 
 
-# 検査に当たる文字列をこのファイルにも素で書かない（連結して組み立てる）
+# Do not write the strings that trip the check verbatim in this file either (build them by concatenation)
 TOKENS = {"{{USERS_DIR}}": "/" + "Us" + "ers/", "{{AT}}": "@"}
 
 
 @contextlib.contextmanager
 def materialize(src):
-    """フィクスチャを一時ディレクトリにコピーしてトークンを展開し、そのパスを返す。抜けたら消す。"""
+    """Copy the fixture to a temporary directory, expand the tokens and yield its path. Removed on exit."""
     tmp = tempfile.mkdtemp(prefix="skill-lint-fixture-")
     dst = os.path.join(tmp, os.path.basename(src))
     try:
@@ -41,7 +42,7 @@ def materialize(src):
 
 
 def locate(fixture, case):
-    """anchor を含む行番号を返す。見つからない・複数なら None。"""
+    """Return the line number containing the anchor. None if not found or found more than once."""
     if case.get("anchor") is None:
         return 0 if os.path.exists(os.path.join(fixture, case["file"])) else None
     lines = open(os.path.join(fixture, case["file"]), encoding="utf-8").read().splitlines()
@@ -65,7 +66,7 @@ def grade(spec, fixture, only):
         line = locate(fixture, c)
         if line is None:
             failed += 1
-            print("FAIL %s: フィクスチャの行が特定できない（%s / %r）" % (c["id"], c["file"], c.get("anchor")))
+            print("FAIL %s: cannot locate the fixture line (%s / %r)" % (c["id"], c["file"], c.get("anchor")))
             continue
         got = sorted({f["category"] for f in res["findings"] if f["file"] == c["file"] and f["line"] == line})
         matches = [f["match"] for f in res["findings"] if f["file"] == c["file"] and f["line"] == line]
@@ -75,11 +76,11 @@ def grade(spec, fixture, only):
         ok = not missing and not forbidden
         passed += ok
         failed += not ok
-        detail = "期待 %s / 実測 %s" % (c["lint_expect"] or "なし", got or "なし")
+        detail = "expected %s / got %s" % (c["lint_expect"] or "none", got or "none")
         if missing:
-            detail += " / 欠落 %s" % missing
+            detail += " / missing %s" % missing
         if forbidden:
-            detail += " / 禁止 %s" % forbidden
+            detail += " / forbidden %s" % forbidden
         print("%s %s (%s:%d): %s" % ("PASS" if ok else "FAIL", c["id"], c["file"], line, detail))
     total = passed + failed
     print("\npass_rate: %d/%d = %.2f" % (passed, total, passed / total if total else 0))

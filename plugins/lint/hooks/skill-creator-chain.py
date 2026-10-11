@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""PostToolUse（Skill）と UserPromptExpansion（/skill-creator の直接入力）の hook: skill-creator が呼ばれたら、作り終えたスキルに skill-lint を走らせるよう伝える。
+"""Hook for PostToolUse (Skill) and UserPromptExpansion (typing /skill-creator directly): when skill-creator is used, tell Claude to run skill-lint on the finished skill.
 
-skill-creator（`skill-creator:skill-creator` のような名前空間付きも含む）のときだけ additionalContext を返し、
-ほかのスキルでは何も出さない。状態は持たない。
-何が起きても例外で落ちず exit 0。
+Returns additionalContext only for skill-creator (including namespaced names like `skill-creator:skill-creator`);
+prints nothing for any other skill. Keeps no state.
+Never crashes on an exception; always exits 0.
 """
 import json, sys
 
-MESSAGE = ("[lint] skill-creator を使っている。スキルの作成・更新が終わったら、そのスキルのディレクトリに "
-           "skill-lint を走らせる（/lint:skill-lint <スキルのディレクトリ>）。"
-           "プロジェクトスコープ（リポ内の .claude/skills）のスキルは対象外。")
+MESSAGE = ("[lint] skill-creator is in use. When you finish creating or updating the skill, run "
+           "skill-lint on that skill's directory (/lint:skill-lint <skill directory>). "
+           "Project-scoped skills (.claude/skills inside a repo) are out of scope.")
 
 
 def main():
-    if "--expansion" in sys.argv:  # UserPromptExpansion（ユーザーが /skill-creator を打った）: matcher で絞り済み。素の stdout が文脈に入る
+    if "--expansion" in sys.argv:  # UserPromptExpansion (the user typed /skill-creator): already narrowed by the matcher. Plain stdout goes into context
         print(MESSAGE)
         return
     try:
@@ -29,6 +29,6 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except Exception as e:  # hook は絶対に落とさない
+    except Exception as e:  # a hook must never crash
         print("skill-creator-chain: %s" % e, file=sys.stderr)
     sys.exit(0)
