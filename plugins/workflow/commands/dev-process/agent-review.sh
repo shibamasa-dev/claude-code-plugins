@@ -59,8 +59,8 @@ debug_log "CodeRabbit output file: $CODERABBIT_FILE"
 
 # Codex review (runs in the background)
 debug_log "Starting Codex review..."
-debug_log "Codex command: codex exec '/review 日本語で出力してください。' --output-last-message $CODEX_FILE"
-codex exec '/review 日本語で出力してください。' --output-last-message "$CODEX_FILE" > /dev/null 2>&1 &
+debug_log "Codex command: codex exec '/review' --output-last-message $CODEX_FILE"
+codex exec '/review' --output-last-message "$CODEX_FILE" > /dev/null 2>&1 &
 PID1=$!
 debug_log "Codex PID: $PID1"
 

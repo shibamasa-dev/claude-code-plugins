@@ -4,8 +4,7 @@
 set -u
 OUT="${1:-/dev/stdout}"
 
-F=/tmp/fg-fixture
-rm -rf "$F"
+F=$(mktemp -d "${TMPDIR:-/tmp}/fg-fixture.XXXX")
 # The two forms of the skill-layout exemption ((1) a skills path component (2) SKILL.md in the parent of scripts/)
 mkdir -p "$F/repo/.git" "$F/repo/docs/spec" "$F/repo/scripts/sub" \
          "$F/repo/skills/alpha/docs" \

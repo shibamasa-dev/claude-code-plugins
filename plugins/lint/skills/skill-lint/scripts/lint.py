@@ -48,10 +48,12 @@ TILDE_OK_PREFIXES = ("/.claude/", "/.config/", "/.local/", "/.cache/")
 TILDE_SEVERITY = "warn"
 RE_TAILNET = re.compile(r"[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.ts\.net\b")  # skill-lint: ignore
 RE_TRACKER = re.compile(r"(?<![&\w#])(?:[\w.-]+/)?(?:[A-Za-z][\w.-]*)?#\d+(?![\w])")
-# Dates and decision words are Japanese on purpose: they detect Japanese decision-history phrases
-# ("<date> ... confirmed / approved / instructed / decided / checked")
+# Decision history: a date plus a decision word on the same line ("<date> ... approved / decided / confirmed").
+# The Japanese words (confirmed / approved / instructed / decided / checked) catch Japanese phrases; the English
+# words match as whole words, ignoring case
 RE_DATE = re.compile(r"(?<!\d)(?:20\d{2}-\d{1,2}-\d{1,2}|20\d{2}/\d{1,2}/\d{1,2}|20\d{2}年\d{1,2}月\d{1,2}日)(?!\d)")
-RE_DECISION = re.compile(r"確定|承認|指示|判断|確認")
+RE_DECISION = re.compile(
+    r"確定|承認|指示|判断|確認|\b(?:approved|decided|confirmed|instructed|agreed|signed off)\b", re.I)
 RE_FM_SKIP = re.compile(r"^\s*(?:last_reviewed|review_after)\s*:")
 STRUCT_DIRS = {"logs", ".trash"}
 STRUCT_GLOBS = ("*.db", "*.db-wal", "*.db-shm", "*.sqlite", "*.sqlite3", "*.jsonl", "*.log")

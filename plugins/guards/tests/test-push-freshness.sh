@@ -1,12 +1,11 @@
 #!/bin/bash
 # Measure the acceptance criteria of push-freshness (bash-guard.py rule 3).
-# Create a throwaway git repo in /tmp, feed JSON to bash-guard.py and look at the verdict.
+# Create a throwaway git repo in a fresh temp directory, feed JSON to bash-guard.py and look at the verdict.
 set -u
 HOOK="$(cd "$(dirname "$0")/.." && pwd)/hooks/bash-guard.py"
 
-rm -rf /tmp/gtest
-mkdir -p /tmp/gtest
-cd /tmp/gtest || exit 1
+D=$(mktemp -d "${TMPDIR:-/tmp}/gtest.XXXX")
+cd "$D" || exit 1
 
 git init -q -b main .   # pin it so the default branch name (init.defaultBranch) doesn't matter
 git commit -q --allow-empty -m base
@@ -20,7 +19,7 @@ git update-ref refs/remotes/origin/main "$MAINB"
 git checkout -q feat/x
 
 probe() {
-  printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"cwd":"/tmp/gtest"}' "$1" \
+  printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"cwd":"%s"}' "$1" "$D" \
     | python3 "$HOOK" 2>/dev/null \
     | python3 -c "
 import json,sys
@@ -76,4 +75,4 @@ git checkout -q develop
 printf '  %-46s -> %s  (expect deny)\n' 'commit on a stale develop' "$(probe 'git commit -m x')"
 printf '  %-46s -> %s  (expect allow: the default branch is out of scope)\n' 'push develop' "$(probe 'git push origin develop')"
 
-rm -rf /tmp/gtest
+rm -rf "$D"

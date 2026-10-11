@@ -2,6 +2,11 @@
 
 Changelog of the creative plugin (named docs up to 0.1.4). Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow `version` in plugin.json.
 
+## [0.3.1] - 2026-10-11
+
+### Fixed
+- motion-video: `brief-template.md` calls the first cut sheet v1 (it said v0; `render.mjs` writes v1 first).
+
 ## [0.3.0] - 2026-10-11
 
 ### Changed

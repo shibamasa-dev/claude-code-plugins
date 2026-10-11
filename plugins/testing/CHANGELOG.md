@@ -2,6 +2,13 @@
 
 Change history of the testing plugin. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
 
+## [0.2.1] - 2026-10-11
+
+### Fixed
+- testcase-lint: files whose Gherkin uses Japanese keywords (`シナリオ:`) are checked too (they were skipped because only `Scenario` was looked for).
+- testcase-lint: English vague words match as whole words in any case, so `Properly` is caught and `incorrectly` no longer blocks; Japanese words still match as substrings.
+- testcase-generator: eval case 0 accepts "Not applicable" perspectives (with a one-line reason), as SKILL.md requires.
+
 ## [0.2.0] - 2026-10-11
 
 ### Changed

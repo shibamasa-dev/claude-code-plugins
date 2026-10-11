@@ -23,4 +23,4 @@ done | awk '
     else { ok++; print "  " $0 }
     next }
   {print}
-  END {printf "\n==== %d as expected / %d mismatches ====\n", ok, bad+0}'
+  END {printf "\n==== %d as expected / %d mismatches ====\n", ok, bad+0; exit (bad > 0)}'
