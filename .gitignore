@@ -1,4 +1,4 @@
-# パッチ適用の残骸
+# Leftovers from applying patches
 *.orig
 *.rej
 *.bak*
@@ -8,17 +8,17 @@ __pycache__/
 .venv/
 .DS_Store
 
-# 手元だけの Claude Code の設定（チームで共有する .claude/settings.json 等は対象外）
+# Local-only Claude Code settings (team-shared files such as .claude/settings.json are not ignored)
 .claude/settings.local.json
 .claude/*.local.md
 .claude/*.local.json
 
-# 手元の MCP サーバー・秘密（公開リポに入れない）
+# Local MCP servers and secrets (never in the public repo)
 .mcp.json
 .env
 .env.*
 
-# 作業用の一時置き場（エージェントの調査メモ・検証用の worktree など）
+# Scratch space (agent research notes, worktrees for verification, etc.)
 .tmp/
 tmp/
 *.log

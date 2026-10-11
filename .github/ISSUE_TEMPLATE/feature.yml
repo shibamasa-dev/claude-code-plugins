@@ -1,22 +1,22 @@
-name: 要望
-description: 新しいフック・スキルや、今あるものの改善
+name: Feature request
+description: A new hook or skill, or an improvement to an existing one
 labels: [enhancement]
 body:
   - type: dropdown
     id: plugin
     attributes:
-      label: プラグイン
-      options: [guards, workflow, testing, repo-setup, creative, lint, 新しいプラグイン, マーケットプレイス全体]
+      label: Plugin
+      options: [guards, workflow, testing, repo-setup, creative, lint, New plugin, Whole marketplace]
     validations:
       required: true
   - type: textarea
     id: problem
     attributes:
-      label: 困っていること
-      description: いま何が起きていて、何ができるとよいか
+      label: Problem
+      description: What happens today, and what you would like to be able to do
     validations:
       required: true
   - type: textarea
     id: idea
     attributes:
-      label: 案
+      label: Proposal

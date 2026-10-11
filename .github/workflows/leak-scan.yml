@@ -1,6 +1,6 @@
-# 社内の固有名（secret BLOCKED_PATTERNS）が公開リポに入るのを PR の段階で止める。
-# fork からの pull_request ではシークレットが渡らないため、pull_request_target で base 側の
-# スクリプトを動かし、PR の中身はデータとして読むだけにする（PR のコードは一切実行しない）。
+# Stop internal names (secret BLOCKED_PATTERNS) from entering the public repo at the PR stage.
+# Secrets are not passed to pull_request runs from forks, so this uses pull_request_target to run the
+# base-side script and only reads the PR contents as data (no PR code is ever executed).
 name: leak-scan
 
 on:
@@ -16,21 +16,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: 検査スクリプト（base 側＝信頼できるコード）
+      - name: Check script (base side = trusted code)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: base
           persist-credentials: false
-      - name: 検査対象（PR の head。読むだけ）
+      - name: Target (PR head, read only)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: target
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           persist-credentials: false
-      - name: 個人環境・社内の固有名の混入
+      - name: Personal environment and internal name leaks
         env:
           BLOCKED_PATTERNS: ${{ secrets.BLOCKED_PATTERNS }}
-          HIDE_BLOCKED_LOCATIONS: "1"  # 公開ログに一致した場所を出さない（check-repo.py 参照）
+          HIDE_BLOCKED_LOCATIONS: "1"  # don't print match locations in the public log (see check-repo.py)
         working-directory: target
         run: python3 ../base/.github/scripts/check-repo.py
