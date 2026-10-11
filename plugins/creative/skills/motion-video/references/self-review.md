@@ -1,49 +1,49 @@
-# 自己採点（絵コンテ段階と本番書き出しの後）
+# Self-review (at the storyboard stage and after the final render)
 
-エージェントが自分の出したコマを **Read で実際に見て** 採点する。見ずに点を付けない。
+The agent **actually looks at** the frames it produced **with Read** and scores them. Do not score without looking.
 
-## いつやるか
+## When
 
-| タイミング | 見るもの | 直したら |
+| Timing | What to look at | After fixing |
 |---|---|---|
-| 絵コンテの後・人に見せる前 | `out/storyboard/cutsheet.html` のカット（`<画角>/cuts/` の はじめ / おわり）、`out/storyboard/<画角>/` の contact.png / strip.png / phone.png / seam.png と代表コマ、音があれば `out/storyboard/audio/` の spectrogram.png と audio.json | 同じ段階で storyboard を作り直す |
-| 本番書き出しの後 | `out/deliver/<画角>/` の poster.png / contact.png | 直すならソースを変えるので **絵コンテから作り直し、もう一度人の OK をもらう**（承認はソースのハッシュに紐づいている） |
+| After the storyboard, before showing a human | The cuts in `out/storyboard/cutsheet.html` (first frame / last frame in `<aspect>/cuts/`), contact.png / strip.png / phone.png / seam.png and the representative frames in `out/storyboard/<aspect>/`, and if there is sound, spectrogram.png and audio.json in `out/storyboard/audio/` | Rebuild the storyboard at the same stage |
+| After the final render | poster.png / contact.png in `out/deliver/<aspect>/` | Fixing means changing the source, so **rebuild from the storyboard and get the human's OK again** (approval is tied to the source hash) |
 
-## 9項目（各 1〜10）
+## 9 items (each 1–10)
 
-| 項目 | 見るもの | 8点以上の目安 |
+| Item | What to look at | Guide for 8 or higher |
 |---|---|---|
-| フック（最初の2秒） | contact の先頭4コマ | 0.5秒以内に何かが動き、2秒で何の動画か分かる |
-| スマホでの読みやすさ | phone.png | 390px 幅でも全部の文字が読める。細い字・小さい字が無い |
-| 動きの質 | strip.png（最速の動きの前後12コマ） | ブラーが動きの向きに出ている。コマ間で跳んでいない。文字が行き過ぎていない |
-| 視覚の変化 | contact 全体・storyboard の警告 | 2〜4秒ごとに新しい出来事がある（「目立つ変化が無い」警告が0件） |
-| 構図 | 代表コマ | 余白が意図的。安全域（端から 6%）に文字が食い込んでいない。画角ごとに組み直せている |
-| ブランドの正確さ | 代表コマ・poster | brand.json の色・書体・ロゴだけを使っている。ロゴが歪んでいない |
-| 音の同期 | beats.json と contact・`audio/spectrogram.png`・`audio/audio.json` | 状態変化が拍に、主役の登場が小節頭に乗っている（audio の警告が0件）。BGM があれば曲の山が緑線（ピーク）に来ていて、効果音の瞬間に BGM が下がっている。帯域ごとの RMS で low が lowmid を超えていない |
-| ありがち度 | contact 全体・カット表の はじめ / おわり | 「それっぽい平均」に寄っていない。黒背景＋太いタイポ＋パーティクル＋グリッチの組み合わせ、どこかで見た既定の見た目になっていない。この動画だけの理由がある画が1つ以上ある |
-| 緩急 | contact・カット表を上から下へ | 全部を同じ強さで作っていない。主役（肝）のカットが1〜2本はっきりあり、抜くカット（静か・短い・余白多め）もある。画面が派手なカットでは文字・ラベルなどの重ねものを静かにしている |
+| Hook (first 2 seconds) | First 4 frames of contact | Something moves within 0.5 seconds, and by 2 seconds it is clear what the video is about |
+| Readability on a phone | phone.png | All text is readable even at 390px width. No thin or tiny type |
+| Motion quality | strip.png (12 frames around the fastest motion) | Blur follows the direction of motion. No jumps between frames. Text does not overshoot |
+| Visual change | All of contact, storyboard warnings | Something new happens every 2–4 seconds (0 "no noticeable change" warnings) |
+| Composition | Representative frames | Whitespace is deliberate. Text does not cut into the safe area (6% from the edges). Re-laid out properly per aspect |
+| Brand accuracy | Representative frames, poster | Uses only brand.json's colors, typefaces and logo. The logo is not distorted |
+| Audio sync | beats.json and contact, `audio/spectrogram.png`, `audio/audio.json` | State changes sit on beats and the hero's entrance on bar starts (0 audio warnings). With BGM, the music's peaks land on the green lines (peaks) and BGM dips at sound effect moments. In per-band RMS, low does not exceed lowmid |
+| Genericness | All of contact, first frame / last frame on the cut sheet | Not drifting toward a "plausible average". Not the black background + heavy type + particles + glitch combo, or any default look seen elsewhere. At least one shot exists for a reason specific to this video |
+| Pacing contrast | contact and the cut sheet, top to bottom | Not everything at the same intensity. There are 1–2 clear hero (key) cuts, and also cuts that ease off (quiet, short, lots of whitespace). In visually loud cuts, overlays such as text and labels are kept quiet |
 
-## 手順
+## Steps
 
-1. 9項目に点を付ける。
-2. **最悪の3件**をタイムスタンプ付きで挙げる（例: `4.20s: 右カードの字が phone で潰れる（読みやすさ 5）`）。
-3. 直す。確認は該当の秒だけ描き直す:
-   `node <skill>/scripts/render.mjs stills <project> --from 4.0 --to 4.5`（`out/stills/<画角>/sheet.png` に並ぶ）
-4. 新旧の点を並べる（例: `読みやすさ 5 → 8`）。
-5. 全項目 8 点以上になるまで 2〜4 を繰り返す。3巡しても上がらない項目は、そのまま人に見せて判断を仰ぐ（点と理由を添える）。
+1. Score the 9 items.
+2. List **the worst 3** with timestamps (e.g. `4.20s: right card's text gets crushed on phone (readability 5)`).
+3. Fix them. To check, re-render only those seconds:
+   `node <skill>/scripts/render.mjs stills <project> --from 4.0 --to 4.5` (lined up in `out/stills/<aspect>/sheet.png`)
+4. Show old and new scores side by side (e.g. `readability 5 → 8`).
+5. Repeat 2–4 until every item is 8 or higher. Items that do not improve after 3 rounds go to the human as-is for a decision (with the score and reasons).
 
-ありがち度・緩急が低いときの直し方:
+How to fix low genericness or pacing contrast:
 
-- **足すより削る**。未完成っぽく見える質感・カット・重ねもの（効いていないパーティクル、意味の無いグリッチ、読ませる気の無い小さな文字）は、直すより先に消す
-- 主役のカットを決め、それ以外の強さを1段落とす（動きの量・色数・重ねものを減らす）
-- 黒背景＋太いタイポに逃げない。brand.json の色と、実写テクスチャ（`authoring.md` の「13. 実写テクスチャを重ねる」）で手触りを出す
+- **Remove rather than add**. Delete textures, cuts and overlays that look unfinished (particles that do nothing, meaningless glitches, tiny text no one is meant to read) before trying to fix them
+- Pick the hero cut and take everything else down a notch (less motion, fewer colors, fewer overlays)
+- Do not fall back on black background + heavy type. Get tactility from brand.json's colors and live-action textures (`authoring.md`, "13. Layering live-action textures")
 
-人に見せるときの形:
+How to present it to the human:
 
 ```
-カット表: out/storyboard/cutsheet.html（v2）
-絵コンテ: out/storyboard/storyboard.md
-自己採点: フック 8 / 読みやすさ 8 / 動き 9 / 変化 8 / 構図 8 / ブランド 9 / 音 8 / ありがち度 8 / 緩急 8
-直した3件: 4.20s 字が潰れる（5→8）、…
-OK なら本番を書き出します。
+Cut sheet: out/storyboard/cutsheet.html (v2)
+Storyboard: out/storyboard/storyboard.md
+Self-review: hook 8 / readability 8 / motion 9 / change 8 / composition 8 / brand 9 / audio 8 / genericness 8 / pacing contrast 8
+Fixed 3: 4.20s text crushed (5→8), …
+If OK, I'll do the final render.
 ```

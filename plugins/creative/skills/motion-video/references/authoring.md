@@ -1,311 +1,311 @@
-# video.js の書き方（レンダー契約と API）
+# Writing video.js (render contract and API)
 
-目次: 1. プロジェクトの形 / 2. meta / 3. render(ctx, t) の契約 / 4. ctx / 5. 動きの部品（ctx.M） / 6. 描画の部品（ctx.D） / 7. 画角ごとの組み直し / 8. 素材・クリップ・フォント / 9. 音 / 10. ループ / 11. 見た目の既定 / 12. カット表と FB の往復 / 13. 実写テクスチャを重ねる / 14. 生成画像を素材として受け入れる
+Contents: 1. Project layout / 2. meta / 3. The render(ctx, t) contract / 4. ctx / 5. Motion helpers (ctx.M) / 6. Drawing helpers (ctx.D) / 7. Re-layout per aspect / 8. Assets, clips and fonts / 9. Sound / 10. Loops / 11. Visual defaults / 12. Cut sheet and FB round trips / 13. Layering live-action textures / 14. Accepting generated images as assets
 
-## 1. プロジェクトの形
+## 1. Project layout
 
 ```
 <project>/
-├── brief.md          指示書か雑メモ（references/brief-template.md）
-├── music-brief.md    音楽ブリーフ（BGM を付けるとき。references/music-brief.md）
-├── verify.md         技術検証メモ（難しいシーンがあるとき。SKILL.md の手順②）
-├── video.js          meta と render(ctx, t) を export する（これを書く）
-├── brand.json        色・書体・ロゴ（無ければ --brand で外から渡す。例: references/brand.example.json）
-├── assets/           画像（PNG / JPG / SVG / WebP）
-├── clips/            実写クリップ（mp4 等。ffmpeg が読めれば何でも）
-├── feedback/         v<N>.json = 版 N への人の FB とエージェントの対応（12.）
-├── approval.json     approve コマンドが書く（手で作らない）
-└── out/              書き出し先（storyboard/ stills/ deliver/）
+├── brief.md          brief or rough notes (references/brief-template.md)
+├── music-brief.md    music brief (when adding BGM. references/music-brief.md)
+├── verify.md         feasibility test notes (when there are hard scenes. Step 2 in SKILL.md)
+├── video.js          exports meta and render(ctx, t) (this is what you write)
+├── brand.json        colors, typefaces, logo (if absent, pass one in with --brand. Example: references/brand.example.json)
+├── assets/           images (PNG / JPG / SVG / WebP)
+├── clips/            live-action clips (mp4 etc. Anything ffmpeg can read)
+├── feedback/         v<N>.json = the human's FB on version N and the agent's responses (12.)
+├── approval.json     written by the approve command (do not create by hand)
+└── out/              output (storyboard/ stills/ deliver/)
 ```
 
-置き場所はスキルの外（作業中のプロジェクトの `tmp/` など）。スキルのリポジトリに動画・画像を置かない。
+Put it outside the skill (e.g. `tmp/` of the project you are working in). Do not put videos or images in the skill's repository.
 
 ## 2. meta
 
 ```js
 export const meta = {
-  title: 'Example Co. 紹介',
-  duration: 15,            // 秒。duration × fps が整数になるように
-  fps: 60,                 // 既定 60
-  aspects: ['9:16', '1:1', '16:9'],  // 先頭が主画角（絵コンテの既定）。9:16 を先に作る
-  loop: false,             // ループ作品なら true（継ぎ目の連続性を検査する）
-  poster: 13.8,            // poster.png にする時刻（省略時は最後のシーンの代表コマ）
-  subframes: 4,            // モーションブラーのサブフレーム数（既定 4）
-  shutter: 0.5,            // シャッター角（1コマの何割の時間を混ぜるか。既定 0.5 = 180°）
+  title: 'Example Co. intro',
+  duration: 15,            // seconds. Make duration × fps an integer
+  fps: 60,                 // default 60
+  aspects: ['9:16', '1:1', '16:9'],  // first one is the primary aspect (storyboard default). Build 9:16 first
+  loop: false,             // true for a looping piece (the seam is checked for continuity)
+  poster: 13.8,            // time used for poster.png (default: representative frame of the last scene)
+  subframes: 4,            // number of motion-blur subframes (default 4)
+  shutter: 0.5,            // shutter angle (fraction of one frame's time to blend. Default 0.5 = 180°)
   assets: { shot: 'assets/dashboard.png' },            // ctx.img('shot')
-  clips: { demo: { src: 'clips/demo.mp4', fps: 30, maxWidth: 1280 } },  // ctx.clip('demo', 秒)
-  scenes: [ /* シーン契約。下記 */ ],
-  audio: { bpm: 120, offset: 0, beatsPerBar: 4, peaks: [0, 12], cues: [ /* 9. 音 */ ] },
+  clips: { demo: { src: 'clips/demo.mp4', fps: 30, maxWidth: 1280 } },  // ctx.clip('demo', seconds)
+  scenes: [ /* scene contract. See below */ ],
+  audio: { bpm: 120, offset: 0, beatsPerBar: 4, peaks: [0, 12], cues: [ /* 9. Sound */ ] },
 };
 ```
 
-### シーン契約（scenes の各要素）
+### Scene contract (each element of scenes)
 
 ```js
 {
-  id: 's2', start: 3, end: 6,       // 秒。隙間・重なりなく 0 から duration まで並べる
-  key: 4.8,                          // 代表コマの時刻（省略時は中央）。複数なら keys: [3.6, 5.2]
-  message: '伝えること（1文）',
-  screen: '画面: 構図・物・カメラ',
-  motion: { enter: '入場', main: '主動作', secondary: '副動作', exit: '退場' },  // 文字列でもよい
-  narration: 'ナレーション1文（音声は作らない。字幕や読み上げ原稿として使う）',
-  text: '画面に出す文字（省略時はカット表のテキスト欄に narration を出す）',
-  sound: '音',
-  transition: '画面上の物が次のシーンの物にどう変わるか',  // 「カット」は警告になる
-  energy: 0.8,                       // 省略可。BGM の層の厚さ 0..1（省略時はピーク・最初・最後のシーンかで決まる。9. 音）
-  verify: ['● 面の変形は springTrack で目処', '▲ 9:16 で右カードが安全域に食い込む（縮めて対処予定）'],  // 省略可。カット表の検証欄（12.）
+  id: 's2', start: 3, end: 6,       // seconds. Lay them out from 0 to duration with no gaps or overlaps
+  key: 4.8,                          // time of the representative frame (default: the middle). For several: keys: [3.6, 5.2]
+  message: 'What to convey (one sentence)',
+  screen: 'Screen: composition, objects, camera',
+  motion: { enter: 'enter', main: 'main action', secondary: 'secondary action', exit: 'exit' },  // a string also works
+  narration: 'One sentence of narration (no voice is generated. Used as captions or a script to read)',
+  text: 'Text shown on screen (if omitted, the cut sheet Text column shows narration)',
+  sound: 'sound',
+  transition: 'How an object on screen turns into an object of the next scene',  // "cut" triggers a warning
+  energy: 0.8,                       // optional. BGM layer density 0..1 (default depends on whether the scene is a peak / first / last scene. 9. Sound)
+  verify: ['● surface morph looks feasible with springTrack', '▲ in 9:16 the right card cuts into the safe area (plan: shrink it)'],  // optional. The cut sheet Verify column (12.)
 }
 ```
 
-storyboard はこの欄をそのままシーン表とカット表（1シーン＝1カット）にする。空欄・隙間・ハードカットは警告に出る（`text`・`verify` は空でも警告しない）。
+storyboard turns these fields directly into the scene table and the cut sheet (1 scene = 1 cut). Blank fields, gaps and hard cuts show up as warnings (`text` and `verify` do not warn when empty).
 
-## 3. render(ctx, t) の契約
+## 3. The render(ctx, t) contract
 
-`render(ctx, t)` は **時刻 t だけで1コマが決まる純関数**（seek(t)）。フレーム 812 は 0〜811 を描かずに正しく描ける。
+`render(ctx, t)` is **a pure function where time t alone determines a frame** (seek(t)). Frame 812 draws correctly without drawing 0–811.
 
-- 禁止: 前フレームからの持ち越し（モジュール変数に位置を足していく等）/ タイマー・requestAnimationFrame / CSS transition・DOM アニメーション（canvas 以外は写らない）/ `Math.random`・`Date.now`・`performance.now`（描画中は例外で止まる）
-- 乱数は `ctx.M.rng(seed)` をその場で作って使う（毎コマ同じ seed から引く）
-- 毎コマ、harness が canvas を消して変換・透明度を戻してから呼ぶ。背景は自分で塗る
-- `check` コマンドが「同じコマを最初に描いた時」と「他のコマを描いた後」を比べ、違えば失敗にする
-- async にしてもよい（素材は事前に全部読み込み済みなので、普通は同期で足りる）
+- Forbidden: carrying state over from the previous frame (accumulating positions in a module variable, etc.) / timers, requestAnimationFrame / CSS transitions, DOM animation (only the canvas is captured) / `Math.random`, `Date.now`, `performance.now` (they throw during rendering)
+- For randomness, create `ctx.M.rng(seed)` on the spot and use it (draw from the same seed every frame)
+- Every frame, the harness clears the canvas and resets transform and alpha before calling. Paint the background yourself
+- The `check` command compares "the first time a frame is drawn" with "after drawing other frames" and fails if they differ
+- It may be async (all assets are preloaded, so synchronous is usually enough)
 
 ## 4. ctx
 
-| 名前 | 中身 |
+| Name | Contents |
 |---|---|
 | `g` | CanvasRenderingContext2D |
-| `W`, `H` | 画角のピクセル（16:9=1920x1080 / 9:16=1080x1920 / 1:1=1080x1080 / 4:5=1080x1350） |
-| `L` | レイアウト（7.） |
-| `M` / `D` | 動きの部品 / 描画の部品 |
-| `brand` | brand.json の中身（`brand.colors.primary` など） |
-| `meta`, `fps`, `duration` | meta の値 |
+| `W`, `H` | Pixels of the aspect (16:9=1920x1080 / 9:16=1080x1920 / 1:1=1080x1080 / 4:5=1080x1350) |
+| `L` | Layout (7.) |
+| `M` / `D` | Motion helpers / drawing helpers |
+| `brand` | Contents of brand.json (`brand.colors.primary` etc.) |
+| `meta`, `fps`, `duration` | Values from meta |
 | `beats` | `M.beatGrid(meta.audio.bpm, …)` |
-| `font(role, size, weight=700)` | brand.fonts[role] の CSS font 文字列（fallback 込み） |
-| `img(key)` | 素材の画像。`'@logo'` は brand.json の logo |
-| `clip(key, 秒, { loop })` | クリップの その秒のコマ（画像） |
-| `scene(t)` | t のシーン `{ id, start, end, local, p }`（p = シーン内の進捗 0..1） |
-| `text(str, x, y, opts)` | 文字（折り返し・禁則つき）。opts: font, color, align, baseline, maxWidth, lineHeight, letterSpacing, alpha |
-| `image(img, box, opts)` | 画像を枠へ（opts: fit 'contain'/'cover', radius, alpha） |
+| `font(role, size, weight=700)` | CSS font string for brand.fonts[role] (fallback included) |
+| `img(key)` | Asset image. `'@logo'` is the logo in brand.json |
+| `clip(key, seconds, { loop })` | The clip's frame at that second (an image) |
+| `scene(t)` | Scene at t `{ id, start, end, local, p }` (p = progress within the scene 0..1) |
+| `text(str, x, y, opts)` | Text (with wrapping and line-break rules). opts: font, color, align, baseline, maxWidth, lineHeight, letterSpacing, alpha |
+| `image(img, box, opts)` | Image into a box (opts: fit 'contain'/'cover', radius, alpha) |
 
-## 5. 動きの部品（ctx.M）
+## 5. Motion helpers (ctx.M)
 
-- `spring(t, preset)` — 0→1 のばね（closed-form・数式で解いた厳密解）。t<=0 は 0
-  - `snappy`（k260/d24・ボタン・トグル）/ `default`（k170/d26・カード・カメラ・文字）/ `playful`（k130/d18・マスコット）/ `heavy`（k120/d30/m2.5・大きな面。スキル独自の推測値）
-  - UI は小さく行き過ぎてよい（snappy / playful）。**文字は行き過ぎさせない**（default / heavy）
-- `springTrack(t, keys, preset)` — ターゲットが変わるたびにばねを1本足す。`keys = [{t:0,v:0},{t:1.2,v:100},{t:3,v:40,preset:'snappy'}]`。途中で行き先が変わっても値も速度も連続する
-- `springDuration(preset)` — 収束までの秒数（シーン尺の見積もり）
-- `progress(t, a, b)`（0..1 に正規化）/ `ease.outCubic` ほか / `lerp` / `clamp` / `stagger(start, i, gap)`
-- `beatGrid(bpm).beat(n)` / `.bar(n, b)` / `.nearest(t)` — 拍・小節頭の時刻
+- `spring(t, preset)` — a 0→1 spring (closed-form, an exact analytic solution). 0 for t<=0
+  - `snappy` (k260/d24, buttons, toggles) / `default` (k170/d26, cards, camera, text) / `playful` (k130/d18, mascots) / `heavy` (k120/d30/m2.5, large surfaces. The skill's own guessed values)
+  - UI may overshoot slightly (snappy / playful). **Text must not overshoot** (default / heavy)
+- `springTrack(t, keys, preset)` — adds one spring each time the target changes. `keys = [{t:0,v:0},{t:1.2,v:100},{t:3,v:40,preset:'snappy'}]`. Value and velocity stay continuous even when the destination changes mid-way
+- `springDuration(preset)` — seconds until it settles (for estimating scene length)
+- `progress(t, a, b)` (normalized to 0..1) / `ease.outCubic` etc. / `lerp` / `clamp` / `stagger(start, i, gap)`
+- `beatGrid(bpm).beat(n)` / `.bar(n, b)` / `.nearest(t)` — times of beats and bar starts
 - `rng(seed)` / `mixColor(a, b, p)` / `withAlpha(hex, a)`
 
-文字と容器の順番（プレイブックの型）:
+Order of text and container (the playbook pattern):
 
 ```js
-const out = M.ease.inCubic(M.progress(t, end - 0.45, end - 0.2)); // 文字は変形より先に退場
-const box = M.springTrack(t, [{ t: 0, v: A }, { t: end - 0.15, v: B }]);  // 容器の変形は境界の少し前から
-const inn = M.spring(t - (end + 0.15), 'default');                  // 新しい文字は変形が始まってから
+const out = M.ease.inCubic(M.progress(t, end - 0.45, end - 0.2)); // text exits before the morph
+const box = M.springTrack(t, [{ t: 0, v: A }, { t: end - 0.15, v: B }]);  // the container morph starts a little before the boundary
+const inn = M.spring(t - (end + 0.15), 'default');                  // new text enters after the morph has started
 ```
 
-## 6. 描画の部品（ctx.D）
+## 6. Drawing helpers (ctx.D)
 
-`D.fill(g, W, H, color)` / `D.roundRect(g, x, y, w, h, r)`（パスを作るだけ。fill/stroke/clip は自分で）/ `D.text(g, …)` / `D.image(g, …)` / `D.wrapLines(g, text, maxWidth)`
+`D.fill(g, W, H, color)` / `D.roundRect(g, x, y, w, h, r)` (only builds the path. Do fill/stroke/clip yourself) / `D.text(g, …)` / `D.image(g, …)` / `D.wrapLines(g, text, maxWidth)`
 
-## 7. 画角ごとの組み直し
+## 7. Re-layout per aspect
 
-固定ピクセルで置かない。`L = layout(W, H)` の単位で置く:
+Do not place things in fixed pixels. Place them in units of `L = layout(W, H)`:
 
-- `L.u` — 短辺の 1%。文字サイズ・余白・角丸はこれの倍数（`6 * L.u` など）
-- `L.orient` — `'landscape' | 'portrait' | 'square'`。並べ方の分岐に使う
-- `L.safe` — 端から 6% 内側の安全域 `{x, y, w, h}`。文字はこの中に置く
-- `L.split(gap)` — 横長なら左右、縦長なら上下の2分割
-- `L.grid(cols, rows, gap, box)` — 格子のセル
+- `L.u` — 1% of the short side. Text size, margins and corner radii are multiples of it (`6 * L.u` etc.)
+- `L.orient` — `'landscape' | 'portrait' | 'square'`. Use it to branch the arrangement
+- `L.safe` — the safe area 6% in from the edges `{x, y, w, h}`. Keep text inside it
+- `L.split(gap)` — split in two: left/right if landscape, top/bottom if portrait
+- `L.grid(cols, rows, gap, box)` — grid cells
 - `M.fit(iw, ih, box, 'contain'|'cover')`
 
-9:16 を先に組み、同じ関数が 1:1 と 16:9 でも破綻しないか storyboard `--aspect all` で見る。横のマスターを切り抜かない。
+Lay out 9:16 first, then check with storyboard `--aspect all` that the same function holds up in 1:1 and 16:9. Do not crop a landscape master.
 
-## 8. 素材・クリップ・フォント
+## 8. Assets, clips and fonts
 
-- 画像: `meta.assets` に登録 → `ctx.img(key)`。全部読み込み終えてから 1コマ目を描くので、読み込み待ちは要らない
-- SVG は `width` / `height` 属性を必ず書く（無いと Chrome で 300x150 などになる）
-- 実写クリップ: **ブラウザの `<video>` は使わない**。render.mjs が ffmpeg で `meta.clips.*.fps` の連番にばらしてキャッシュし、`ctx.clip(key, 秒)` がその秒のコマを返す。長い素材は `maxWidth` で縮める（全コマをメモリに載せる）
-- フォント: brand.json の `fonts.<role>.file` にフォントファイル（brand.json からの相対パス。可変フォント可）を渡すと @font-face で読み込む。無ければ family 名でシステムから探し、無ければ fallback で描く（storyboard が警告を出す）
-- 素材の権利（使ってよい写真・ロゴか）の判定はこのスキルの範囲外。指示書の素材一覧で人が確認する
+- Images: register in `meta.assets` → `ctx.img(key)`. Everything is loaded before frame 1 is drawn, so no load waiting is needed
+- Always write `width` / `height` attributes on SVGs (without them Chrome renders at 300x150 or similar)
+- Live-action clips: **do not use the browser's `<video>`**. render.mjs uses ffmpeg to split them into numbered frames at `meta.clips.*.fps` and caches them; `ctx.clip(key, seconds)` returns the frame at that second. Shrink long footage with `maxWidth` (all frames are held in memory)
+- Fonts: pass a font file (path relative to brand.json; variable fonts are fine) in brand.json's `fonts.<role>.file` and it is loaded via @font-face. Otherwise the family name is looked up in the system, and failing that the fallback is used (storyboard warns)
+- Judging asset rights (whether a photo or logo may be used) is outside this skill's scope. A human checks it in the brief's asset list
 
-## 9. 音
+## 9. Sound
 
-音は「効果音（cues）」と「BGM（music）」の2層。どちらも無ければ無音の mp4、`music` が無ければ効果音だけで動く（FluidSynth もサウンドフォントも要らない）。
+Sound has two layers: "sound effects (cues)" and "BGM (music)". With neither, the mp4 is silent; without `music` it runs on sound effects alone (no FluidSynth or soundfont needed).
 
 ```js
 audio: {
   bpm: 120, offset: 0, beatsPerBar: 4,
-  peaks: [0, 12],                       // 主役の登場（小節頭に置く）。BGM の山もここに合わせる
+  peaks: [0, 12],                       // the hero's entrances (put them on bar starts). The BGM peaks align here too
   cues: [
-    { bar: 0, sfx: 'thump' },           // 小節頭
+    { bar: 0, sfx: 'thump' },           // bar start
     { beat: 6, sfx: 'whoosh', gain: 0.6 },
     { t: 3.5, sfx: 'pop', pan: -0.3 },
-    { t: 3.62, sfx: 'click', offbeat: true },  // 拍から外すときは明示
+    { t: 3.62, sfx: 'click', offbeat: true },  // be explicit when off the beat
   ],
-  music: {                              // 省略すると効果音だけ
-    progression: ['Am', 'F', 'C', 'G'], // コード進行（繰り返す）
+  music: {                              // omit for sound effects only
+    progression: ['Am', 'F', 'C', 'G'], // chord progression (repeats)
     style: 'calm',                      // calm / upbeat
-    chordBars: 1,                       // 1つのコードを何小節鳴らすか（0.5 で1小節に2つ）
-    seed: 1,                            // 強弱とタイミングの揺らぎの乱数（変えると別テイク）
-    humanize: 1,                        // 揺らぎの量（0 で揺らさない）
-    gainDb: 0,                          // 効果音に対する BGM の大きさ（+ で BGM を上げる）
-    duck: 5,                            // 効果音が鳴る瞬間に BGM を下げる強さ（サイドチェーンの圧縮比。1 で下げない）
-    reverb: 0.3,                        // リバーブの混ぜ具合（0..1）
-    reverbSeconds: 1.6,                 // 合成インパルス応答の長さ
-    // ir: 'ir/hall.wav',               // 実測のインパルス応答を使うとき（プロジェクトからの相対パス）
-    // soundfont: 'sf/other.sf2',       // 音源を変えるとき（既定は下記）
+    chordBars: 1,                       // how many bars each chord lasts (0.5 = two per bar)
+    seed: 1,                            // random seed for velocity and timing variation (change it for another take)
+    humanize: 1,                        // amount of variation (0 = none)
+    gainDb: 0,                          // BGM level relative to sound effects (+ raises BGM)
+    duck: 5,                            // how strongly BGM dips when a sound effect plays (sidechain compression ratio. 1 = no dip)
+    reverb: 0.3,                        // reverb mix (0..1)
+    reverbSeconds: 1.6,                 // length of the synthetic impulse response
+    // ir: 'ir/hall.wav',               // to use a measured impulse response (path relative to the project)
+    // soundfont: 'sf/other.sf2',       // to change the instrument source (default below)
   },
 }
 ```
 
-### 効果音
+### Sound effects
 
-`click / pop / thump / whoosh`（scripts/audio.mjs でコード合成・シード固定）。拍から外れた cue・小節頭から外れたピークは storyboard が警告する。
+`click / pop / thump / whoosh` (synthesized in code in scripts/audio.mjs, fixed seed). storyboard warns about cues off the beat and peaks off bar starts.
 
-### BGM（作曲 → 演奏）
+### BGM (compose → play)
 
-- **作曲**（scripts/music.mjs）: 拍の格子（bpm・offset・beatsPerBar）の上に、コード進行とスタイルから MIDI（SMF）をコードで書く。生成 AI は使わない
-- **スタイル**
-  - `calm`: パッド（GM 89 Warm Pad）＋ピアノのアルペジオ（GM 0）＋ベース（GM 32）。ドラムなし。energy が低いと4分・高いと8分、山の小節は1オクターブ上を混ぜる
-  - `upbeat`: ドラム（ch10）＋ベースの8分（GM 33）＋エレピの裏拍の刻み（GM 4）＋薄いパッド。山の前の小節にスネアのフィル、山の小節頭にクラッシュ
-  - 両方とも、山の前の小節でパッドを膨らませ（CC11）、最後の小節は和音を尺の最後まで伸ばす
-- **展開はシーン表から**: 小節ごとの energy（0..1）を、そのシーンの `energy` 欄（書けば優先）か既定（ピークを含むシーン 1.0 / 最初 0.45 / 最後 0.7 / その他 0.65）で決め、層を出し入れする。映像の山（`peaks`）と曲の山が同じ小節に来る
-- **揺らぎ**: `seed` 固定の乱数で、音の強さを ±8・タイミングを拍の ±2% 揺らす（パッドの和音・小節頭のキック・山のクラッシュ・曲頭の1拍目はタイミングを揺らさず、強さだけ揺らす）
-- **演奏**: FluidSynth がサウンドフォント（既定 `~/.local/share/motion-video/soundfonts/GeneralUser-GS.sf2`。`music.soundfont` → 環境変数 `MOTION_VIDEO_SF2` → 既定の順で探す）を 48kHz・32bit float で鳴らす。FluidSynth 内部のリバーブ・コーラスは切る（響きは ffmpeg 側で付ける）。入れ方とライセンスは `references/audio-assets.md`
-- 同じ MIDI・同じ音源・同じ FluidSynth の版なら、演奏した WAV を作業フォルダでキャッシュする
+- **Compose** (scripts/music.mjs): writes MIDI (SMF) in code from the chord progression and style, on the beat grid (bpm, offset, beatsPerBar). No generative AI
+- **Styles**
+  - `calm`: pad (GM 89 Warm Pad) + piano arpeggio (GM 0) + bass (GM 32). No drums. Quarter notes at low energy, eighths at high energy; peak bars mix in an octave up
+  - `upbeat`: drums (ch10) + eighth-note bass (GM 33) + electric piano offbeat stabs (GM 4) + a thin pad. A snare fill in the bar before a peak, a crash on the peak bar start
+  - In both, the pad swells (CC11) in the bar before a peak, and the last bar holds the chord to the end
+- **Arrangement comes from the scene table**: each bar's energy (0..1) comes from that scene's `energy` field (takes priority if written) or the default (scene containing a peak 1.0 / first 0.45 / last 0.7 / others 0.65), and layers are brought in and out accordingly. The visual peaks (`peaks`) and the music's peaks fall on the same bars
+- **Variation**: a random generator with fixed `seed` varies note velocity by ±8 and timing by ±2% of a beat (pad chords, bar-start kicks, peak crashes and the very first beat are not shifted in timing, only in velocity)
+- **Playback**: FluidSynth plays a soundfont (default `~/.local/share/motion-video/soundfonts/GeneralUser-GS.sf2`; looked up in the order `music.soundfont` → env var `MOTION_VIDEO_SF2` → default) at 48kHz, 32-bit float. FluidSynth's internal reverb and chorus are off (ambience is added on the ffmpeg side). Installation and license: `references/audio-assets.md`
+- With the same MIDI, same soundfont and same FluidSynth version, the rendered WAV is cached in the working folder
 
-### 混ぜ方と仕上げ（final と storyboard で同じ手順）
+### Mixing and mastering (same steps in final and storyboard)
 
-1. BGM: 50Hz 以下を切る → 250Hz を -3dB → 3kHz を -2dB（効果音の帯域を空ける）→ 軽いコンプ → 畳み込みリバーブ（`afir`。インパルス応答は既定でシード固定の合成、`music.ir` で実測のものに差し替え）→ ステレオを広げる（`stereowiden`）→ 最後の 0.5 秒をフェード
-2. BGM を -20 LUFS（＋`gainDb`）に揃え、効果音が鳴る瞬間だけ BGM を下げて（`sidechaincompress`）混ぜる
-3. 全体のゲインを決め、4倍オーバーサンプリングしたリミッター（`alimiter`・天井 -2 dBFS）でピークを抑える。実測して -14 LUFS ±0.2 に入るまでゲインを詰める
-4. 納品と同じ設定（AAC 192kbps）で符号化して測り、トゥルーピークが -1 dBFS を超えていればリミッターの天井を下げてやり直す
+1. BGM: cut below 50Hz → -3dB at 250Hz → -2dB at 3kHz (to leave room for the sound effects' band) → light compression → convolution reverb (`afir`. The impulse response is synthetic with a fixed seed by default; replace it with a measured one via `music.ir`) → stereo widening (`stereowiden`) → fade the last 0.5 seconds
+2. Normalize BGM to -20 LUFS (+`gainDb`), and mix it in, dipping BGM only when a sound effect plays (`sidechaincompress`)
+3. Set the overall gain and catch peaks with a 4× oversampled limiter (`alimiter`, ceiling -2 dBFS). Measure and tighten the gain until it lands within -14 LUFS ±0.2
+4. Encode with the delivery settings (AAC 192kbps) and measure; if true peak exceeds -1 dBFS, lower the limiter ceiling and redo
 
-結果は -14 LUFS ±1・トゥルーピーク -1 dBFS 以下（効果音だけの動画も同じ。まばらな効果音だけだとリミッターで強く潰して届かせるので、preview.wav で聴いて確かめる）。
-BGM は最後の 0.5 秒でフェードアウトするので、ループ作品（`meta.loop: true`）に BGM を付けると継ぎ目で音が一度下がる。final は mp4 の音声を ebur128 で測り直して README と manifest に書く。
+The result is -14 LUFS ±1 and true peak at or below -1 dBFS (the same for videos with only sound effects. Sparse sound effects alone get squashed hard by the limiter to reach it, so listen to preview.wav to check).
+BGM fades out over the last 0.5 seconds, so adding BGM to a looping piece (`meta.loop: true`) makes the sound dip once at the seam. final re-measures the mp4 audio with ebur128 and writes it to the README and manifest.
 
-### 絵コンテで聴く・見る
+### Listening and looking at the storyboard stage
 
-storyboard は `out/storyboard/audio/` に次を出す（音がある動画だけ）:
+storyboard writes the following to `out/storyboard/audio/` (only for videos with sound):
 
-- `preview.wav` — 本番と同じ手順で混ぜた音。人に絵コンテを見せるとき一緒に渡して聴いてもらう
-- `spectrogram.png` — 周波数を対数軸にしたスペクトログラム。白線がシーンの境目、緑線がピーク。**Read で見て**、曲の山がピークに来ているか・効果音と BGM が同じ帯域でぶつかっていないかを確かめる
-- `audio.json` — 音量（LUFS）・トゥルーピーク（WAV と AAC 後）・ラウドネスレンジ・帯域ごとの RMS（sub <40Hz / low 40–120 / lowmid 120–500 / mid 500–4k / high >4k）。スペクトログラムの最下段は対数軸でにじんで実際より明るく見えるので、低域のこもりは帯域ごとの RMS で判断する（low が lowmid より大きければこもり気味）
-- `bgm.mid` — 作曲した MIDI（DAW で開いて確かめられる）
+- `preview.wav` — the sound mixed with the same steps as the final. Hand it over together with the storyboard so people listen to it
+- `spectrogram.png` — spectrogram with a logarithmic frequency axis. White lines are scene boundaries, green lines are peaks. **Look at it with Read** to check that the music's peaks land on the peaks and that sound effects and BGM do not collide in the same band
+- `audio.json` — loudness (LUFS), true peak (WAV and after AAC), loudness range, RMS per band (sub <40Hz / low 40–120 / lowmid 120–500 / mid 500–4k / high >4k). The bottom of the spectrogram bleeds on the log axis and looks brighter than it is, so judge low-end muddiness by the per-band RMS (if low is larger than lowmid, it is on the muddy side)
+- `bgm.mid` — the composed MIDI (open it in a DAW to check)
 
-単体で試す（Chrome が要らないので sandbox 内で動く）:
+Try it standalone (no Chrome needed, so it runs inside the sandbox):
 
 ```bash
 node scripts/audio.mjs --duration 8 --bpm 120 --cues cues.json --music music.json --scenes scenes.json --peaks 4 --out /tmp/mix.wav --spectrogram /tmp/spec.png
-node scripts/music.mjs --duration 8 --bpm 120 --progression Am,F,C,G --style upbeat --out /tmp/bgm.wav   # BGM だけ（エフェクト前）
+node scripts/music.mjs --duration 8 --bpm 120 --progression Am,F,C,G --style upbeat --out /tmp/bgm.wav   # BGM only (before effects)
 node scripts/music.mjs --styles
 ```
 
-## 10. ループ
+## 10. Loops
 
-`meta.loop: true` にすると、check と storyboard が「最後のコマ→最初のコマの変化量」を「隣り合うコマの変化量」と比べる。位置だけでなく速度もつながっていないと失敗する。
-動きは `Math.sin(2π t / duration)` のような周期関数で書く。`t % duration` で包むだけでは直らない（継ぎ目で跳ぶのは同じ）。
+With `meta.loop: true`, check and storyboard compare "the change from the last frame → the first frame" with "the change between adjacent frames". It fails unless both position and velocity connect.
+Write motion with periodic functions like `Math.sin(2π t / duration)`. Just wrapping with `t % duration` does not fix it (it still jumps at the seam).
 
-## 11. 見た目の既定
+## 11. Visual defaults
 
-- 禁止: グラデーション背景の上に中央タイトル / 全部フェードイン / 隅のラベル / 枠線 / グロー
-- 2〜4 秒ごとに新しい視覚イベント（storyboard が「目立つ変化が無い区間」を警告する）
-- トランジションは画面上の物が次のシーンの物に変わる形（面が縮んで柱になる・カードが次のカードになる）
+- Forbidden: a centered title on a gradient background / fade everything in / corner labels / outlines / glow
+- A new visual event every 2–4 seconds (storyboard warns about "stretches with no noticeable change")
+- Transitions take the form of an object on screen turning into an object of the next scene (a surface shrinks into a pillar, a card becomes the next card)
 
-## 12. カット表と FB の往復
+## 12. Cut sheet and FB round trips
 
-`storyboard` は `out/storyboard/cutsheet.html`（静的 HTML。画像は相対パス）を出す。1行＝1カット（＝1シーン）で、画は「はじめ」（そのカットの最初のコマ `start`）と「おわり」（最後のコマ `end - 1/fps`）の2コマ、動きは文章。
+`storyboard` writes `out/storyboard/cutsheet.html` (static HTML, images by relative path). One row = one cut (= one scene); the picture is two frames, the "first frame" (the cut's first frame, `start`) and the "last frame" (its last frame, `end - 1/fps`), and motion is described in prose.
 
-- 冒頭: `CUT SHEET v<N>`・前の版の FB ファイルの `summary`（この版で変えたこと）・チップ（BPM / 小節数 = 秒 / カット数 / 解像度·fps / 素材の点数）・警告
-- プロジェクト情報: プロジェクト名 / 全体の尺 / テンポ・BPM / 画面比 / 納品物 / 参考（`meta.reference`）/ カラー・フォント（brand.json）
-- タイムライン帯: 1マス＝1小節、シーンを色帯で、その下にカット番号
-- 「v<N-1> の FB への対応」表（版 2 以降）: 対象 / FB / 対応 / カット（比較画像）
-- カット表の列: No. / 開始（秒・拍）/ 尺 / はじめ / おわり /（画角が複数なら 他の画角）/ 画の内容（message＋screen）/ 動き / 次へのつなぎ / テキスト / 音 / 検証（`verify`）/ FB（黄色い入力欄）
-- 開始と尺は秒と拍の両方（`beats.json` と同じ bpm・offset・beatsPerBar から。例 120 BPM で 9.5 秒 = 小節5 拍4（19拍））
+- Header: `CUT SHEET v<N>`, the `summary` from the previous version's FB file (what changed in this version), chips (BPM / bars = seconds / number of cuts / resolution · fps / asset count), warnings
+- Project info: project name / total length / tempo, BPM / aspect ratio / deliverables / reference (`meta.reference`) / colors, fonts (brand.json)
+- Timeline strip: one cell = one bar, scenes as color bands, cut numbers below
+- The "Responses to v<N-1> FB" table (version 2 onward): Target / FB / Response / Cut (comparison image)
+- Cut sheet columns: No. / Start (s · beat) / Length / First frame / Last frame / (if there are several aspects) Other aspects (first) / Picture (message + screen) / Motion / Transition to next / Text / Sound / Verify (`verify`) / FB (yellow input field)
+- Start and length are shown in both seconds and beats (from the same bpm, offset and beatsPerBar as `beats.json`. Example: at 120 BPM, 9.5 seconds = bar 5 beat 4 (19 beats))
 
-画像は `out/storyboard/<画角>/cuts/<カット ID>-start.png` / `-end.png`。
+Images are `out/storyboard/<aspect>/cuts/<cut ID>-start.png` / `-end.png`.
 
-### 検証欄（エージェントが書く）
+### Verify column (written by the agent)
 
-シーンの `verify`（文字列の配列か、改行区切りの文字列）。行頭の記号で色が付く:
+The scene's `verify` (an array of strings, or a newline-separated string). The leading symbol sets the color:
 
-- `●` できたこと・目処が立った / `▲` リスク・未解決（対策を書く）/ `◆` 素材・次の予定 / `✓` 確認済み / `○` 未検証
+- `●` done / looks feasible / `▲` risk, unresolved (write the countermeasure) / `◆` asset, next step / `✓` confirmed / `○` not yet verified
 
-### FB ファイル
+### FB file
 
-人は版 N のカット表を見て、`feedback/v<N>.json` を書く（カット表の「FB を保存」で、FB 欄に書いた内容がこの形で保存される）:
+The human looks at the version N cut sheet and writes `feedback/v<N>.json` (the cut sheet's "Save FB" button saves what was typed in the FB column in this form):
 
 ```json
 {
   "cuts": {
-    "s2": "カードが入るのが早い。1拍遅らせて",
-    "s4": { "fb": "数字をもっと大きく", "response": "数字を 1.4 倍にした" }
+    "s2": "The card comes in too early. Delay it by one beat",
+    "s4": { "fb": "Make the number bigger", "response": "Scaled the number by 1.4x" }
   },
-  "overall": "全体にもう少し余白がほしい",
-  "summary": "（エージェントが書く）次の版で変えたことの1段落"
+  "overall": "I'd like a bit more whitespace overall",
+  "summary": "(written by the agent) One paragraph on what changed in the next version"
 }
 ```
 
-- キーはカット ID（シーンの `id`）。値は文字列（FB だけ）か `{ fb, response }`、複数なら配列。`overall` は全体への FB
-- **エージェントは同じファイルに対応を書く**: 文字列の FB を `{ "fb": "…", "response": "…" }` に直し、`summary` に版の要約を書く
-- 版番号は「FB ファイルのある最新の版 + 1」（FB が無ければ v1）。FB の無い再実行では版は進まず、同じ版を作り直す
-- `storyboard` は最新の版を `out/storyboard/` 直下に作り、同じものを `out/storyboard/v<N>/` に残す。前の版の `v<N-1>/` は消さない（v1 と v9 を並べて比べられる）
-- 版 2 以降は、FB の付いたカットについて前の版と今の版の はじめ / おわり を並べた比較画像（上段=前の版・下段=今の版）を `out/storyboard/compare/<カット ID>-v<N-1>-v<N>.png` に出す
-- 警告: 対応（`response`）が書かれていない FB / 今のシーン表に無いカット ID への FB / 前の版のコマが無くて比較を作れない
+- Keys are cut IDs (the scene `id`). Values are a string (FB only) or `{ fb, response }`, or an array for several. `overall` is FB on the whole
+- **The agent writes its responses in the same file**: turn each string FB into `{ "fb": "…", "response": "…" }` and write a summary of the version in `summary`
+- The version number is "the latest version that has an FB file + 1" (v1 if there is no FB). Re-running without FB does not advance the version; it rebuilds the same version
+- `storyboard` builds the latest version directly under `out/storyboard/` and keeps a copy in `out/storyboard/v<N>/`. The previous version's `v<N-1>/` is not deleted (so v1 and v9 can be compared side by side)
+- From version 2 onward, for cuts with FB, it writes a comparison image putting the previous and current versions' first frame / last frame side by side (top row = previous version, bottom row = current version) to `out/storyboard/compare/<cut ID>-v<N-1>-v<N>.png`
+- Warnings: FB with no response (`response`) written / FB on a cut ID not in the current scene table / no frames from the previous version, so no comparison can be made
 
-`feedback/` はプロジェクトの中なので**承認のハッシュに入る**。FB を足したのに storyboard を回していなければ `approve` が「ソースが変わっている」で止まる（FB を反映しないまま承認できない）。対応を書いたら storyboard を回し直してから見せる。
+`feedback/` is inside the project, so **it is part of the approval hash**. If FB was added but storyboard was not re-run, `approve` stops with "the source has changed" (you cannot approve without reflecting the FB). After writing the responses, re-run storyboard before showing it.
 
-FB の裏付けが要るとき（「ここがカクつく」等）は、該当区間を細かく描いて新旧を並べる: `node <skill>/scripts/render.mjs stills <project> --from 13.3 --to 15.0` を版ごとに回し、`out/stills/<画角>/sheet.png` を比べる。
+When FB needs evidence ("it stutters here" etc.), render that stretch finely and compare old and new: run `node <skill>/scripts/render.mjs stills <project> --from 13.3 --to 15.0` for each version and compare `out/stills/<aspect>/sheet.png`.
 
-## 13. 実写テクスチャを重ねる
+## 13. Layering live-action textures
 
-全部をコードで描くと「CG っぽいきれいさ」になる。実写のテクスチャを薄く重ねて手触りを出す。
+Drawing everything in code gives a "CG-like cleanness". Layer live-action textures thinly to add tactility.
 
-| 分類 | 例 | 使いどころ | 合成 |
+| Category | Example | Where to use | Blending |
 |---|---|---|---|
-| ガラスのヒビ | 割れたガラスの写真（黒地に白いヒビ） | 衝撃・転換の1カットだけ | `screen`（白いヒビだけが乗る） |
-| リソグラフの粒・版ズレ | リソ印刷のスキャン、2色の版ズレ | 面・大きな文字に紙の手触り | `multiply`（粒が面を汚す）。版ズレは同じ面を 1〜2px ずらしてもう1色 |
-| 網点 | 印刷の網点の拡大 | 写真素材・グラデーションの代わり | `multiply` か `overlay` |
-| ガラスの拭き跡・指紋 | 窓ガラスの汚れ（黒地） | 画面越し・レンズ越しの感じ | `screen`、alpha 0.1〜0.3 |
-| ブラウン管の蛍光体 | CRT の RGB 蛍光体の接写 | 画面・UI を映すカット | `multiply` か `overlay`、拡大して縞を目立たせない |
+| Glass cracks | Photo of broken glass (white cracks on black) | Only one cut, for an impact or transition | `screen` (only the white cracks show) |
+| Risograph grain, misregistration | Scan of a riso print, two-color misregistration | Paper texture on surfaces and large text | `multiply` (the grain dirties the surface). For misregistration, offset the same surface by 1–2px in a second color |
+| Halftone | Enlarged print halftone dots | Instead of photo assets or gradients | `multiply` or `overlay` |
+| Glass smudges, fingerprints | Dirt on window glass (on black) | A through-the-screen or through-the-lens feel | `screen`, alpha 0.1–0.3 |
+| CRT phosphors | Close-up of CRT RGB phosphors | Cuts showing a screen or UI | `multiply` or `overlay`; scale it up so the stripes are not prominent |
 
-合成の仕方（`meta.assets` に登録して `ctx.img`）:
+How to blend (register in `meta.assets` and use `ctx.img`):
 
 ```js
 g.save();
-g.globalCompositeOperation = 'multiply';   // screen / overlay / soft-light など
+g.globalCompositeOperation = 'multiply';   // screen / overlay / soft-light etc.
 g.globalAlpha = 0.35;
 ctx.image(ctx.img('riso'), { x: 0, y: 0, w: W, h: H }, { fit: 'cover' });
 g.restore();
 ```
 
-- 毎コマ同じ画を貼ると止まって見える。動かすなら位置・角度を `M.rng(seed)` で小節ごとに切り替える（コマごとの乱数は決定論を壊さないが、ちらつく）
-- 合成モードはコマごとに harness が `source-over` に戻すが、`save` / `restore` で囲む
-- **重ねた素材が輪郭まわりに模様を出すことがある**（レンズの汚れ系で起きやすい）。重ねたら該当の秒を `node <skill>/scripts/render.mjs stills <project> --from a --to b` で描き直して Read で見る。模様が出たら alpha を下げるか、その素材を外す
-- 効いていない質感は足すより削る（`self-review.md` の「ありがち度」「緩急」）
+- Pasting the same image every frame looks frozen. To move it, switch position and angle per bar with `M.rng(seed)` (per-frame randomness does not break determinism, but it flickers)
+- The harness resets the blend mode to `source-over` every frame, but wrap it in `save` / `restore` anyway
+- **Layered assets can produce patterns around edges** (common with lens-smudge types). After layering, re-render those seconds with `node <skill>/scripts/render.mjs stills <project> --from a --to b` and look with Read. If patterns appear, lower the alpha or drop that asset
+- Remove textures that are not working rather than adding more (`self-review.md`'s "genericness" and "pacing contrast")
 
-### 素材の請求表
+### Asset request list
 
-テクスチャ・実写素材はエージェントが**請求表**を出し、**ダウンロードと権利の判断は人**がする。スキルは外部 API を呼ばない（ストックサイトの検索・ダウンロードもしない）。
+For textures and live-action assets, the agent produces an **asset request list**, and **the human handles downloading and rights decisions**. The skill does not call external APIs (it does not search or download from stock sites either).
 
-| 分類 | ストックの ID か検索語 | 内容 | 使いどころ（カット） | 置き場所 |
+| Category | Stock ID or search terms | Contents | Where to use (cut) | Location |
 |---|---|---|---|---|
-| リソグラフの粒 | `risograph grain texture` | 白地に粗い粒、A4 スキャン相当 | s1・s5 の面 | assets/tex/riso.jpg |
-| ガラスの拭き跡 | `glass smudge black background` | 黒地に白い拭き跡 | s3 の画面越し | assets/tex/smudge.jpg |
+| Risograph grain | `risograph grain texture` | Coarse grain on white, A4-scan equivalent | surfaces in s1, s5 | assets/tex/riso.jpg |
+| Glass smudge | `glass smudge black background` | White smudges on black | through-the-screen in s3 | assets/tex/smudge.jpg |
 
-人が置いたら `meta.assets` に足し、カット表の検証欄に `◆ riso.jpg 待ち` → `✓ riso.jpg 反映` のように書く。
+Once the human has placed them, add them to `meta.assets` and write in the cut sheet Verify column, e.g. `◆ waiting for riso.jpg` → `✓ riso.jpg applied`.
 
-## 14. 生成画像を素材として受け入れる
+## 14. Accepting generated images as assets
 
-スキル自身は画像生成を呼ばない。コードで描くと平たくなる素材（看板・ラベル・パッケージ・手描きの小物など）は、**必要な画像の一覧**を出して人に渡す:
+The skill itself does not call image generation. For assets that look flat when drawn in code (signs, labels, packaging, hand-drawn props, etc.), produce a **list of required images** and hand it to the human:
 
-| キー | 枚数 | サイズ | 用途（カット） | プロンプト |
+| Key | Count | Size | Purpose (cut) | Prompt |
 |---|---|---|---|---|
-| sign | 1 | 1600×900・PNG・背景透過 | s2 の店頭看板 | 5セクション構造（下記） |
+| sign | 1 | 1600×900, PNG, transparent background | storefront sign in s2 | five-section structure (below) |
 
-プロンプトは5セクション構造で書く（Scene / Subject / Important details / Use case / Constraints。Constraints を空にしない）。同じプラグインの `image-generation-prompt` スキルがあればそれで組む。
+Write prompts in the five-section structure (Scene / Subject / Important details / Use case / Constraints. Do not leave Constraints empty). If the same plugin's `image-generation-prompt` skill is available, build them with it.
 
-生成はスキルの外で、**人の承認を得てから**行う（codex など人が選んだ経路で）。できた画像は通常の素材と同じく `assets/` に置いて `meta.assets` に足す。製品の UI・数字・ロゴは生成しない（実物を人に求める）。
+Generation happens outside the skill, **after getting the human's approval** (via a route the human picks, such as codex). Put the resulting images in `assets/` like any other asset and add them to `meta.assets`. Do not generate product UI, numbers or logos (ask the human for the real thing).

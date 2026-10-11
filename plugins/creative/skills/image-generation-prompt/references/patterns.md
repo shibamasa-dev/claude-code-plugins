@@ -1,35 +1,35 @@
-# 用途別パターン
+# Patterns by use case
 
-## 写実・エディトリアル写真
+## Photoreal / editorial photography
 
-写真として描写する。レンズの選択、表面の傷み、ありふれた背景のディテール、信じられる程度の不完全さ。**光源に名前を付ける**（頭上スポット、窓からの北光、タングステンの補助光）。素材を具体名で書く。
+Describe it as a photograph: lens choice, surface wear, ordinary background details, believable imperfection. **Name the light source** (overhead spotlight, north light from a window, tungsten fill). Name materials concretely.
 
-## 製品
+## Products
 
-素材の正確さ、ライティングの一貫性、ラベルの忠実さ、使用シーンの清潔さ。
+Material accuracy, consistent lighting, faithful labels, a clean usage scene.
 
-> 博物館のアーカイブ写真。柔らかい頭上の館内照明の下、ニュートラルなベージュの背景。
+> A museum archive photo. Neutral beige background under soft overhead gallery lighting.
 
-## UI・スクリーンショット
+## UI / screenshots
 
-画面の種類、階層、**正確なコピー文**、状態（ローディング/エラー/通常）、レイアウトの論理、タイポグラフィの振る舞い。「下部に整然としたHUD、UIとして信じられる余白」のように、UI らしさの根拠を書く。
+Screen type, hierarchy, **exact copy**, state (loading / error / normal), layout logic, typographic behavior. Write what makes it read as UI, e.g. "a tidy HUD along the bottom, margins believable as a UI".
 
-## 図解・ダイアグラム
+## Diagrams
 
-白背景、色数を抑える、ラベルは短く。「A clean, minimal technical diagram showing ...」の形で主題を1文に。記事に挿し込むならフォントは1種類、線の太さは2段階までに固定する。
+White background, few colors, short labels. State the subject in one sentence in the form "A clean, minimal technical diagram showing ...". When it goes into an article, fix it to one typeface and at most two line weights.
 
-## 編集（3文の型）
+## Edits (the three-sentence pattern)
 
-1. 何が変わるか
-2. 何が変わらないか
-3. 物理的な整合（ライティングの一致、接地影、パースの整合）
+1. What changes
+2. What does not change
+3. Physical consistency (matching lighting, contact shadows, consistent perspective)
 
-## スタイル転写
+## Style transfer
 
-スタイル名で呼ばず、構成要素を並べる。
+Do not call a style by name; list its components.
 
-> 太いピクセル形状、限られたアーケードのパレット、明るいグロー、輪郭のはっきりしたシルエット、1980年代ポスターの快活さ
+> Chunky pixel shapes, a limited arcade palette, bright glow, crisp silhouettes, the cheerfulness of a 1980s poster
 
-## キャラクターの一貫性
+## Character consistency
 
-1枚目でアンカーを確立する（服装、プロポーション、パレット）。2枚目以降はアンカーの詳細を繰り返し、**「キャラクターをデザインし直さない」**と明示する。
+Establish the anchor in the first image (outfit, proportions, palette). In later images repeat the anchor's details and state explicitly **"do not redesign the character"**.

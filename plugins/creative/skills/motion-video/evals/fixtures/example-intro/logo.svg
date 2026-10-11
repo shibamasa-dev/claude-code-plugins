@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="640" height="140" viewBox="0 0 640 140">
-  <!-- eval 用の仮ロゴ（架空の Example Co.。単純な図形だけ。実運用では brand.json の logo に実ロゴのパスを渡す） -->
+  <!-- Placeholder logo for evals (fictional Example Co.; simple shapes only. In real use, pass the real logo's path as logo in brand.json) -->
   <rect x="0" y="20" width="100" height="100" rx="22" fill="#C5D86D"/>
   <circle cx="50" cy="70" r="26" fill="none" stroke="#2F5D50" stroke-width="13"/>
   <rect x="124" y="44" width="380" height="22" rx="11" fill="#F1F3F2"/>

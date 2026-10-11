@@ -1,6 +1,11 @@
 # Changelog
 
-creative プラグイン（0.1.4 までは docs）の変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
+Changelog of the creative plugin (named docs up to 0.1.4). Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow `version` in plugin.json.
+
+## [0.3.0] - 2026-10-11
+
+### Changed
+- Messages, skill bodies, references, comments and tests are now in English. Japanese stays only in the skill descriptions' trigger phrases, in data the features need (patterns that match Japanese text, fixtures for Japanese input) and in `README.ja.md`.
 
 ## [0.2.0] - 2026-10-11
 

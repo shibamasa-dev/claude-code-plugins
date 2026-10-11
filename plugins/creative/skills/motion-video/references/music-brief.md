@@ -1,81 +1,81 @@
-# 音楽ブリーフ（MUSIC BRIEF）ひな形
+# Music brief (MUSIC BRIEF) template
 
-BGM の注文書。人が書いてもよいし、雑メモ入口（`brief-template.md`）ではエージェントがカット割りと一緒に先に提案して、人が直す。
-プロジェクトのフォルダに `music-brief.md` として置く。
+The order form for BGM. The human may write it; in the rough-notes entry point (`brief-template.md`), the agent proposes it first together with the cut breakdown, and the human corrects it.
+Put it in the project folder as `music-brief.md`.
 
 ```markdown
-# MUSIC BRIEF: 〈プロジェクト名〉
+# MUSIC BRIEF: [project name]
 
-## テーマ（一言）
-〈例: 静かに始まって、ロゴで一度だけ開ける〉
+## Theme (in a few words)
+[e.g. Starts quiet, opens up just once at the logo]
 
-## 基本
-- 使い道: 〈例: X の縦動画・音ありで見る人向け〉
-- 長さ: 〈例: 15 秒〉
-- テンポ感 / BPM: 〈例: ゆったり・120〉
-- 納品形式: 〈例: mp4 に混ぜる（-14 LUFS）〉
+## Basics
+- Use: [e.g. vertical video on X, for viewers watching with sound on]
+- Length: [e.g. 15 seconds]
+- Feel of the tempo / BPM: [e.g. relaxed, 120]
+- Delivery format: [e.g. mixed into the mp4 (-14 LUFS)]
 
-## ムード（0〜10。5 が真ん中）
-| 左 | 0 ←→ 10 | 右 |
+## Mood (0–10. 5 is the middle)
+| Left | 0 ←→ 10 | Right |
 |---|---|---|
-| 静か | 〈3〉 | 激しい |
-| 暗い | 〈6〉 | 明るい |
-| ミニマル | 〈4〉 | 厚みのある |
-| 有機的 | 〈5〉 | デジタル |
-| シリアス | 〈4〉 | 遊び心 |
-| 懐かしい | 〈6〉 | 新しい |
+| Quiet | [3] | Intense |
+| Dark | [6] | Bright |
+| Minimal | [4] | Rich |
+| Organic | [5] | Digital |
+| Serious | [4] | Playful |
+| Nostalgic | [6] | Fresh |
 
-## 音の方向性
-- ジャンル: 〈例: アンビエント寄りのポップ〉
-- 入れたい音: 〈例: ピアノ・柔らかいパッド〉
-- 避けたい音: 〈例: ブラス・歌〉
+## Sonic direction
+- Genre: [e.g. ambient-leaning pop]
+- Sounds to include: [e.g. piano, soft pads]
+- Sounds to avoid: [e.g. brass, vocals]
 
-## 構成と山場
-| 区間 | 秒 | 中身 |
+## Structure and climax
+| Section | Seconds | Contents |
 |---|---|---|
-| イントロ | 0–3 | 〈パッドだけ〉 |
-| 展開 | 3–9.5 | 〈アルペジオが入る〉 |
-| 山場 | 9.5–12 | 〈いちばん厚く〉 |
-| 余韻 | 12–15 | 〈和音を伸ばして終わる〉 |
+| Intro | 0–3 | [pad only] |
+| Development | 3–9.5 | [arpeggio comes in] |
+| Climax | 9.5–12 | [thickest] |
+| Tail | 12–15 | [hold the chord to the end] |
 
-ピン: ドロップ 〈—〉 / ブレイク 〈—〉 / 最高潮 〈12.0s（ロゴの着地）〉
+Pins: drop [—] / break [—] / high point [12.0s (logo lands)]
 
-| 時間 | 映像の出来事 | 音でしてほしいこと |
+| Time | What happens on screen | What the sound should do |
 |---|---|---|
-| 0.0 | 面が立ち上がる | 1拍目にアタック |
-| 12.0 | ロゴが着地 | 曲の山。ここで一番厚く |
+| 0.0 | A surface rises | Attack on beat 1 |
+| 12.0 | Logo lands | The music's peak. Thickest here |
 
-## 参考曲
-〈曲名 — 好きなポイント（0:32〜0:45 のパッドの広がり）〉。メロディはそのまま真似しない。
+## Reference tracks
+[Track title — what you like about it (the pad opening up at 0:32–0:45)]. Do not copy the melody as-is.
 
-## 映像のイメージ
-〈カット表 cutsheet.html の版と、印象の一言〉
+## Picture of the video
+[Cut sheet cutsheet.html version, and a one-line impression]
 
-## メモ
+## Notes
 ```
 
-## `music.mjs` への落とし方
+## Mapping to `music.mjs`
 
-今の BGM は `scripts/music.mjs` が決まった編曲の型で作曲する（メロディは書かない）。ブリーフの欄は次のパラメータにだけ落ちる（書き方は `authoring.md` の「9. 音」）。
+Right now `scripts/music.mjs` composes BGM in a fixed arrangement template (it does not write a melody). Brief fields map only to the following parameters (how to write them: `authoring.md`, "9. Sound").
 
-| ブリーフの欄 | 落ちる先 | 落とし方 |
+| Brief field | Maps to | How |
 |---|---|---|
-| テンポ感 / BPM | `meta.audio.bpm` | 数字があればそのまま。「ゆったり」≒ 90〜110 /「普通」≒ 120 /「速い」≒ 140〜 |
-| ムード: 静か ↔ 激しい | `music.style` | 5 以下 → `calm`、6 以上 → `upbeat`（ドラムが入る） |
-| ムード: 暗い ↔ 明るい | `music.progression` | 暗い → 短調の進行（例 `Am, F, C, G`）、明るい → 長調の進行（例 `C, G, Am, F`）。参考曲の進行が分かればそれを使う |
-| ムード: ミニマル ↔ 厚みのある | シーンの `energy`（0..1） | ミニマル寄りなら全体を低め（0.3〜0.5）、厚み寄りなら高め（0.7〜1.0）。層の出し入れが変わる |
-| 構成と山場（区間） | シーンの `energy` | 区間ごとに energy を書く（イントロ低め・山場 1.0・余韻やや低め） |
-| ピン（最高潮・ドロップ） | `meta.audio.peaks` | 最高潮の秒を小節頭に寄せて入れる。曲の山（パッドの膨らみ・クラッシュ）がここに来る |
-| 時間ごとの出来事 | `meta.audio.cues` | 「アタック」「ポン」は効果音の cue（click / pop / thump / whoosh）にする。BGM ではない |
-| 納品形式 | 変更なし | 常に -14 LUFS ±1・トゥルーピーク -1 dBFS 以下 |
-| （揺らぎ・別テイク） | `music.seed` / `music.humanize` | ブリーフに欄は無い。人が「別の感じ」と言ったら seed を変える |
+| Feel of the tempo / BPM | `meta.audio.bpm` | Use the number if given. "relaxed" ≒ 90–110 / "normal" ≒ 120 / "fast" ≒ 140+ |
+| Mood: quiet ↔ intense | `music.style` | 5 or below → `calm`, 6 or above → `upbeat` (adds drums) |
+| Mood: dark ↔ bright | `music.progression` | Dark → a minor progression (e.g. `Am, F, C, G`), bright → a major progression (e.g. `C, G, Am, F`). If the reference track's progression is known, use it |
+| Mood: minimal ↔ rich | scene `energy` (0..1) | Minimal-leaning: low overall (0.3–0.5); rich-leaning: high (0.7–1.0). Changes which layers come in and out |
+| Structure and climax (sections) | scene `energy` | Write energy per section (intro low, climax 1.0, tail slightly low) |
+| Pins (high point, drop) | `meta.audio.peaks` | Put the high point's second in, snapped to a bar start. The music's peak (pad swell, crash) lands here |
+| Events by time | `meta.audio.cues` | "Attack", "pop" etc. become sound effect cues (click / pop / thump / whoosh). Not BGM |
+| Delivery format | no change | Always -14 LUFS ±1, true peak at or below -1 dBFS |
+| (variation, another take) | `music.seed` / `music.humanize` | No field in the brief. When the human says "something different", change the seed |
 
-**今は反映されない欄**（書いてもらってよいが、BGM には効かない。人に見せるときにそう伝える）:
+**Fields not reflected right now** (fine to fill in, but they do not affect the BGM. Say so when showing it to the human):
 
-- ムード: 有機的 ↔ デジタル / シリアス ↔ 遊び心 / 懐かしい ↔ 新しい（音色は2スタイルで固定）
-- 音の方向性: ジャンル・入れたい音・避けたい音（楽器は style で決まる。GM 番号を選ぶ口は無い）
-- 参考曲の「好きなポイント」（音色・ミックスの質感は真似できない。進行だけ移せる）
-- ブレイク（無音区間）。BGM は止まらない。無音にしたいときは動画を分けるか、BGM を付けない
-- メロディ・歌
+- Mood: organic ↔ digital / serious ↔ playful / nostalgic ↔ fresh (timbre is fixed to the two styles)
+- Sonic direction: genre, sounds to include, sounds to avoid (instruments are decided by style. There is no way to choose GM program numbers)
+- The reference track's "what you like about it" (timbre and mix texture cannot be imitated. Only the progression carries over)
+- Breaks (silent sections). BGM does not stop. For silence, split the video or do not add BGM
+- Melody, vocals
 
-反映されない欄が肝のブリーフなら、このスキルの BGM では応えられないと人に伝え、BGM を付けないか、どうするかを人に決めてもらう（このスキルは生成 AI の作曲を使わない）。
+If the unreflected fields are the heart of the brief, tell the human this skill's BGM cannot deliver it, and let the human decide whether to skip BGM or what to do instead (this skill does not use generative-AI composition).

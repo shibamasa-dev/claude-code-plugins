@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// audio.mjs — ビートグリッド・コード合成の効果音・BGM との混ぜ合わせとマスタリング（-14 LUFS / トゥルーピーク -1 dBFS 以下）。
+// audio.mjs — beat grid, code-synthesized sound effects (SFX), mixing with BGM, and mastering (-14 LUFS / true peak at or below -1 dBFS).
 //   node audio.mjs --duration 6 --bpm 120 --cues cues.json [--music music.json --scenes scenes.json --peaks 0,4] --out mix.wav [--spectrogram spec.png]
-//   node audio.mjs --list                                                   # 効果音の一覧
+//   node audio.mjs --list                                                   # list the sound effects
 // cues.json: [{ "beat": 0, "sfx": "thump" }, { "t": 2.5, "sfx": "whoosh", "gain": 0.7, "pan": -0.3 }]
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,7 +13,7 @@ import { renderBgm, synthIR } from './music.mjs';
 export const SR = 48000;
 const TAU = Math.PI * 2;
 
-// ── 効果音（全部シード固定の決定論） ─────────────────────────────
+// ── Sound effects (all deterministic with fixed seeds) ──────────────
 function click(r) {
   const n = Math.round(SR * 0.04);
   const o = new Float32Array(n);
@@ -63,15 +63,15 @@ function whoosh(r) {
 }
 export const SFX = { click, pop, thump, whoosh };
 
-// cue の時刻（t 秒 / beat 拍目 / bar 小節目）を秒に直す
+// Convert a cue's time (t seconds / beat index / bar index) to seconds
 export function cueTime(c, grid) {
   if (c.t != null) return c.t;
   if (c.bar != null) return grid.bar(c.bar, c.beat ?? 0);
   if (c.beat != null) return grid.beat(c.beat);
-  throw new Error(`cue に t / beat / bar のどれも無い: ${JSON.stringify(c)}`);
+  throw new Error(`cue has none of t / beat / bar: ${JSON.stringify(c)}`);
 }
 
-// beats.json の中身（拍・小節頭・ピーク）
+// Contents of beats.json (beats, bar starts, peaks)
 export function beatsInfo(audio = {}, duration) {
   const bpm = audio.bpm ?? 120;
   const offset = audio.offset ?? 0;
@@ -89,26 +89,26 @@ export function beatsInfo(audio = {}, duration) {
 }
 const round = (x) => Math.round(x * 1e6) / 1e6;
 
-// 拍から外れた cue / 小節頭から外れたピークを警告（意図的なら cue に offbeat: true）
+// Warn about cues off the beat / peaks off a bar start (if intentional, set offbeat: true on the cue)
 export function audioWarnings(audio = {}, duration, fps) {
   const w = [];
   const grid = beatGrid(audio.bpm ?? 120, audio.offset ?? 0, audio.beatsPerBar ?? 4);
   const tol = 0.5 / fps + 1e-6;
   for (const c of audio.cues || []) {
     const t = cueTime(c, grid);
-    if (!SFX[c.sfx]) w.push(`未知の効果音 ${c.sfx}（${Object.keys(SFX).join(' / ')}）`);
-    if (t < 0 || t >= duration) w.push(`cue ${c.sfx}@${t.toFixed(3)}s が尺の外`);
-    if (!c.offbeat && Math.abs(grid.nearest(t) - t) > tol) w.push(`cue ${c.sfx}@${t.toFixed(3)}s が拍に乗っていない（意図的なら offbeat: true）`);
+    if (!SFX[c.sfx]) w.push(`unknown sound effect ${c.sfx} (${Object.keys(SFX).join(' / ')})`);
+    if (t < 0 || t >= duration) w.push(`cue ${c.sfx}@${t.toFixed(3)}s is outside the duration`);
+    if (!c.offbeat && Math.abs(grid.nearest(t) - t) > tol) w.push(`cue ${c.sfx}@${t.toFixed(3)}s is not on a beat (if intentional, set offbeat: true)`);
   }
   const spbar = grid.spb * (audio.beatsPerBar ?? 4);
   for (const p of audio.peaks || []) {
     const k = Math.round((p - (audio.offset ?? 0)) / spbar);
-    if (Math.abs((audio.offset ?? 0) + k * spbar - p) > tol) w.push(`ピーク ${p}s が小節頭に乗っていない（主役の登場は小節頭へ）`);
+    if (Math.abs((audio.offset ?? 0) + k * spbar - p) > tol) w.push(`peak ${p}s is not on a bar start (put the hero's entrance on a bar start)`);
   }
   return w;
 }
 
-// cue を並べてステレオに混ぜる
+// Lay out the cues and mix them to stereo
 export function mix({ duration, audio = {} }) {
   const n = Math.round(duration * SR);
   const L = new Float32Array(n);
@@ -116,7 +116,7 @@ export function mix({ duration, audio = {} }) {
   const grid = beatGrid(audio.bpm ?? 120, audio.offset ?? 0, audio.beatsPerBar ?? 4);
   (audio.cues || []).forEach((c, idx) => {
     const fn = SFX[c.sfx];
-    if (!fn) throw new Error(`未知の効果音: ${c.sfx}`);
+    if (!fn) throw new Error(`unknown sound effect: ${c.sfx}`);
     const s = fn(rng(1000 + idx));
     const start = Math.round(cueTime(c, grid) * SR);
     const gain = c.gain ?? 1;
@@ -133,7 +133,7 @@ export function mix({ duration, audio = {} }) {
 }
 
 
-// 32bit float の WAV（中間ファイル用。16bit に丸めないので桁落ちもクリップもしない）。chans は同じ長さの Float32Array の配列
+// 32-bit float WAV (for intermediate files; no rounding to 16-bit, so no precision loss and no clipping). chans is an array of equal-length Float32Arrays
 export function wavF32(chans, gain = 1) {
   const c = chans.length;
   const n = chans[0].length;
@@ -146,7 +146,7 @@ export function wavF32(chans, gain = 1) {
   return buf;
 }
 
-// 32bit float のステレオ WAV を読む（ffmpeg が書いた pcm_f32le。data チャンクを探す）
+// Read a 32-bit float stereo WAV (pcm_f32le written by ffmpeg; looks for the data chunk)
 function readWavF32(p) {
   const b = fs.readFileSync(p);
   let o = 12;
@@ -158,14 +158,14 @@ function readWavF32(p) {
   return { L, R };
 }
 
-// ffmpeg は1スレッドに固定する（フィルタの並列化で浮動小数の足し順が変わらないように）
+// Pin ffmpeg to one thread (so filter parallelism cannot change the order of floating-point additions)
 function ff(args) {
   const r = spawnSync('ffmpeg', ['-hide_banner', '-nostdin', '-y', '-v', 'error', '-threads', '1', '-filter_complex_threads', '1', ...args], { encoding: 'utf8', maxBuffer: 1 << 26 });
-  if (r.status !== 0) throw new Error(`ffmpeg が失敗: ${r.stderr}`);
+  if (r.status !== 0) throw new Error(`ffmpeg failed: ${r.stderr}`);
   return r;
 }
 
-// ffmpeg の ebur128 で積分ラウドネス・ラウドネスレンジ・サンプルピーク・トゥルーピークを測る（wav でも mp4 でも）
+// Measure integrated loudness, loudness range, sample peak and true peak with ffmpeg's ebur128 (works on wav or mp4)
 export function measureLoudness(file) {
   const r = spawnSync('ffmpeg', ['-hide_banner', '-nostats', '-i', file, '-map', '0:a:0', '-af', 'ebur128=peak=sample+true', '-f', 'null', '-'], { encoding: 'utf8', maxBuffer: 1 << 26 });
   const txt = (r.stderr || '').slice((r.stderr || '').lastIndexOf('Summary:'));
@@ -179,8 +179,8 @@ export function measureLoudness(file) {
   };
 }
 
-// BGM のエフェクト: 50Hz 以下を 24dB/oct で切る（低域の濁り） → 250Hz を少し削る → 効果音の帯域（3kHz）を空ける → 軽くコンプ
-// → 畳み込みリバーブ（afir）を混ぜる → ステレオを広げる → 終わりを短くフェード
+// BGM effects: cut below 50Hz at 24dB/oct (low-end mud) -> trim 250Hz slightly -> make room in the SFX band (3kHz) -> light compression
+// -> blend in convolution reverb (afir) -> widen the stereo image -> short fade at the end
 function bgmChain(D, reverb) {
   return [
     `[0:a]aresample=${SR},atrim=0:${D},apad=whole_dur=${D},highpass=f=50,highpass=f=50,equalizer=f=250:t=q:w=1:g=-3,equalizer=f=3000:t=q:w=1.2:g=-2,`,
@@ -191,12 +191,12 @@ function bgmChain(D, reverb) {
   ].join('');
 }
 
-const BGM_LUFS = -20; // 効果音と混ぜる前の BGM の大きさ（music.gainDb で上下）
-const SFX_PEAK = 0.7; // 効果音の束のピーク（混ぜる前）
+const BGM_LUFS = -20; // BGM loudness before mixing with SFX (adjust with music.gainDb)
+const SFX_PEAK = 0.7; // peak of the combined SFX (before mixing)
 
-// 効果音（と BGM）を混ぜ、-14 LUFS ±1・トゥルーピーク -1 dBFS 以下に仕上げる。
-// 手順: BGM にエフェクト → BGM の大きさを揃える → 効果音が鳴る瞬間だけ BGM を下げて（サイドチェーン）混ぜる
-// → 全体のゲインを決め、4倍オーバーサンプリングしたリミッターでピークを抑える → 実測して足りなければゲインを詰める。
+// Mix the SFX (and BGM) and master to -14 LUFS ±1 with true peak at or below -1 dBFS.
+// Steps: effects on the BGM -> normalize BGM loudness -> duck the BGM only while SFX play (sidechain) and mix
+// -> set the overall gain and tame peaks with a 4x-oversampled limiter -> measure, and refine the gain if it falls short.
 export function renderAudio({ duration, audio = {}, scenes = [], outPath, work, base, target = -14, ceilingDb = -2, maxTruePeakDb = -1 }) {
   const D = +duration.toFixed(6);
   work = work || path.join(path.dirname(outPath), '.audio-work');
@@ -219,7 +219,7 @@ export function renderAudio({ duration, audio = {}, scenes = [], outPath, work, 
     let irPath;
     if (music.ir) {
       irPath = path.resolve(base || process.cwd(), music.ir);
-      if (!fs.existsSync(irPath)) throw new Error(`インパルス応答が無い: ${irPath}`);
+      if (!fs.existsSync(irPath)) throw new Error(`impulse response not found: ${irPath}`);
     } else {
       irPath = path.join(work, 'ir.wav');
       const ir = synthIR({ seconds: music.reverbSeconds ?? 1.6 });
@@ -229,11 +229,11 @@ export function renderAudio({ duration, audio = {}, scenes = [], outPath, work, 
     const fx = path.join(work, 'bgm-fx.wav');
     ff(['-i', b.wav, '-i', irPath, '-filter_complex', bgmChain(D, reverb), '-map', '[o]', '-c:a', 'pcm_f32le', fx]);
     const lb = measureLoudness(fx).lufs;
-    if (lb == null) throw new Error('BGM が無音になった（progression / style / サウンドフォントを確かめる）');
+    if (lb == null) throw new Error('BGM came out silent (check progression / style / soundfont)');
     const bgmGain = 10 ** ((BGM_LUFS + (music.gainDb ?? 0) - lb) / 20);
-    const duck = music.duck ?? 5; // サイドチェーンの圧縮比（1 で下げない）
-    // sidechaincompress と amix に別々のファイルを入れると、終端でどちらの入力が先に尽きるかで長さが変わる（実測で毎回違った）。
-    // 効果音 2ch と BGM 2ch を1本の 4ch WAV にまとめ、1つの入力から分けて使う。
+    const duck = music.duck ?? 5; // sidechain compression ratio (1 = no ducking)
+    // Feeding separate files to sidechaincompress and amix makes the length depend on which input runs out first at the end (it varied on every measured run).
+    // So pack the 2ch SFX and 2ch BGM into one 4ch WAV and split them from that single input.
     const fxs = readWavF32(fx);
     const n = m.L.length;
     const fit = (a) => { const o = new Float32Array(n); o.set(a.subarray(0, n)); return o; };
@@ -254,8 +254,8 @@ export function renderAudio({ duration, audio = {}, scenes = [], outPath, work, 
   let res;
   let aac = null;
   const passes = [];
-  // AAC に符号化するとピークが 0.5 dB ほど持ち上がる。納品と同じ設定で符号化して測り、
-  // トゥルーピークが maxTruePeakDb を超えたらリミッターの天井を下げてやり直す。
+  // Encoding to AAC raises peaks by about 0.5 dB. Encode with the same settings as the delivery and measure;
+  // if the true peak exceeds maxTruePeakDb, lower the limiter ceiling and retry.
   for (let tries = 0; tries < 4; tries++) {
     const limit = 10 ** (ceilingDb / 20);
     for (let k = 0; k < 6; k++) {
@@ -277,10 +277,10 @@ export function renderAudio({ duration, audio = {}, scenes = [], outPath, work, 
   };
 }
 
-// 納品の mp4 と同じ音声の符号化設定（render.mjs の final もこれを使う）
+// Audio encoding settings identical to the delivered mp4 (render.mjs's final uses these too)
 export const AAC = ['-c:a', 'aac', '-b:a', '192k', '-flags:a', '+bitexact'];
 
-// 帯域ごとの RMS（dBFS）。スペクトログラムは対数軸の最下段がにじむので、低域のこもりはこの数字で判断する
+// RMS per band (dBFS). The bottom of the log-scale spectrogram smears, so judge low-end muddiness by these numbers
 export const BANDS = { sub: [0, 40], low: [40, 120], lowmid: [120, 500], mid: [500, 4000], high: [4000, 0] };
 export function bandLevels(wav) {
   const out = {};
@@ -293,8 +293,8 @@ export function bandLevels(wav) {
   return out;
 }
 
-// スペクトログラム（周波数は対数軸）に、シーンの境目（白）とピーク（緑）の縦線を重ねる。
-// showspectrumpic の legend 付きは描画域が左 142px・上 64px ずれるので、その分を足して線を引く。
+// Overlay vertical lines for scene boundaries (white) and peaks (green) on a spectrogram (log frequency axis).
+// With legend enabled, showspectrumpic offsets the plot area by 142px left and 64px top, so add that when drawing the lines.
 export function spectrogram({ wav, out, duration, scenes = [], peaks = [] }) {
   const W = 1600;
   const H = 480;

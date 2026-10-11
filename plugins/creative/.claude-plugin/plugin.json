@@ -1,7 +1,7 @@
 {
   "name": "creative",
-  "version": "0.2.0",
-  "description": "画像生成プロンプト・コードで描くモーション動画のスキルと、DESIGN.md の lint フック",
+  "version": "0.3.0",
+  "description": "Skills for structuring image-generation prompts and rendering motion-graphics videos from code, plus a DESIGN.md lint hook",
   "author": {
     "name": "shibamasa-dev"
   },
