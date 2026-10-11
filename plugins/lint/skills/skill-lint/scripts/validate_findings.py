@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""reviewer の指摘を検証する。quote がその行に逐語で含まれない指摘は無効として落とす。
+"""Validate the reviewer's findings. A finding whose quote is not contained verbatim in that line is dropped as invalid.
 
-  python3 validate_findings.py <スキルのディレクトリ> [reviewer の出力ファイル | -]
+  python3 validate_findings.py <skill directory> [reviewer output file | -]
 
-入力は reviewer の生出力（JSON 配列そのもの、```json フェンス入り、前後に文があるもの、のどれでもよい）。
-出力（stdout・JSON）: {"valid": [...], "invalid": [{..., "reason": ...}], "invalid_ratio": x}
-exit 0 = 読めた / 2 = JSON 配列を取り出せない。
+Input is the reviewer's raw output (a bare JSON array, one inside a ```json fence, or one surrounded by prose).
+Output (stdout, JSON): {"valid": [...], "invalid": [{..., "reason": ...}], "invalid_ratio": x}
+exit 0 = parsed / 2 = no JSON array could be extracted.
 """
 import json, os, re, sys
 
@@ -13,7 +13,7 @@ FIELDS = ("file", "line", "quote", "category", "fix", "confidence")
 
 
 def extract_array(text):
-    """reviewer の出力から JSON 配列を取り出す。全文 → ```json フェンス → 最初の [ 〜最後の ] の順。"""
+    """Extract a JSON array from the reviewer output. Tries the whole text, then ```json fences, then the first [ to the last ]."""
     cands = [text.strip()]
     cands += re.findall(r"```(?:json)?\s*\n(.*?)```", text, re.S)
     if "[" in text and "]" in text:
@@ -34,7 +34,7 @@ def validate(root, findings):
     for f in findings:
         reason = None
         if not isinstance(f, dict) or any(k not in f for k in FIELDS):
-            reason = "必須フィールドが無い（%s）" % ", ".join(FIELDS)
+            reason = "missing required fields (%s)" % ", ".join(FIELDS)
         else:
             ab = os.path.abspath(os.path.join(root, os.path.expanduser(str(f["file"]))))
             rel = os.path.relpath(ab, root).replace(os.sep, "/")
@@ -44,19 +44,19 @@ def validate(root, findings):
             except (TypeError, ValueError):
                 line = -1
             if not ab.startswith(root + os.sep) or not os.path.isfile(ab):
-                reason = "ファイルが無い"
+                reason = "no such file"
             elif not quote.strip():
-                reason = "quote が空"
+                reason = "empty quote"
             else:
                 if ab not in cache:
                     cache[ab] = open(ab, encoding="utf-8", errors="replace").read().splitlines()
                 lines = cache[ab]
                 if line == 0:
-                    reason = None if quote in rel else "line 0（ファイル単位）なのに quote がパスに含まれない"
+                    reason = None if quote in rel else "line 0 (file level) but the quote is not part of the path"
                 elif not 1 <= line <= len(lines):
-                    reason = "行番号が範囲外"
+                    reason = "line number out of range"
                 elif quote not in lines[line - 1]:
-                    reason = "quote がその行に逐語で含まれない"
+                    reason = "quote is not contained verbatim in that line"
                 f = dict(f, file=rel, line=line)
         if reason:
             invalid.append(dict(f, reason=reason) if isinstance(f, dict) else {"raw": f, "reason": reason})
@@ -74,7 +74,7 @@ def main():
     text = sys.stdin.read() if src == "-" else open(src, encoding="utf-8").read()
     arr = extract_array(text)
     if arr is None:
-        print(json.dumps({"error": "JSON 配列を取り出せない"}, ensure_ascii=False))
+        print(json.dumps({"error": "cannot extract a JSON array"}, ensure_ascii=False))
         sys.exit(2)
     json.dump(validate(sys.argv[1], arr), sys.stdout, ensure_ascii=False, indent=1)
     print()

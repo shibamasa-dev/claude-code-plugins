@@ -30,5 +30,5 @@
 ## 前提
 
 - `python3`（標準ライブラリだけ）
-- 任意: `gh`（reviewer が gh のログイン名をヒントにする）、`gitleaks`（secret の検査を任せる。無ければ「未実施」と出る）
+- 任意: `gh`（reviewer が gh のログイン名をヒントにする）、`gitleaks`（secret の検査を任せる。無ければ `skipped` と出る）
 - eval グループ B（`scripts/run_reviewer_eval.py`）は `claude` CLI
