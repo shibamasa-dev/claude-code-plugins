@@ -8,7 +8,7 @@
    variable BLOCKED_PATTERNS (newline-separated regexes; CI passes it from a repo secret). Writing the
    blocked terms in this file would itself leak them into the public repo
 3. README pairs: the root and every plugins/<name>/ with a README.md also have a README.ja.md next to it,
-   each links to the other (the language switcher at the top), and README.md has no Hiragana or
+   line 3 of each is the language switcher linking to the other, and README.md has no Hiragana or
    Katakana (Japanese text belongs in README.ja.md; Han alone is allowed for the switcher label)
 """
 import os
@@ -36,9 +36,13 @@ README_JA = re.compile(r"(plugins/[^/]+/)?README\.ja\.md")
 KANA = re.compile(r"[\u3040-\u309f\u30a0-\u30ff\uff66-\uff9f]")  # Hiragana, Katakana, halfwidth Katakana
 
 
-def links_to(name, text):
-    # A Markdown inline link or an HTML href to the sibling file, optionally with ./ and an #anchor
-    return re.search(r"(\]\(|href=[\"'])(\./)?" + re.escape(name) + r"(#[^)\"']*)?[)\"']", text)
+SWITCHER = {"README.md": "English | [日本語](README.ja.md)", "README.ja.md": "[English](README.md) | 日本語"}
+
+
+def has_switcher(name, text):
+    # Line 3 (title, blank line, switcher) must be exactly the switcher, so a stray link elsewhere doesn't count
+    lines = text.splitlines()
+    return len(lines) >= 3 and lines[2].strip() == SWITCHER[name]
 
 
 errors = []
@@ -65,13 +69,13 @@ for f in filter(None, FILES):
     if m:
         if f"{m.group(1) or ''}README.ja.md" not in FILES:
             errors.append(f"{f}: README.ja.md is missing next to it")
-        if not links_to("README.ja.md", text):
-            errors.append(f"{f}: no link to README.ja.md (language switcher)")
+        if not has_switcher("README.md", text):
+            errors.append(f"{f}:3: line 3 must be the language switcher: {SWITCHER['README.md']}")
         kana = next((n for n, line in enumerate(text.splitlines(), 1) if KANA.search(line)), None)
         if kana:
             errors.append(f"{f}:{kana}: Hiragana/Katakana in README.md (Japanese text belongs in README.ja.md)")
-    elif README_JA.fullmatch(f) and not links_to("README.md", text):
-        errors.append(f"{f}: no link to README.md (language switcher)")
+    elif README_JA.fullmatch(f) and not has_switcher("README.ja.md", text):
+        errors.append(f"{f}:3: line 3 must be the language switcher: {SWITCHER['README.ja.md']}")
     for n, line in enumerate(text.splitlines(), 1):
         for rx, what in LEAKS:
             if rx.search(line):

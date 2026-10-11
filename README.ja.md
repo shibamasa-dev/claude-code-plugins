@@ -55,7 +55,7 @@ review の設定（`review_heavy`・`review_light`・`review_auto`・`rereview_t
 
 ## 言語
 
-スキル・フック・文書は英語で書いている。Claude は話しかけた言語で返し、スキルの description には日本語の発動フレーズも入れてある。日本語の README は各 `README.md` の隣の `README.ja.md`。
+英語を基本にし、各プラグインを日本語から英訳している途中。プラグインの CHANGELOG に「メッセージ・スキル・文書を英語にした」版が載るまでは、そのプラグインのスキル本文とフックのメッセージは日本語のまま。どちらでも Claude は話しかけた言語で返し、スキルの description には日本語の発動フレーズも入れてある。日本語の README は各 `README.md` の隣の `README.ja.md`。
 
 ## 前提
 
