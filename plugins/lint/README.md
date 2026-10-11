@@ -1,29 +1,34 @@
 # lint
 
-スキルなどの成果物を検査する linter 群。今は skill-lint のみ。
+English | [日本語](README.ja.md)
+
+Linters for artifacts such as skills. Currently only `skill-lint`.
+
+## Install
 
 ```text
+/plugin marketplace add shibamasa-dev/claude-code-plugins
 /plugin install lint@shibamasa-plugins
 ```
 
-## スキル
+## Skills
 
-| スキル | 使いどころ |
+| Skill | Use it for |
 |---|---|
-| `skill-lint` | スキルを不特定多数に配布してよいかを調べる。`/lint:skill-lint <スキルのディレクトリ>` で起動する。観点は「別の会社の人が、別のマシンにこのスキルを入れたら成り立つか。入れた人に何がバレるか」。決定論の `lint.py`（汎用の正規表現だけ）で、メールアドレス、ホームの絶対パスや個人ディレクトリらしいパス、tailnet のホスト、私的な issue 番号、決定の経緯、スキル配下の実行時データを拾う。人名・社名・取引先・私的ボットや私的リポへの依存・環境前提の手順は、エージェントの reviewer が実行環境から集めたヒント（`whoami`・git の user.name / email・gh のログイン名・ホスト名）と lint の結果をもとに判定する。reviewer の指摘は quote が行に逐語で含まれるものだけ残し、カテゴリ別に直し方つきで報告する。直すかどうかは聞いてから |
+| `skill-lint` | Checks whether a skill is safe to distribute to anyone. Run it with `/lint:skill-lint <skill directory>`. The question it asks: "Would this skill still work if someone at another company installed it on another machine, and what would it reveal about you?" A deterministic `lint.py` (generic regexes only) finds email addresses, absolute home paths and paths that look like personal directories, tailnet hosts, private issue numbers, decision history, and runtime data under the skill. Personal names, company and client names, dependencies on private bots or repos, and environment-specific steps are judged by an agent reviewer, using hints it collects from the environment (`whoami`, git `user.name` / email, the gh login, the host name) and the lint results. Only reviewer findings whose quote appears verbatim in a line are kept, and they are reported by category with suggested fixes. It asks before fixing anything |
 
-## フック
+## Hooks
 
-| フック | いつ | 何をするか |
+| Hook | When | What it does |
 |---|---|---|
-| skill-creator-chain | Skill の後 | 呼ばれたのが skill-creator（名前空間付きも含む）なら、「スキルの作成・更新が終わったら、そのスキルのディレクトリに skill-lint を走らせる。プロジェクトスコープ（リポ内の `.claude/skills`）は対象外」を伝える。ほかのスキルでは何もしない |
+| skill-creator-chain | After Skill | When the skill that ran is skill-creator (including namespaced names), tells Claude to run skill-lint on the skill's directory once the skill is created or updated. Project-scoped skills (`.claude/skills` inside a repo) are excluded. Does nothing for other skills |
 
-## 固有名の扱い
+## Proper names
 
-名前の一覧（denylist）は持たない。名前を集めたファイルを作ると、それ自体が漏れの元になり、手入れも要るため。固有名は reviewer がその場で実行環境から集めたヒントと文脈で判定する。
+There is no denylist of names. A file that collects names would itself be a leak and would need upkeep. Proper names are judged by the reviewer from hints it collects from the environment at run time, and from context.
 
-## 前提
+## Requirements
 
-- `python3`（標準ライブラリだけ）
-- 任意: `gh`（reviewer が gh のログイン名をヒントにする）、`gitleaks`（secret の検査を任せる。無ければ「未実施」と出る）
-- eval グループ B（`scripts/run_reviewer_eval.py`）は `claude` CLI
+- `python3` (standard library only)
+- Optional: `gh` (the reviewer uses your gh login as a hint), `gitleaks` (handles secret scanning; reported as "not run" if missing)
+- Eval group B (`scripts/run_reviewer_eval.py`) needs the `claude` CLI

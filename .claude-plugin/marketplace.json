@@ -1,13 +1,13 @@
 {
   "name": "shibamasa-plugins",
   "owner": { "name": "shibamasa-dev" },
-  "metadata": { "description": "Claude Code の作業を止めるガード・開発フロー（issue・PR レビュー・セッション運用）・テスト設計・リポの立ち上げ・画像と動画の制作・成果物の linter" },
+  "metadata": { "description": "Claude Code plugins: guard hooks, a development workflow (issues, PR reviews, sessions), test design, repo bootstrapping, image and video creation, and artifact linters" },
   "plugins": [
-    { "name": "guards", "source": "./plugins/guards", "description": "破壊的な Bash 操作・未マージ worktree の削除・古い既定ブランチからの push を止め、マージの後にローカルのマージ先ブランチを追従させるフック。リポ構成のルールはルールファイルを置いたときだけ効く", "category": "security" },
-    { "name": "workflow", "source": "./plugins/workflow", "description": "依頼からマージまでの開発フロー（PR のレビューの振り分けと待ち方を含む）・issue 運用・セッションの引き継ぎ・runbook 記録などのスキルとフック、使用枠をファイルへ書き出す mod", "category": "productivity" },
-    { "name": "testing", "source": "./plugins/testing", "description": "テストを設計して回すスキルとフック（Gherkin のテストケース作成・成果物の検証・全体テストのゲート）", "category": "testing" },
-    { "name": "repo-setup", "source": "./plugins/repo-setup", "description": "リポの立ち上げのスキル（基本設定の点検・クラウド環境のセットアップ）", "category": "development" },
-    { "name": "creative", "source": "./plugins/creative", "description": "画像生成プロンプト・コードで描くモーション動画のスキルと、DESIGN.md の lint フック", "category": "design" },
-    { "name": "lint", "source": "./plugins/lint", "description": "スキルなどの成果物を検査する linter 群。今は skill-lint（スキルを配布してよいかを調べる）のみ", "category": "security" }
+    { "name": "guards", "source": "./plugins/guards", "description": "Hooks that block destructive Bash commands, deleting unmerged worktrees and pushing from a stale branch, and fast-forward the local base branch after a merge. Optional repo-layout rules", "category": "security" },
+    { "name": "workflow", "source": "./plugins/workflow", "description": "Skills and hooks for the path from request to merge (including PR review routing and waiting), issue hygiene, session handoff and runbook recording, plus a mod that writes usage limits to a file", "category": "productivity" },
+    { "name": "testing", "source": "./plugins/testing", "description": "Skills and hooks for designing and running tests: Gherkin test cases, test-artifact linting and a full-test gate", "category": "testing" },
+    { "name": "repo-setup", "source": "./plugins/repo-setup", "description": "Skills for bootstrapping a repo: a health check of the basics and a cloud-environment setup scaffold", "category": "development" },
+    { "name": "creative", "source": "./plugins/creative", "description": "Skills for image-generation prompts and code-driven motion videos, and a lint hook for DESIGN.md", "category": "design" },
+    { "name": "lint", "source": "./plugins/lint", "description": "Linters for artifacts. Currently skill-lint, which checks whether a skill is safe to distribute", "category": "security" }
   ]
 }

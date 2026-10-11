@@ -1,22 +1,22 @@
 #!/bin/bash
-# pre-commit と検査スクリプトをこのリポの .git/hooks/ にコピーして有効にする。
-# - 作業ツリーのファイルを直接実行しない: checkout したブランチ（外部の PR を含む）のコードが手元で走らないように。
-#   コピー元も作業ツリーではなく origin/main（レビュー済みでマージされたもの）にする。
-#   このスクリプト自体は作業ツリーから実行されるので、main を checkout した状態で中身を確認してから実行する
-# - 既にあるフックは消さない:
-#   - 別の場所のフック（グローバルの core.hooksPath 等）には書き込まず、場所を記録して続けて呼ぶ
-#   - .git/hooks に既にある別の pre-commit は pre-commit.prior に退避して続けて呼ぶ
-#   - 再インストールでも記録した場所を引き継ぐ
+# Copy the pre-commit hook and the check script into this repo's .git/hooks/ and enable them.
+# - Never run working-tree files directly, so code from a checked-out branch (including external PRs) doesn't run locally.
+#   The copy source is origin/main (reviewed and merged), not the working tree.
+#   This script itself runs from the working tree, so check out main and review it before running
+# - Never delete existing hooks:
+#   - Hooks elsewhere (a global core.hooksPath, etc.) are not written to; their location is recorded and they are called afterwards
+#   - Another pre-commit already in .git/hooks is moved to pre-commit.prior and called afterwards
+#   - Reinstalling keeps the recorded location
 set -eu
 cd "$(git rev-parse --show-toplevel)"
 gitdir="$(cd "$(git rev-parse --git-common-dir)" && pwd -P)"
 mkdir -p "$gitdir/hooks"
 dest="$(cd "$gitdir/hooks" && pwd -P)"
-# .git/hooks が共有ディレクトリへの symlink だと、他のリポのフックまで書き換えてしまう
-[ "$dest" = "$gitdir/hooks" ] || { echo "install.sh: .git/hooks が別の場所（$dest）を指しているので入れない" >&2; exit 1; }
+# If .git/hooks is a symlink to a shared directory, we would rewrite other repos' hooks too
+[ "$dest" = "$gitdir/hooks" ] || { echo "install.sh: .git/hooks points elsewhere ($dest); not installing" >&2; exit 1; }
 MARK="claude-code-plugins:pre-commit"
 
-# 以前のフックの場所を、絶対パスに直して $dest と比べる（相対指定や ~ も同じ場所なら自分自身）
+# Resolve the earlier hooks location to an absolute path and compare with $dest (a relative path or ~ to the same place is ourselves)
 prior=$(git config core.hooksPath || true)
 case "$prior" in
   "~/"*) prior="$HOME/${prior#\~/}" ;;
@@ -27,20 +27,20 @@ else
   prior=""
 fi
 if [ "$prior" = "$dest" ]; then
-  prior=$(cat "$dest/prior-hooks-path" 2>/dev/null || true)  # 再インストール: 前回記録した場所を引き継ぐ
+  prior=$(cat "$dest/prior-hooks-path" 2>/dev/null || true)  # reinstall: keep the location recorded last time
 fi
-case "$prior" in "$(pwd -P)/.githooks") prior="" ;; esac  # 以前の手順（作業ツリー直指し）は引き継がない
+case "$prior" in "$(pwd -P)/.githooks") prior="" ;; esac  # don't carry over the old setup (pointing straight at the working tree)
 
 git fetch -q origin main
-# 取り出しに失敗したら何も置かない（空のフックで以前の検査が黙って外れないように）
+# If extraction fails, install nothing (so an empty hook doesn't silently drop the earlier checks)
 tmp=$(mktemp -d)
 git show origin/main:.githooks/pre-commit > "$tmp/pre-commit"
 git show origin/main:.github/scripts/check-repo.py > "$tmp/check-repo.py"
 
-# .git/hooks に別の pre-commit があれば退避して続けて呼ぶ（自分の前回のものは上書きでよい）
+# Move another pre-commit in .git/hooks aside and call it afterwards (our own previous one can be overwritten)
 if [ -e "$dest/pre-commit" ] && ! grep -q "$MARK" "$dest/pre-commit"; then
   if [ -e "$dest/pre-commit.prior" ]; then
-    echo "install.sh: 別の pre-commit があり、退避先の pre-commit.prior も埋まっているので上書きしない（どちらを残すか決めてから再実行）" >&2
+    echo "install.sh: another pre-commit exists and pre-commit.prior is already taken; not overwriting (decide which to keep, then rerun)" >&2
     rm -r "$tmp"; exit 1
   fi
   mv "$dest/pre-commit" "$dest/pre-commit.prior"
@@ -51,15 +51,15 @@ rm -r "$tmp"
 
 if [ -n "$prior" ]; then
   printf '%s\n' "$prior" > "$dest/prior-hooks-path"
-  # pre-commit 以外の以前のフックは、そのまま呼ぶだけの薄い入口を置く（既存の .git/hooks の同名は上書きしない）
+  # For earlier hooks other than pre-commit, add a thin entry point that just calls them (don't overwrite same-named hooks already in .git/hooks)
   for h in "$prior"/*; do
     n=$(basename "$h")
     [ -x "$h" ] && [ "$n" != pre-commit ] && [ ! -e "$dest/$n" ] || continue
-    printf '#!/bin/sh\n# install.sh が置いた入口: 以前のフックを呼ぶ（消えていたら何もしない）\n[ -x "%s" ] || exit 0\nexec "%s" "$@"\n' "$h" "$h" > "$dest/$n"
+    printf '#!/bin/sh\n# Entry point added by install.sh: calls the earlier hook (does nothing if it is gone)\n[ -x "%s" ] || exit 0\nexec "%s" "$@"\n' "$h" "$h" > "$dest/$n"
     chmod 755 "$dest/$n"
   done
 else
   rm -f "$dest/prior-hooks-path"
 fi
 git config --local core.hooksPath "$dest"
-echo "installed: $dest/pre-commit${prior:+ (以前のフック $prior も続けて呼ぶ)}$( [ -e "$dest/pre-commit.prior" ] && echo " (退避した $dest/pre-commit.prior も続けて呼ぶ)")"
+echo "installed: $dest/pre-commit${prior:+ (also calls the earlier hooks in $prior)}$( [ -e "$dest/pre-commit.prior" ] && echo " (also calls the moved-aside $dest/pre-commit.prior)")"
