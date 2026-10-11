@@ -51,7 +51,6 @@ jobs:
             echo "$out"
             echo "::endgroup::"
             if [ "$rc" != 0 ]; then echo "::error::$t exited with $rc"; fail=1; fi
-            # The Japanese alternative can be removed once every plugins/*/tests/run-all.sh prints the English summary
-            echo "$out" | grep -qE '食い違い 0 件|/ 0 mismatches ====' || { echo "::error::$t reported mismatches"; fail=1; }
+            echo "$out" | grep -qE '/ 0 mismatches ====' || { echo "::error::$t reported mismatches"; fail=1; }
           done
           exit $fail
