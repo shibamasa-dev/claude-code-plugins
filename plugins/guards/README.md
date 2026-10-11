@@ -1,44 +1,57 @@
 # guards
 
-Claude Code の作業を、取り返しがつかなくなる前に止めるフック集。
+English | [日本語](README.ja.md)
 
-## フック
+Hooks that stop Claude Code before it does something you can't undo.
 
-| フック | いつ | 何をするか |
+## Install
+
+```text
+/plugin marketplace add shibamasa-dev/claude-code-plugins
+/plugin install guards@shibamasa-plugins
+```
+
+## Hooks
+
+| Hook | When | What it does |
 |---|---|---|
-| bash-guard | Bash の前 | ホーム・システムディレクトリへの再帰削除、未マージ worktree の削除（置き場は問わない。リポの中の `.claude/worktrees` なども）、既定ブランチ（origin に問い合わせ、繋がらなければ手元の origin/HEAD、それも無ければ main / master）より古いブランチからの push を止める。安全領域外の削除は macOS の `trash`（ゴミ箱）なら通す。マージ済みでクリーンな worktree の削除は通す |
-| repo-structure-guard | Write の前 | ルールファイルを置いたときだけ効く。リポ構成のルール違反の書き込み（`docs/` 直下の .md・`scripts/` 直下のスクリプトの新規作成）を止める |
-| git-freshness | Bash の後・GitHub コネクタでマージした後 | マージの後、PR のマージ先ブランチをいま開いていれば `--ff-only` で最新にする（マージ先が分からなければ既定ブランチ）。できないときは知らせるだけ（止めはしない）。コネクタのマージは、手元の clone が同じリポのときだけ |
+| bash-guard | Before Bash | Blocks recursive deletes of home or system directories, deleting an unmerged worktree (wherever it lives, including `.claude/worktrees` inside a repo), and pushing from a branch that is behind the default branch (asked from origin; falls back to the local `origin/HEAD`, then `main` / `master`). Deletes outside the safe area are allowed through macOS `trash`. Deleting a merged, clean worktree is allowed |
+| repo-structure-guard | Before Write | Active only when a rules file exists. Blocks writes that break the repo layout rules (for example, a new `.md` directly under `docs/` or a script directly under `scripts/`) |
+| git-freshness | After Bash, and after a merge through the GitHub connector | After a merge, fast-forwards (`--ff-only`) the PR's base branch if you have it checked out (the default branch if the base is unknown). If it can't, it only tells you; it never blocks. For connector merges, only when the local clone is the same repo |
 
-## 設定
+## Configuration
 
-`/plugin configure guards@shibamasa-plugins`（または `/config`）で変えられる。
+Change settings with `/plugin configure guards@shibamasa-plugins` (or `/config`).
 
-| キー | 既定 | 意味 |
+| Key | Default | Meaning |
 |---|---|---|
-| `worktree_dirs` | 空 | worktree をまとめて置くフォルダ（カンマ区切り、例 `~/.worktrees`）。ここの配下は再帰削除を通し、未マージか判定できないパス（存在しない・変数で行き先が分からない）は止める。空でも、未マージ worktree の削除は置き場に関係なく止める |
+| `worktree_dirs` | empty | Folders where you keep worktrees (comma-separated, e.g. `~/.worktrees`). Recursive deletes inside them are allowed, and paths whose merge state can't be determined (missing, or hidden behind a variable) are blocked. Even when empty, deleting an unmerged worktree is blocked anywhere |
 
-`claude plugin install guards@shibamasa-plugins --config worktree_dirs=~/.worktrees` のように入れるときに渡してもよい。値はフックに環境変数 `CLAUDE_PLUGIN_OPTION_<KEY>`（例 `CLAUDE_PLUGIN_OPTION_WORKTREE_DIRS`）で渡る。
+You can also pass values at install time: `claude plugin install guards@shibamasa-plugins --config worktree_dirs=~/.worktrees`. Hooks receive them as environment variables `CLAUDE_PLUGIN_OPTION_<KEY>` (e.g. `CLAUDE_PLUGIN_OPTION_WORKTREE_DIRS`).
 
-### リポ構成のルール（repo-structure-guard）
+### Repo layout rules (repo-structure-guard)
 
-ルールファイルがあるときだけ効く。上から順に最初に見つかったものを使い、どれも無ければ何もしない。
+The hook runs only when a rules file exists. It uses the first one found, in this order, and does nothing if none exists:
 
-1. 環境変数 `REPO_STRUCTURE_SPEC`。設定されていればこれだけを見る。存在しないパスを指せば無効
-2. 書き込み先のリポの `.claude/rules/repo-structure.md`。コミットすればチームで共有でき、クラウドのセッションでも効く。Claude もルールとして読む
-3. `~/.claude/rules/repo-structure.md`（自分の全リポ）
+1. The environment variable `REPO_STRUCTURE_SPEC`. If set, only this is used; a path that doesn't exist disables the hook
+2. `.claude/rules/repo-structure.md` in the repo being written to. Commit it to share it with your team and cloud sessions; Claude also reads it as a rule
+3. `~/.claude/rules/repo-structure.md` (all your repos)
 
-書き方の見本は [`examples/repo-structure.md`](examples/repo-structure.md)。どちらかへコピーして直す。判定に使うのは `<!-- guard:… -->` ブロックだけ。
+Copy [`examples/repo-structure.md`](examples/repo-structure.md) to one of these and edit it. Only `<!-- guard:… -->` blocks are used for decisions.
 
-## マージの扱い
+## Merges
 
-マージの前の確認（以前の bash-guard の merge-gate）は 0.2.0 で外した。マージの条件（レビューがそろう・`Closes` 先の `## 結果`）は workflow プラグインの `dev-flow` スキルと `dev-flow-gate` フックが持つ。guards だけを入れている場合、マージは止まらない。
+guards doesn't gate merges. Merge conditions (reviews done, a `## Result` section on the issue the PR closes) belong to the workflow plugin's `dev-flow` skill and `dev-flow-gate` hook. With guards alone, merges aren't stopped.
 
-## 前提
+## Limitations
 
-macOS / Linux、`python3`、`git`、`gh`
+guards is a safety net against Claude's mistakes, not a sandbox against malicious commands. Commands built in ways the hooks can't parse may get through.
 
-## テスト
+## Requirements
+
+macOS or Linux, `python3`, `git`, `gh`
+
+## Tests
 
 ```bash
 bash plugins/guards/tests/run-all.sh

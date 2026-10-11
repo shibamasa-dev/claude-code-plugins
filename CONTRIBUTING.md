@@ -1,43 +1,49 @@
-# コントリビュート
+# Contributing
 
-issue と PR は日本語でも英語でもよい。
+Issues and pull requests are welcome in English or Japanese.
 
-## コミット前の検査フック
+## Pre-commit hook
 
-コミット前に、個人環境（ホームの絶対パス・メールアドレス）の混入とコミット作者のメールを検査するフックを同梱している。clone ごとに 1 回（フックを更新したときも）、中身を確認してから入れる:
+The repo ships a pre-commit hook that stops personal details (absolute home paths, email addresses) from being committed and checks the commit author's email. Install it once per clone (and again when the hook changes), after reading it:
 
 ```bash
 bash .githooks/install.sh
 ```
 
-`origin/main` のフックと検査スクリプトを `.git/hooks/` にコピーして使う（作業ツリーのファイルを直接実行しないので、外部の PR ブランチを checkout してもそのコードは走らない）。`install.sh` 自体は作業ツリーから実行されるので、main を checkout した状態で中身を確認してから実行する。既に別の場所のフック（グローバルの `core.hooksPath` 等）を使っていれば、そこには書き込まず、検査のあとに続けて呼ぶ。
+It copies the hook and the check script from `origin/main` into `.git/hooks/` (it never runs files from the working tree, so checking out an external PR branch doesn't run that branch's code). `install.sh` itself runs from the working tree, so read it with `main` checked out before running it. If you already use hooks from somewhere else (such as a global `core.hooksPath`), it doesn't write there; it calls them after its own check.
 
-追加で止めたい固有名があれば `~/.config/claude-code-plugins/blocked-patterns` に 1 行 1 正規表現で書く（リポには置かない）。同じ検査は CI（`.github/workflows/`）でも走る。
+To block additional proper names, put one regex per line in `~/.config/claude-code-plugins/blocked-patterns` (never in the repo). CI (`.github/workflows/`) runs the same check.
 
-## PR を出す前に
+## Before opening a PR
 
-手元で CI と同じ検査を回す:
+Run the same checks as CI locally:
 
 ```bash
 claude plugin validate --strict .
 for p in plugins/*/; do claude plugin validate --strict "$p"; done
 python3 .github/scripts/check-repo.py
-for t in plugins/*/tests/run-all.sh; do bash "$t"; done   # テストは macOS 前提
+for t in plugins/*/tests/run-all.sh; do bash "$t"; done   # tests assume macOS
 ```
 
-## version と CHANGELOG
+## Language and READMEs
 
-- プラグインの中身を変えたら、その plugin.json の `version` を上げる。同じ version のままだと `claude plugin update` が最新と判断して中身を入れ替えない。CI（`check-version-bump.sh`）が、上がっていない PR を落とす。README・CHANGELOG・`tests/` だけの変更は対象外
-- version を上げたら、そのプラグインの `CHANGELOG.md` に同じ版の見出し（`## [0.1.3] - 2026-10-06`、日付は PR を出す日）と、利用者から見た変更を足す。見出しが無いと CI が落とす
-- version は marketplace.json の各エントリには書かない（plugin.json が優先され、両方に書くと validate が警告する）
+- Write everything in English: skills, hook messages, comments, tests, manifests and CHANGELOG entries
+- Skill `description` fields also list the Japanese trigger phrases, so Japanese prompts still trigger the skill
+- Every `README.md` has a Japanese `README.ja.md` next to it, linked from a language switcher on the first line. Update both in the same PR. `check-repo.py` enforces the pair
 
-## リリース
+## Versions and CHANGELOG
 
-main にマージして ci が通ると、`release.yml` が version の上がったプラグインに `<plugin>--v<version>`（例: `guards--v0.1.3`）のタグを打つ。中身は `claude plugin tag --push` で、plugin.json と marketplace.json の version の食い違いもそこで止まる。タグの前に leak-scan と同じ社内の固有名の検査もかける。
+- When you change a plugin's contents, bump `version` in its `plugin.json`. With the same version, `claude plugin update` assumes the plugin is up to date and doesn't replace it. CI (`check-version-bump.sh`) fails PRs that don't bump. Changes only to `README.md`, `README.ja.md`, `CHANGELOG.md` or `tests/` are exempt
+- After bumping, add a heading for the same version to the plugin's `CHANGELOG.md` (`## [0.1.3] - 2026-10-06`, dated the day you open the PR) with the user-visible changes. CI fails without it
+- Don't put `version` in the `marketplace.json` entries (`plugin.json` wins, and having both makes validate warn)
 
-取りこぼしを手で打つときは、main を最新にして ci が緑なのを確かめてから:
+## Releases
+
+After a merge to `main` passes CI, `release.yml` tags each plugin whose version went up as `<plugin>--v<version>` (e.g. `guards--v0.1.3`). It runs `claude plugin tag --push`, which also stops on a version mismatch between `plugin.json` and `marketplace.json`. Before tagging it runs the same proper-name check as leak-scan.
+
+To tag a release that was missed, update `main` and confirm CI is green first:
 
 ```bash
-claude plugin tag plugins/guards --dry-run   # 確認
+claude plugin tag plugins/guards --dry-run   # check
 claude plugin tag plugins/guards --push
 ```

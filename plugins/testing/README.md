@@ -1,22 +1,31 @@
 # testing
 
-テストを設計して回すスキルとフック。
+English | [日本語](README.ja.md)
 
-## スキル
+Skills and hooks for designing and running tests.
 
-| スキル | 使いどころ |
+## Install
+
+```text
+/plugin marketplace add shibamasa-dev/claude-code-plugins
+/plugin install testing@shibamasa-plugins
+```
+
+## Skills
+
+| Skill | Use it for |
 |---|---|
-| `testcase-generator` | 仕様書・コード・PR から Gherkin 形式のテストケースを作る |
+| `testcase-generator` | Writing Gherkin test cases from specs, code or PRs |
 
-## フック
+## Hooks
 
-| フック | いつ | 何をするか |
+| Hook | When | What it does |
 |---|---|---|
-| testcase-lint | Edit・Write の後 | テストケースの成果物がスタイルガイドに沿っているか検証する |
-| full-test-gate | セッション開始・Bash の前 | 全体テストを最後に通してからの変更量を知らせ、リリース等のコマンドを未検証の変更があれば止める |
+| testcase-lint | After Edit or Write | Checks that test-case artifacts follow the style guide |
+| full-test-gate | Session start, before Bash | Reports how much has changed since the last full test run, and blocks release-like commands while unverified changes exist |
 
-- **full-test-gate** はリポに `.claude/full-test.json` を置いたプロジェクトだけで動く。書式は [`hooks/full-test-gate.py`](hooks/full-test-gate.py) の冒頭。`full-test-gate run` で全体テストを走らせて通れば記録、`full-test-gate status` で前回からの変更量を確認できる
+- **full-test-gate** runs only in projects that have `.claude/full-test.json`. The format is described at the top of [`hooks/full-test-gate.py`](hooks/full-test-gate.py). `full-test-gate run` runs the full test suite and records it if it passes; `full-test-gate status` shows the changes since the last run
 
-## 前提
+## Requirements
 
-macOS / Linux、`python3`、`git`
+macOS or Linux, `python3`, `git`

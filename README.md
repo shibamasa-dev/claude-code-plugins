@@ -1,11 +1,16 @@
 # claude-code-plugins
 
+English | [日本語](README.ja.md)
+
 [![ci](https://github.com/shibamasa-dev/claude-code-plugins/actions/workflows/ci.yml/badge.svg)](https://github.com/shibamasa-dev/claude-code-plugins/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Claude Code 用のプラグインマーケットプレイス。日々の開発で使っているガード・運用スキルを、汎用にして公開したもの。スキルの本文とメッセージは日本語。
+A Claude Code plugin marketplace: guard hooks and workflow skills from daily development, generalized for anyone to use.
 
-## 導入
+> [!IMPORTANT]
+> Plugins run hooks and scripts on your machine. Read a plugin's README (and its `hooks/`) before installing it.
+
+## Install
 
 ```text
 /plugin marketplace add shibamasa-dev/claude-code-plugins
@@ -17,24 +22,24 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 /plugin install lint@shibamasa-plugins
 ```
 
-どれも独立していて、必要なものだけ入れられる。
+Every plugin is independent. Install only the ones you need.
 
-## プラグイン
+## Plugins
 
-| プラグイン | 中身 |
+| Plugin | What it does |
 |---|---|
-| [guards](plugins/guards/README.md) | 作業を止めるフック。破壊的な削除・未マージ worktree の削除・古い既定ブランチからの push。リポ構成のルール（ルールファイルを置いたときだけ）。マージの後のローカルのマージ先ブランチの追従 |
-| [workflow](plugins/workflow/README.md) | 依頼からマージまでの開発フロー（PR のレビューの振り分けと待ち方を含む）・issue 運用・セッションの引き継ぎ・runbook 記録などのスキルとフック、使用枠をファイルへ書き出す mod |
-| [testing](plugins/testing/README.md) | テストを設計して回す。Gherkin のテストケース作成・成果物の検証・全体テストのゲート |
-| [repo-setup](plugins/repo-setup/README.md) | リポの立ち上げ。基本設定の点検・クラウド環境のセットアップ |
-| [creative](plugins/creative/README.md) | 画像生成プロンプト・コードで描くモーション動画のスキルと、DESIGN.md の lint フック |
-| [lint](plugins/lint/README.md) | スキルなどの成果物を検査する linter 群。今は skill-lint（スキルに作った人・会社・マシンの固有情報が混ざっていないかを調べ、配布してよいかを報告する）のみ |
+| [guards](plugins/guards/README.md) | Hooks that stop Claude before it does something irreversible: recursive deletes of home or system directories, deleting unmerged worktrees, pushing from a branch behind the default branch. Optional repo-layout rules. Fast-forwards the local base branch after a merge |
+| [workflow](plugins/workflow/README.md) | Skills and hooks for the path from request to merge (including routing and waiting for PR reviews), issue hygiene, session handoff and runbook recording, plus a mod that writes usage limits to a file |
+| [testing](plugins/testing/README.md) | Designing and running tests: Gherkin test cases, linting the test artifacts, and a gate that requires a full test run before releases |
+| [repo-setup](plugins/repo-setup/README.md) | Bootstrapping a repo: a health check of the basics and a setup scaffold for cloud environments |
+| [creative](plugins/creative/README.md) | Skills for image-generation prompts and code-driven motion videos, and a lint hook for `DESIGN.md` |
+| [lint](plugins/lint/README.md) | Linters for artifacts. Currently `skill-lint`, which checks whether a skill leaks details about its author, company or machine before you publish it |
 
-スキル・フックの一覧と設定は、各プラグインの README にある。
+Each plugin's README lists its skills, hooks and settings.
 
-### 旧名からの移行（2026-10）
+### Renamed plugins (2026-10)
 
-review は workflow に入り、devtools は repo-setup に、docs は creative に名前が変わった。前の名前で入れていたら入れ直す:
+`review` was merged into `workflow`, `devtools` became `repo-setup`, and `docs` became `creative`. If you installed the old names, reinstall:
 
 ```text
 /plugin uninstall review@shibamasa-plugins
@@ -46,17 +51,21 @@ review は workflow に入り、devtools は repo-setup に、docs は creative 
 /plugin install creative@shibamasa-plugins
 ```
 
-review の設定（`review_heavy`・`review_light`・`review_auto`・`rereview_threshold`）は workflow の同じキーに入れ直す。
+Move your `review` settings (`review_heavy`, `review_light`, `review_auto`, `rereview_threshold`) to the same keys in `workflow`.
 
-## 前提
+## Language
 
-- macOS / Linux、`python3`、`git`、`gh`
-- `motion-video` は Node.js・Chrome・ffmpeg
+Skills, hooks and docs are written in English. Claude replies in the language you write in, and skill descriptions also list Japanese trigger phrases. Japanese READMEs are in `README.ja.md` next to each `README.md`.
 
-## コントリビュート
+## Requirements
 
-コミット前の検査フックの入れ方、version の上げ方、リリースの手順は [CONTRIBUTING.md](CONTRIBUTING.md)。脆弱性の報告は [SECURITY.md](SECURITY.md)。
+- macOS or Linux, `python3`, `git`, `gh`
+- `motion-video` also needs Node.js, Chrome and ffmpeg
 
-## ライセンス
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the pre-commit hook, version bumps and releases. Report vulnerabilities through [SECURITY.md](SECURITY.md).
+
+## License
 
 [MIT](LICENSE)

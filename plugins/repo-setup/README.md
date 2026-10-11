@@ -1,16 +1,25 @@
 # repo-setup
 
-リポの立ち上げのスキル。0.3.0 で devtools から名前を変え、使用枠を書き出す mod（rate-limits）は [workflow](../workflow/README.md) へ移した。
+English | [日本語](README.ja.md)
 
-## スキル
+Skills for bootstrapping a repo.
 
-| スキル | 使いどころ |
+## Install
+
+```text
+/plugin marketplace add shibamasa-dev/claude-code-plugins
+/plugin install repo-setup@shibamasa-plugins
+```
+
+## Skills
+
+| Skill | Use it for |
 |---|---|
-| `codebase-doctor` | リポに必要な基本（テスト・CI・lint・セキュリティの初期設定など）がそろっているかの点検 |
-| `remote-setup` | claude.ai/code や Cowork のクラウド環境用のセットアップ scaffold を作る |
+| `codebase-doctor` | Checks whether a repo has the basics in place (tests, CI, lint, initial security settings, …) |
+| `remote-setup` | Creates a setup scaffold for cloud environments such as claude.ai/code and Cowork |
 
-`codebase-doctor` のテスト設計の点検（Check 6b）は、[testing](../testing/README.md) の `testcase-generator` が持つ置き場の定義を読む。testing が入っていなければその点検は SKIP（点数から除外）にする。
+The test-design check in `codebase-doctor` (Check 6b) reads where test artifacts belong from the `testcase-generator` skill in [testing](../testing/README.md). Without the testing plugin, that check is SKIPPED (excluded from the score).
 
-## 前提
+## Requirements
 
-macOS / Linux、`python3`、`git`、`gh`
+macOS or Linux, `python3`, `git`, `gh`

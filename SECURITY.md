@@ -1,11 +1,11 @@
-# セキュリティ
+# Security
 
-guards のフックをすり抜ける手順や、フック・スクリプトの脆弱性を見つけたら、公開の issue には書かず、GitHub の [Report a vulnerability](https://github.com/shibamasa-dev/claude-code-plugins/security/advisories/new) から非公開で知らせてほしい。
+If you find a way around the guards hooks, or a vulnerability in a hook or script, don't open a public issue. Report it privately through GitHub's [Report a vulnerability](https://github.com/shibamasa-dev/claude-code-plugins/security/advisories/new).
 
-## 対象
+## Scope
 
-- main の最新版
-- `plugins/*/hooks/`・`plugins/*/bin/`・`plugins/*/skills/*/scripts/` のコード
-- `.github/workflows/` と `.githooks/`
+- The latest `main`
+- Code in `plugins/*/hooks/`, `plugins/*/bin/` and `plugins/*/skills/*/scripts/`
+- `.github/workflows/` and `.githooks/`
 
-guards は Claude の誤操作を減らすための安全網で、悪意のある操作を止めるサンドボックスではない。サンドボックスとして使えないこと自体は脆弱性として扱わない。
+guards is a safety net against Claude's mistakes, not a sandbox against malicious commands. The fact that it can't be used as a sandbox isn't treated as a vulnerability.
