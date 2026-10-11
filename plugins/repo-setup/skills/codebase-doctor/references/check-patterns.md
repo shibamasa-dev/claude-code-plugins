@@ -19,7 +19,7 @@ If found, extract project-specific rules and use them to calibrate subsequent ch
 
 Presence only — never judge the contents. Paths are **not** defined here; read
 `references/perspectives-common.md` of the `testcase-generator` skill (testing plugin;
-section "プロジェクト固有の観点") and use what it says. A second copy of the layout
+section 7, "Project-specific perspectives") and use what it says. A second copy of the layout
 in this file would drift from the first one. Without the testing plugin, rate the check SKIP and say the testing plugin is missing.
 
 | Applies | When |

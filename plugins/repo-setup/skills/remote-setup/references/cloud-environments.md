@@ -1,95 +1,95 @@
-# クラウド実行環境の仕様メモ(2026-08-15 調査・公式ドキュメント裏取り済み)
+# Notes on cloud execution environments (researched 2026-08-15, checked against the official docs)
 
-出典: https://code.claude.com/docs/en/cloud-environments.md /
+Sources: https://code.claude.com/docs/en/cloud-environments.md /
 https://code.claude.com/docs/en/hooks.md / https://code.claude.com/docs/en/env-vars.md /
 https://claude.com/docs/cowork/overview.md
 
-## リモート判定に使える環境変数
+## Environment variables usable for detecting remote
 
-| 変数 | 状態 | 用途 |
+| Variable | Status | Use |
 |------|------|------|
-| `CLAUDE_CODE_REMOTE` | **公式**。Anthropic 管理のリモートインフラでのみ `"true"` | **主判定**。ローカルでは絶対にセットされない |
-| `CLAUDE_CODE_ENTRYPOINT` | 非公式(env リファレンス未掲載・値が増減しうる) | 副判定(`remote_*` プレフィックス)+リモート内のプラットフォーム分岐(`remote_cowork` / `remote_desktop`)。ローカルは `cli` / `claude-desktop` など複数値 → **「cli 以外=リモート」は誤り** |
-| `CLAUDE_CODE_BRIDGE_SESSION_ID` | 公式 | **Remote Control 中のローカルセッション**に付く(リモートではない点に注意。Remote Control は自マシン実行) |
-| `CLAUDE_CODE_REMOTE_SESSION_ID` | 公式 | クラウドセッション ID(`cse_` 形式) |
-| `CLAUDE_ENV_FILE` | 公式 | ここに `export FOO=bar` を追記するとセッション全体に環境変数を永続化できる |
-| `CLAUDE_PROJECT_DIR` | 公式 | リポジトリルート。hook の command 内で使える |
+| `CLAUDE_CODE_REMOTE` | **Official**. `"true"` only on Anthropic-managed remote infrastructure | **Primary check**. Never set locally |
+| `CLAUDE_CODE_ENTRYPOINT` | Unofficial (not in the env reference; values may come and go) | Secondary check (`remote_*` prefix) + platform branching inside remote (`remote_cowork` / `remote_desktop`). Locally it takes several values such as `cli` / `claude-desktop` → **"not cli = remote" is wrong** |
+| `CLAUDE_CODE_BRIDGE_SESSION_ID` | Official | Set on **local sessions under Remote Control** (note: not remote. Remote Control runs on your own machine) |
+| `CLAUDE_CODE_REMOTE_SESSION_ID` | Official | Cloud session ID (`cse_` form) |
+| `CLAUDE_ENV_FILE` | Official | Appending `export FOO=bar` here persists an environment variable for the whole session |
+| `CLAUDE_PROJECT_DIR` | Official | Repository root. Usable inside a hook's command |
 
-- Cowork にはローカル実行モードもある。`CLAUDE_CODE_REMOTE` 主判定なら「Cowork だがローカル」を誤爆しない。
-- 本スキルのゲートはさらに `REMOTE_SETUP_FORCE=1` の明示オーバーライドを許可する
-  (Codex / Cursor アダプタとテスト用。それ以外でゲートを緩和・削除しない)。
+- Cowork also has a local execution mode. With `CLAUDE_CODE_REMOTE` as the primary check, "Cowork but local" does not misfire.
+- This skill's gate additionally allows the explicit override `REMOTE_SETUP_FORCE=1`
+  (for Codex / Cursor adapters and testing. Do not loosen or remove the gate otherwise).
 
-## セットアップの公式2層機構(claude.ai/code)
+## The official two-layer setup mechanism (claude.ai/code)
 
-| 層 | 定義場所 | 実行 | 権限 |
+| Layer | Defined in | Runs | Privileges |
 |----|---------|------|------|
-| Setup script(環境層) | claude.ai/code の環境ダイアログ | 新規セッション開始時・Claude Code 起動前・キャッシュ無し時のみ | **root** |
-| SessionStart hook(セッション層) | リポ内 `.claude/settings.json` | 毎セッション(matcher: `startup|resume` 等) | 通常ユーザー |
+| Setup script (environment layer) | claude.ai/code environment dialog | At new session start, before Claude Code starts, only when there is no cache | **root** |
+| SessionStart hook (session layer) | the repo's `.claude/settings.json` | Every session (matcher: `startup|resume`, etc.) | normal user |
 
-**層の役割分担(公式明記)**: Setup script は「VM 自体のプロビジョニング」
-(プリインストールに無いツールチェーン・CLI)。リポジトリのプロジェクトセットアップ
-(`npm install` 等)は SessionStart hook に置く。
+**Division of roles (documented officially)**: the Setup script is for "provisioning the VM itself"
+(toolchains and CLIs not preinstalled). The repository's project setup
+(`npm install` etc.) goes in the SessionStart hook.
 
-### Setup script の制約(公式)
+### Setup script constraints (official)
 
-- **自己完結で書く**: リポジトリはまだ無い前提(1行でリポ内スクリプトを参照する方式は不可)。
-  リポ非依存の固定パス(apt / グローバル CLI / system pip)へインストールする
-- **約5分以内**(超えると環境キャッシュが作れない。独立インストールは `&` + `wait` で並列化)
-- **exit 0 必須**(非0だとセッションが起動失敗。重要でないステップは `|| true`)
-- ネットワークは環境の設定に従う(既定 Trusted はい主要レジストリ許可)
+- **Write it self-contained**: assume the repository does not exist yet (a one-liner that references a script in the repo does not work).
+  Install into repo-independent fixed paths (apt / global CLIs / system pip)
+- **Within about 5 minutes** (otherwise the environment cache cannot be built. Parallelize independent installs with `&` + `wait`)
+- **exit 0 is mandatory** (non-zero makes the session fail to start. Add `|| true` to non-essential steps)
+- Network follows the environment's setting (the default, Trusted, allows the major registries)
 
-### 環境キャッシュ(公式)
+### Environment cache (official)
 
-- Setup script 完了後にファイルシステムを**スナップショット**し、以後のセッションはそこから開始
-  (Setup script はスキップ)。**キャッシュは環境単位でリポ非依存**
-- 残るのは**ファイルだけ**(起動したプロセス・DB・docker compose スタックは残らない → 毎セッション hook で起動)
-- 再構築条件: Setup script かネットワーク許可の変更時、または**約7日**の期限切れ。セッションの resume では再実行されない
+- After the Setup script finishes, the filesystem is **snapshotted** and later sessions start from it
+  (the Setup script is skipped). **The cache is per environment and repo-independent**
+- **Only files** survive (started processes, DBs and docker compose stacks do not → start them in the hook every session)
+- Rebuilt when the Setup script or network permissions change, or after the roughly **7-day** expiry. Resuming a session does not re-run it
 
-### SessionStart hook の仕様
+### SessionStart hook behavior
 
-- クラウドセッションが読むのは**リポ内 settings.json と org managed settings のみ**
-  (ユーザーレベル `~/.claude/settings.json` は読まれない)
-- stdout はエージェントの context に注入される → 出力は1〜3行に保つ
-- stdout が `{` で始まると JSON 解釈される(`{"async": true, "asyncTimeout": 300000}` で非同期化可。
-  初回は同期で作り、遅ければ非同期化を検討)
-- hook のタイムアウトは既定 60 秒(本スキルは hook 定義に `timeout: 120` を設定)
-- 失敗してもセッションを止めない設計にする(常に exit 0 + WARNING 出力)
+- Cloud sessions read **only the repo's settings.json and org managed settings**
+  (user-level `~/.claude/settings.json` is not read)
+- stdout is injected into the agent's context → keep output to 1–3 lines
+- If stdout starts with `{` it is parsed as JSON (`{"async": true, "asyncTimeout": 300000}` makes it async.
+  Build it synchronous first, and consider async if it is slow)
+- The hook timeout defaults to 60 seconds (this skill sets `timeout: 120` in the hook definition)
+- Design it not to stop the session on failure (always exit 0 + print a WARNING)
 
-## VM スペック・制約(Anthropic ホスト)
+## VM specs and constraints (Anthropic-hosted)
 
-- Ubuntu 24.04 LTS (x86_64) / 約4 vCPU / 16GB RAM / 30GB disk。リソース超過で VM がタスク停止
-- プリインストール: Python 3(pip, poetry, uv, pytest, ruff...) / Node 20-22(npm, yarn, pnpm...) /
+- Ubuntu 24.04 LTS (x86_64) / about 4 vCPU / 16GB RAM / 30GB disk. The VM stops the task when resources are exceeded
+- Preinstalled: Python 3 (pip, poetry, uv, pytest, ruff...) / Node 20-22 (npm, yarn, pnpm...) /
   Ruby / PHP / Java / Go / Rust / Docker / PostgreSQL 16 / Redis 7 / git, jq, yq, ripgrep, tmux
-- **system pip は PEP 668(externally-managed)** → root の Setup script では
-  `pip install --break-system-packages` を使う。セッション層の venv からは
-  `python3 -m venv --system-site-packages` で system のパッケージが見える
-- GUI 無し → ビューア系(ocp-vscode 等)は使えない。CAD はヘッドレス検証(export + 数値検証)
-- devcontainer はクラウドセッション非対応
-- ネットワーク: None / **Trusted(既定: npm, PyPI, RubyGems, crates.io 等 + GitHub)** / Custom / Full。
-  GitHub アクセスはプロキシ経由で、セッションに紐づかないリポの release asset 取得は 403
-- 環境変数・Setup script は環境を使う全員に可視 = **secrets を置かない**(専用 secrets store は未提供)
+- **System pip is PEP 668 (externally-managed)** → in the root Setup script use
+  `pip install --break-system-packages`. From the session layer's venv,
+  `python3 -m venv --system-site-packages` makes the system packages visible
+- No GUI → viewers (ocp-vscode etc.) do not work. CAD is verified headless (export + numeric checks)
+- devcontainers are not supported in cloud sessions
+- Network: None / **Trusted (default: npm, PyPI, RubyGems, crates.io, etc. + GitHub)** / Custom / Full.
+  GitHub access goes through a proxy; fetching release assets of repos not tied to the session returns 403
+- Environment variables and the Setup script are visible to everyone using the environment = **do not put secrets there** (no dedicated secrets store yet)
 
-## 他プラットフォームのアダプタ(将来対応)
+## Adapters for other platforms (future)
 
-どちらもセットアップ機構自体がクラウド専用なので、`REMOTE_SETUP_FORCE=1` を付けて
-セッション層コア(setup.sh)を呼ぶ薄いアダプタでよい。環境層の内容は各機構に統合する。
+Both have cloud-only setup mechanisms, so a thin adapter that calls the session-layer core (setup.sh)
+with `REMOTE_SETUP_FORCE=1` is enough. Fold the environment-layer content into each mechanism.
 
-### OpenAI Codex(クラウド)
+### OpenAI Codex (cloud)
 
-- 環境設定の `setup` スクリプトがエージェント起動前に実行(コンテナ状態は約12時間キャッシュ)
-- アダプタ: setup スクリプトに environment-setup.sh の内容を統合し、末尾に
-  `REMOTE_SETUP_FORCE=1 bash scripts/remote-setup/setup.sh` を追加
-- 環境変数の永続化は `~/.bashrc`、lint/test コマンドの伝達は `AGENTS.md`
+- The environment's `setup` script runs before the agent starts (container state is cached for about 12 hours)
+- Adapter: merge the content of environment-setup.sh into the setup script and append
+  `REMOTE_SETUP_FORCE=1 bash scripts/remote-setup/setup.sh` at the end
+- Persist environment variables in `~/.bashrc`; pass lint/test commands via `AGENTS.md`
 - Docs: https://developers.openai.com/codex/cloud/environments
 
-### Cursor(Cloud Agents)
+### Cursor (Cloud Agents)
 
-- リポにコミットする `.cursor/environment.json` の `install`(冪等必須)/ `start` / `terminals`
-- アダプタ: `"install": "REMOTE_SETUP_FORCE=1 bash scripts/remote-setup/setup.sh"` を基本に、
-  環境層も install に統合(キャッシュされる)。シークレットは Cursor 側の管理機構
+- `install` (must be idempotent) / `start` / `terminals` in `.cursor/environment.json`, committed to the repo
+- Adapter: start from `"install": "REMOTE_SETUP_FORCE=1 bash scripts/remote-setup/setup.sh"` and
+  fold the environment layer into install too (it is cached). Secrets go in Cursor's own mechanism
 - Docs: https://cursor.com/docs/cloud-agent/setup
 
-## 未実測(2026-08-15 時点)
+## Not yet measured (as of 2026-08-15)
 
-- クラウド Cowork での SessionStart hook 実行・`CLAUDE_CODE_REMOTE` の実値は初回適用リポで実測確認する
-  (リモートセッションで `[remote-setup]` 行と `~/.cache/remote-setup/*.log` を見る)
+- Whether the SessionStart hook runs in cloud Cowork, and the actual value of `CLAUDE_CODE_REMOTE`, are to be measured in the first repo it is applied to
+  (in a remote session, look for the `[remote-setup]` line and `~/.cache/remote-setup/*.log`)

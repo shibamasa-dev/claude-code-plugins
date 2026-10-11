@@ -4,7 +4,7 @@
 - React 18
 
 ## Conventions
-- Logging: 開発時は debug ライブラリを使用。console.log は使わないこと
-- Components: Server Components をデフォルトにし、必要な場合のみ "use client"
+- Logging: use the debug library during development. Do not use console.log
+- Components: Server Components by default; "use client" only when needed
 - Testing: Jest + React Testing Library
 - Styling: Tailwind CSS

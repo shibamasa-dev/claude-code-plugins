@@ -36,7 +36,7 @@ Use Glob and Read on manifest files. Do NOT ask the user — detect automaticall
 
 **1b. Read AI agent guidelines** (AGENTS.md, CLAUDE.md, or equivalent) if present. This provides project-specific conventions (tech stack, commands, logging rules, coding standards) that inform all subsequent checks. For example, if AGENTS.md specifies "use slog for logging", the Logging check should verify slog usage specifically — not just any logging library.
 
-**1c. Determine the phase.** The phase decides which checks get weight. Take an explicit statement from the user over inference（「テストフェーズに入る」→ `test`）. With no statement, infer from the repository:
+**1c. Determine the phase.** The phase decides which checks get weight. Take an explicit statement from the user over inference ("we're entering the test phase" → `test`). With no statement, infer from the repository:
 
 | Phase | Signals | Weighted checks |
 |-------|---------|-----------------|
@@ -197,7 +197,7 @@ that half is present. **Only presence — never judge the contents.**
 | `playbook.md` | when tests exist, or the phase is `test` — the preconditions a run needs |
 
 **Do not define the paths here.** `references/perspectives-common.md` of the `testcase-generator`
-skill (testing plugin; section "プロジェクト固有の観点") is the single source for where these live.
+skill (testing plugin; section 7, "Project-specific perspectives") is the single source for where these live.
 Read it and use what it says. A second copy of the layout here would drift from the first one.
 If the testing plugin is not installed, rate this check **SKIP** (excluded from the score) and say
 the testing plugin is missing.
@@ -282,7 +282,7 @@ These look at how well the project is set up **for agent work**, not at the appl
 
 #### 14. Hooks & Automation
 - Repeated manual steps, or operations that must be blocked, are wired into `.claude/hooks/`
-- **Signals**: `.claude/hooks/`, `settings.json` の `hooks`; look for steps the user has corrected more than once
+- **Signals**: `.claude/hooks/`, `hooks` in `settings.json`; look for steps the user has corrected more than once
 - **PASS**: recurring corrections and forbidden operations are covered
 - **WARN**: candidates exist but nothing is wired
 - **SKIP**: no repeated pattern yet (normal in `setup`)
@@ -290,7 +290,7 @@ These look at how well the project is set up **for agent work**, not at the appl
 
 #### 15. Remote Execution Setup
 - The repository can be brought up in a cloud environment (claude.ai/code, Cowork VM) when the work needs it
-- **Signals**: `.claude/` の session-start scaffold, `environment-setup.sh`
+- **Signals**: the session-start scaffold under `.claude/`, `environment-setup.sh`
 - **SKIP** unless the project is actually intended to run remotely — do not propose this by default
 
 **When remote execution IS intended, two things need checking.**

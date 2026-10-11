@@ -3,10 +3,10 @@
 
 Usage: scaffold.py <repo-root>
 
-生成・更新:
-- scripts/remote-setup/setup.sh : 共通ランナー(常に最新テンプレで上書き)
-- scripts/remote-setup/steps.sh : リポ固有 steps(無ければテンプレ配置、あれば保持)
-- .claude/settings.json         : SessionStart hook をマージ(既存設定保持・重複追加しない)
+Generates / updates:
+- scripts/remote-setup/setup.sh : shared runner (always overwritten with the latest template)
+- scripts/remote-setup/steps.sh : repo-specific steps (template placed if missing, kept if present)
+- .claude/settings.json         : SessionStart hook merged in (existing settings kept, no duplicate added)
 """
 import json
 import shutil
@@ -28,18 +28,18 @@ HOOK_ENTRY = {
 
 
 def merge_hook(settings_path: Path) -> bool:
-    """SessionStart hook を settings.json にマージする。追記したら True。"""
+    """Merge the SessionStart hook into settings.json. True if it was added."""
     settings = {}
     if settings_path.exists():
         try:
             settings = json.loads(settings_path.read_text())
         except json.JSONDecodeError as e:
-            sys.exit(f"error: {settings_path} が JSON として壊れています: {e}")
+            sys.exit(f"error: {settings_path} is not valid JSON: {e}")
     session_start = settings.setdefault("hooks", {}).setdefault("SessionStart", [])
     for entry in session_start:
         for h in entry.get("hooks", []):
             if HOOK_MARKER in h.get("command", ""):
-                return False  # 配線済み
+                return False  # already wired
     session_start.append(HOOK_ENTRY)
     settings_path.parent.mkdir(parents=True, exist_ok=True)
     settings_path.write_text(
@@ -53,42 +53,42 @@ def main() -> None:
         sys.exit(__doc__)
     repo = Path(sys.argv[1]).resolve()
     if not repo.is_dir():
-        sys.exit(f"error: {repo} はディレクトリではありません")
+        sys.exit(f"error: {repo} is not a directory")
     templates = Path(__file__).resolve().parent.parent / "assets" / "templates"
     dest = repo / "scripts" / "remote-setup"
     dest.mkdir(parents=True, exist_ok=True)
 
     setup = dest / "setup.sh"
     shutil.copy2(templates / "setup.sh", setup)
-    print(f"updated: {setup}(共通部・常に上書き)")
+    print(f"updated: {setup} (shared part, always overwritten)")
 
     repo_owned = []
     for name in ("steps.sh", "environment-setup.sh"):
         f = dest / name
         repo_owned.append(f)
         if f.exists():
-            print(f"kept:    {f}(リポ固有・保持)")
+            print(f"kept:    {f} (repo-specific, kept)")
         else:
             shutil.copy2(templates / name, f)
-            print(f"created: {f}(リポ固有 — この後で埋める)")
+            print(f"created: {f} (repo-specific — fill it in next)")
 
     for f in (setup, *repo_owned):
         f.chmod(f.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
     settings_path = repo / ".claude" / "settings.json"
     if merge_hook(settings_path):
-        print(f"wired:   {settings_path} に SessionStart hook を追加")
+        print(f"wired:   added the SessionStart hook to {settings_path}")
     else:
-        print(f"kept:    {settings_path}(hook 配線済み)")
+        print(f"kept:    {settings_path} (hook already wired)")
 
     print()
-    print("次にやること:")
-    print("  1. steps.sh の light_steps / verify と environment-setup.sh(重い導入)を実装する")
-    print("  2. ローカル安全確認: env -u CLAUDE_CODE_REMOTE bash scripts/remote-setup/setup.sh"
-          " → 無出力・exit 0")
-    print("  3. claude.ai/code の環境ダイアログ > Setup script に")
-    print("     environment-setup.sh の【内容を丸ごと】貼り付ける(1行参照は不可:")
-    print("     Setup script 実行時点ではリポジトリが存在しない前提)")
+    print("Next steps:")
+    print("  1. Implement light_steps / verify in steps.sh and environment-setup.sh (heavy installs)")
+    print("  2. Local safety check: env -u CLAUDE_CODE_REMOTE bash scripts/remote-setup/setup.sh"
+          " → no output, exit 0")
+    print("  3. In the claude.ai/code environment dialog > Setup script,")
+    print("     paste [the whole content] of environment-setup.sh (a one-line reference does not work:")
+    print("     the repository is assumed not to exist yet when the Setup script runs)")
 
 
 if __name__ == "__main__":

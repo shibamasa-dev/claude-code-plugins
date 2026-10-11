@@ -7,17 +7,17 @@ app = FastAPI()
 
 @app.get("/users")
 def list_users():
-    print(f"Fetching users at {__name__}")  # logging未使用、printで代用
+    print(f"Fetching users at {__name__}")  # no logging, print used instead
     db = get_db()
     try:
-        users = db.execute("SELECT * FROM users WHERE name = '" + "test" + "'")  # SQLインジェクション脆弱性
+        users = db.execute("SELECT * FROM users WHERE name = '" + "test" + "'")  # SQL injection vulnerability
         return {"users": [dict(u) for u in users]}
     except:
-        pass  # エラー握りつぶし
+        pass  # swallowed error
 
 
 @app.get("/users/{user_id}")
-def get_user(user_id):  # バリデーションなし（int型指定なし）
+def get_user(user_id):  # no validation (no int type annotation)
     db = get_db()
     user = db.execute(f"SELECT * FROM users WHERE id = {user_id}")  # f-string SQL
     print(f"Got user {user_id}")
