@@ -9,7 +9,7 @@ Files read only at recall time (memory bodies, reference/) are not counted as st
 Mixing them in leads to the "many files = heavy" misdiagnosis (criteria.md rule 1).
 
 usage: measure.py [--project DIR] [--home DIR] [--max-standing-kb 130]
-                  [--max-index-avg 100] [--json]
+                  [--max-index-avg 120] [--json]
 exit 0: ok / 1: over_threshold / 2: runtime error
 """
 import argparse
@@ -27,6 +27,13 @@ WIKI_RE = re.compile(r"\[\[([\w-]+)\]\]")
 def nbytes(p: Path) -> int:
     try:
         return p.stat().st_size
+    except OSError:
+        return 0
+
+
+def ascii_bytes(p: Path) -> int:
+    try:
+        return sum(b < 0x80 for b in p.read_bytes())
     except OSError:
         return 0
 
@@ -138,6 +145,7 @@ def main() -> int:
 
     data = collect(project, home)
     total = sum(r["bytes"] for r in data["standing"])
+    ascii_total = sum(ascii_bytes(Path(r["path"])) for r in data["standing"])
     idx = data["index"]
     breaches = []
     if total / 1024 > a.max_standing_kb:
@@ -153,7 +161,9 @@ def main() -> int:
         "breaches": breaches,
         "standing_total_bytes": total,
         "standing_total_kb": round(total / 1024, 1),
-        "tokens_estimate": total // 3,  # rough estimate for mostly-Japanese text; use /4 for mostly-English
+        # Rough estimate: ~4 UTF-8 bytes per token for mostly-ASCII (English) text,
+        # ~3 when multi-byte text (Japanese etc.) makes up 30% or more of the bytes.
+        "tokens_estimate": total // (4 if total and ascii_total / total > 0.7 else 3),
         "counts": {"standing_files": len(data["standing"]),
                    "conditional_rules": len(data["conditional"])},
         "index": idx,

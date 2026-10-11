@@ -119,7 +119,7 @@ The person who reads and runs the cases is often a manual tester who does not re
 
 The checking hook reads the blocks below at run time. The forbidden words are not written in the hook so that there is a single definition. Change one line here and the hook's verdict changes from the next run.
 
-Each line is matched as a case-sensitive substring of a line in the case file. Japanese words are kept for test cases written in Japanese.
+Each vague word is matched against every line of the case file: an English word as a whole word in any case (`Properly` matches, `incorrectly` does not), a Japanese word as a substring. Japanese words are kept for test cases written in Japanese.
 
 ### Vague words (BLOCK — must be rewritten if found)
 

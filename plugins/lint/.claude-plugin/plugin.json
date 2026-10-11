@@ -1,6 +1,6 @@
 {
   "name": "lint",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Linters for artifacts such as skills. Currently skill-lint (checks whether a skill contains information specific to the person, company or machine that made it) and a hook that prompts skill-lint after skill-creator",
   "author": {
     "name": "shibamasa-dev"

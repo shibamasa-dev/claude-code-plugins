@@ -2,7 +2,7 @@
 
 The first page of making a video. There are two entry points.
 
-- **Start from rough notes** (default): the human hands over only an impression, rough notes per scene and an asset list. The agent proposes the cut breakdown (the v0 cut sheet) and the music brief first, and the human corrects them. Handing someone a blank template stalls them, so recommend this one first
+- **Start from rough notes** (default): the human hands over only an impression, rough notes per scene and an asset list. The agent proposes the cut breakdown (the v1 cut sheet) and the music brief first, and the human corrects them. Handing someone a blank template stalls them, so recommend this one first
 - **Fill in the brief**: the human writes the template below, or the agent fills it in by asking questions
 
 ## Start from rough notes
