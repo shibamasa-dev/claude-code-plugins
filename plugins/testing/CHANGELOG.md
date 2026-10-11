@@ -1,6 +1,13 @@
 # Changelog
 
-testing プラグインの変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、版は plugin.json の `version`。
+Change history of the testing plugin. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
+
+## [0.2.0] - 2026-10-11
+
+### Changed
+- Messages, skill bodies, references, comments and tests are now in English. Japanese stays only in the skill descriptions' trigger phrases, in data the features need (patterns that match Japanese text, fixtures for Japanese input) and in `README.ja.md`.
+- testcase-lint: the vague-word list in the style guide (`lint:vague-words`) now also blocks the English words "correctly", "appropriately", "properly", "without problems", "reasonably" and "works normally". The Japanese words are still blocked
+- testcase-generator: the output section headings are now English (`## Scope`, `## Perspective decisions`, `## Test cases`, `## Self-check`, `## Execution path`, `## Points to confirm`, `## Proposed additions to the common perspectives`), and the section contents are written in the user's language
 
 ## [0.1.4] - 2026-10-11
 

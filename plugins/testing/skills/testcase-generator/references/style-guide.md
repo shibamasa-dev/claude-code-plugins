@@ -1,123 +1,127 @@
 ---
 name: style-guide
-description: テストケースの記述スタイル。Gherkin の形式・ステップの書き方・タグ・禁止語。プロダクト非依存。
+description: How to write test cases. Gherkin format, how to write steps, tags, forbidden words. Product-independent.
 last_reviewed: 2026-10-04
 review_after: 2027-04-04
 status: active
 ---
 
-# テストケース記述スタイルガイド
+# Test case style guide
 
-テストケースの合格条件は一つだけ。**書いた本人以外が、手順どおりに操作して、その場で Pass / Fail を決められること。** 以下のルールはすべてここから来ている。
+A test case has exactly one pass condition: **someone other than the author can follow the steps and decide Pass / Fail on the spot.** Every rule below comes from that.
 
-## 正本は Gherkin、表は後から作る
+## Gherkin is the source; tables come later
 
-ケースは最初に Gherkin で書き、スプレッドシートなどの一覧表が要るときは Gherkin から変換する。表から書き始めると書式の縛りが無いぶん「いい感じに動く」系の記述が紛れ込み、レビューで見分けにくい。Gherkin なら形が決まっているので、検証 Hook で機械的に弾ける。
+Write cases in Gherkin first. When a list such as a spreadsheet is needed, convert it from the Gherkin. Starting from a table means no format constraints, so "works nicely"-style wording slips in and is hard to spot in review. Gherkin has a fixed shape, so the checking hook can reject it mechanically.
 
-## 1 ケースの形
+Write cases in the user's language. Step text in Japanese (or any other language) is fine; keep the Gherkin keywords (`Feature`, `Scenario`, `Given`, `When`, `Then`, ...) in English, because the checking hook looks for `Scenario`.
+
+## Shape of one case
 
 ```gherkin
-Feature: <機能名>
+Feature: <feature name>
 
   @P1 @UI
-  Scenario: <確かめたいことを一文で>
-    Given <前提>
-    When  <操作>
-    Then  <期待結果>
+  Scenario: <what you want to confirm, in one sentence>
+    Given <precondition>
+    When  <action>
+    Then  <expected result>
 ```
 
-- タグは `Scenario:` / `Scenario Outline:` の真上に置く。`Feature:` の上に置くと配下の全ケースに継承され、ケースごとの優先度や実行方法を変えられなくなる
-- 同じ流れを値だけ変えて何度も確かめるなら `Scenario Outline` と `Examples` にまとめる
+- Put tags directly above `Scenario:` / `Scenario Outline:`. Tags above `Feature:` are inherited by every case under it, so you can no longer vary priority or execution method per case
+- When you check the same flow repeatedly with different values, combine them into a `Scenario Outline` with `Examples`
 
 ```gherkin
   @P2 @API
-  Scenario Outline: <確かめたいことを一文で>
-    Given <前提に <項目> を含む>
-    When  <操作>
-    Then  <期待結果に <期待値> を含む>
+  Scenario Outline: <what you want to confirm, in one sentence>
+    Given <a precondition that includes <item>>
+    When  <action>
+    Then  <an expected result that includes <expected>>
 
     Examples:
-      | 項目   | 期待値 |
-      | <実値> | <実値> |
+      | item         | expected     |
+      | <real value> | <real value> |
 ```
 
-- `Examples` の列はどれもステップのどこかで使う。使わない列があると、行ごとに何が違うのか読み手に伝わらない
+- Use every `Examples` column somewhere in the steps. An unused column leaves the reader unable to tell what differs between rows
 
-## ステップの書き方
+## Writing steps
 
-| ステップ | 書くもの | 形 |
+| Step | What to write | Form |
 |---|---|---|
-| Given | 操作を始める前に成り立っている状態 | 「〜している」「〜がある」 |
-| When | 実行者が行う操作。1 ステップに 1 操作 | 「〜する」 |
-| Then | 操作の結果として観測できること | 「〜が表示される」「〜になる」 |
+| Given | The state that holds before the action starts | "... is ...", "there is ..." |
+| When | The action the tester performs. One action per step | "does ..." |
+| Then | What can be observed as the result of the action | "... is displayed", "... becomes ..." |
 
-Then は**その場で真偽が決まる実値**で書く。「どうなっていれば合格か」を読み手が考え直す必要があるなら、まだ書けていない。
+Write Then with **real values whose truth is decided on the spot**. If the reader has to work out "what counts as passing", it is not written yet.
 
-| 書き直す前 | 書き直した後 |
+| Before | After |
 |---|---|
-| 一覧がきちんと出る | 一覧に「未処理」の行が 3 件並び、件数欄に「3」と出る |
-| 保存がうまくいく | 「保存しました」と表示され、再読み込み後も入力した住所が残っている |
-| 異常が起きない | 画面上部にエラー表示が無く、送信ボタンが押せる状態に戻る |
+| The list shows up fine | The list shows 3 rows with status "Pending", and the count field shows "3" |
+| Saving works | "Saved" is displayed, and the entered address is still there after reloading |
+| Nothing goes wrong | No error banner at the top of the screen, and the Submit button is clickable again |
 
 ---
 
-## タグ
+## Tags
 
-付けるタグは 3 種類。**優先度**と**実行方法**は全ケースに 1 つずつ必須、**自動化の扱い**は当てはまるときだけ付ける。実行方法と自動化の扱いは別の観点なので、片方で両方を表そうとしない（API で確かめ、かつ自動テストだけで扱うケースには両方付ける）。
+There are three kinds of tags. **Priority** and **execution method** are required, exactly one each, on every case; **automation** is added only when it applies. Execution method and automation are separate concerns, so do not use one to express both (a case checked via API and handled only by automated tests gets both).
 
-### 優先度（必須・1 つ）
+### Priority (required, one)
 
-| タグ | 目安 |
+| Tag | Guideline |
 |---|---|
-| `@P1` | 壊れると業務が止まる。金額や数量の計算、ログインと権限、データの登録・更新・削除が成功するか、主要な画面遷移が通るか |
-| `@P2` | 壊れると困るが、回避策がある。表示のずれ、検索条件や並び順、補助的な入力チェック、エラー文言 |
-| `@P3` | 壊れても業務は続けられる。見た目の整え、まれな組み合わせ、将来に備えた確認 |
+| `@P1` | If it breaks, the business stops. Amount and quantity calculations, login and permissions, whether data create/update/delete succeeds, whether the main screen transitions work |
+| `@P2` | It hurts if it breaks, but there is a workaround. Misaligned display, search conditions and sort order, secondary input checks, error wording |
+| `@P3` | The business continues even if it breaks. Visual polish, rare combinations, checks for future needs |
 
-判断に迷ったら「このケースが落ちたままでもリリースするか」を考える。しないなら `@P1`。
+When unsure, ask: "Would we release with this case still failing?" If not, it is `@P1`.
 
-**今の挙動を記録するだけのケースは別扱いにする。** 既知の不具合や、仕様が無いまま動いている挙動をそのまま固定するケースでは、上の問いが使えない（落ちる＝誰かが直した、になるため）。こうしたケースは Scenario 名に「現状の挙動を固定する」と書き、優先度は「この挙動が黙って変わったら誰がどれだけ困るか」で決める。
+**Cases that only record current behavior are treated separately.** For cases that pin down a known bug or behavior that runs without any spec, the question above does not work (failing means someone fixed it). Put "pins current behavior" in the Scenario name, and decide priority by "who would be hurt, and how much, if this behavior changed silently".
 
-### 実行方法（必須・1 つ）
+### Execution method (required, one)
 
-**手動で試す人が何を操作して始めるか**で決める。結果をどこで確認するかでは決めない。
+Decide by **what a manual tester operates to start the case**, not by where the result is checked.
 
-| タグ | 付けるとき |
+| Tag | When |
 |---|---|
-| `@UI` | 画面の操作から始められる。画面から試せるものは基本こちら |
-| `@API` | 画面に入口が無く、リクエストを直接送らないと始められない。画面からは作れない条件もこちら |
+| `@UI` | It can be started from a screen. Anything testable from a screen goes here by default |
+| `@API` | There is no entry point on a screen and it can only be started by sending a request directly. Conditions that cannot be created from a screen also go here |
 
-画面から試せるものを `@UI` に寄せるのは、API が正しい値を返すことと、その値を画面が正しく見せることが別の確認だから。API だけで合格にすると、画面側の不具合を見逃す。
+Testable-from-a-screen cases lean to `@UI` because "the API returns the right value" and "the screen shows that value correctly" are separate checks. Passing on the API alone misses screen-side bugs.
 
-対象に画面が無い場合（バックエンドの API、バッチ、データ連携、CLI）は、全ケースが `@API` になってよい。
+If the target has no screen (backend API, batch, data integration, CLI), all cases may be `@API`.
 
-### 自動化の扱い（任意）
+### Automation (optional)
 
-| タグ | 付けるとき |
+| Tag | When |
 |---|---|
-| `@AUTO` | 自動テストだけで扱い、手動テストからは外す |
+| `@AUTO` | Handled only by automated tests and excluded from manual testing |
 
-基準は「手で再現する手間が、そのケースで得られる安心に見合うか」。手で絶対にできないかどうかでは決めない。
+The criterion is "is the effort to reproduce it by hand worth the confidence the case gives". Not whether it is literally impossible by hand.
 
-- 付ける例: 外部サービスが落ちたときの応答、たまにしか起きない同時更新、長く待たないと来ない期限切れ、内部の状態を差し替えないと作れない条件
-- 付けない例: 準備が面倒なだけで手でも作れるもの（初期データの登録、権限の付け替え）
+- Add it for: responses when an external service is down, rare concurrent updates, expirations you would have to wait a long time for, conditions that require swapping internal state
+- Do not add it for: things that are tedious to prepare but doable by hand (registering initial data, changing permissions)
 
-迷うなら付けずに、出力の `## 確認が必要な箇所` に理由を書く。手動の対象から外すと、その時点から誰も目で確かめなくなる。黙って決めない。
+When unsure, do not add it; write the reason under `## Points to confirm` in the output. Once excluded from manual testing, nobody checks it by eye from then on. Do not decide silently.
 
-## 画面に出ている言葉で書く
+## Write in the words on the screen
 
-ケースを読んで実行するのは、コードを見ない手動テストの担当者であることが多い。API のパスや内部の定数名が書かれていても、画面のどこを触ればいいか分からない。
+The person who reads and runs the cases is often a manual tester who does not read code. API paths or internal constant names do not tell them where to touch on screen.
 
-- 画面に表示されている名前で書く。内部の名前との対応はプロジェクト側の `ui-terms.md`（内部用語と画面表示名の対応表）を見る
-- 対応が分からないときは名前を作らず、`## 確認が必要な箇所` に残す
-- 画面の無い対象では内部の識別子が出て当然。検証 Hook は WARN を出すだけで止めない。WARN が出たら、画面が無いから残しているのか、対応を調べ損ねているのかを出力に書く
+- Use the names shown on screen. For mapping internal names, see the project's `ui-terms.md` (internal term ↔ on-screen label)
+- If the mapping is unknown, do not invent a name; leave it under `## Points to confirm`
+- For targets without a screen, internal identifiers are natural. The checking hook only WARNs and does not block. When a WARN appears, state in the output whether you kept the term because there is no screen, or because you failed to look up the mapping
 
 ---
 
-## 禁止語の定義（機械可読）
+## Forbidden word definitions (machine-readable)
 
-検証 Hook はこのファイルの下のブロックを実行時に読む。禁止語を Hook 側に書かないのは、定義を 1 か所にするため。ここを 1 行直せば、次から Hook の判定も変わる。
+The checking hook reads the blocks below at run time. The forbidden words are not written in the hook so that there is a single definition. Change one line here and the hook's verdict changes from the next run.
 
-### あいまい語（BLOCK — 見つかったら書き直させる）
+Each line is matched as a case-sensitive substring of a line in the case file. Japanese words are kept for test cases written in Japanese.
+
+### Vague words (BLOCK — must be rewritten if found)
 
 <!-- lint:vague-words -->
 - 正しく
@@ -126,11 +130,17 @@ Then は**その場で真偽が決まる実値**で書く。「どうなって�
 - きちんと
 - 妥当に
 - 正常に動作
+- correctly
+- appropriately
+- properly
+- without problems
+- reasonably
+- works normally
 <!-- /lint:vague-words -->
 
-### 内部用語のパターン（WARN — 知らせるだけで止めない）
+### Internal term patterns (WARN — notify only, do not block)
 
-正規表現で書く。プロジェクト側に UI 用語の対応表が揃うまでは WARN のままにする。突き合わせる先が無いのに止めると、直しようがない。
+Written as regular expressions. Keep them as WARN until the project has a UI-terms mapping. Blocking with nothing to check against stops work with no way to fix it.
 
 <!-- lint:internal-term-patterns -->
 - /api/
