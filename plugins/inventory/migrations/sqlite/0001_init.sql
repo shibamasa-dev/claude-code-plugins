@@ -1,9 +1,12 @@
 -- Inventory schema, SQLite dialect. migrations/postgres/0001_init.sql is the same schema for Postgres.
 --
--- The bundled MCP server applies this file at startup and registers norm(text) on every connection
+-- The bundled MCP server applies this file when it first opens the database and registers norm(text) on every connection
 -- (SQLite has no normalize()). The triggers call norm(), so a client without it (sqlite3, DB Browser)
 -- can read every table but its writes to inv_items fail with "no such function: norm".
 -- Safe to run more than once: every statement is IF NOT EXISTS / ON CONFLICT DO NOTHING.
+--
+-- Don't write BEGIN, COMMIT or ROLLBACK in a migration file (this one or any later one): the server runs
+-- each file inside its own transaction, so it applies completely or not at all.
 --
 -- Timestamps are UTC text with milliseconds: 2026-10-11T09:30:00.123Z
 

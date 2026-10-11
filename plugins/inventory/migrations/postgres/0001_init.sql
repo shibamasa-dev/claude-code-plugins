@@ -1,9 +1,12 @@
 -- Inventory schema, Postgres dialect (Postgres 13+, Supabase). migrations/sqlite/0001_init.sql is the same schema for SQLite.
 --
--- Runs on its own, without the bundled MCP server: the server applies it at startup for database_url,
+-- Runs on its own, without the bundled MCP server: the server applies it when it first opens database_url,
 -- and over a connector Claude sends the whole file to the connector's migration tool (Supabase: apply_migration).
 -- Safe to run more than once: IF NOT EXISTS, CREATE OR REPLACE, DROP TRIGGER IF EXISTS, ON CONFLICT DO NOTHING.
 -- Objects go to the first schema on search_path (public on Supabase), hence the inv_ prefix.
+--
+-- Don't write BEGIN, COMMIT or ROLLBACK in a migration file (this one or any later one): the server runs
+-- each file inside its own transaction, so it applies completely or not at all.
 --
 -- Timestamps are UTC text with milliseconds, the same format as SQLite: 2026-10-11T09:30:00.123Z
 
