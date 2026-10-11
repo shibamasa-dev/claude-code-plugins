@@ -12,6 +12,8 @@ Where the data lives comes from the environment, which .mcp.json fills from user
     INVENTORY_DATABASE_URL  postgresql://... -> Postgres (psycopg is imported only then)
     INVENTORY_SQLITE_PATH   SQLite file; empty -> $CLAUDE_PLUGIN_DATA/inventory.sqlite3
     INVENTORY_ROUTE         'connector' -> refuse every call (the data lives behind a connector)
+The database is opened, and pending migrations applied, on the first tool call, never before
+`initialize` is answered: a host that doesn't respond must not stall the MCP handshake.
 A connection failure is reported as a tool error. The server never falls back to another store,
 which would split the data across two places.
 
@@ -30,6 +32,7 @@ SERVER_NAME = "inventory"
 SERVER_VERSION = "0.1.0"
 MIGRATIONS = Path(__file__).resolve().parent.parent / "migrations"
 MAX_ROWS = 500
+CONNECT_TIMEOUT_S = 10
 
 TOOLS = [
     {
@@ -51,7 +54,7 @@ TOOLS = [
     {
         "name": "apply_migrations",
         "description": (
-            "Apply pending schema migrations (they also run when the server starts) and report the backend "
+            "Apply pending schema migrations (they also run on the first tool call) and report the backend "
             "(sqlite or postgres), where the SQLite file is, and the applied schema versions. "
             "Call it first to check that the direct route works."
         ),
@@ -86,6 +89,7 @@ class SQLite:
         return cur.description, cur
 
     def run_script(self, sql: str):
+        # One transaction per migration file, which is why the files must not contain BEGIN or COMMIT
         try:
             self.conn.executescript("BEGIN IMMEDIATE;\n" + sql + "\nCOMMIT;")
         except BaseException:
@@ -103,14 +107,35 @@ class Postgres:
         except ImportError:
             raise RuntimeError("database_url is set but psycopg is missing: start the server with uv run --script")
 
+        self.psycopg = psycopg
+        self.url = url
         self.where = "database_url"
-        self.conn = psycopg.connect(url, autocommit=True)
+        self.conn = self.connect()
+
+    def connect(self):
+        return self.psycopg.connect(self.url, autocommit=True, connect_timeout=CONNECT_TIMEOUT_S)
+
+    def lost(self) -> bool:
+        return self.conn.closed or self.conn.broken
 
     def query(self, sql: str):
-        cur = self.conn.execute(sql)
+        """Run one statement. If the connection was lost (database restart, idle timeout, a network blip),
+        reconnect once and run it again. Other errors, such as a syntax error, are raised as they are."""
+        if self.lost():
+            self.conn = self.connect()
+        try:
+            cur = self.conn.execute(sql)
+        except self.psycopg.OperationalError:
+            if not self.lost():
+                raise
+            self.conn = self.connect()
+            cur = self.conn.execute(sql)
         return cur.description, cur
 
     def run_script(self, sql: str):
+        # One transaction per migration file, which is why the files must not contain BEGIN or COMMIT
+        if self.lost():
+            self.conn = self.connect()
         with self.conn.transaction():
             # Two servers starting at once must not both create the schema
             self.conn.execute("SELECT pg_advisory_xact_lock(hashtext('inv_schema_migrations'))")
@@ -164,14 +189,14 @@ def migrate(db) -> list:
 
 class State:
     db = None
-    startup_applied: list = []
+    applied_on_open: list = []
 
 
 def get_db():
     """Open and migrate on first use; retried on every call until it works (never falls back)."""
     if State.db is None:
         db = open_backend()
-        State.startup_applied = migrate(db)
+        State.applied_on_open = migrate(db)
         State.db = db
     return State.db
 
@@ -210,7 +235,7 @@ def tool_apply_migrations(_args: dict) -> dict:
     return {
         "backend": db.dialect,
         "database": db.where,
-        "applied_at_startup": State.startup_applied,
+        "applied_on_open": State.applied_on_open,
         "applied_now": now,
         "schema_versions": applied_versions(db),
     }
@@ -250,10 +275,6 @@ def send(obj: dict):
 
 
 def main():
-    try:
-        get_db()
-    except Exception as e:  # keep serving so the tools can report the error to Claude
-        print(f"inventory: database not ready: {e}", file=sys.stderr)
     for line in sys.stdin.buffer:
         if not line.strip():
             continue

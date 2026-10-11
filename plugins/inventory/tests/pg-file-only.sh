@@ -18,4 +18,4 @@ p -c "INSERT INTO inv_items (item_key, category, descr, aliases) VALUES ('iron-a
 row 'norm() search works without the MCP server' "$(yesno [ "$(p -c "SELECT item_key FROM inv_v_items WHERE search_text LIKE '%' || norm('ﾊﾝﾀﾞｺﾞﾃ') || '%' ESCAPE '\\'")" = iron-alientek-t80 ])" 'yes'
 row 'RLS is on for inv_items' "$(yesno [ "$(p -c "SELECT relrowsecurity FROM pg_class WHERE relname = 'inv_items'")" = t ])" 'yes'
 row 'the API role anon cannot read the views' "$(yesno [ "$(p -c "SELECT has_table_privilege('anon', 'inv_v_items', 'SELECT')")" = f ])" 'yes'
-row 'a later server start sees the schema as applied' "$(yesno grep -q '"applied_at_startup": \[\]' <<<"$(python3 "$CALL" --tool apply_migrations)")" 'yes'
+row 'a later server start sees the schema as applied' "$(yesno grep -q '"applied_on_open": \[\]' <<<"$(python3 "$CALL" --tool apply_migrations)")" 'yes'

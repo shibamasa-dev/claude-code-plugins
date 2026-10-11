@@ -11,6 +11,25 @@ row 'with route=connector every call is refused and points at the connector' "$(
 if is_postgres; then
   bad=$(INVENTORY_DATABASE_URL="${INVENTORY_DATABASE_URL%/*}/no_such_db" sql "SELECT 1")
   row 'a database_url that fails is an error, not a fallback to SQLite' "$(yesno grep -q '^ERROR' <<<"$bad")" 'yes'
+
+  # Cut the server's connection from outside between two calls (a database restart or an idle timeout looks the same)
+  cut="!psql '$INVENTORY_PG_ADMIN_URL' -X -q -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${INVENTORY_DATABASE_URL##*/}' AND pid <> pg_backend_pid()\""
+  reconnected() {  # a new backend pid after the cut, and no error
+    local a b; a=$(sed -n 1p <<<"$1"); b=$(sed -n 2p <<<"$1")
+    [[ "$b" =~ ^[0-9]+$ ]] && [ "$a" != "$b" ]
+  }
+  row 'after the connection is cut, the next call reconnects and succeeds' "$(yesno reconnected "$(python3 "$CALL" --value "SELECT pg_backend_pid()" "$cut" "SELECT pg_backend_pid()")")" 'yes'
+  kept() {  # the error comes back, and the same backend serves the next call
+    [ "$(sed -n 2p <<<"$1" | cut -c1-6)" = ERROR: ] && [ "$(sed -n 1p <<<"$1")" = "$(sed -n 3p <<<"$1")" ]
+  }
+  row 'a syntax error is returned as is and keeps the connection' "$(yesno kept "$(python3 "$CALL" --value "SELECT pg_backend_pid()" "SELEC 1" "SELECT pg_backend_pid()")")" 'yes'
+
+  # A host that never answers: the handshake must not wait for it, and the tool call gives up at the connect timeout
+  export INVENTORY_DATABASE_URL='postgresql://user@10.255.255.1/db'
+  quick_list() { local t=$SECONDS; [ "$(python3 "$CALL" --list)" = execute_sql,apply_migrations ] && [ $((SECONDS - t)) -le 5 ]; }
+  row 'initialize and tools/list answer at once with an unreachable host' "$(yesno quick_list)" 'yes'
+  timed_out() { local t=$SECONDS; grep -qi '^ERROR: .*timeout' <<<"$(sql "SELECT 1")" && [ $((SECONDS - t)) -le 20 ]; }
+  row 'the first tool call fails with a timeout error within the connect timeout' "$(yesno timed_out)" 'yes'
   echo '  (SQLite path rows skipped on Postgres)'
   exit 0
 fi

@@ -27,7 +27,7 @@ Saved settings: route = `${user_config.route}`, connector = `${user_config.conne
 
 ## 2. Schema changes
 
-- **direct**: the server applies new migrations by itself when it starts. Never run `ALTER` or other DDL by hand.
+- **direct**: the server applies new migrations by itself on its first tool call in a session. Never run `ALTER` or other DDL by hand.
 - **connector**: run `SELECT version FROM inv_schema_migrations` (an error saying the table doesn't exist means nothing is applied). For each file in `${CLAUDE_PLUGIN_ROOT}/migrations/postgres/` whose name (without `.sql`) isn't listed, in name order, send the whole file through the connector's migration tool, with the file name without `.sql` as the migration name. The files are safe to apply twice.
 
 ## 3. Search (the default operation)

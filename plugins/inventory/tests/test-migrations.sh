@@ -1,5 +1,5 @@
 #!/bin/bash
-# Migrations: applied at server start, recorded in inv_schema_migrations, and safe to apply twice.
+# Migrations: applied when the server first opens the database, recorded in inv_schema_migrations, and safe to apply twice.
 set -u
 . "$(dirname "$0")/lib.sh"
 
@@ -20,11 +20,11 @@ fingerprint() {
 
 fresh_db
 startup=$(python3 "$CALL" --tool apply_migrations)
-row 'first start applies 0001_init' "$(yesno grep -q '"applied_at_startup": \["0001_init"\]' <<<"$startup")" 'yes'
+row 'first start applies 0001_init' "$(yesno grep -q '"applied_on_open": \["0001_init"\]' <<<"$startup")" 'yes'
 row 'it is recorded in inv_schema_migrations' "$(yesno [ "$(val "SELECT version FROM inv_schema_migrations")" = 0001_init ])" 'yes'
 row 'the 27 seed categories are there' "$(yesno [ "$(val "SELECT count(*) FROM inv_categories")" = 27 ])" 'yes'
 again=$(python3 "$CALL" --tool apply_migrations)
-row 'a second start applies nothing' "$(yesno grep -q '"applied_at_startup": \[\], "applied_now": \[\]' <<<"$again")" 'yes'
+row 'a second start applies nothing' "$(yesno grep -q '"applied_on_open": \[\], "applied_now": \[\]' <<<"$again")" 'yes'
 
 # Apply the same file again on a database that already has data: forget the version, then restart the server
 load_fixtures
@@ -32,7 +32,7 @@ before=$(fingerprint)
 items_before=$(val "SELECT count(*) || ':' || sum(coalesce(qty, 0)) FROM inv_items")
 sql "DELETE FROM inv_schema_migrations" >/dev/null
 reapplied=$(python3 "$CALL" --tool apply_migrations)
-row 're-running 0001_init over an existing schema succeeds' "$(yesno grep -q '"applied_at_startup": \["0001_init"\]' <<<"$reapplied")" 'yes'
+row 're-running 0001_init over an existing schema succeeds' "$(yesno grep -q '"applied_on_open": \["0001_init"\]' <<<"$reapplied")" 'yes'
 row 're-running it leaves the schema unchanged' "$(yesno [ "$(fingerprint)" = "$before" ])" 'yes'
 row 're-running it leaves the rows unchanged' "$(yesno [ "$(val "SELECT count(*) || ':' || sum(coalesce(qty, 0)) FROM inv_items")" = "$items_before" ])" 'yes'
 row 're-running it does not duplicate the seed categories' "$(yesno [ "$(val "SELECT count(*) FROM inv_categories")" = 27 ])" 'yes'

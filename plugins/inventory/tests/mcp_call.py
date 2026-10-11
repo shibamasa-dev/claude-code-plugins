@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """Talk to the inventory MCP server over stdio the way Claude Code does, and print the results.
 
-    mcp_call.py [--value] SQL ...        one execute_sql call per SQL argument
+    mcp_call.py [--value] SQL ...        one execute_sql call per SQL argument, all to the same server process.
+                                         An argument starting with ! is a shell command run between two calls
+                                         (for example to cut the server's database connection); it prints nothing
     mcp_call.py --file FILE              one execute_sql call per statement in FILE (statements end with ';' at line end)
     mcp_call.py --tool NAME              call another tool (for example apply_migrations) with no arguments
-    mcp_call.py --list                   print the tool names from tools/list
+    mcp_call.py --list                   print the tool names from tools/list (no tool call)
 
 Each call prints one line: the tool's JSON result, or "ERROR: <message>" for a tool error.
 With --value, a result with rows prints only the first column of the first row ("" if there are no rows,
 NULL for a SQL NULL), so a test can compare it as a plain word.
 
+Requests go one at a time: each waits for its reply before the next is sent.
 The server runs as `python3 server/inventory_mcp.py` unless INVENTORY_SERVER_CMD overrides it
 (the Postgres runner uses `uv run --script`, which brings psycopg). The environment is passed through.
 """
@@ -41,27 +44,33 @@ def main():
         calls = [("execute_sql", {"query": s}) for s in args]
 
     cmd = shlex.split(os.environ.get("INVENTORY_SERVER_CMD", "")) or [sys.executable]
-    msgs = [{"jsonrpc": "2.0", "id": 0, "method": "initialize",
-             "params": {"protocolVersion": "2025-06-18", "capabilities": {},
-                        "clientInfo": {"name": "inventory-tests", "version": "0"}}},
-            {"jsonrpc": "2.0", "method": "notifications/initialized"},
-            {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}]
-    for i, (name, arguments) in enumerate(calls, start=2):
-        msgs.append({"jsonrpc": "2.0", "id": i, "method": "tools/call",
-                     "params": {"name": name, "arguments": arguments}})
-    stdin = "".join(json.dumps(m, ensure_ascii=False) + "\n" for m in msgs).encode("utf-8")
-    p = subprocess.run(cmd + [str(SERVER)], input=stdin, capture_output=True, timeout=120)
-    replies = {}
-    for line in p.stdout.decode("utf-8").splitlines():
-        r = json.loads(line)
-        replies[r.get("id")] = r
-    if 0 not in replies:
-        sys.exit(f"server did not answer initialize (exit {p.returncode}): {p.stderr.decode('utf-8', 'replace')}")
+    p = subprocess.Popen(cmd + [str(SERVER)], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+
+    def rpc(msg):
+        p.stdin.write((json.dumps(msg, ensure_ascii=False) + "\n").encode("utf-8"))
+        p.stdin.flush()
+        if "id" not in msg:
+            return None
+        line = p.stdout.readline()
+        if not line:
+            sys.exit(f"server exited without answering {msg.get('method')} (exit {p.wait()})")
+        return json.loads(line.decode("utf-8"))
+
+    rpc({"jsonrpc": "2.0", "id": 0, "method": "initialize",
+         "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                    "clientInfo": {"name": "inventory-tests", "version": "0"}}})
+    rpc({"jsonrpc": "2.0", "method": "notifications/initialized"})
+    tools = rpc({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
     if not calls:
-        print(",".join(t["name"] for t in replies[1]["result"]["tools"]))
-        return
-    for i in range(2, len(calls) + 2):
-        r = replies.get(i, {})
+        print(",".join(t["name"] for t in tools["result"]["tools"]))
+
+    for i, (name, arguments) in enumerate(calls, start=2):
+        query = arguments.get("query", "")
+        if name == "execute_sql" and query.startswith("!"):
+            subprocess.run(query[1:], shell=True, check=True, stdout=subprocess.DEVNULL)
+            continue
+        r = rpc({"jsonrpc": "2.0", "id": i, "method": "tools/call",
+                 "params": {"name": name, "arguments": arguments}})
         res = r.get("result") or {}
         text = (res.get("content") or [{}])[0].get("text", json.dumps(r.get("error")))
         if res.get("isError") or "error" in r:
@@ -79,6 +88,8 @@ def main():
                 print("NULL" if v is None else v)
         else:
             print(text)
+    p.stdin.close()
+    p.wait(timeout=60)
 
 
 if __name__ == "__main__":

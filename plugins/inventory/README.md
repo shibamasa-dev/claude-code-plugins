@@ -26,9 +26,9 @@ With no settings, it works right away with a SQLite file in the plugin's data di
 | Tool | What it does |
 |---|---|
 | `execute_sql` | Runs one SQL statement that Claude wrote and returns the rows as JSON (at most 500) |
-| `apply_migrations` | Applies pending migrations (they also run at startup) and reports the backend, the SQLite file and the schema versions |
+| `apply_migrations` | Applies pending migrations (they also run on the first tool call) and reports the backend, the SQLite file and the schema versions |
 
-On SQLite it also registers `norm(text)` (NFKC, then lower case) on every connection; on Postgres the migration creates the same function. The server never switches stores: if `database_url` doesn't connect, every call fails with the error.
+On SQLite it also registers `norm(text)` (NFKC, then lower case) on every connection; on Postgres the migration creates the same function. The server opens the database on the first tool call, not at startup, with a 10-second connect timeout, and reconnects once when a Postgres connection has dropped. It never switches stores: if `database_url` doesn't connect, every call fails with the error.
 
 ## Schema
 
