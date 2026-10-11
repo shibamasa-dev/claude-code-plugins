@@ -1,0 +1,62 @@
+{
+  "name": "inventory",
+  "version": "0.1.0",
+  "description": "An inventory database of the things you own (parts, tools, consumables, devices). Register items from photos, keep what couldn't be read as needs_review, and search with NFKC-normalized text. SQLite by default, or Postgres/Supabase directly or through a claude.ai connector",
+  "author": {
+    "name": "shibamasa-dev"
+  },
+  "homepage": "https://github.com/shibamasa-dev/claude-code-plugins/tree/main/plugins/inventory",
+  "repository": "https://github.com/shibamasa-dev/claude-code-plugins",
+  "license": "MIT",
+  "keywords": [
+    "inventory",
+    "sqlite",
+    "postgres",
+    "supabase",
+    "electronics"
+  ],
+  "userConfig": {
+    "sqlite_path": {
+      "type": "string",
+      "title": "SQLite database file",
+      "description": "Path of the SQLite file (~ is expanded; a relative path is relative to the plugin data directory). Empty means inventory.sqlite3 in the plugin data directory, which is deleted when you uninstall the plugin from the last scope unless you pass --keep-data. Ignored when database_url is set",
+      "required": false,
+      "default": ""
+    },
+    "database_url": {
+      "type": "string",
+      "title": "Postgres connection URL",
+      "description": "postgresql://... for Postgres or Supabase. When set, the bundled MCP server connects here instead of SQLite. Stored in secure storage, not settings.json",
+      "required": false,
+      "sensitive": true
+    },
+    "photo_dir": {
+      "type": "string",
+      "title": "Photo folder",
+      "description": "Where Claude copies item photos on this machine (photo_ref is relative to it). Empty means photos/ in the plugin data directory",
+      "required": false,
+      "default": ""
+    },
+    "route": {
+      "type": "string",
+      "title": "Route (saved by Claude)",
+      "description": "direct (the bundled MCP server) or connector (a claude.ai connector that runs SQL). Claude decides and saves this on first use. Empty means not decided yet",
+      "required": false,
+      "default": ""
+    },
+    "connector_id": {
+      "type": "string",
+      "title": "Connector server (saved by Claude)",
+      "description": "With route=connector: the server part of the connector's tool names, for example the <server> in mcp__<server>__execute_sql",
+      "required": false,
+      "default": ""
+    },
+    "connector_project_id": {
+      "type": "string",
+      "title": "Connector project ID (saved by Claude)",
+      "description": "With route=connector: the project_id (or similar target ID) the connector's SQL tool needs. Empty if it needs none",
+      "required": false,
+      "default": ""
+    }
+  }
+}
