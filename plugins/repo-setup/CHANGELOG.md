@@ -5,7 +5,7 @@ Change history of the repo-setup plugin (named devtools up to 0.2.2). Format fol
 ## [0.4.0] - 2026-10-11
 
 ### Changed
-- All messages, skills and docs are now in English. Skill descriptions keep the Japanese trigger phrases.
+- Messages, skill bodies, references, comments and tests are now in English. Japanese stays only in the skill descriptions' trigger phrases, in data the features need (patterns that match Japanese text, fixtures for Japanese input) and in `README.ja.md`.
 - remote-setup: the generated `scripts/remote-setup/*.sh` templates and the messages `setup.sh` prints into the session context (`[remote-setup] ...`) are now in English. Re-running `scaffold.py` overwrites an existing `setup.sh` with the English version; existing `steps.sh` / `environment-setup.sh` are kept as they are
 - codebase-doctor: refers to the section of testing's `perspectives-common.md` as section 7, "Project-specific perspectives" (the heading the English testing plugin uses)
 
