@@ -92,4 +92,4 @@ The plugin doesn't move files; you do.
   Remove only the confirmed names from `needs_review`, and set it to NULL when nothing is left (an empty string is rejected).
 - A new category: `INSERT INTO inv_categories (code, name, kind, sort) VALUES ('tool_scope', 'Oscilloscopes', 'tool', 325);`. `kind` is how things are counted and looked for: `part` (counted components), `consumable` (used up), `tool` (one unit each), `device` (finished products).
 - An item is gone for good: `DELETE FROM inv_items WHERE item_key = '...'` after the user confirms. Used up but kept on the list: `qty = 0`.
-- Write SQL that runs on both SQLite and Postgres: `||` and `coalesce`, `ON CONFLICT ... DO UPDATE`, `attrs ->> 'key'`, timestamps as text (`2026-10-11T09:30:00.123Z`). One statement per call.
+- Write SQL that runs on both SQLite and Postgres: `||` and `coalesce`, `ON CONFLICT ... DO UPDATE`, `attrs ->> 'key'` (it returns text in Postgres and a native value in SQLite, so cast before comparing numbers: `CAST(attrs ->> 'pack_qty' AS INTEGER) > 50`), timestamps as text (`2026-10-11T09:30:00.123Z`). One statement per call.
