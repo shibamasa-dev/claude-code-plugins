@@ -11,7 +11,7 @@ Claude writes the SQL. The schema enforces the rules that must hold on every wri
 
 ## 1. Pick the route (every time, before the first query)
 
-Saved settings: route = `${user_config.route}`, connector = `${user_config.connector_id}`, project = `${user_config.connector_project_id}`.
+Saved settings: route = `${user_config.route}`, connector = `${user_config.connector_id}`, project = `${user_config.connector_project_id}`. A value that still reads as a `${user_config...}` placeholder counts as empty.
 
 - **route is `direct`**: use this plugin's MCP server, the tools `execute_sql` and `apply_migrations` of the server `db` from the plugin `inventory` (`mcp__plugin_inventory_db__execute_sql`). It talks to SQLite, or to Postgres when the user has set `database_url`.
 - **route is `connector`**: use the saved connector's SQL tool (for Supabase, `execute_sql` with `project_id` = the saved project). Before the first query in a session, bring the schema up to date (section 2).
@@ -80,7 +80,7 @@ ON CONFLICT (item_key) DO UPDATE SET
 
 The plugin doesn't move files; you do.
 
-- **direct**: copy the photo with Bash into the photo folder, `${user_config.photo_dir}` (if that is empty, `${CLAUDE_PLUGIN_DATA}/photos/`), under a name that won't clash, and set `photo_ref` to the path relative to that folder. Optionally store its SHA-256 in `photo_sha256`.
+- **direct**: copy the photo with Bash into the photo folder, `${user_config.photo_dir}` (if that is empty or a placeholder, `${CLAUDE_PLUGIN_DATA}/photos/`), under a name that won't clash, and set `photo_ref` to the path relative to that folder. Optionally store its SHA-256 in `photo_sha256`.
 - **connector**: there is no local folder. If the user has a place for photos (a storage bucket, a drive), store it there and put its URL or ID in `photo_ref`. If not, leave `photo_ref` NULL and say in `note` that the row was read from a photo that wasn't kept.
 
 ## 5. Corrections and other changes
