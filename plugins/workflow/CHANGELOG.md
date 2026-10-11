@@ -2,6 +2,17 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.4.1] - 2026-10-11
+
+### Fixed
+- context-diet: the inventory proposal (criteria.md rule 11) now groups only connectors and personal skills, matching SKILL.md; plugin and account-side skills are left out because `skillOverrides` has no effect on them (disabling them through `enabledPlugins` is a separate topic).
+- context-diet: the docs now give the real default for the index average line length (120 chars; they said 100).
+- context-diet: `measure.py`'s `tokens_estimate` divides by 4 when more than 70% of the always-loaded bytes are ASCII, else by 3 (it always divided by 3, which assumed Japanese text).
+- weekly-orchestrator-base: the batch-table step now says to fill in Run via and Status before sending, then send (it contradicted itself).
+- dev-process: `agent-review.sh` runs `codex exec '/review'` without a hardcoded Japanese output directive.
+- dev-process: `review-and-fix` explains why `agent-review.sh` needs `dangerouslyDisableSandbox: true` (the codex CLI writes session state under `~/.codex`, outside the sandbox write allowlist) and that allowing `~/.codex` via `/sandbox` avoids it.
+- tests: `test-knowledge-freshness.sh` prints its exit-code, stderr and payload checks as verdict rows that `run-all.sh` counts, so a wrong exit code is now a mismatch, and its fixture lives in a fresh `mktemp -d` directory so concurrent runs don't collide. `run-all.sh` exits non-zero on any mismatch.
+
 ## [0.4.0] - 2026-10-11
 
 ### Changed

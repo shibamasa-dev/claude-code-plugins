@@ -3,8 +3,7 @@
 # Builds a fixture tree and runs a copy with ROOT swapped, so the real ~/.claude is untouched.
 set -u
 HOOK="$(cd "$(dirname "$0")/.." && pwd)/hooks/knowledge-freshness.py"
-F=/tmp/kf-fixture
-rm -rf "$F"
+F=$(mktemp -d "${TMPDIR:-/tmp}/kf-fixture.XXXX")
 mkdir -p "$F/rules" "$F/reference" "$F/skills/alpha" "$F/skills/beta"
 
 # expired (in the past)
@@ -30,8 +29,9 @@ echo '=== case 1: expired, unset and broken mixed ==='
 OUT=$(run)
 CODE=${OUT##*|}
 BODY=${OUT%|*}
-echo "  $CODE  (expect exit=0: never BLOCK)"
-echo "  stderr: $(wc -c <"$F/err" | tr -d ' ')B (expect 0)"
+[ "$CODE" = exit=0 ] && r=ok || r=ng; echo "  $CODE -> $r (expect ok: exit=0, never BLOCK)"
+E=$(wc -c <"$F/err" | tr -d ' ')
+[ "$E" = 0 ] && r=ok || r=ng; echo "  stderr ${E}B -> $r (expect ok: 0B)"
 python3 - "$BODY" <<'PY'
 import json, sys
 d = json.loads(sys.argv[1])
@@ -46,13 +46,16 @@ echo '=== case 2: completely silent when everything is fresh ==='
 rm -f "$F/rules/expired.md" "$F/reference/no-frontmatter.md" "$F/skills/beta/SKILL.md" "$F/skills/alpha/SKILL.md"
 rmdir "$F/skills/alpha" "$F/skills/beta" 2>/dev/null
 OUT2=$(run)
-echo "  ${OUT2##*|}  (expect exit=0)"
-echo "  stdout: ${#OUT2} chars, payload $(( ${#OUT2} - ${#CODE} - 1 ))B (expect 0)"
+CODE2=${OUT2##*|}
+[ "$CODE2" = exit=0 ] && r=ok || r=ng; echo "  $CODE2 -> $r (expect ok: exit=0)"
+P=$(( ${#OUT2} - ${#CODE2} - 1 ))
+[ "$P" = 0 ] && r=ok || r=ng; echo "  payload ${P}B -> $r (expect ok: 0B)"
 
 echo
 echo '=== case 3: does not crash when the directories are gone ==='
 rm -rf "$F/rules" "$F/reference" "$F/skills"
 OUT3=$(run)
-echo "  ${OUT3##*|}  (expect exit=0)"
+CODE3=${OUT3##*|}
+[ "$CODE3" = exit=0 ] && r=ok || r=ng; echo "  $CODE3 -> $r (expect ok: exit=0)"
 
 rm -rf "$F"

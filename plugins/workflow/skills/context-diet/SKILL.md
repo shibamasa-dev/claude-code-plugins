@@ -30,7 +30,7 @@ python3 scripts/standing/measure.py --project <project root>   # defaults to cwd
 
 - Scope: global CLAUDE.md / `~/.claude/rules/*.md` (only those without frontmatter `paths:`) / project CLAUDE.md, AGENTS.md, `.claude/CLAUDE.md` plus one level of `@import` / `.claude/rules/` / memory index MEMORY.md
 - Output: JSON (total KB, token estimate, index line-length distribution, index ↔ body consistency, broken `[[links]]`, top files)
-- exit 0 = ok / 1 = over threshold (default thresholds: always-loaded total 130KB, index average line length 100 chars. Change with `--max-standing-kb` / `--max-index-avg`)
+- exit 0 = ok / 1 = over threshold (default thresholds: always-loaded total 130KB, index average line length 120 chars. Change with `--max-standing-kb` / `--max-index-avg`)
 - Local reads only, no auth needed, runs inside the sandbox
 
 **If ok, finish Phase A with a one-line report.** Grooming within the threshold is a waste of time (criteria in `references/criteria.md`). **But don't end the conversation here — move on to Phase B.**

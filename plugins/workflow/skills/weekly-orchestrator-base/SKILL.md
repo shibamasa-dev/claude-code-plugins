@@ -64,7 +64,7 @@ Details (how to call each route, how to receive reports, how to wind down) are i
 For separate sessions, use the first route available, in this order: ① `spawn_task` ② a skill or mechanism that can start another session in a waiting state without starting work right away (if the environment has one; do not configure it to run unattended) ③ a prompt for pasting plus `handoff write` to leave the entry point.
 
 - Write each prompt from the skeleton in `references/task-prompt.md`, **in full for every batch** (the receiver knows neither the history nor the other batches' prompts)
-- Once sent, fill in "Run via" and "Status" (`Running`) in the plan section's batch table. Do not send before writing
+- Before sending, fill in "Run via" and "Status" (`Running`) in the plan section's batch table; then send
 - A subagent's final report arrives in its completion notification. A separate session's interim and final reports arrive by SendMessage (write the recipient = the orchestrator's session name into the prompt)
 
 ### 4. Receive the results

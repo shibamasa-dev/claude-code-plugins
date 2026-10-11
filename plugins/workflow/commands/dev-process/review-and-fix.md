@@ -28,7 +28,7 @@ A workflow that runs AI reviews with multiple agents, evaluates the results, and
    - Output files: `.context/review/{YYYYMMDDHHMMSS}_review[_{title}_by_{agent}].md`
    - **Important**: pass these parameters to the Bash tool
      - `run_in_background: true`
-     - `dangerouslyDisableSandbox: true`
+     - `dangerouslyDisableSandbox: true` (the codex CLI writes its session state under `~/.codex`, which is outside the sandbox's write allowlist; alternatively the user can allow `~/.codex` via `/sandbox` and then this is not needed)
 2. The review script notifies its messages asynchronously, so end for now without waiting for the script to finish.
 
 ---
