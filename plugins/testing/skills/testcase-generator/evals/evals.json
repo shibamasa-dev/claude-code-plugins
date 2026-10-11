@@ -6,7 +6,7 @@
       "id": 0,
       "name": "gas-apikey-dopost-no-project-layer",
       "prompt": "In <your-gas-project>, for the GAS file that has a doPost with API key validation, write test cases around doPost and the key validation and request handling it calls. There is no spec, so derive them from the code.",
-      "expected_output": "A table marking each perspective In scope / Out of scope, and Gherkin test cases. This repo has no .claude/knowledge/, so \"No project-specific perspectives (designed from the common layer only)\" is stated. Invalid-value cases such as API key not set, wrong key, and missing payload are included.",
+      "expected_output": "A table marking each perspective In scope / Out of scope / Not applicable, and Gherkin test cases. This repo has no .claude/knowledge/, so \"No project-specific perspectives (designed from the common layer only)\" is stated. Invalid-value cases such as API key not set, wrong key, and missing payload are included.",
       "files": [],
       "assertions": [
         {
@@ -16,7 +16,7 @@
         },
         {
           "id": "a0-2",
-          "text": "Every perspective is marked In scope / Out of scope, and each Out of scope has a one-line reason"
+          "text": "Every perspective is marked In scope / Out of scope / Not applicable, and each Out of scope / Not applicable has a one-line reason"
         },
         {
           "id": "a0-3a",

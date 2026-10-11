@@ -15,7 +15,7 @@ Why it is needed:
   So it is **opt-in**:
     1. extension .feature / .gherkin
     2. .md files whose frontmatter has `testcase: true`
-  Anything else exits 0 immediately. On top of that, nothing is checked if the body has no "Scenario" (a second safety valve).
+  Anything else exits 0 immediately. On top of that, nothing is checked if the body has no "Scenario" or "シナリオ" (a second safety valve).
   * These two conditions put style-guide.md itself out of scope even though it **lists the forbidden words as examples**
     (.md without the testcase flag). The structure prevents it from blocking on itself.
 
@@ -46,6 +46,13 @@ SPEC = os.path.normpath(os.path.join(
 ))
 TARGET_EXT = (".feature", ".gherkin")
 MAX_BYTES = 512 * 1024  # do not read huge files (prefer unchecked over misfiring)
+
+
+def has_word(word: str, line: str) -> bool:
+    """ASCII words match as whole words, ignoring case; other words (Japanese) as substrings."""
+    if word.isascii():
+        return re.search(rf"\b{re.escape(word)}\b", line, re.I) is not None
+    return word in line
 
 
 def read_block(spec_text: str, tag: str) -> list[str]:
@@ -104,8 +111,8 @@ def main() -> None:
         body = open(path, encoding="utf-8", errors="replace").read()
     except OSError:
         sys.exit(0)
-    if "Scenario" not in body:
-        sys.exit(0)  # no Gherkin, nothing to check
+    if not re.search(r"Scenario|シナリオ", body):
+        sys.exit(0)  # no Gherkin (English or Japanese keywords), nothing to check
 
     try:
         spec_text = open(SPEC, encoding="utf-8", errors="replace").read()
@@ -129,7 +136,7 @@ def main() -> None:
         (i, w, ln.strip())
         for i, ln in enumerate(lines, 1)
         for w in vague
-        if w in ln
+        if has_word(w, ln)
     ]
     internal_hits = []
     for pat in patterns:
