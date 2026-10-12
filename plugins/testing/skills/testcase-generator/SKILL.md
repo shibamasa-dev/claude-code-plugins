@@ -157,7 +157,10 @@ Do not leave `## Execution path` empty. Test cases that were only designed have 
 
 ## Confirm the checking hook actually works
 
-Enforcing the style guide's forbidden words mechanically requires the testing plugin's `testcase-lint` hook to be enabled (the plugin's `hooks/hooks.json` wires it to `Edit|Write`). **If the plugin is disabled, or only the skill was copied elsewhere, it is not wired.** The manual run below is the check: if the script is not found, the hook is not wired.
+Enforcing the style guide's forbidden words mechanically requires the testing plugin's `testcase-lint` hook to be enabled (the plugin's `hooks/hooks.json` wires it to `Edit|Write`). **If the plugin is disabled, or only the skill was copied elsewhere, it is not wired.** Check the two things separately:
+
+- **Is the hook wired?** The testing plugin shows as enabled in `/plugin` (or `claude plugin list`), and a `Write` of a temporary file with one deliberate violation is blocked. Running the script by hand doesn't show this
+- **Does the script work on this artifact?** The manual run below. If it says the script can't be found, the plugin isn't installed here, so the hook isn't wired either
 
 These three happen even when wired:
 
