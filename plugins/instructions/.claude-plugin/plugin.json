@@ -1,0 +1,16 @@
+{
+  "name": "instructions",
+  "version": "0.1.0",
+  "description": "A mod that loads bundled instruction files the way Claude Code loads ~/.claude/CLAUDE.md. Currently one file: communication (reply language, linking files the user has to look at)",
+  "author": {
+    "name": "shibamasa-dev"
+  },
+  "homepage": "https://github.com/shibamasa-dev/claude-code-plugins/tree/main/plugins/instructions",
+  "repository": "https://github.com/shibamasa-dev/claude-code-plugins",
+  "license": "MIT",
+  "keywords": [
+    "claude-md",
+    "instructions",
+    "mods"
+  ]
+}
