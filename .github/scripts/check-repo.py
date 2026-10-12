@@ -51,21 +51,30 @@ DESCRIPTION_MAX = 1024
 
 
 def description(frontmatter):
-    """The description value: a one-line scalar, or a block scalar (| or >) folded to one line."""
+    """The description value as YAML parses it: a one-line scalar, or a block scalar (| keeps line breaks,
+    > folds them to spaces) with its chomping (a trailing newline unless the indicator has -)."""
     lines = frontmatter.splitlines()
     for i, line in enumerate(lines):
         m = re.match(r"description:\s*(.*)$", line)
         if not m:
             continue
         value = m.group(1).strip()
-        if value[:1] in "|>":
-            block = []
-            for nxt in lines[i + 1:]:
-                if nxt and not nxt[0].isspace():
-                    break
-                block.append(nxt.strip())
-            return " ".join(b for b in block if b)
-        return value[1:-1] if len(value) > 1 and value[0] == value[-1] and value[0] in "\"'" else value
+        if value[:1] not in "|>":
+            return value[1:-1] if len(value) > 1 and value[0] == value[-1] and value[0] in "\"'" else value
+        block = []
+        for nxt in lines[i + 1:]:
+            if nxt.strip() and not nxt[0].isspace():
+                break
+            block.append(nxt.strip())
+        while block and not block[-1]:
+            block.pop()
+        if value[0] == "|":
+            text = "\n".join(block)
+        else:
+            text = ""
+            for b in block:
+                text += (b if not text or text.endswith("\n") else " " + b) if b else "\n"
+        return text if "-" in value or not text else text + "\n"
     return ""
 
 
