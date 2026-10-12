@@ -2,6 +2,11 @@
 
 Change history of the repo-setup plugin (named devtools up to 0.2.2). Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
 
+## [0.4.1] - 2026-10-12
+
+### Changed
+- remote-setup: the skill description is written on one line (it was a `>-` block). The text is the same; the repo's check measures descriptions only on one line.
+
 ## [0.4.0] - 2026-10-11
 
 ### Changed

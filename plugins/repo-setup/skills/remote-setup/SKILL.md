@@ -1,17 +1,6 @@
 ---
 name: remote-setup
-description: >-
-  Generates or updates a setup scaffold in a repository for remote execution environments
-  (claude.ai/code cloud environments and Cowork cloud VMs). The output is gated so it never fires locally.
-  Always use this skill when the user says "add/update remote setup", "make this repo usable in the
-  cloud environment", "I want to run this repo on Cowork / claude.ai/code", "install dependencies when
-  a remote session starts", "I want to use heavy tools such as CAD in the cloud", "remote setup",
-  "create a session-start hook", or in Japanese 「リモートセットアップを追加/更新して」
-  「クラウド環境でこのリポを使えるように」「Cowork / claude.ai/code でこのリポを動かしたい」
-  「リモートセッション開始時に依存を入れたい」「CAD など重いツールをクラウドで使いたい」
-  「session-start hook を作って」. It splits the tools a repo needs remotely into the environment layer
-  (environment-setup.sh) and the session layer (steps.sh) and wires them up. Also use it to add or update
-  tools in an existing scaffold, and for questions about supporting Codex / Cursor cloud agents.
+description: Generates or updates a setup scaffold in a repository for remote execution environments (claude.ai/code cloud environments and Cowork cloud VMs). The output is gated so it never fires locally. Always use this skill when the user says "add/update remote setup", "make this repo usable in the cloud environment", "I want to run this repo on Cowork / claude.ai/code", "install dependencies when a remote session starts", "I want to use heavy tools such as CAD in the cloud", "remote setup", "create a session-start hook", or in Japanese 「リモートセットアップを追加/更新して」 「クラウド環境でこのリポを使えるように」「Cowork / claude.ai/code でこのリポを動かしたい」 「リモートセッション開始時に依存を入れたい」「CAD など重いツールをクラウドで使いたい」 「session-start hook を作って」. It splits the tools a repo needs remotely into the environment layer (environment-setup.sh) and the session layer (steps.sh) and wires them up. Also use it to add or update tools in an existing scaffold, and for questions about supporting Codex / Cursor cloud agents.
 last_reviewed: 2026-09-06
 review_after: 2027-03-05
 ---
