@@ -21,6 +21,7 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 /plugin install creative@shibamasa-plugins
 /plugin install lint@shibamasa-plugins
 /plugin install inventory@shibamasa-plugins
+/plugin install instructions@shibamasa-plugins
 ```
 
 どれも独立していて、必要なものだけ入れられる。

@@ -21,6 +21,7 @@ A Claude Code plugin marketplace: guard hooks and workflow skills from daily dev
 /plugin install creative@shibamasa-plugins
 /plugin install lint@shibamasa-plugins
 /plugin install inventory@shibamasa-plugins
+/plugin install instructions@shibamasa-plugins
 ```
 
 Every plugin is independent. Install only the ones you need.
