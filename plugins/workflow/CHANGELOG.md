@@ -2,6 +2,11 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.6.0] - 2026-10-13
+
+### Added
+- choice-board: a skill for deciding on 10 or more items. Each item becomes a row on a board Artifact (one per project) with its options, the recommended one marked, and a memo; choices are saved to the Artifact database and read back with `ArtifactData`. Template in `assets/board.html`, design rules in `references/design.md`.
+
 ## [0.5.0] - 2026-10-12
 
 ### Removed
