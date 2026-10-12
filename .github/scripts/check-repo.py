@@ -3,8 +3,8 @@
 
 1. The frontmatter name in skills/<dir>/SKILL.md matches the directory name
    (validate warns about a missing name but lets a mismatch with the directory name through), and its
-   description is at most 1024 characters (claude.ai cuts a longer one when it syncs the plugin, while
-   validate passes it)
+   description is one line of at most 1024 characters (claude.ai cuts a longer one when it syncs the
+   plugin, while validate passes it; a one-line value can be measured without a YAML parser)
 2. No personal environment leaks into the public repo: absolute home directory paths and email
    addresses (noreply and example domains excluded). Extra blocked terms come from the environment
    variable BLOCKED_PATTERNS (newline-separated regexes; CI passes it from a repo secret). Writing the
@@ -50,31 +50,14 @@ SWITCHER = {"README.md": "English | [日本語](README.ja.md)", "README.ja.md": 
 DESCRIPTION_MAX = 1024
 
 
-def description(frontmatter):
-    """The description value as YAML parses it: a one-line scalar, or a block scalar (| keeps line breaks,
-    > folds them to spaces) with its chomping (a trailing newline unless the indicator has -)."""
-    lines = frontmatter.splitlines()
-    for i, line in enumerate(lines):
-        m = re.match(r"description:\s*(.*)$", line)
-        if not m:
-            continue
-        value = m.group(1).strip()
-        if value[:1] not in "|>":
-            return value[1:-1] if len(value) > 1 and value[0] == value[-1] and value[0] in "\"'" else value
-        block = []
-        for nxt in lines[i + 1:]:
-            if nxt.strip() and not nxt[0].isspace():
-                break
-            block.append(nxt.strip())
-        while block and not block[-1]:
-            block.pop()
-        if value[0] == "|":
-            text = "\n".join(block)
-        else:
-            text = ""
-            for b in block:
-                text += (b if not text or text.endswith("\n") else " " + b) if b else "\n"
-        return text if "-" in value or not text else text + "\n"
+def frontmatter(text):
+    """The lines between the opening --- line and the next --- line ("" if there is none)."""
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return ""
+    for n, line in enumerate(lines[1:], 1):
+        if line.strip() == "---":
+            return "\n".join(lines[1:n])
     return ""
 
 
@@ -99,12 +82,17 @@ for f in filter(None, FILES):
     except (IsADirectoryError, FileNotFoundError, subprocess.CalledProcessError):
         continue
     if f.endswith("/SKILL.md") and "/skills/" in f:
-        head = text.split("---")
-        m = re.search(r"^name:\s*(\S+)", head[1] if len(head) > 2 else "", re.M)
+        fm = frontmatter(text)
+        m = re.search(r"^name:\s*(\S+)", fm, re.M)
         want = os.path.basename(os.path.dirname(f))
         if not m or m.group(1).strip("\"'") != want:
             errors.append(f"{f}: frontmatter name does not match the directory name '{want}'")
-        desc = description(head[1] if len(head) > 2 else "")
+        d = re.search(r"^description:[ \t]*(.*)$", fm, re.M)
+        desc = d.group(1).strip() if d else ""
+        if desc[:1] in ("|", ">"):
+            errors.append(f"{f}: write the frontmatter description on one line (a | or > block isn't measured)")
+        elif desc[:1] in "\"'" and len(desc) > 1 and desc[-1] == desc[0]:
+            desc = desc[1:-1]
         if len(desc) > DESCRIPTION_MAX:
             errors.append(f"{f}: frontmatter description is {len(desc)} characters (at most {DESCRIPTION_MAX})")
     m = README_EN.fullmatch(f)
