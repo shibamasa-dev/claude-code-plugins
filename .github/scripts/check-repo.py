@@ -2,7 +2,9 @@
 """Check what claude plugin validate doesn't (CI and local runs use the same script).
 
 1. The frontmatter name in skills/<dir>/SKILL.md matches the directory name
-   (validate warns about a missing name but lets a mismatch with the directory name through)
+   (validate warns about a missing name but lets a mismatch with the directory name through), and its
+   description is at most 1024 characters (claude.ai cuts a longer one when it syncs the plugin, while
+   validate passes it)
 2. No personal environment leaks into the public repo: absolute home directory paths and email
    addresses (noreply and example domains excluded). Extra blocked terms come from the environment
    variable BLOCKED_PATTERNS (newline-separated regexes; CI passes it from a repo secret). Writing the
@@ -45,6 +47,28 @@ KANA = re.compile(r"[\u3040-\u309f\u30a0-\u30ff\uff66-\uff9f]")  # Hiragana, Kat
 SWITCHER = {"README.md": "English | [日本語](README.ja.md)", "README.ja.md": "[English](README.md) | 日本語"}
 
 
+DESCRIPTION_MAX = 1024
+
+
+def description(frontmatter):
+    """The description value: a one-line scalar, or a block scalar (| or >) folded to one line."""
+    lines = frontmatter.splitlines()
+    for i, line in enumerate(lines):
+        m = re.match(r"description:\s*(.*)$", line)
+        if not m:
+            continue
+        value = m.group(1).strip()
+        if value[:1] in "|>":
+            block = []
+            for nxt in lines[i + 1:]:
+                if nxt and not nxt[0].isspace():
+                    break
+                block.append(nxt.strip())
+            return " ".join(b for b in block if b)
+        return value[1:-1] if len(value) > 1 and value[0] == value[-1] and value[0] in "\"'" else value
+    return ""
+
+
 def has_switcher(name, text):
     # Line 3 (title, blank line, switcher) must be exactly the switcher, so a stray link elsewhere doesn't count
     lines = text.splitlines()
@@ -71,6 +95,9 @@ for f in filter(None, FILES):
         want = os.path.basename(os.path.dirname(f))
         if not m or m.group(1).strip("\"'") != want:
             errors.append(f"{f}: frontmatter name does not match the directory name '{want}'")
+        desc = description(head[1] if len(head) > 2 else "")
+        if len(desc) > DESCRIPTION_MAX:
+            errors.append(f"{f}: frontmatter description is {len(desc)} characters (at most {DESCRIPTION_MAX})")
     m = README_EN.fullmatch(f)
     if m:
         if f"{m.group(1) or ''}README.ja.md" not in FILES:

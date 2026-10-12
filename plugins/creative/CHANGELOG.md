@@ -2,6 +2,11 @@
 
 Changelog of the creative plugin (named docs up to 0.1.4). Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow `version` in plugin.json.
 
+## [0.3.2] - 2026-10-12
+
+### Fixed
+- motion-video: the skill description is 996 characters (it was 1,287). claude.ai cuts a description at 1,024 characters when it syncs the plugin, so the end of the trigger list and the limits were lost there.
+
 ## [0.3.1] - 2026-10-11
 
 ### Fixed
