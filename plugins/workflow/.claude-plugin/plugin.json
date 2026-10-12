@@ -1,6 +1,6 @@
 {
   "name": "workflow",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Skills and hooks for the development flow from request to merge (including how PR reviews are routed and awaited), issue operations, session handoffs and runbook recording, plus a mod that writes usage limits to a file",
   "author": {
     "name": "shibamasa-dev"

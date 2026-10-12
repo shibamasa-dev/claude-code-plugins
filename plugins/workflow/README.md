@@ -28,7 +28,7 @@ If you used the former `review` plugin, uninstall it and move its settings to th
 
 | Hook | When | What it does |
 |---|---|---|
-| handoff | Session start | Injects the "next entry point" left by the previous session. Write and clear entries with the `handoff` command |
+| handoff | Session start | Injects the "next entry point" left by the previous session. Write an entry with `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/handoff.py" write --entry <owner>/<repo>#<n> --state "..." --next "..."` and clear one with `... consume --entry <entry>`; the injected text prints the exact command |
 | issue-writeback | Session start, prompt submit, stop, session end, after issue operations | Reminds you if decisions were not written back to an issue you read |
 | runbook | After browser or computer-use actions, on stop, at session start | Records browser and screen-operation steps, and stops if you forgot to write the runbook |
 | knowledge-freshness | Session start | Reports knowledge files past their review date in one line |

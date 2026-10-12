@@ -13,10 +13,10 @@ Applies only to projects that put .claude/full-test.json at the repository root 
     "gate": ["build-release\\.sh"]        # block these commands if the target paths changed since the last full run
   }
 
-Usage:
-  full-test-gate run      Run the full test suite and record it if it passes. It records only when
-                          "the target paths have the same content as base" (results from a work branch are not recorded).
-  full-test-gate status   Show the last record and how much has changed since
+Usage (python3 "<plugin root>/hooks/full-test-gate.py" <subcommand>; the hook messages print the full path):
+  full-test-gate.py run      Run the full test suite and record it if it passes. It records only when
+                             "the target paths have the same content as base" (results from a work branch are not recorded).
+  full-test-gate.py status   Show the last record and how much has changed since
 As a hook (branches on hook_event_name from stdin):
   SessionStart         Print a one-line notice when a threshold is exceeded (does not block)
   PreToolUse(Bash)     Deny commands matching gate when there are unverified changes
@@ -27,6 +27,7 @@ import hashlib, json, os, re, subprocess, sys, time
 
 STATE_DIR = os.path.expanduser(os.environ.get("FULL_TEST_STATE_DIR", "~/.claude/state/full-test"))
 DEFAULT_THRESHOLDS = {"lines": 500, "commits": 10, "days": 14}
+SELF = f'python3 "{os.path.abspath(__file__)}"'  # how messages tell Claude to run this script
 
 
 def git(cwd, *args):
@@ -139,7 +140,7 @@ def cmd_status(cwd):
         print("Not configured (no .claude/full-test.json)"); return 0
     state = load_state(sp)
     if not state:
-        print("No full test run recorded. Run: full-test-gate run"); return 0
+        print(f"No full test run recorded. Run: {SELF} run"); return 0
     m = measure(top, cfg, state["sha"], base_of(top, cfg))
     if m is None:
         print(f"Cannot compare ({base_of(top, cfg)} or the recorded {state['sha'][:8]} is not available locally). Run git fetch and try again")
@@ -188,7 +189,7 @@ def hook_session_start(cwd):
         return
     state = load_state(sp)
     if not state:
-        print(f"[full-test] No full test run is recorded. Run `full-test-gate run` once while in the same state as "
+        print(f"[full-test] No full test run is recorded. Run `{SELF} run` once while in the same state as "
               f"{base_of(top, cfg)}; after that you will be notified by how much has changed.")
         return
     m = measure(top, cfg, state["sha"], base_of(top, cfg))
@@ -203,7 +204,7 @@ def hook_session_start(cwd):
         over.append("days")
     if over:
         print(f"[full-test] Time for a full test run. {text} (thresholds exceeded: {', '.join(over)}). "
-              f"At a break in your work, run `full-test-gate run` while in the same state as {base_of(top, cfg)}.")
+              f"At a break in your work, run `{SELF} run` while in the same state as {base_of(top, cfg)}.")
 
 
 def hook_pre_bash(cwd, command):
@@ -219,7 +220,7 @@ def hook_pre_bash(cwd, command):
                   f"{m['files']} files in the target paths since {state['sha'][:8]}).")
     else:
         reason = "No full test run is recorded."
-    reason += f" First pass `full-test-gate run` while in the same state as {base_of(top, cfg)}."
+    reason += f" First pass `{SELF} run` while in the same state as {base_of(top, cfg)}."
     print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                              "permissionDecision": "deny",
                                              "permissionDecisionReason": "[full-test] " + reason}},

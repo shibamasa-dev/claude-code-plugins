@@ -13,13 +13,14 @@ including the forms with no number or with a branch name.)
 State is ~/.claude/state/issue-writeback/<session_id>.json (per session; parallel sessions don't mix).
 Whatever happens it never raises and exits 0 (the Stop block is the only output that stops anything).
 
-CLI: issue-writeback dismiss OWNER/REPO#N --session <id> [--why "..."]   # run by Claude
-     issue-writeback status [--pending]                                   # tracking status of all sessions (joined with claude agents --json)
+CLI: issue-writeback.py dismiss OWNER/REPO#N --session <id> [--why "..."]   # run by Claude
+     issue-writeback.py status [--pending]                                # tracking status of all sessions (joined with claude agents --json)
 """
 import fcntl, hashlib, json, os, re, sys, time
 from datetime import datetime, timedelta
 
 STATE_DIR = os.path.expanduser("~/.claude/state/issue-writeback")
+SELF = f'python3 "{os.path.abspath(__file__)}"'  # how messages tell Claude to run this script
 K_STOPS = 3          # block after this many Stops since the read (or since the last nag)
 MAX_NAGS = 3         # max blocks per issue (silent after that)
 GC_DAYS = 30         # clean up old state files (not deleted at SessionEnd, since resume brings back the same session_id)
@@ -213,7 +214,7 @@ def on_stop(inp):
              "and add a comment for the history and reasons (\"why it ended up this way\"). "
              "If there really is nothing to write back, run the following to record why, then end:"]
     for ref in due:
-        lines.append(f"  issue-writeback dismiss {ref} --session {sid} --why \"<reason>\"")
+        lines.append(f"  {SELF} dismiss {ref} --session {sid} --why \"<reason>\"")
     reason = "\n".join(lines)
     print(json.dumps({"decision": "block", "reason": reason,
                       "hookSpecificOutput": {"hookEventName": "Stop", "decision": "block", "reason": reason}}, ensure_ascii=False))

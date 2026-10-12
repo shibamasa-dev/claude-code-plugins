@@ -157,13 +157,12 @@ Do not leave `## Execution path` empty. Test cases that were only designed have 
 
 ## Confirm the checking hook actually works
 
-Enforcing the style guide's forbidden words mechanically requires the testing plugin's `testcase-lint` hook to be enabled (the plugin's `hooks/hooks.json` wires it to `Edit|Write`). **If the plugin is disabled, or only the skill was copied elsewhere, it is not wired.**
+Enforcing the style guide's forbidden words mechanically requires the testing plugin's `testcase-lint` hook to be enabled (the plugin's `hooks/hooks.json` wires it to `Edit|Write`). **If the plugin is disabled, or only the skill was copied elsewhere, it is not wired.** Check the two things separately:
 
-```bash
-command -v testcase-lint >/dev/null && echo wired || echo not-wired   # the plugin's bin is not on PATH = plugin disabled
-```
+- **Is the hook wired?** The testing plugin shows as enabled in `/plugin` (or `claude plugin list`), and a `Write` of a temporary file with one deliberate violation is blocked. Running the script by hand doesn't show this
+- **Does the script work on this artifact?** The manual run below. If it says the script can't be found, the plugin isn't installed here, so the hook isn't wired either
 
-**Checking the wiring alone is not enough.** These three happen even when wired:
+These three happen even when wired:
 
 1. **Writing the artifact with a Bash heredoc (`cat > file <<EOF`) does not fire the hook.** The matcher is `Edit|Write` and only looks at the tool name, so writes through Bash slip past
 2. **A `.md` missing the frontmatter passes completely silently** (exit 0, no output). Nothing happens even if it has violations
@@ -173,7 +172,7 @@ So **after writing, run the hook once by hand against the artifact and confirm w
 
 ```bash
 printf '{"tool_name":"Write","tool_input":{"file_path":"<path to the artifact>"}}' \
-  | testcase-lint; echo "exit=$?"
+  | python3 "${CLAUDE_PLUGIN_ROOT}/hooks/testcase-lint.py"; echo "exit=$?"
 ```
 
 **No output may mean "not checked", not "passed".** Distinguish whether targeting failed or it is truly clean. You can tell them apart by confirming a BLOCK on a temporary file with one deliberate violation.

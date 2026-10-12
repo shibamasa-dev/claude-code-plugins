@@ -45,4 +45,11 @@ echo '=== entry for another repo ==='
 row 'an entry for another repo is not written' "$(rc write --entry example-org/other#1 --state s --next n)" refuse
 row '--force writes it' "$(rc write --entry example-org/other#1 --state s --next n --force)" ok
 
+echo '=== the injected consume command runs as printed ==='
+cmd=$(printf '{"hook_event_name":"SessionStart","source":"startup","cwd":"%s"}' "$REPO" | python3 "$H" \
+      | sed -n 's/.*`\(python3 .* consume --entry <entry>\)`.*/\1/p')
+row 'the injected text names the hook script' "$([[ "$cmd" == "python3 \"$H\" consume "* ]] && echo ok || echo bad)" ok
+(cd "$REPO" && sh -c "${cmd/<entry>/example-org/other#1}" >/dev/null)
+row 'running it removes that entry' "$(cnt)" zero
+
 rm -rf "$HANDOFF_STATE_DIR" "$REPO"

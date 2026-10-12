@@ -2,6 +2,15 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.5.0] - 2026-10-12
+
+### Removed
+- The top-level `bin/` directory (`handoff`, `issue-writeback`, `runbook`), so the plugin can be added to a claude.ai marketplace. The bare `handoff` / `issue-writeback` / `runbook` commands are no longer on PATH.
+
+### Changed
+- The CLIs run as `python3 "<plugin root>/hooks/<name>.py" <subcommand>`. Hook messages (the handoff SessionStart injection, the issue-writeback and runbook Stop messages) print that command with the absolute path; skills and READMEs use `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/<name>.py" ...`.
+- tests: `test-handoff.sh` and `test-issue-writeback.sh` run the printed `consume` / `dismiss` command as printed; `test-runbook.sh` checks that the Stop message names the hook script.
+
 ## [0.4.1] - 2026-10-11
 
 ### Fixed

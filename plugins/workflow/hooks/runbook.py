@@ -14,7 +14,7 @@ Storage <root> = $RUNBOOK_ROOT or ~/.claude/runbooks
   <YYYY-MM-DD>_<slug>/ runbook.md + steps.jsonl (later runs go to steps-<date>.jsonl)
 Whatever happens the hook never raises and exits 0 (the Stop block is the only output that stops anything).
 
-CLI (run by Claude):
+CLI (run by Claude as python3 "<plugin root>/hooks/runbook.py" <subcommand>; the Stop message prints the full path):
   new --session <id> --slug <task-name> --recurrence once|monthly|yearly [--title ...] [--gif <path>]
   use <dir> --session <id>
   dismiss --session <id> --why "..."
@@ -28,7 +28,7 @@ from datetime import date, datetime, timedelta
 ROOT = os.path.expanduser(os.environ.get("RUNBOOK_ROOT") or "~/.claude/runbooks")
 INBOX = os.path.join(ROOT, "_inbox")
 STATE_DIR = os.path.join(ROOT, "_state")
-SELF = "runbook"
+SELF = f'python3 "{os.path.abspath(__file__)}"'  # how messages tell Claude to run this script
 K_STOPS = 3            # block after this many Stops once operations reach OP_MIN (or since the last nag)
 MAX_NAGS = 3           # max blocks per batch of work until it is finished (reset by new/use/dismiss)
 OP_MIN = 3             # sessions with fewer operations than this are not stopped

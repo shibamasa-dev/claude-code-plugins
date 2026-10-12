@@ -1,6 +1,6 @@
 {
   "name": "testing",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Skills and hooks to design and run tests (Gherkin test case authoring, artifact checking, and a gate for the full test suite)",
   "author": {
     "name": "shibamasa-dev"
