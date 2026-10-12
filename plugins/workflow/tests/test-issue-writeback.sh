@@ -93,4 +93,13 @@ bash_post b4 'gh issue view 12 -R o/r' 'title: x'
 bash_post b4 'gh pr comment -R o/r --body 12' ''
 row 'a number in the gh pr comment body is not taken as the PR number' "$(stops b4)" 'block'
 
+# The Stop message prints a runnable dismiss command (python3 "<path to the hook>" dismiss ...); running it as printed clears the issue
+bash_post b5 'gh issue view 12 -R o/r' 'title: x'
+for _ in 1 2; do printf '{"hook_event_name":"Stop","session_id":"b5"}' | python3 "$HOOK" >/dev/null; done
+cmd=$(printf '{"hook_event_name":"Stop","session_id":"b5"}' | python3 "$HOOK" \
+      | python3 -c 'import json,sys; print([l.strip() for l in json.load(sys.stdin)["reason"].splitlines() if " dismiss " in l][0])')
+row 'the printed dismiss command names the hook script' "$([[ "$cmd" == "python3 \"$HOOK\" dismiss o/r#12 --session b5 "* ]] && echo ok || echo bad)" 'ok'
+sh -c "${cmd/<reason>/test: nothing decided}" >/dev/null
+row 'running the printed dismiss command clears the block' "$(stops b5)" 'allow'
+
 rm -rf "$T"

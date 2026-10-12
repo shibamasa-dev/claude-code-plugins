@@ -35,10 +35,10 @@ This covers **only the session that invoked this skill**. If it isn't called, no
    - Items judged "left" **must be written into the entry issue's body** (`issue-ops`: "how things are now" = what is done and what to do next. Create an issue if there is none).
    - Write the entry into the handoff (the SessionStart hook injects it at the start of the next session in the same project):
      ```bash
-     handoff write --entry owner/repo#92 --state "done up to X" --next "start with Y"
+     python3 "${CLAUDE_PLUGIN_ROOT}/hooks/handoff.py" write --entry owner/repo#92 --state "done up to X" --next "start with Y"
      ```
      A project can hold several entries (the same `--entry` updates, a different `--entry` appends; parallel sessions don't erase each other's entries). Keep the details in the issue body; the handoff is only a pointer.
-   - The receiving side removes that one entry with `handoff consume --entry <entry>` right after declaring it is starting on it (clean the moment it's picked up; if there is only one entry, `--entry` can be omitted). Sessions opened for unrelated work don't remove it, so it still shows in the next session. Entries older than 14 days are shown as stale.
+   - The receiving side removes that one entry with `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/handoff.py" consume --entry <entry>` right after declaring it is starting on it (clean the moment it's picked up; if there is only one entry, `--entry` can be omitted). Sessions opened for unrelated work don't remove it, so it still shows in the next session. Entries older than 14 days are shown as stale.
    - **If "what to do next" remains, propose `spawn_task`**: after writing the entry issue and handoff, ask the user "Make the next steps into `spawn_task` chips?", **including how you would batch them (which items go into one chip)**. **Only after getting an OK**, call Claude desktop's `mcp__ccd_session__spawn_task` (it only shows a chip; work starts when the user clicks it. It doesn't start running on its own).
      - **Don't split too finely. Batch by task size and dependencies** (making every small doc PR its own chip multiplies parallel sessions and coordination work). Signs they belong together: they touch the same files / use the same shared resource (e.g. a shared test environment or shared DB) / have an order (B uses A's result) / each is small (a doc fix, a skill addition, done in one PR). Split only items that are large, can proceed independently, and share neither files nor resources. Aim for 1–2 chips per wrap.
      - If they run in parallel, put a turn-taking rule (locks, etc.) for shared resources and the ownership of shared files into the prompts.
@@ -48,7 +48,7 @@ This covers **only the session that invoked this skill**. If it isn't called, no
 
    **(b) Leftovers in other repos — don't write them in the handoff**
 
-   The handoff is injected per project (by cwd). Writing another repo's entry injects unrelated instructions into this project's next session (noise). `handoff write` mechanically refuses an `--entry` whose repo differs from the cwd's origin. Instead:
+   The handoff is injected per project (by cwd). Writing another repo's entry injects unrelated instructions into this project's next session (noise). handoff.py's `write` mechanically refuses an `--entry` whose repo differs from the cwd's origin. Instead:
 
    1. **Open an issue in the target repo (required)** (`issue-ops`; "other repo" is a case where the leftover becomes an issue). Separate sessions can disappear when the machine restarts, so the durable record goes here.
    2. **Only for things that will be worked on soon**, **propose** starting a separate session in the target repo in a waiting state. If the environment has a skill or mechanism that can start another session in a waiting state without starting work right away, use it (if not, the issue from step 1 is enough): "Start a separate session in the target repo in a waiting state?" → start it **only after the user says OK**. A waiting session stops without starting work and moves when the user says "start". The seed must include the issue ref from step 1 and the scope "up to opening the PR (no merge, no deploy)". Even if the mechanism has a setting to start work immediately or run unattended, don't use it (it would start acting in another repo without permission checks).

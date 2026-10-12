@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """handoff: pass "where to start next time" from one session to the next.
 
-Writer (end of session-wrap): handoff write --entry example-org/example-repo#92 --state "done up to X" --next "start with Y"
+Run as python3 "<plugin root>/hooks/handoff.py" <subcommand>; the SessionStart injection prints the full path.
+Writer (end of session-wrap): handoff.py write --entry example-org/example-repo#92 --state "done up to X" --next "start with Y"
             A project can hold several. The same --entry updates, a different --entry appends (parallel sessions don't erase each other's entries).
 Reader:     the SessionStart (startup/resume) hook injects every handoff of the same project (per git common dir, shared by worktrees).
-            The moment the Claude that picks one up runs `handoff consume --entry <ref>`, that one entry is removed.
+            The moment the Claude that picks one up runs `handoff.py consume --entry <ref>`, that one entry is removed.
             --entry can be omitted when there is only one. A session opened for unrelated work does not consume, so it shows up next time too.
-Check:      handoff show
+Check:      handoff.py show
 No leftovers from other repos: an entry for another repo would be injected into this project's next session, where it is irrelevant.
             If --entry belongs to a different repo than the cwd's origin, it is refused (--force writes it anyway).
 State:      $HANDOFF_STATE_DIR (default ~/.claude/state/handoff)/<project-key>.json (project-key = sha1 of the git common dir; cwd outside git)
@@ -17,6 +18,7 @@ from datetime import datetime
 
 STATE_DIR = os.path.expanduser(os.environ.get("HANDOFF_STATE_DIR", "~/.claude/state/handoff"))
 STALE_DAYS = 14
+SELF = f'python3 "{os.path.abspath(__file__)}"'  # how messages tell Claude to run this script
 
 def project_root(cwd):
     try:
@@ -74,7 +76,7 @@ def render(items):
                   f"  state: {h['state']}",
                   f"  next: {h['next']}"]
     lines.append("  -> If you pick one of these up, right after announcing it run "
-                 "`handoff consume --entry <entry>` to remove that one. "
+                 f"`{SELF} consume --entry <entry>` to remove that one. "
                  "For unrelated work, leave them (they show up in the next session too). Read the entry issue's body before starting.")
     return "\n".join(lines)
 

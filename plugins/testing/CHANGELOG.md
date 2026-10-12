@@ -2,6 +2,15 @@
 
 Change history of the testing plugin. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
 
+## [0.3.0] - 2026-10-12
+
+### Removed
+- The top-level `bin/` directory (`full-test-gate`, `testcase-lint`), so the plugin can be added to a claude.ai marketplace. The bare `full-test-gate` / `testcase-lint` commands are no longer on PATH.
+
+### Changed
+- full-test-gate runs as `python3 "<plugin root>/hooks/full-test-gate.py" run|status`. The SessionStart notice and the PreToolUse deny reason print that command with the absolute path; the README uses `${CLAUDE_PLUGIN_ROOT}`.
+- testcase-generator: the manual hook check pipes into `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/testcase-lint.py"`. The `command -v testcase-lint` wiring probe is gone; the manual run is the check.
+
 ## [0.2.1] - 2026-10-11
 
 ### Fixed

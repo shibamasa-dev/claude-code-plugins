@@ -61,7 +61,7 @@ Details (how to call each route, how to receive reports, how to wind down) are i
 | **subagent** (`Agent` tool, background, `isolation: "worktree"`) | No dialogue or approval with the user is needed / it does not touch computer use or remote physical machines (anything involving permission dialogs or screen locks) / it is expected to finish within a few hours |
 | **Separate session** | Any of the above does not hold = it needs questions to or approval from the user / it touches a physical machine / it is long work that runs across a handover |
 
-For separate sessions, use the first route available, in this order: ① `spawn_task` ② a skill or mechanism that can start another session in a waiting state without starting work right away (if the environment has one; do not configure it to run unattended) ③ a prompt for pasting plus `handoff write` to leave the entry point.
+For separate sessions, use the first route available, in this order: ① `spawn_task` ② a skill or mechanism that can start another session in a waiting state without starting work right away (if the environment has one; do not configure it to run unattended) ③ a prompt for pasting plus `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/handoff.py" write` to leave the entry point.
 
 - Write each prompt from the skeleton in `references/task-prompt.md`, **in full for every batch** (the receiver knows neither the history nor the other batches' prompts)
 - Before sending, fill in "Run via" and "Status" (`Running`) in the plan section's batch table; then send. If sending fails, set Status back to `Not started`, or to `Blocked (reason)` if it can't be retried now

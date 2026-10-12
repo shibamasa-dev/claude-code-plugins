@@ -97,8 +97,8 @@ row '3 operations: 1st Stop does not block' "$(stop $S2)" pass
 row '3 operations: 2nd Stop does not block' "$(stop $S2)" pass
 OUT=$(printf '{"session_id":"%s","hook_event_name":"Stop"}' $S2 | python3 "$H" hook-stop)
 row '3 operations: 3rd (K-th) Stop blocks' "$(echo "$OUT" | grep -q '"decision": "block"' && echo block || echo pass)" block
-got=$(echo "$OUT" | python3 -c 'import json,sys; r=json.load(sys.stdin)["reason"]; import re; print(len(re.findall(r"\brunbook (new|use|dismiss) .*--session '"$S2"'", r)))')
-row 'block message has new/use/dismiss with the real --session id' "$(word "$got")" three
+got=$(echo "$OUT" | python3 -c 'import json,sys,re; r=json.load(sys.stdin)["reason"]; print(len(re.findall(re.escape("python3 \"" + sys.argv[1] + "\" ") + r"(new|use|dismiss) .*--session '"$S2"'", r)))' "$H")
+row 'block message has new/use/dismiss with the hook path and the real --session id' "$(word "$got")" three
 row 'no block while stop_hook_active' "$(printf '{"session_id":"%s","stop_hook_active":true}' $S2 | python3 "$H" hook-stop | grep -q block && echo block || echo pass)" pass
 python3 "$H" dismiss --session $S2 --why "test: just a check, not a procedure" >/dev/null
 r=""; for i in 1 2 3 4; do r="$r$(stop $S2)"; done
