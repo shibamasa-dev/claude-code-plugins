@@ -131,10 +131,14 @@ function syncGroups() {
 function write(id, patch, busyEl) {
   if (readOnly) return;
   busyEl && busyEl.classList.add("busy");
+  const col = rowsCol;   // a write queued before a board switch still goes to its own board
   const prev = queue.get(id) || Promise.resolve();
-  const next = prev.catch(() => {}).then(() => rowsCol.doc(id).update(patch)).then(() => note(""), (e) => {
+  const next = prev.catch(() => {}).then(() => col.doc(id).update(patch)).then(() => note(""), (e) => {
     if (e && e.code === "invalid_argument") { readOnly = true; for (const k of rows.keys()) paint(k); note(T.readOnly, true); }
-    else note(T.saveErr((e && e.code) || "unknown"), true);
+    else {
+      if (col === rowsCol && rows.has(id)) paint(id);   // put the row back to what is saved
+      note(T.saveErr((e && e.code) || "unknown"), true);
+    }
   }).finally(() => busyEl && busyEl.classList.remove("busy"));
   queue.set(id, next);
 }
