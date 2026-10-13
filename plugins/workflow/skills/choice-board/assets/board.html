@@ -36,11 +36,7 @@ h1 { font-size: 1.35rem; font-weight: 700; margin: 0; text-wrap: balance; }
 .nm { font-family: var(--font-mono); font-weight: 600; font-size: .9rem; word-break: break-word; }
 .kind { font-family: var(--font-mono); font-size: .75rem; color: var(--muted); margin-left: 8px; font-weight: 400; }
 .what { margin: 2px 0 4px; }
-.now { margin: 6px 0 4px; padding: 0; list-style: none; font-size: .86rem; }
-.now-l { font-size: .72rem; font-weight: 700; color: var(--muted); letter-spacing: .06em; margin-top: 6px; }
-.now li { padding-left: 1em; text-indent: -1em; }
-.now li::before { content: "・"; }
-.meta { margin: 6px 0 0; padding: 0; list-style: none; font-size: .76rem; color: var(--muted); }
+.meta { margin: 0; padding: 0; list-style: none; font-size: .82rem; color: var(--muted); }
 .meta li { word-break: break-word; }
 
 .box { border-left: 2px solid var(--ink); padding: 2px 0 2px 14px; display: grid; gap: 10px; min-width: 0; }
@@ -51,8 +47,6 @@ h1 { font-size: 1.35rem; font-weight: 700; margin: 0; text-wrap: balance; }
 .opt { display: flex; gap: 8px; align-items: flex-start; padding: 5px 9px; border: 1px solid var(--line); cursor: pointer; }
 .opt:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-soft); }
 .opt input { margin-top: 3px; accent-color: var(--accent); }
-.opt .after { display: block; font-size: .82rem; margin-top: 2px; }
-.opt .after::before { content: "→ "; color: var(--accent); }
 .opt .why { display: block; font-size: .76rem; color: var(--muted); }
 .badge { display: inline-block; font-size: .68rem; font-weight: 700; line-height: 1; padding: 3px 6px; background: var(--accent-soft); color: var(--accent); margin-left: 6px; vertical-align: 1px; white-space: nowrap; }
 textarea { width: 100%; min-height: 2.3em; resize: vertical; border: 1px solid var(--line); background: var(--bg); padding: 5px 8px; font-size: .86rem; }
@@ -73,19 +67,19 @@ textarea { width: 100%; min-height: 2.3em; resize: vertical; border: 1px solid v
 /* Data (written by Claude with ArtifactData, read back the same way):
    meta/current            { board: "<slug>" }
    boards/<slug>           { title, groups: [{ key, label }] }
-   boards/<slug>/rows/<id> { n, group, name, kind, what, now: [string], meta: [string],
-                             fields: [{ key, label, inline?, options: [{ value, rec?, after?, why? }] }],
+   boards/<slug>/rows/<id> { n, group, name, kind, what, meta: [string],
+                             fields: [{ key, label, inline?, options: [{ value, rec?, why? }] }],
                              choices: { <field key>: <value> }, memo }
    The page writes only choices.<key> and memo. */
 const STR = {
   ja: { loading: "読み込んでいます。", outside: "このページは claude.ai の Artifact として開いたときだけ読み込めます。",
         noBoard: "まだボードがありません。Claude に候補の投入を頼んでください。", empty: "このボードにはまだ行がありません。",
         readOnly: "この表示では保存できません。閲覧のみです。", saveErr: (c) => `保存できませんでした（${c}）。もう一度選んでください。`,
-        loadErr: (c) => `読み込めませんでした（${c}）。ページを開き直してください。`, rec: "推奨", memo: "メモ", now: "現状", count: (n, t) => `決定 ${n} / ${t}` },
+        loadErr: (c) => `読み込めませんでした（${c}）。ページを開き直してください。`, rec: "推奨", memo: "メモ", count: (n, t) => `決定 ${n} / ${t}` },
   en: { loading: "Loading.", outside: "This page loads only when opened as a claude.ai Artifact.",
         noBoard: "No board yet. Ask Claude to add the items.", empty: "This board has no rows yet.",
         readOnly: "You can view this board but not save to it.", saveErr: (c) => `Could not save (${c}). Choose again.`,
-        loadErr: (c) => `Could not load (${c}). Reopen the page.`, rec: "Recommended", memo: "Memo", now: "Now", count: (n, t) => `Decided ${n} / ${t}` },
+        loadErr: (c) => `Could not load (${c}). Reopen the page.`, rec: "Recommended", memo: "Memo", count: (n, t) => `Decided ${n} / ${t}` },
 };
 const T = /^ja\b/i.test(navigator.language || "") ? STR.ja : STR.en;
 const $ = (id) => document.getElementById(id);
@@ -140,7 +134,6 @@ function paint(id) {
   const nm = el("div", "nm", d.name || id); if (d.kind) nm.append(el("span", "kind", d.kind));
   info.append(nm);
   if (d.what) info.append(el("p", "what", d.what));
-  if (Array.isArray(d.now) && d.now.length) { info.append(el("div", "now-l", T.now)); const ul = el("ul", "now"); d.now.forEach((m) => ul.append(el("li", null, m))); info.append(ul); }
   if (Array.isArray(d.meta) && d.meta.length) { const ul = el("ul", "meta"); d.meta.forEach((m) => ul.append(el("li", null, m))); info.append(ul); }
 
   // Rebuild the input box only when the fields change, so typing in the memo is never interrupted.
@@ -163,7 +156,6 @@ function paint(id) {
         });
         const txt = el("span", null, o.value);
         if (o.rec) txt.append(el("span", "badge", T.rec));
-        if (o.after) txt.append(el("span", "after", o.after));
         if (o.why) txt.append(el("span", "why", o.why));
         lab.append(inp, txt); opts.append(lab);
       }

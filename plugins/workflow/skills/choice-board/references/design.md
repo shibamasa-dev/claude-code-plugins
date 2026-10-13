@@ -5,8 +5,7 @@ The rules behind [../assets/board.html](../assets/board.html). They were chosen 
 ## Layout
 
 - **Title, then the list.** No lead paragraph, no bulk actions ("fill the undecided with the recommendation"), no separate "excluded items" section. The only header extra is the decided count.
-- **One row per item, split in two.** Left: number, name, kind, one-sentence description, the current state ("Now"), evidence lines in small type. Right: one box holding **every** input for that row, the decision fields and then the memo. Rejected alternatives: choices in table columns with the memo elsewhere (inputs scattered across the row), a side panel (the item and its inputs drift apart), rows that expand to show inputs (decisions hidden behind a click).
-- **Every option states its outcome** on a line starting with an arrow: what changes and where it takes effect. The current state on the left and the outcome on each option let the user compare before and after without opening the item.
+- **One row per item, split in two.** Left: number, name, kind, one-sentence description, evidence lines. Right: one box holding **every** input for that row, the decision fields and then the memo. Rejected alternatives: choices in table columns with the memo elsewhere (inputs scattered across the row), a side panel (the item and its inputs drift apart), rows that expand to show inputs (decisions hidden behind a click).
 - **Options are radio lists, not dropdowns,** so every option and its recommended badge are visible without opening anything. The recommended option carries a badge (推奨 in Japanese); a one-line reason may sit under an option.
 - Groups are headings above the rows, in the order the board defines.
 - At phone width the input box moves under the description.
