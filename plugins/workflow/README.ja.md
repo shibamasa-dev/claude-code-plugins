@@ -31,7 +31,7 @@
 |---|---|---|
 | handoff | セッション開始 | 前のセッションが残した「次の入口」を注入する。書くのは `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/handoff.py" write --entry <owner>/<repo>#<n> --state "..." --next "..."`、消すのは `... consume --entry <入口>`。注入される文面に実行できるコマンドがそのまま出る |
 | issue-writeback | セッション開始・プロンプト送信・停止・終了、issue 操作の後 | 読んだ issue に決定事項を書き戻していなければ促す |
-| runbook | ブラウザ・画面操作の後、停止、セッション開始 | ブラウザ・画面操作の手順を記録し、手順書を書き忘れたら止める |
+| runbook | ブラウザ・画面操作の後、停止、セッション開始 | ブラウザ・画面操作の手順を記録する。最初の操作で、GIF 録画の開始（Chrome）か要所のメモ（録画できないツール）を促す。手順書を書き忘れたら止める |
 | knowledge-freshness | セッション開始 | 見直し期限を過ぎたナレッジを 1 行で知らせる |
 | artifact-ledger | Artifact の後 | 公開した Artifact をプロジェクトの `.artifacts/` に記録する |
 | dev-flow-gate | PR を作る前 | 本文に `Closes #N` / `Refs #N`（issue の無い依頼は `Refs: none (verbal request)`）と `Arch-Review:` の欄が無ければ止める |

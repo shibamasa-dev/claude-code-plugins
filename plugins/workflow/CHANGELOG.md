@@ -2,6 +2,11 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.6.2] - 2026-10-13
+
+### Added
+- runbook: on a session's first browser or computer-use operation, the PostToolUse hook tells Claude how to capture it: start a `gif_creator` recording for Claude in Chrome (to attach with `new --gif`), or note the key steps for tools that cannot record. The Stop reminder came too late to start a recording.
+
 ## [0.6.1] - 2026-10-13
 
 ### Removed

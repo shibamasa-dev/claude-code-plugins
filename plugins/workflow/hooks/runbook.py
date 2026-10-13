@@ -5,6 +5,7 @@ The hook records the raw log mechanically; Claude writes the runbook (runbook.md
   - PostToolUse  (hook-post)          : append calls of the target tools to <root>/_inbox/<sid>.jsonl (a batch is expanded to one line per action).
                                         Only whitelisted keys are kept; any other string or number keeps only its length
                                         (type text, form_input values, javascript code and passwords leave not a single character)
+                                        On a session's first operation, print additionalContext on how to record it (start gif_creator, or note key steps)
   - Stop         (hook-stop)          : if the inbox has at least OP_MIN operation steps and it was not finished with new/use/dismiss,
                                         block every K_STOPS Stops (at most MAX_NAGS times per batch of work until it is finished)
   - SessionStart (hook-session-start) : sweep --apply once a day. Print one line only when something was deleted
@@ -223,9 +224,22 @@ def on_post(inp):
     os.makedirs(INBOX, exist_ok=True)
     with open(inbox_path(sid), "a", encoding="utf-8") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
+        first = f.tell() == 0
         f.write("".join(json.dumps(s, ensure_ascii=False) + "\n" for s in steps))
         f.flush()
         fcntl.flock(f, fcntl.LOCK_UN)
+    if first: print_record_hint(tool)
+
+def print_record_hint(tool):
+    """On the first operation of a session, say how to capture it: a Stop-time reminder is too late to start a recording."""
+    if tool.endswith("__gif_creator"): return   # already recording
+    if tool.startswith("mcp__claude-in-chrome__"):
+        hint = ("[runbook] Browser operations are being logged for a runbook. Start a recording now with "
+                "mcp__claude-in-chrome__gif_creator (start_recording) and attach the GIF with --gif when you run `new`.")
+    else:
+        hint = ("[runbook] Operations are being logged for a runbook. This tool cannot record a GIF, "
+                "so note the key steps as you go and write them into runbook.md.")
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": hint}}, ensure_ascii=False))
 
 def on_stop(inp):
     if inp.get("stop_hook_active"): return
