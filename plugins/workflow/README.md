@@ -31,7 +31,7 @@ If you used the former `review` plugin, uninstall it and move its settings to th
 |---|---|---|
 | handoff | Session start | Injects the "next entry point" left by the previous session. Write an entry with `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/handoff.py" write --entry <owner>/<repo>#<n> --state "..." --next "..."` and clear one with `... consume --entry <entry>`; the injected text prints the exact command |
 | issue-writeback | Session start, prompt submit, stop, session end, after issue operations | Reminds you if decisions were not written back to an issue you read |
-| runbook | After browser or computer-use actions, on stop, at session start | Records browser and screen-operation steps, and stops if you forgot to write the runbook |
+| runbook | After browser or computer-use actions, on stop, at session start | Records browser and screen-operation steps; on the first one, says to start a GIF recording (Chrome) or note key steps (tools that cannot record); stops if you forgot to write the runbook |
 | knowledge-freshness | Session start | Reports knowledge files past their review date in one line |
 | artifact-ledger | After Artifact | Records published Artifacts in the project's `.artifacts/` |
 | dev-flow-gate | Before creating a PR | Blocks if the body lacks `Closes #N` / `Refs #N` (`Refs: none (verbal request)` for requests without an issue) or the `Arch-Review:` field |

@@ -16,7 +16,8 @@ print(json.dumps({"session_id": sys.argv[1], "hook_event_name": "PostToolUse", "
                   "tool_input": json.loads(sys.argv[3]), "tool_response": {}}, ensure_ascii=False))
 PY
 }
-post() { ev "$@" | python3 "$H" hook-post; }
+post() { ev "$@" | python3 "$H" hook-post >/dev/null; }
+hint() { ev "$@" | python3 "$H" hook-post; }
 stop() { printf '{"session_id":"%s","hook_event_name":"Stop","stop_hook_active":false}' "$1" \
          | python3 "$H" hook-stop | grep -q '"decision": "block"' && echo block || echo pass; }
 lines() { [ -f "$1" ] && wc -l < "$1" | tr -d ' ' || echo 0; }
@@ -220,7 +221,8 @@ row 'no output on the 2nd session of the same day' "$( [ -z "$OUT" ] && echo ok 
 
 echo '=== criterion 9: exit 0 even on broken input ==='
 chk() { local out err rc; out=$(printf '%s' "$2" | python3 "$H" "$1" 2>"$RUNBOOK_ROOT/.err"); rc=$?
-        [ $rc = 0 ] && [ ! -s "$RUNBOOK_ROOT/.err" ] && [ -z "$out" ] && echo ok || echo ng; }
+        # stdout may only be empty or one JSON object (the first-operation hint)
+        [ $rc = 0 ] && [ ! -s "$RUNBOOK_ROOT/.err" ] && { [ -z "$out" ] || python3 -c 'import json,sys; json.loads(sys.argv[1])' "$out" 2>/dev/null; } && echo ok || echo ng; }
 for h in hook-post hook-stop hook-session-start; do
   row "$h: broken JSON" "$(chk $h '{"session_id": "x", broken')" ok
   row "$h: empty stdin" "$(chk $h '')" ok
@@ -231,5 +233,17 @@ row 'hook-post: tool_input is a string' "$(chk hook-post '{"session_id":"a1b2c3d
 row 'hook-post: batch with broken actions' "$(chk hook-post '{"session_id":"a1b2c3d4-0000-4000-8000-000000000009","tool_name":"mcp__computer-use__computer_batch","tool_input":{"actions":[1,"x",null,{"name":3,"input":"y"}]}}')" ok
 row 'hook-post: session_id missing or containing path separators' "$(chk hook-post '{"session_id":"../../etc","tool_name":"mcp__claude-in-chrome__computer","tool_input":{}}')" ok
 row 'hook-stop: no session_id' "$(chk hook-stop '{"hook_event_name":"Stop"}')" ok
+
+echo '=== criterion 10: the first operation of a session says how to record it ==='
+S10=a1b2c3d4-0000-4000-8000-000000000010
+out=$(hint $S10 mcp__claude-in-chrome__navigate '{"url":"https://example.com","tabId":1}')
+row 'first claude-in-chrome operation: names gif_creator' "$(grep -q 'gif_creator' <<<"$out" && echo yes || echo no)" yes
+row 'first claude-in-chrome operation: is PostToolUse additionalContext' "$(python3 -c 'import json,sys; d=json.loads(sys.stdin.read()); print("yes" if d["hookSpecificOutput"]["hookEventName"]=="PostToolUse" and d["hookSpecificOutput"]["additionalContext"] else "no")' <<<"$out" 2>/dev/null || echo no)" yes
+row 'second operation in the same session: silent' "$([ -z "$(hint $S10 mcp__claude-in-chrome__computer '{"action":"screenshot","tabId":1}')" ] && echo yes || echo no)" yes
+S11=a1b2c3d4-0000-4000-8000-000000000011
+out=$(hint $S11 mcp__computer-use__computer_batch '{"actions":[{"action":"screenshot"}]}')
+row 'first computer-use operation: says it cannot record' "$(grep -q 'cannot record' <<<"$out" && echo yes || echo no)" yes
+S12=a1b2c3d4-0000-4000-8000-000000000012
+row 'gif_creator as the first operation: silent' "$([ -z "$(hint $S12 mcp__claude-in-chrome__gif_creator '{"action":"start_recording","tabId":1}')" ] && echo yes || echo no)" yes
 
 rm -rf "$RUNBOOK_ROOT" "$SK" "$FAKE"
