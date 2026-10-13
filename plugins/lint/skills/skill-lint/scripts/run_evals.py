@@ -9,7 +9,7 @@ A line is located by file and anchor (a fragment unique within the line). A case
 Two fixture lines store the parts that would trip the public repo's leak check (home absolute path, email address)
 as tokens ({{USERS_DIR}}, {{AT}}). materialize() expands them into a temporary directory before linting, so the lines
 lint sees are verbatim. The expanded files are never left in the repo.
-exit 0 = all PASS / 1 = some FAIL.
+exit 0 = all PASS / 1 = some FAIL / 1 with a message = no local evals/evals.json (the eval set is not published).
 """
 import contextlib, json, os, shutil, sys, tempfile
 
@@ -50,8 +50,16 @@ def locate(fixture, case):
     return hits[0] if len(hits) == 1 else None
 
 
+def load_spec():
+    """Read evals/evals.json. The eval set is kept locally by the maintainers and not published, so exit with a message without it."""
+    path = os.path.join(SKILL_DIR, "evals", "evals.json")
+    if not os.path.exists(path):
+        sys.exit("%s not found: the eval set is kept locally by the maintainers and is not published with the plugin" % path)
+    return json.load(open(path, encoding="utf-8"))
+
+
 def main():
-    spec = json.load(open(os.path.join(SKILL_DIR, "evals", "evals.json"), encoding="utf-8"))
+    spec = load_spec()
     with materialize(os.path.join(SKILL_DIR, spec["fixture_dir"])) as fixture:
         ok = grade(spec, fixture, set(sys.argv[1:]))
     sys.exit(0 if ok else 1)

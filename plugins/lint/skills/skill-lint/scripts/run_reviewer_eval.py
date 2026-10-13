@@ -19,7 +19,7 @@ SKILL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(SKILL_DIR, "scripts"))
 import lint  # noqa: E402
 import validate_findings as vf  # noqa: E402
-from run_evals import locate, materialize  # noqa: E402
+from run_evals import load_spec, locate, materialize  # noqa: E402
 
 
 def build_prompt(fixture):
@@ -85,7 +85,7 @@ def main():
     ap.add_argument("--timeout", type=int, default=600)
     ap.add_argument("--keep", help="directory to keep raw output and validation results")
     a = ap.parse_args()
-    spec = json.load(open(os.path.join(SKILL_DIR, "evals", "evals.json"), encoding="utf-8"))
+    spec = load_spec()
     with materialize(os.path.join(SKILL_DIR, spec["fixture_dir"])) as fixture:
         ok = evaluate(spec, fixture, a)
     sys.exit(0 if ok else 1)

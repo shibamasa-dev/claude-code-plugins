@@ -87,5 +87,5 @@ Ask "Fix them? (all / pick / none)" and stop. When fixing, first show the replac
 | `scripts/lint.py` | Deterministic checks. `--json` for machines, plain for humans |
 | `scripts/validate_findings.py` | Extracts the JSON array from the reviewer output and matches each quote against its line |
 | `references/reviewer-prompt.md` | Instructions for the reviewer (viewpoint, what to catch, what is not a leak, output format) |
-| `scripts/run_evals.py` | Eval group A (runs lint.py on the fixture and grades it) |
-| `scripts/run_reviewer_eval.py` | Eval group B (runs the reviewer with `claude -p` and counts recall and false positives. `--runs N`) |
+| `scripts/run_evals.py` | Eval group A (runs lint.py on the fixture and grades it). Maintainers only: it reads the eval set under `evals/`, which is kept locally and not shipped |
+| `scripts/run_reviewer_eval.py` | Eval group B (runs the reviewer with `claude -p` and counts recall and false positives. `--runs N`). Maintainers only, like group A |

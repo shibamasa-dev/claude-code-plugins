@@ -31,4 +31,4 @@ There is no denylist of names. A file that collects names would itself be a leak
 
 - `python3` (standard library only)
 - Optional: `gh` (the reviewer uses your gh login as a hint), `gitleaks` (handles secret scanning; reported as `skipped` if missing)
-- Eval group B (`scripts/run_reviewer_eval.py`) needs the `claude` CLI
+- Eval group B (`scripts/run_reviewer_eval.py`) needs the `claude` CLI. The eval scripts are for the maintainers: they read the eval set under `evals/`, which is kept locally and not published

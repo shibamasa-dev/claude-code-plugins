@@ -2,6 +2,11 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.5.1] - 2026-10-13
+
+### Removed
+- context-diet, dev-flow, issue-ops, pr-review-triage, session-wrap and weekly-orchestrator-base: the eval sets (`evals/`) are no longer shipped. The maintainers keep them locally; context-diet, pr-review-triage and the README no longer tell you to run them.
+
 ## [0.5.0] - 2026-10-12
 
 ### Removed

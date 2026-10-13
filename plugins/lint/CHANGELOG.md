@@ -2,6 +2,14 @@
 
 Change history of the lint plugin. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
 
+## [0.2.2] - 2026-10-13
+
+### Removed
+- skill-lint: the eval set (`evals/`, including its fixture) is no longer shipped. The maintainers keep it locally.
+
+### Changed
+- skill-lint: `scripts/run_evals.py` and `scripts/run_reviewer_eval.py` stop with a message saying the eval set is not published when `evals/evals.json` is missing.
+
 ## [0.2.1] - 2026-10-11
 
 ### Fixed

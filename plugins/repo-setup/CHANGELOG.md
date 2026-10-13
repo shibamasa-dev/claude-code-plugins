@@ -2,6 +2,11 @@
 
 Change history of the repo-setup plugin (named devtools up to 0.2.2). Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
 
+## [0.4.2] - 2026-10-13
+
+### Removed
+- codebase-doctor and remote-setup: the eval sets (`evals/`) are no longer shipped. The maintainers keep them locally.
+
 ## [0.4.1] - 2026-10-12
 
 ### Changed

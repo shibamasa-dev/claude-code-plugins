@@ -116,6 +116,5 @@ macOS or Linux, `python3`, `git`, `gh`, `jq`
 
 ```bash
 bash plugins/workflow/tests/run-all.sh
-bash plugins/workflow/skills/pr-review-triage/evals/run_evals.sh
 claude plugin test plugins/workflow   # rate-limits mod
 ```
