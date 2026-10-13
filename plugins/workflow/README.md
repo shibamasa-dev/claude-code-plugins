@@ -23,6 +23,7 @@ If you used the former `review` plugin, uninstall it and move its settings to th
 | `session-wrap` | Checks for leftovers before closing a session and leaves a handoff for the next one |
 | `context-diet` | Measures and trims the context loaded at every session start |
 | `weekly-orchestrator-base` | A base for an orchestrator that runs a weekly plan → delegate → check → close loop |
+| `choice-board` | When you have to decide something for each of 10 or more items, puts them on a board page instead of in chat: one row per item with its options (the recommended one marked) and a memo, saved to the Artifact database so Claude reads the choices back. One board per project, reused across rounds. Needs the Artifact tools (Claude Code connected to claude.ai) |
 
 ## Hooks
 
