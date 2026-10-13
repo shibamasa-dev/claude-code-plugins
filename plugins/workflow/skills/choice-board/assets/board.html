@@ -4,16 +4,16 @@
 <style>
 /* Layout: title, then one list. Each row = number | what the item is | one box holding every input for it. */
 :root {
-  --bg: #ffffff; --ink: #000000; --muted: #555555; --line: #d4d4d4;
+  --bg: #ffffff; --ink: #000000; --muted: #555555; --line: #d4d4d4; /* skill-lint: ignore (hex colors) */
   --accent: #0047ff; --accent-soft: #e8eeff; --warn: #c4001a;
   --font-body: "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #0b0b0b; --ink: #f2f2f2; --muted: #a3a3a3; --line: #333333;
+  --bg: #0b0b0b; --ink: #f2f2f2; --muted: #a3a3a3; --line: #333333; /* skill-lint: ignore (hex colors) */
   --accent: #6f95ff; --accent-soft: #141d36; --warn: #ff7a8a; color-scheme: dark; } }
 :root[data-theme="dark"] {
-  --bg: #0b0b0b; --ink: #f2f2f2; --muted: #a3a3a3; --line: #333333;
+  --bg: #0b0b0b; --ink: #f2f2f2; --muted: #a3a3a3; --line: #333333; /* skill-lint: ignore (hex colors) */
   --accent: #6f95ff; --accent-soft: #141d36; --warn: #ff7a8a; color-scheme: dark; }
 * { box-sizing: border-box; }
 body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.55; padding-inline: 16px; padding-block: 0 48px; }
