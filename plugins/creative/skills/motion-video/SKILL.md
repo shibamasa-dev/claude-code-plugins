@@ -16,7 +16,7 @@ Unlike generative-AI video, **the same input gives the same mp4 every time** (ha
 
 ## Prerequisites
 
-- **Chrome does not start inside Claude Code's Bash sandbox** (mach bootstrap is denied). Run `render.mjs` and `evals/run.sh` with `dangerouslyDisableSandbox: true`.
+- **Chrome does not start inside Claude Code's Bash sandbox** (mach bootstrap is denied). Run `render.mjs` with `dangerouslyDisableSandbox: true`.
 - `$TMPDIR` differs inside and outside the sandbox. Pass absolute paths. The working PNG sequence goes to `os.tmpdir()/motion-video/`.
 - If Chrome is not in the standard location, pass `MOTION_VIDEO_CHROME=<executable>`.
 - Only when using BGM (`meta.audio.music`) you need FluidSynth (`brew install fluid-synth`) and a soundfont (default `~/.local/share/motion-video/soundfonts/GeneralUser-GS.sf2`). Without them it stops with an error. See `references/audio-assets.md` for installation.
@@ -133,11 +133,6 @@ Re-layout uses layout functions (`u` / `safe` / `split` / `grid` / `orient` in `
 - Fonts are whatever is on the system unless `fonts.*.file` is passed in brand.json. If missing, it draws with a fallback and storyboard warns.
 - Long live-action clips keep every frame in memory. Limit them with `meta.clips.*.maxWidth` and fps.
 
-## eval
+## Evals
 
-```bash
-sh ${CLAUDE_PLUGIN_ROOT}/skills/motion-video/evals/run.sh            # outside the sandbox; takes a few minutes
-sh ${CLAUDE_PLUGIN_ROOT}/skills/motion-video/evals/run.sh --only media-mix-image-and-clip-30fps
-```
-
-Actually renders the 6 cases in `evals/evals.json` (a 15-second 16:9 intro of the fictional Example Co. / images + live-action clip at 30fps / a 9:16, 1:1, 16:9 loop / 8 seconds with BGM / cut sheet and FB round trip (v1→v2) / negative contract cases), grades them mechanically, and outputs `pass_rate` and per-case `grading/<name>.json` (skill-creator's grading format: text / passed / evidence). Outputs go to `--work` (default `os.tmpdir()`).
+The maintainers keep this skill's eval set locally under `evals/`, which is git-ignored and not shipped with the plugin.

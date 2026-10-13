@@ -24,3 +24,6 @@ __pycache__/
 .tmp/
 tmp/
 *.log
+
+# Skill eval sets are kept locally by the maintainers, not published
+evals/

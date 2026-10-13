@@ -2,6 +2,11 @@
 
 Change history of the testing plugin. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
 
+## [0.3.1] - 2026-10-13
+
+### Removed
+- testcase-generator: the eval set (`evals/`) is no longer shipped. The maintainers keep it locally.
+
 ## [0.3.0] - 2026-10-12
 
 ### Removed

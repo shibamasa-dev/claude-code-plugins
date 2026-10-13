@@ -2,6 +2,11 @@
 
 Changelog of the creative plugin (named docs up to 0.1.4). Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow `version` in plugin.json.
 
+## [0.3.3] - 2026-10-13
+
+### Removed
+- motion-video: the eval set (`evals/`) is no longer shipped. The maintainers keep it locally; the skill no longer tells you to run `evals/run.sh`.
+
 ## [0.3.2] - 2026-10-12
 
 ### Fixed

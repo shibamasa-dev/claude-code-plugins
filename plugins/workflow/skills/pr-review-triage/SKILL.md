@@ -71,7 +71,7 @@ The input is the local diff (no `gh`; cloud sessions also have a local clone). L
 
 Even for light, if the user asks for a heavier review (e.g. 「重めでレビューして」), run the heavy steps (4) (leaning heavier is fine; never lean lighter). If the `review:light` label is set, remove it before requesting (same as 5).
 
-When you change the criteria, run `bash ${CLAUDE_PLUGIN_ROOT}/skills/pr-review-triage/evals/run_evals.sh` (checks the decision against diffs taken from real PRs in this repo; works offline). The fixtures have no light example yet. **When the first light PR appears, add `git diff --numstat <merge>^1 <merge>` of its merge as a fixture** (do not make up a synthetic light case).
+The maintainers check changes to these criteria against diffs taken from real PRs, in an eval set kept locally under `evals/` (git-ignored, not shipped with the plugin).
 
 ### 2.1 With `review-auto: on` — decide the label before creating the PR
 

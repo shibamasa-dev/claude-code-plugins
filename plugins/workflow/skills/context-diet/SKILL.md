@@ -179,6 +179,4 @@ Run **Phase A only** monthly (bloat is slow). Register a thin task with the sche
 
 ## Evals
 
-```bash
-python3 evals/run_evals.py   # generates fixtures automatically and verifies; zero manual steps
-```
+The maintainers keep this skill's eval set locally under `evals/`, which is git-ignored and not shipped with the plugin.

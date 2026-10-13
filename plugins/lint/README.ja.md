@@ -31,4 +31,4 @@
 
 - `python3`（標準ライブラリだけ）
 - 任意: `gh`（reviewer が gh のログイン名をヒントにする）、`gitleaks`（secret の検査を任せる。無ければ `skipped` と出る）
-- eval グループ B（`scripts/run_reviewer_eval.py`）は `claude` CLI
+- eval グループ B（`scripts/run_reviewer_eval.py`）は `claude` CLI。eval のスクリプトはメンテナ用で、公開していない手元の `evals/` の eval セットを読む
