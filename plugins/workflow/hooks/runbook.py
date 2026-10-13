@@ -224,7 +224,7 @@ def on_post(inp):
     os.makedirs(INBOX, exist_ok=True)
     with open(inbox_path(sid), "a", encoding="utf-8") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
-        first = f.tell() == 0
+        first = os.fstat(f.fileno()).st_size == 0   # read under the lock: a concurrent first write may have just landed
         f.write("".join(json.dumps(s, ensure_ascii=False) + "\n" for s in steps))
         f.flush()
         fcntl.flock(f, fcntl.LOCK_UN)
