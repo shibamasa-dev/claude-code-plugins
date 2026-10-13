@@ -1,0 +1,277 @@
+<title>{{TITLE}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: title, then one list. Each row = number | what the item is | one box holding every input for it. */
+:root {
+  --bg: #ffffff; --ink: #000000; --muted: #555555; --line: #d4d4d4; /* skill-lint: ignore (hex colors) */
+  --accent: #0047ff; --accent-soft: #e8eeff; --warn: #c4001a;
+  --font-body: "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0b0b0b; --ink: #f2f2f2; --muted: #a3a3a3; --line: #333333; /* skill-lint: ignore (hex colors) */
+  --accent: #6f95ff; --accent-soft: #141d36; --warn: #ff7a8a; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0b0b0b; --ink: #f2f2f2; --muted: #a3a3a3; --line: #333333; /* skill-lint: ignore (hex colors) */
+  --accent: #6f95ff; --accent-soft: #141d36; --warn: #ff7a8a; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.55; padding-inline: 16px; padding-block: 0 48px; }
+button, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wrap { max-width: 1180px; margin: 0 auto; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; padding-block: 22px 14px; }
+h1 { font-size: 1.35rem; font-weight: 700; margin: 0; text-wrap: balance; }
+.count { font-family: var(--font-mono); font-size: .82rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.note { font-size: .85rem; color: var(--muted); padding-block: 12px; }
+.note.err { color: var(--warn); }
+
+.grp { margin-top: 26px; }
+.grp h2 { font-size: .95rem; font-weight: 700; margin: 0 0 8px; }
+.list { border-top: 2px solid var(--ink); }
+.row { display: grid; grid-template-columns: 2.6rem minmax(0, 1fr) minmax(0, 1.1fr); gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.num { font-family: var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.row[data-done="true"] .num { color: var(--accent); font-weight: 600; }
+.info { min-width: 0; }
+.nm { font-family: var(--font-mono); font-weight: 600; font-size: .9rem; word-break: break-word; }
+.kind { font-family: var(--font-mono); font-size: .75rem; color: var(--muted); margin-left: 8px; font-weight: 400; }
+.what { margin: 2px 0 4px; }
+.meta { margin: 0; padding: 0; list-style: none; font-size: .82rem; color: var(--muted); }
+.meta li { word-break: break-word; }
+
+.box { border-left: 2px solid var(--ink); padding: 2px 0 2px 14px; display: grid; gap: 10px; min-width: 0; }
+.fld { display: grid; gap: 4px; border: 0; margin: 0; padding: 0; min-width: 0; }
+.fld legend, .memo-l { font-size: .72rem; font-weight: 700; color: var(--muted); letter-spacing: .06em; padding: 0; margin-bottom: 4px; }
+.opts { display: grid; gap: 4px; }
+.opts.inline { display: flex; flex-wrap: wrap; }
+.opt { display: flex; gap: 8px; align-items: flex-start; padding: 5px 9px; border: 1px solid var(--line); cursor: pointer; }
+.opt:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-soft); }
+.opt input { margin-top: 3px; accent-color: var(--accent); }
+.opt .why { display: block; font-size: .76rem; color: var(--muted); }
+.badge { display: inline-block; font-size: .68rem; font-weight: 700; line-height: 1; padding: 3px 6px; background: var(--accent-soft); color: var(--accent); margin-left: 6px; vertical-align: 1px; white-space: nowrap; }
+textarea { width: 100%; min-height: 2.3em; resize: vertical; border: 1px solid var(--line); background: var(--bg); padding: 5px 8px; font-size: .86rem; }
+.busy { opacity: .6; }
+.nm-btn { font: inherit; font-family: var(--font-mono); font-weight: 600; font-size: .9rem; background: none; border: 0; padding: 0; color: var(--ink); cursor: pointer; text-align: left; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; word-break: break-word; }
+.nm-btn:hover { text-decoration-color: var(--accent); }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(640px, 100%); background: var(--bg); border-left: 2px solid var(--ink); z-index: 20; display: grid; grid-template-rows: auto 1fr; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.drawer header { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.drawer h2 { margin: 0; font-family: var(--font-mono); font-size: .95rem; word-break: break-word; }
+.drawer .close { border: 1px solid var(--line); background: var(--bg); padding: 2px 10px; cursor: pointer; flex: none; }
+.drawer .body { overflow: auto; padding: 12px 16px 24px; }
+.src + .src { margin-top: 18px; }
+.src-path { font-family: var(--font-mono); font-size: .76rem; color: var(--muted); word-break: break-all; margin-bottom: 6px; }
+.src pre { margin: 0; font-family: var(--font-mono); font-size: .8rem; line-height: 1.6; white-space: pre-wrap; word-break: break-word; border-left: 2px solid var(--line); padding-left: 10px; }
+@media (max-width: 760px) {
+  .row { grid-template-columns: 2rem minmax(0, 1fr); }
+  .box { grid-column: 2; }
+}
+</style>
+
+<div class="wrap">
+  <header><h1 id="title">{{TITLE}}</h1><span class="count" id="count"></span></header>
+  <div class="note" id="note"></div>
+  <div id="groups"></div>
+</div>
+<aside class="drawer" id="drawer" hidden aria-labelledby="drawer-title">
+  <header><h2 id="drawer-title"></h2><button class="close" id="drawer-close" type="button"></button></header>
+  <div class="body" id="drawer-body"></div>
+</aside>
+
+<script>
+/* Data (written by Claude with ArtifactData, read back the same way):
+   meta/current            { board: "<slug>" }
+   boards/<slug>           { title, groups: [{ key, label }] }
+   boards/<slug>/rows/<id> { n, group, name, kind, what, meta: [string], source: [{ path, text }],
+                             fields: [{ key, label, inline?, options: [{ value, rec?, why? }] }],
+                             choices: { <field key>: <value> }, memo }
+   The page writes only choices.<key> and memo. */
+const STR = {
+  ja: { loading: "読み込んでいます。", outside: "このページは claude.ai の Artifact として開いたときだけ読み込めます。",
+        noBoard: "まだボードがありません。Claude に候補の投入を頼んでください。", empty: "このボードにはまだ行がありません。",
+        readOnly: "この表示では保存できません。閲覧のみです。", saveErr: (c) => `保存できませんでした（${c}）。もう一度選んでください。`,
+        loadErr: (c) => `読み込めませんでした（${c}）。ページを開き直してください。`, rec: "推奨", memo: "メモ", close: "閉じる", count: (n, t) => `決定 ${n} / ${t}` },
+  en: { loading: "Loading.", outside: "This page loads only when opened as a claude.ai Artifact.",
+        noBoard: "No board yet. Ask Claude to add the items.", empty: "This board has no rows yet.",
+        readOnly: "You can view this board but not save to it.", saveErr: (c) => `Could not save (${c}). Choose again.`,
+        loadErr: (c) => `Could not load (${c}). Reopen the page.`, rec: "Recommended", memo: "Memo", close: "Close", count: (n, t) => `Decided ${n} / ${t}` },
+};
+const T = /^ja\b/i.test(navigator.language || "") ? STR.ja : STR.en;
+const $ = (id) => document.getElementById(id);
+const rows = new Map();   // id -> { el, d }
+const queue = new Map();  // id -> Promise, one write at a time per row
+let db = null, rowsCol = null, groups = [], unsubBoard = null, unsubRows = null, readOnly = false;
+
+function note(msg, err) { const n = $("note"); n.textContent = msg || ""; n.hidden = !msg; n.classList.toggle("err", !!err); }
+const done = (d) => (d.fields || []).every((f) => d.choices && d.choices[f.key] != null);
+
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+function groupList(key) {
+  let sec = document.querySelector(`.grp[data-g="${CSS.escape(key || "")}"]`);
+  if (sec) return sec.querySelector(".list");
+  sec = el("section", "grp"); sec.dataset.g = key || "";
+  const list = el("div", "list"); sec.append(list);
+  $("groups").append(sec); syncGroups();
+  return list;
+}
+
+// Headings and section order follow `groups`, which may arrive after the rows or change later.
+function syncGroups() {
+  const order = groups.map((x) => x.key);
+  const secs = [...$("groups").children];
+  for (const sec of secs) {
+    const g = groups.find((x) => x.key === sec.dataset.g);
+    let h = sec.querySelector("h2");
+    if (g && g.label) { if (!h) { h = el("h2"); sec.prepend(h); } h.textContent = g.label; } else if (h) h.remove();
+  }
+  const rank = (s) => { const i = order.indexOf(s.dataset.g); return i < 0 ? order.length : i; };
+  secs.sort((a, b) => rank(a) - rank(b)).forEach((s) => $("groups").append(s));
+}
+
+function write(id, patch, busyEl) {
+  if (readOnly) return;
+  busyEl && busyEl.classList.add("busy");
+  const col = rowsCol;   // a write queued before a board switch still goes to its own board
+  const prev = queue.get(id) || Promise.resolve();
+  const next = prev.catch(() => {}).then(() => col.doc(id).update(patch)).then(() => note(""), (e) => {
+    if (e && e.code === "invalid_argument") { readOnly = true; for (const k of rows.keys()) paint(k); note(T.readOnly, true); }
+    else {
+      if (col === rowsCol && rows.has(id)) paint(id);   // put the row back to what is saved
+      note(T.saveErr((e && e.code) || "unknown"), true);
+    }
+  }).finally(() => busyEl && busyEl.classList.remove("busy"));
+  queue.set(id, next);
+}
+
+function build(id, d) {
+  const row = el("div", "row"); row.dataset.id = id;
+  const info = el("div", "info");
+  const box = el("div", "box");
+  row.append(el("div", "num"), info, box);
+  rows.set(id, { el: row, d, sig: "" });
+  return row;
+}
+
+function paint(id) {
+  const r = rows.get(id); if (!r) return;
+  const { el: row, d } = r;
+  row.dataset.done = String(done(d));
+  row.querySelector(".num").textContent = d.n != null ? String(d.n) : "";
+  const info = row.querySelector(".info"); info.replaceChildren();
+  const nm = el("div", "nm");
+  if (Array.isArray(d.source) && d.source.length) {
+    const b = el("button", "nm-btn", d.name || id); b.type = "button"; b.addEventListener("click", () => openSource(id, b)); nm.append(b);
+  } else nm.append(document.createTextNode(d.name || id));
+  if (d.kind) nm.append(el("span", "kind", d.kind));
+  info.append(nm);
+  if (d.what) info.append(el("p", "what", d.what));
+  if (Array.isArray(d.meta) && d.meta.length) { const ul = el("ul", "meta"); d.meta.forEach((m) => ul.append(el("li", null, m))); info.append(ul); }
+
+  // Rebuild the input box only when the fields change, so typing in the memo is never interrupted.
+  const box = row.querySelector(".box");
+  const sig = JSON.stringify(d.fields || []) + readOnly;
+  if (sig !== r.sig) {
+    r.sig = sig; box.replaceChildren();
+    for (const f of d.fields || []) {
+      const fs = el("fieldset", "fld"); fs.append(el("legend", null, f.label || f.key));
+      const opts = el("div", "opts" + (f.inline ? " inline" : ""));
+      for (const o of f.options || []) {
+        const lab = el("label", "opt");
+        const inp = document.createElement("input");
+        inp.type = "radio"; inp.name = `${id}--${f.key}`; inp.id = `${id}--${f.key}--${o.value}`; inp.value = o.value; inp.disabled = readOnly;
+        inp.addEventListener("click", () => {
+          const cur = rows.get(id).d.choices && rows.get(id).d.choices[f.key];
+          const v = cur === o.value ? null : o.value;   // clicking the chosen option clears it
+          if (v === null) inp.checked = false;
+          write(id, { choices: { [f.key]: v }, decidedAt: new Date().toISOString() }, fs);
+        });
+        const txt = el("span", null, o.value);
+        if (o.rec) txt.append(el("span", "badge", T.rec));
+        if (o.why) txt.append(el("span", "why", o.why));
+        lab.append(inp, txt); opts.append(lab);
+      }
+      fs.append(opts); box.append(fs);
+    }
+    const ml = el("label", "memo-l", T.memo); ml.htmlFor = `${id}--memo`;
+    const ta = document.createElement("textarea"); ta.id = `${id}--memo`; ta.disabled = readOnly;
+    ta.addEventListener("change", () => { if ((rows.get(id).d.memo || "") !== ta.value) write(id, { memo: ta.value }, ta); });
+    box.append(ml, ta);
+  }
+  for (const f of d.fields || []) {
+    const v = d.choices ? d.choices[f.key] : null;
+    box.querySelectorAll(`input[name="${CSS.escape(`${id}--${f.key}`)}"]`).forEach((i) => { i.checked = i.value === v; });
+  }
+  const ta = box.querySelector("textarea");
+  if (ta && document.activeElement !== ta) ta.value = d.memo || "";
+}
+
+let drawerFrom = null;
+function openSource(id, from) {
+  const d = rows.get(id)?.d; if (!d) return;
+  $("drawer-title").textContent = d.name || id;
+  const body = $("drawer-body"); body.replaceChildren();
+  for (const s of d.source || []) {
+    const box = el("section", "src");
+    if (s.path) box.append(el("div", "src-path", s.path));
+    box.append(el("pre", null, s.text || ""));
+    body.append(box);
+  }
+  body.scrollTop = 0;
+  drawerFrom = from; $("drawer").hidden = false; $("drawer-close").focus();
+}
+function closeSource() { $("drawer").hidden = true; drawerFrom && drawerFrom.focus(); }
+$("drawer-close").addEventListener("click", closeSource);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("drawer").hidden) closeSource(); });
+
+function count() {
+  let n = 0; for (const { d } of rows.values()) if (done(d)) n++;
+  $("count").textContent = rows.size ? T.count(n, rows.size) : "";
+}
+
+function openBoard(slug) {
+  unsubBoard && unsubBoard(); unsubRows && unsubRows();
+  rows.clear(); queue.clear(); $("groups").replaceChildren(); count();
+  if (!slug) { note(T.noBoard); return; }
+  const board = db.doc("boards/" + slug);
+  rowsCol = board.collection("rows");
+  unsubBoard = board.onSnapshot((s) => {
+    const b = s.exists ? s.data() : {};
+    groups = Array.isArray(b.groups) ? b.groups : [];
+    if (b.title) { $("title").textContent = b.title; }
+    syncGroups();
+  },(e) => note(T.loadErr((e && e.code) || "unknown"), true));
+  unsubRows = rowsCol.orderBy("n").onSnapshot((snap) => {
+    for (const ch of snap.docChanges()) {
+      const id = ch.doc.id;
+      if (ch.type === "removed") { rows.get(id)?.el.remove(); rows.delete(id); continue; }
+      const d = ch.doc.data();
+      if (!rows.has(id)) groupList(d.group).append(build(id, d));
+      else {
+        const r = rows.get(id);
+        if (r.d.group !== d.group) groupList(d.group).append(r.el);   // a corrected group moves the row
+        r.d = d;
+      }
+      paint(id);
+    }
+    document.querySelectorAll(".grp").forEach((s) => { if (!s.querySelector(".list").children.length) s.remove(); });
+    document.querySelectorAll(".list").forEach((list) => {
+      [...list.children].sort((a, b) => (rows.get(a.dataset.id).d.n ?? 0) - (rows.get(b.dataset.id).d.n ?? 0)).forEach((c) => list.append(c));
+    });
+    if (snap.empty) note(T.empty);
+    else if (!$("note").classList.contains("err")) note("");
+    count();
+  }, (e) => note(T.loadErr((e && e.code) || "unknown"), true));
+}
+
+$("drawer-close").textContent = T.close;
+(async () => {
+  note(T.loading);
+  db = await window.claude?.use?.("db");
+  if (!db) { note(T.outside, true); return; }
+  let current;
+  db.doc("meta/current").onSnapshot((s) => {
+    const slug = s.exists ? s.data().board : null;
+    if (slug !== current) { current = slug; openBoard(slug); }
+  }, (e) => note(T.loadErr((e && e.code) || "unknown"), true));
+})();
+</script>
