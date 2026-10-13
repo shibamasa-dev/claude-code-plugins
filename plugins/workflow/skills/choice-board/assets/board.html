@@ -110,13 +110,22 @@ function groupList(key) {
   let sec = document.querySelector(`.grp[data-g="${CSS.escape(key || "")}"]`);
   if (sec) return sec.querySelector(".list");
   sec = el("section", "grp"); sec.dataset.g = key || "";
-  const g = groups.find((x) => x.key === key);
-  if (g && g.label) sec.append(el("h2", null, g.label));
   const list = el("div", "list"); sec.append(list);
-  const order = groups.map((x) => x.key);
-  const after = [...$("groups").children].find((s) => order.indexOf(s.dataset.g) > order.indexOf(key));
-  $("groups").insertBefore(sec, after || null);
+  $("groups").append(sec); syncGroups();
   return list;
+}
+
+// Headings and section order follow `groups`, which may arrive after the rows or change later.
+function syncGroups() {
+  const order = groups.map((x) => x.key);
+  const secs = [...$("groups").children];
+  for (const sec of secs) {
+    const g = groups.find((x) => x.key === sec.dataset.g);
+    let h = sec.querySelector("h2");
+    if (g && g.label) { if (!h) { h = el("h2"); sec.prepend(h); } h.textContent = g.label; } else if (h) h.remove();
+  }
+  const rank = (s) => { const i = order.indexOf(s.dataset.g); return i < 0 ? order.length : i; };
+  secs.sort((a, b) => rank(a) - rank(b)).forEach((s) => $("groups").append(s));
 }
 
 function write(id, patch, busyEl) {
@@ -225,15 +234,22 @@ function openBoard(slug) {
     const b = s.exists ? s.data() : {};
     groups = Array.isArray(b.groups) ? b.groups : [];
     if (b.title) { $("title").textContent = b.title; }
-  }, (e) => note(T.loadErr((e && e.code) || "unknown"), true));
+    syncGroups();
+  },(e) => note(T.loadErr((e && e.code) || "unknown"), true));
   unsubRows = rowsCol.orderBy("n").onSnapshot((snap) => {
     for (const ch of snap.docChanges()) {
       const id = ch.doc.id;
       if (ch.type === "removed") { rows.get(id)?.el.remove(); rows.delete(id); continue; }
       const d = ch.doc.data();
-      if (!rows.has(id)) groupList(d.group).append(build(id, d)); else rows.get(id).d = d;
+      if (!rows.has(id)) groupList(d.group).append(build(id, d));
+      else {
+        const r = rows.get(id);
+        if (r.d.group !== d.group) groupList(d.group).append(r.el);   // a corrected group moves the row
+        r.d = d;
+      }
       paint(id);
     }
+    document.querySelectorAll(".grp").forEach((s) => { if (!s.querySelector(".list").children.length) s.remove(); });
     document.querySelectorAll(".list").forEach((list) => {
       [...list.children].sort((a, b) => (rows.get(a.dataset.id).d.n ?? 0) - (rows.get(b.dataset.id).d.n ?? 0)).forEach((c) => list.append(c));
     });
