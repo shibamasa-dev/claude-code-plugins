@@ -5,7 +5,7 @@ Changes to the workflow plugin. The format follows [Keep a Changelog](https://ke
 ## [0.6.0] - 2026-10-13
 
 ### Added
-- choice-board: a skill for deciding on 10 or more items. Each item becomes a row on a board Artifact (one per project) with its options, the recommended one marked, and a memo; choices are saved to the Artifact database and read back with `ArtifactData`. Template in `assets/board.html`, design rules in `references/design.md`.
+- choice-board: a skill for deciding on 10 or more items. Each item becomes a row on a board Artifact (one per project) with its options, the recommended one marked, and a memo; choices are saved to the Artifact database and read back with `ArtifactData`. A row can carry the item's current text (`source`), which opens in a side drawer when the row name is clicked. Template in `assets/board.html`, design rules in `references/design.md`.
 
 ## [0.5.0] - 2026-10-12
 
