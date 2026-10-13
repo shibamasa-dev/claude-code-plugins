@@ -1,6 +1,6 @@
 ---
 name: choice-board
-description: Put a per-item decision over 10 or more items on a board page instead of in chat. Each item gets its own row with its options (the recommended one marked) and a memo, saved to the Artifact database, and Claude reads the choices back. One board Artifact per project, reused across rounds. Use when the user has to decide something for each of 10+ items (triage, which candidates to adopt, where each one goes, how to implement each), or in Japanese 「一個ずつ選びたい」「選定して」「ボードで選ばせて」「選定ボード」「どれを採用するか決めたい」. Not for one question with many options, yes/no, fewer than 10 items (use AskUserQuestion) or a list the user only reads.
+description: Put a per-item decision over 10 or more items on a board page instead of in chat. Each item gets its own row with its options (the recommended one marked) and a memo, saved to the Artifact database, and Claude reads the choices back. One board Artifact per project, reused across rounds. Use when the user has to decide something for each of 10+ items (triage, which candidates to adopt, where each one goes, how to implement each); invoke it as soon as that is clear, before gathering or listing the items. Also in Japanese 「一個ずつ選びたい」「選定して」「ボードで選ばせて」「選定ボード」「どれを採用するか決めたい」. Not for one question with many options, yes/no, fewer than 10 items (use AskUserQuestion) or a list the user only reads.
 last_reviewed: 2026-10-13
 review_after: 2027-04-13
 ---
