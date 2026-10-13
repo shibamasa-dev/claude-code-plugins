@@ -7,6 +7,7 @@ The rules behind [../assets/board.html](../assets/board.html). They were chosen 
 - **Title, then the list.** No lead paragraph, no bulk actions ("fill the undecided with the recommendation"), no separate "excluded items" section. The only header extra is the decided count.
 - **One row per item, split in two.** Left: number, name, kind, one-sentence description, evidence lines. Right: one box holding **every** input for that row, the decision fields and then the memo. Rejected alternatives: choices in table columns with the memo elsewhere (inputs scattered across the row), a side panel (the item and its inputs drift apart), rows that expand to show inputs (decisions hidden behind a click).
 - **Options are radio lists, not dropdowns,** so every option and its recommended badge are visible without opening anything. The recommended option carries a badge (推奨 in Japanese); a one-line reason may sit under an option.
+- **The current text opens on demand.** Clicking a row's name opens a drawer from the right with the item's original text (`source`); Esc or the close button shuts it. Rejected alternative: "current state / what each option leads to" lines in every row, which crowded the list. The user needs the original text only for some rows, so it stays one click away.
 - Groups are headings above the rows, in the order the board defines.
 - At phone width the input box moves under the description.
 

@@ -51,6 +51,16 @@ h1 { font-size: 1.35rem; font-weight: 700; margin: 0; text-wrap: balance; }
 .badge { display: inline-block; font-size: .68rem; font-weight: 700; line-height: 1; padding: 3px 6px; background: var(--accent-soft); color: var(--accent); margin-left: 6px; vertical-align: 1px; white-space: nowrap; }
 textarea { width: 100%; min-height: 2.3em; resize: vertical; border: 1px solid var(--line); background: var(--bg); padding: 5px 8px; font-size: .86rem; }
 .busy { opacity: .6; }
+.nm-btn { font: inherit; font-family: var(--font-mono); font-weight: 600; font-size: .9rem; background: none; border: 0; padding: 0; color: var(--ink); cursor: pointer; text-align: left; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; word-break: break-word; }
+.nm-btn:hover { text-decoration-color: var(--accent); }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(640px, 100%); background: var(--bg); border-left: 2px solid var(--ink); z-index: 20; display: grid; grid-template-rows: auto 1fr; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.drawer header { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.drawer h2 { margin: 0; font-family: var(--font-mono); font-size: .95rem; word-break: break-word; }
+.drawer .close { border: 1px solid var(--line); background: var(--bg); padding: 2px 10px; cursor: pointer; flex: none; }
+.drawer .body { overflow: auto; padding: 12px 16px 24px; }
+.src + .src { margin-top: 18px; }
+.src-path { font-family: var(--font-mono); font-size: .76rem; color: var(--muted); word-break: break-all; margin-bottom: 6px; }
+.src pre { margin: 0; font-family: var(--font-mono); font-size: .8rem; line-height: 1.6; white-space: pre-wrap; word-break: break-word; border-left: 2px solid var(--line); padding-left: 10px; }
 @media (max-width: 760px) {
   .row { grid-template-columns: 2rem minmax(0, 1fr); }
   .box { grid-column: 2; }
@@ -62,12 +72,16 @@ textarea { width: 100%; min-height: 2.3em; resize: vertical; border: 1px solid v
   <div class="note" id="note"></div>
   <div id="groups"></div>
 </div>
+<aside class="drawer" id="drawer" hidden aria-labelledby="drawer-title">
+  <header><h2 id="drawer-title"></h2><button class="close" id="drawer-close" type="button"></button></header>
+  <div class="body" id="drawer-body"></div>
+</aside>
 
 <script>
 /* Data (written by Claude with ArtifactData, read back the same way):
    meta/current            { board: "<slug>" }
    boards/<slug>           { title, groups: [{ key, label }] }
-   boards/<slug>/rows/<id> { n, group, name, kind, what, meta: [string],
+   boards/<slug>/rows/<id> { n, group, name, kind, what, meta: [string], source: [{ path, text }],
                              fields: [{ key, label, inline?, options: [{ value, rec?, why? }] }],
                              choices: { <field key>: <value> }, memo }
    The page writes only choices.<key> and memo. */
@@ -75,11 +89,11 @@ const STR = {
   ja: { loading: "読み込んでいます。", outside: "このページは claude.ai の Artifact として開いたときだけ読み込めます。",
         noBoard: "まだボードがありません。Claude に候補の投入を頼んでください。", empty: "このボードにはまだ行がありません。",
         readOnly: "この表示では保存できません。閲覧のみです。", saveErr: (c) => `保存できませんでした（${c}）。もう一度選んでください。`,
-        loadErr: (c) => `読み込めませんでした（${c}）。ページを開き直してください。`, rec: "推奨", memo: "メモ", count: (n, t) => `決定 ${n} / ${t}` },
+        loadErr: (c) => `読み込めませんでした（${c}）。ページを開き直してください。`, rec: "推奨", memo: "メモ", close: "閉じる", count: (n, t) => `決定 ${n} / ${t}` },
   en: { loading: "Loading.", outside: "This page loads only when opened as a claude.ai Artifact.",
         noBoard: "No board yet. Ask Claude to add the items.", empty: "This board has no rows yet.",
         readOnly: "You can view this board but not save to it.", saveErr: (c) => `Could not save (${c}). Choose again.`,
-        loadErr: (c) => `Could not load (${c}). Reopen the page.`, rec: "Recommended", memo: "Memo", count: (n, t) => `Decided ${n} / ${t}` },
+        loadErr: (c) => `Could not load (${c}). Reopen the page.`, rec: "Recommended", memo: "Memo", close: "Close", count: (n, t) => `Decided ${n} / ${t}` },
 };
 const T = /^ja\b/i.test(navigator.language || "") ? STR.ja : STR.en;
 const $ = (id) => document.getElementById(id);
@@ -131,7 +145,11 @@ function paint(id) {
   row.dataset.done = String(done(d));
   row.querySelector(".num").textContent = d.n != null ? String(d.n) : "";
   const info = row.querySelector(".info"); info.replaceChildren();
-  const nm = el("div", "nm", d.name || id); if (d.kind) nm.append(el("span", "kind", d.kind));
+  const nm = el("div", "nm");
+  if (Array.isArray(d.source) && d.source.length) {
+    const b = el("button", "nm-btn", d.name || id); b.type = "button"; b.addEventListener("click", () => openSource(id, b)); nm.append(b);
+  } else nm.append(document.createTextNode(d.name || id));
+  if (d.kind) nm.append(el("span", "kind", d.kind));
   info.append(nm);
   if (d.what) info.append(el("p", "what", d.what));
   if (Array.isArray(d.meta) && d.meta.length) { const ul = el("ul", "meta"); d.meta.forEach((m) => ul.append(el("li", null, m))); info.append(ul); }
@@ -174,6 +192,24 @@ function paint(id) {
   if (ta && document.activeElement !== ta) ta.value = d.memo || "";
 }
 
+let drawerFrom = null;
+function openSource(id, from) {
+  const d = rows.get(id)?.d; if (!d) return;
+  $("drawer-title").textContent = d.name || id;
+  const body = $("drawer-body"); body.replaceChildren();
+  for (const s of d.source || []) {
+    const box = el("section", "src");
+    if (s.path) box.append(el("div", "src-path", s.path));
+    box.append(el("pre", null, s.text || ""));
+    body.append(box);
+  }
+  body.scrollTop = 0;
+  drawerFrom = from; $("drawer").hidden = false; $("drawer-close").focus();
+}
+function closeSource() { $("drawer").hidden = true; drawerFrom && drawerFrom.focus(); }
+$("drawer-close").addEventListener("click", closeSource);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("drawer").hidden) closeSource(); });
+
 function count() {
   let n = 0; for (const { d } of rows.values()) if (done(d)) n++;
   $("count").textContent = rows.size ? T.count(n, rows.size) : "";
@@ -207,6 +243,7 @@ function openBoard(slug) {
   }, (e) => note(T.loadErr((e && e.code) || "unknown"), true));
 }
 
+$("drawer-close").textContent = T.close;
 (async () => {
   note(T.loading);
   db = await window.claude?.use?.("db");
