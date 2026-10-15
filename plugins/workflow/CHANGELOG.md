@@ -2,6 +2,11 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.6.3] - 2026-10-15
+
+### Changed
+- session-wrap and weekly-orchestrator-base use Claude desktop's `start_session`, which replaced `spawn_task`. session-wrap puts the next steps on `start_session` cards (`initiation: "own_initiative"`) without asking in text first, since the card is where the user approves, and lists each card's title and task_id in the final report. weekly-orchestrator-base starts batches from the confirmed plan with `user_asked` and ones it adds itself with `own_initiative`, writes `start_session <name>` in the Run via column, and can start the successor with `context: "fork"`. `start_session`'s turn-end notices carry only the first 400 characters, so full reports still come by SendMessage.
+
 ## [0.6.2] - 2026-10-13
 
 ### Added
