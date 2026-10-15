@@ -50,7 +50,7 @@ When in doubt, use a child session (the cost of stalling is bigger).
 
 ## 4. Winding down
 
-Leaving child sessions around after they are done increases parallelism and breaks Remote Control.
+Leaving child sessions around after they are done keeps idle sessions running, which wastes resources and can make connections to them unstable.
 
 - **OK to wind down**: the PR is merged (`prState: MERGED` in `list_sessions`) and `isRunning: false`
   - Claude desktop sessions: `archive_session` (the PR and branch remain)

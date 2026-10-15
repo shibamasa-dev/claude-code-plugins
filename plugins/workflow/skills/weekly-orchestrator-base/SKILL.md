@@ -56,7 +56,7 @@ When the repository has its own orchestrator skill, its values override these.
 How to gather the situation (which issues, PRs, and records of the previous cycle to look at) follows the project skill (without one, the defaults above). From what you gathered, decide in this order.
 
 1. **Choose the targets**: from the goal issues and their child issues, choose what to advance this cycle
-   - Exclude issues with `Arch Review: Pending` and goals with a start condition ("start after ... progresses", etc.). Write them under "deferred" in the plan section **with the reason** (if you drop them silently, neither you after a `/clear` nor the user can trace why)
+   - Exclude issues waiting for a design review (when the project marks them with an issue field or label, e.g. `Arch Review: Pending`) and goals with a start condition ("start after ... progresses", etc.). Write them under "deferred" in the plan section **with the reason** (if you drop them silently, neither you after a `/clear` nor the user can trace why)
 2. **Set the minimum bar**: what must be finished by the end of the cycle
    - The minimum bar is **a floor, not a ceiling**. Once it is done, send out the next batch toward the goal
    - Do not silently carry over what does not fit in the weekdays. Consult the user on what to push to the next cycle
@@ -123,7 +123,7 @@ No other session takes over. The user clears this same session with `/clear` whe
 ## Don'ts
 
 - Delegating without writing it in the plan section (after a `/clear`, nobody knows that batch is running)
-- Letting an issue with `Arch Review: Pending` be executed
+- Letting an issue that is waiting for a design review be executed
 - Starting a batch without the user's OK by a method that runs without confirmation (such as a separate session with bypassPermissions)
 - Chopping work into one batch per item / sending out 3 or more at once
 - Rewriting anything outside the plan section (the outside belongs to the project or to auto-creation)
