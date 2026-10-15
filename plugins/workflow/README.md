@@ -22,7 +22,7 @@ If you used the former `review` plugin, uninstall it and move its settings to th
 | `issue-ops` | Conventions from filing an issue to closing it (how to write the body, writing results back before closing) |
 | `session-wrap` | Checks for leftovers before closing a session and leaves a handoff for the next one |
 | `context-diet` | Measures and trims the context loaded at every session start |
-| `weekly-orchestrator-base` | A base for an orchestrator that runs a weekly plan → delegate → check → close loop |
+| `weekly-orchestrator-base` | A base for a repository's one long-lived orchestrator session (title starting with `🎯 <repo>`, pinned and used every day): runs a weekly plan → delegate → check → close loop, sends PR work to child sessions and read-only checks to subagents, and keeps its state in the cycle issue so a manual `/clear` loses nothing. Has defaults (weekly cycle, issue title) for repos without their own orchestrator skill |
 | `choice-board` | When you have to decide something for each of 10 or more items, puts them on a board page instead of in chat: one row per item with its options (the recommended one marked) and a memo, saved to the Artifact database so Claude reads the choices back. One board per project, reused across rounds. Needs the Artifact tools (Claude Code connected to claude.ai) |
 
 ## Hooks
@@ -32,6 +32,7 @@ If you used the former `review` plugin, uninstall it and move its settings to th
 | handoff | Session start | Injects the "next entry point" left by the previous session. Write an entry with `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/handoff.py" write --entry <owner>/<repo>#<n> --state "..." --next "..."` and clear one with `... consume --entry <entry>`; the injected text prints the exact command |
 | issue-writeback | Session start, prompt submit, stop, session end, after issue operations | Reminds you if decisions were not written back to an issue you read |
 | runbook | After browser or computer-use actions, on stop, at session start | Records browser and screen-operation steps; on the first one, says to start a GIF recording (Chrome) or note key steps (tools that cannot record); stops if you forgot to write the runbook |
+| orchestrator-report | After creating or updating a PR, or writing to an issue (connector or `gh`) | If exactly one running session in the same repository (worktrees included) has a title starting with `🎯` and it is not this session, tells Claude to send it a one-line report with SendMessage. Once per PR / issue per session; skipped in cloud and Claude Projects sessions |
 | knowledge-freshness | Session start | Reports knowledge files past their review date in one line |
 | artifact-ledger | After Artifact | Records published Artifacts in the project's `.artifacts/` |
 | dev-flow-gate | Before creating a PR | Blocks if the body lacks `Closes #N` / `Refs #N` (`Refs: none (verbal request)` for requests without an issue) or the `Arch-Review:` field |
@@ -108,6 +109,11 @@ Organization values (GitHub org, default repo, Issue Fields, project board) aren
 |---|---|---|
 | `HANDOFF_STATE_DIR` | `~/.claude/state/handoff` | handoff entry points |
 | `RUNBOOK_ROOT` | `~/.claude/runbooks` | runbook raw logs and written runbooks |
+
+## Limitations
+
+- orchestrator-report finds the orchestrator with `claude agents --json`, which lists only sessions whose process is running. While the orchestrator's process is not running (e.g. after the app restarts, before the session is opened again), no report is requested
+- Cloud sessions and Claude Projects sessions do not report to a local orchestrator (they cannot send messages to local sessions)
 
 ## Requirements
 

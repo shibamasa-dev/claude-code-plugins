@@ -2,6 +2,18 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.7.0] - 2026-10-15
+
+### Added
+- orchestrator-report hook (PostToolUse): when a session creates or updates a PR or writes to an issue (connector or `gh`), and the same repository has exactly one running session whose title starts with `🎯` that is not this session, it tells Claude to send that orchestrator a one-line report with SendMessage. Once per PR / issue per session; skipped in cloud (`CLAUDE_CODE_REMOTE=true`) and Claude Projects (`CLAUDE_CODE_PROJECTS_SESSION=1`) sessions. It finds the orchestrator with `claude agents --json`, so nothing is reported while the orchestrator's process is not running.
+- weekly-orchestrator-base: how the orchestrator session is kept (one per repository, title starting with `🎯 <repo>`, the user clears it with `/clear`, reports from sessions it did not start, no session starts in turns begun by another session's message, Claude Projects), and defaults for repos without a project orchestrator skill (weekly cycle, `Orchestrator: <repo> <YYYY>-W<ww>` issue title).
+
+### Changed
+- weekly-orchestrator-base: work that produces a PR goes to a child session and read-only investigation or verification to a subagent. The plan section's "Handover" field became "Resume point".
+
+### Removed
+- weekly-orchestrator-base: handing over to a successor orchestrator session, including the successor prompt template and the successor-only triggers. The same session is cleared with `/clear` and resumes from the plan section.
+
 ## [0.6.3] - 2026-10-15
 
 ### Changed

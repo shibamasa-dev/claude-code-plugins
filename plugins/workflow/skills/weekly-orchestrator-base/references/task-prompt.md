@@ -54,14 +54,3 @@ When SendMessage is unavailable, skip interim reports and write the final report
 - Issue linkage: whether the PR body says Closes or Refs. If Refs, the reason (unmet acceptance criteria) and where the leftovers go
 Right before writing the report, verify the claims once more.
 ```
-
-## For a successor orchestrator
-
-Send out the successor via a separate-session route (not as a subagent).
-
-```text
-In {repo name} ({repo path}), start {the project's weekly orchestrator skill name} and
-continue from the plan section (<!-- weekly-orchestrator:plan --> …) of cycle issue {owner/repo}#{number}.
-You are generation {N}. The previous generation handed over {when, and how far it got}.
-Running batches: {batch numbers, routes, and any whose report recipient is still the old generation}
-```

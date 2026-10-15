@@ -1,6 +1,6 @@
 # The plan section (placed in the cycle issue body)
 
-The orchestrator's **source of truth** for state. A successor orchestrator reads only this and resumes from where it left off.
+The orchestrator's **source of truth** for state. After a `/clear`, the orchestrator reads only this and resumes from where it left off.
 Rewrite it the moment you decide, the moment you delegate, and the moment you receive a result. History goes in comments.
 Every write follows the `issue-ops` skill.
 
@@ -52,20 +52,20 @@ Fill in `{period}` to match the project's cycle.
 ### Sub-step adjustments
 - (one line per child issue created, merged, or closed, with the reason; "none" if there are none)
 
-### Handover
-- Orchestrator: generation 1 (after sending out a successor, write the generation and how it was started)
+### Resume point
 - Next: 
-- Waiting on batches: (batch number, session name the report goes to)
+- Waiting on batches: (batch number, session name the report comes from)
 <!-- /weekly-orchestrator:plan -->
 ```
 
 ### How to fill the fields
 
-- **Plan status**: `Draft` while it is still the template. Once you get the user's OK and write it in, `Confirmed YYYY-MM-DD`. The successor uses this to decide whether to "make the plan" or "resume from where it left off"
+- **Plan status**: `Draft` while it is still the template. Once you get the user's OK and write it in, `Confirmed YYYY-MM-DD`. After a `/clear`, the orchestrator uses this to decide whether to "make the plan" or "resume from where it left off"
 - **Minimum bar**: write as checkboxes. Items still `- [ ]` at close-out become candidates for carry-over
 - **Run via column**: `subagent <name>` / `start_session <name>` (the name it returns; `start_session <task_id>` for a card not started yet) / `<route> <identifier>` (other separate sessions) / `paste-in`
 - **Status column**: `Not started` / `Running` / `PR #N` (a PR exists but is not merged) / `Done` (merged and acceptance criteria verified) / `Blocked (reason)`
-- **Handover**: always write it before a handover. If you could not tell a running separate-session batch about the change of report recipient, write "report recipient is still the old generation"
+- **Batch column**: work that was not in the plan but was reported by another session goes in as `Unplanned: <what>`, with Run via `reported by <session name>`
+- **Resume point**: keep it current before any natural break, so the orchestrator can carry on after a `/clear`
 - Older cycle issues may use the Japanese template; read `未確定` / `確定` as `Draft` / `Confirmed`, and the statuses `未着手` / `実行中` / `完了` / `止まっている` as `Not started` / `Running` / `Done` / `Blocked`
 
 ## `## Result` when closing
