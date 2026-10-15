@@ -13,7 +13,7 @@ Why:
 - A subagent cannot talk with the user. If it ends up waiting for an answer or approval, it stalls and no report comes back
 - Permission dialogs and screen locks on physical machines assume a person looking at the screen and operating it. A subagent that cannot talk gets stuck
 - **A subagent stops together with its parent session.** If you give long work to a subagent, the work stops as soon as the orchestrator hands over
-- Conversely, short work with no dialogue is lighter as a subagent (no chip to click or session to attach, and the report comes back automatically in the completion notification)
+- Conversely, short work with no dialogue is lighter as a subagent (no card to start or session to attach, and the report comes back automatically in the completion notification)
 
 When in doubt, use a separate session (the cost of stalling is bigger).
 
@@ -30,11 +30,11 @@ When in doubt, use a separate session (the cost of stalling is bigger).
 
 | Order | Route | How to use |
 |---|---|---|
-| 1 | `spawn_task` (Claude desktop; find it with `ToolSearch`) | It only shows a chip; work starts when the user clicks it. Write the `task_id` in the plan section |
+| 1 | `start_session` (Claude desktop) | `initiation: "user_asked"` for a batch in the plan the user confirmed (it starts immediately); `own_initiative` for a batch you add on your own judgment (it only shows a card; nothing runs until the user starts it). Pass the full prompt as `prompt`; with `context: "fresh"` (the default) also pass `background`. Write the returned session `name` in the plan section (for an `own_initiative` card the user hasn't started yet, its `task_id`) |
 | 2 | A skill or mechanism that can start another session in a waiting state (if the environment has one) | Use a separate working tree and start it in a waiting state (it does not move until the user enters that session and says "start"). **Do not configure it to run unattended** (if the mechanism starts work unattended when given an entry issue, do not use that option). Write the entry issue in the prompt body. Write the started session's identifier in the plan section |
 | 3 | Neither is available (CLI alone, cloud, etc.) | Output the prompt for pasting and leave the entry point with `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/handoff.py" write --entry <owner>/<repo>#<cycle issue>`. In the plan section, write `paste-in` |
 
-- Have interim and final reports sent by SendMessage to the recipient written in the prompt (the orchestrator's session name). Unless you have them sent, all the orchestrator receives is a "session ended" notification
+- Have interim and final reports sent by SendMessage to the recipient written in the prompt (the orchestrator's session name). A session started with `start_session` notifies the orchestrator each time it ends a turn, but with only the first 400 characters of its latest report; other routes send only a "session ended" notification
 - The session name is the `<name>` in the first line of `ListAgents` (`This session is <name> [ref]`). Do not include `[ref]`
 
 ## 3. Receiving

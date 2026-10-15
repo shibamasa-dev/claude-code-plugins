@@ -63,7 +63,7 @@ Fill in `{period}` to match the project's cycle.
 
 - **Plan status**: `Draft` while it is still the template. Once you get the user's OK and write it in, `Confirmed YYYY-MM-DD`. The successor uses this to decide whether to "make the plan" or "resume from where it left off"
 - **Minimum bar**: write as checkboxes. Items still `- [ ]` at close-out become candidates for carry-over
-- **Run via column**: `subagent <name>` / `spawn_task <task_id>` / `<route> <identifier>` (other separate sessions) / `paste-in`
+- **Run via column**: `subagent <name>` / `start_session <name>` (the name it returns; `start_session <task_id>` for a card not started yet) / `<route> <identifier>` (other separate sessions) / `paste-in`
 - **Status column**: `Not started` / `Running` / `PR #N` (a PR exists but is not merged) / `Done` (merged and acceptance criteria verified) / `Blocked (reason)`
 - **Handover**: always write it before a handover. If you could not tell a running separate-session batch about the change of report recipient, write "report recipient is still the old generation"
 - Older cycle issues may use the Japanese template; read `未確定` / `確定` as `Draft` / `Confirmed`, and the statuses `未着手` / `実行中` / `完了` / `止まっている` as `Not started` / `Running` / `Done` / `Blocked`

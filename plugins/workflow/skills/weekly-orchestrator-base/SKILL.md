@@ -61,11 +61,11 @@ Details (how to call each route, how to receive reports, how to wind down) are i
 | **subagent** (`Agent` tool, background, `isolation: "worktree"`) | No dialogue or approval with the user is needed / it does not touch computer use or remote physical machines (anything involving permission dialogs or screen locks) / it is expected to finish within a few hours |
 | **Separate session** | Any of the above does not hold = it needs questions to or approval from the user / it touches a physical machine / it is long work that runs across a handover |
 
-For separate sessions, use the first route available, in this order: ① `spawn_task` ② a skill or mechanism that can start another session in a waiting state without starting work right away (if the environment has one; do not configure it to run unattended) ③ a prompt for pasting plus `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/handoff.py" write` to leave the entry point.
+For separate sessions, use the first route available, in this order: ① `start_session` (`initiation: "user_asked"` for batches in the plan the user confirmed; `own_initiative` for ones you add on your own judgment, which wait as a card until the user starts them) ② a skill or mechanism that can start another session in a waiting state without starting work right away (if the environment has one; do not configure it to run unattended) ③ a prompt for pasting plus `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/handoff.py" write` to leave the entry point.
 
 - Write each prompt from the skeleton in `references/task-prompt.md`, **in full for every batch** (the receiver knows neither the history nor the other batches' prompts)
 - Before sending, fill in "Run via" and "Status" (`Running`) in the plan section's batch table; then send. If sending fails, set Status back to `Not started`, or to `Blocked (reason)` if it can't be retried now
-- A subagent's final report arrives in its completion notification. A separate session's interim and final reports arrive by SendMessage (write the recipient = the orchestrator's session name into the prompt)
+- A subagent's final report arrives in its completion notification. A separate session's interim and final reports arrive by SendMessage (write the recipient = the orchestrator's session name into the prompt). A session started with `start_session` also notifies you each time it ends a turn, but with only the first 400 characters of its latest report, so still have the full reports sent by SendMessage
 
 ### 4. Receive the results
 
@@ -93,7 +93,7 @@ Hand over when any of these holds: a compaction happened / you have read 3 or mo
 
 1. **Do not hand over while a subagent is running.** Ending the parent session also stops the subagent. Wait for it to finish first, receive its report, then proceed
 2. **Write the state first.** In the plan section's "Handover", write the generation, what to do next, and the batches being waited on (and who they report to). Do not send out the successor before writing
-3. Send out the successor via the **separate-session route** from step 3 (the successor runs long and talks with the user, so it is never a subagent). Use the "For a successor orchestrator" prompt in `references/task-prompt.md`
+3. Send out the successor via the **separate-session route** from step 3 (the successor runs long and talks with the user, so it is never a subagent). With `start_session`, use `context: "fork"`, or `context: "fresh"` with the "For a successor orchestrator" prompt in `references/task-prompt.md` as a self-contained brief; on other routes, use that prompt
 4. Tell each running separate-session batch by SendMessage that its report recipient has changed to the successor's session name. For any you could not tell, write "report recipient is still the old generation" in "Handover" (the successor will go and ask)
 5. Once the successor is out, do not send out new batches yourself. Rewrite the "Orchestrator" line in the plan section to the next generation and finish
 
