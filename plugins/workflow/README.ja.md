@@ -42,6 +42,8 @@
 
 dev-flow-gate は GitHub コネクタ（`create_pull_request`・`merge_pull_request`・`enable_pr_auto_merge`・`issue_read`・`issue_write`）と `gh` の両方を見る。GitHub を自分では読みに行かず、判定に使うのはセッション中のツール呼び出しだけ（別のセッションで作った PR のマージは止めず、確かめるよう一言返す）。状態は `${CLAUDE_PLUGIN_DATA}/dev-flow-gate/<session_id>.json` に置き、30 日より古いものはセッションの開始時に消す。
 
+orchestrator-report は報告を促した PR / issue を `${CLAUDE_PLUGIN_DATA}/orchestrator-report/<session_id>.json` に記録する（30 日より古いファイルは書き込みのときに消す）。
+
 ## mod
 
 | mod | 動き |

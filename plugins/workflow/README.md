@@ -42,6 +42,8 @@ If you used the former `review` plugin, uninstall it and move its settings to th
 
 dev-flow-gate watches both the GitHub connector (`create_pull_request`, `merge_pull_request`, `enable_pr_auto_merge`, `issue_read`, `issue_write`) and `gh`. It never queries GitHub itself; it decides only from tool calls made in the session (merging a PR created in another session isn't blocked, it just asks Claude to check). State lives in `${CLAUDE_PLUGIN_DATA}/dev-flow-gate/<session_id>.json`, and files older than 30 days are removed at session start.
 
+orchestrator-report keeps the PRs and issues it already asked about in `${CLAUDE_PLUGIN_DATA}/orchestrator-report/<session_id>.json` (files older than 30 days are removed when it writes).
+
 ## Mods
 
 | Mod | What it does |
