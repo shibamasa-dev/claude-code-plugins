@@ -21,7 +21,7 @@ g() { git -c user.name=t -c user.email=t@example.com "$@" >/dev/null 2>&1; }
 g init -q "$T/repo" && g -C "$T/repo" commit -q --allow-empty -m init
 g -C "$T/repo" remote add origin https://github.com/o/r.git
 g -C "$T/repo" worktree add -q "$T/repo-wt" -b feat
-g init -q "$T/other"
+g init -q "$T/other" && g -C "$T/other" remote add origin https://github.com/x/y.git
 
 ORCH=3f2a9c1e-7b4d-4e8a-9c0f-1a2b3c4d5e6f
 CHILD=8d7e6f5a-4b3c-4d2e-8f1a-0b9c8d7e6f5a
@@ -88,5 +88,27 @@ first=$(bash_post s-c2 "$T/repo" "gh pr edit 7 -R o/r --body x" 'https://github.
 second=$(bash_post s-c2 "$T/repo" "gh pr edit 7 -R o/r --title y" 'https://github.com/o/r/pull/7')
 row 'same PR twice in one session: told the first time only' \
   "$([ "$first $second" = 'inject none' ] && echo ok || echo "bad")" ok
+for i in 1 2 3 4 5 6; do
+  bash_post s-c3 "$T/repo" "gh pr edit 7 -R o/r --title t$i" 'https://github.com/o/r/pull/7' > "$T/par.$i" &
+done
+wait
+row 'same PR from 6 parallel tool calls: told exactly once' \
+  "$([ "$(cat "$T"/par.* | grep -c '^inject$')" = 1 ] && echo ok || echo bad)" ok
+
+echo
+echo '=== D: the repository written to decides the orchestrator ==='
+agents "$T/repo|$ORCH|🎯 r" "$T/repo|$CHILD|ログイン画面の不具合を直す"
+row 'gh pr create -R x/y from this repo; x/y has no orchestrator' \
+  "$(bash_post s-d1 "$T/repo" "gh pr create -R x/y --title t --body b" 'https://github.com/x/y/pull/3')" none
+agents "$T/repo|$ORCH|🎯 r" "$T/other|$CHILD|🎯 xy"
+out=$(python3 - "$T/repo" <<'PY2' | python3 "$HOOK"
+import json, sys
+print(json.dumps({"hook_event_name": "PostToolUse", "session_id": "s-d2", "cwd": sys.argv[1], "tool_name": "Bash",
+                  "tool_input": {"command": "gh pr create -R x/y --title t --body b"},
+                  "tool_response": {"stdout": "https://github.com/x/y/pull/3", "stderr": ""}}))
+PY2
+)
+row 'gh pr create -R x/y from this repo: told to report to x/y orchestrator' \
+  "$(printf '%s' "$out" | grep -q '🎯 xy' && ! printf '%s' "$out" | grep -q '🎯 r[^ ]' && echo ok || echo bad)" ok
 
 rm -rf "$T"

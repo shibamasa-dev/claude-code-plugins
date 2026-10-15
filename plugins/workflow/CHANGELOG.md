@@ -5,7 +5,7 @@ Changes to the workflow plugin. The format follows [Keep a Changelog](https://ke
 ## [0.7.0] - 2026-10-15
 
 ### Added
-- orchestrator-report hook (PostToolUse): when a session creates or updates a PR or writes to an issue (connector or `gh`), and the same repository has exactly one running session whose title starts with `🎯` that is not this session, it tells Claude to send that orchestrator a one-line report with SendMessage. Once per PR / issue per session; skipped in cloud (`CLAUDE_CODE_REMOTE=true`) and Claude Projects (`CLAUDE_CODE_PROJECTS_SESSION=1`) sessions. It finds the orchestrator with `claude agents --json`, so nothing is reported while the orchestrator's process is not running.
+- orchestrator-report hook (PostToolUse): when a session creates or updates a PR or writes to an issue (connector or `gh`), and the repository written to (matched by each session folder's `origin`) has exactly one running session whose title starts with `🎯` that is not this session, it tells Claude to send that orchestrator a one-line report with SendMessage. Once per PR / issue per session; skipped in cloud (`CLAUDE_CODE_REMOTE=true`) and Claude Projects (`CLAUDE_CODE_PROJECTS_SESSION=1`) sessions. It finds the orchestrator with `claude agents --json`, so nothing is reported while the orchestrator's process is not running.
 - weekly-orchestrator-base: how the orchestrator session is kept (one per repository, title starting with `🎯 <repo>`, the user clears it with `/clear`, reports from sessions it did not start, no session starts in turns begun by another session's message, Claude Projects), and defaults for repos without a project orchestrator skill (weekly cycle, `Orchestrator: <repo> <YYYY>-W<ww>` issue title).
 
 ### Changed

@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
 """orchestrator-report: tells a session to report its PR / issue writes to the repo's orchestrator session.
 
-PostToolUse. When a session creates or updates a PR, or writes to an issue, and the same repository has exactly one
-running session whose title starts with the orchestrator marker, inject `additionalContext` asking Claude to send that
-session a one-line report with SendMessage. The orchestrator itself (same session id) gets nothing.
+PostToolUse. When a session creates or updates a PR, or writes to an issue, and the repository written to has exactly
+one running session whose title starts with the orchestrator marker, inject `additionalContext` asking Claude to send
+that session a one-line report with SendMessage. The orchestrator itself (same session id) gets nothing.
 
   - Writes detected: connector create_pull_request / update_pull_request / issue_write / add_issue_comment /
     sub_issue_write, and `gh pr create|edit`, `gh issue create|edit|comment|close`. The gh parsing reuses
     dev_flow_gate.py; the issue refs reuse issue-writeback.py. A create takes its number from the URL in the result;
     if no ref can be resolved, nothing is injected
   - The orchestrator: `claude agents --json` (running sessions only), the entry whose `name` starts with MARKER and
-    whose cwd belongs to the same repository (same `git rev-parse --git-common-dir`, so worktrees count as their repo;
-    path equality if git fails). Zero or several matches: nothing
+    whose cwd's `origin` remote is the GitHub repo written to (worktrees share their repo's origin; `gh -R` and
+    connector writes to another repo go to that repo's orchestrator). Zero or several matches: nothing
   - Skipped in cloud sessions (CLAUDE_CODE_REMOTE=true) and Claude Projects sessions (CLAUDE_CODE_PROJECTS_SESSION=1)
   - At most once per PR / issue per session. State: <CLAUDE_PLUGIN_DATA or ~/.claude/state>/orchestrator-report/<session_id>.json
 
 Whatever happens it never raises, always exits 0, and prints nothing when there is nothing to inject.
 """
+import fcntl
 import importlib.util
 import json
 import os
@@ -133,35 +134,18 @@ def running_sessions():
         return []
 
 
-_repo_cache = {}
-
-
-def repo_key(path):
-    """The repository a directory belongs to (its git common dir, so a worktree maps to its main repo).
-    Falls back to the directory itself when git cannot tell."""
-    if not path:
-        return None
-    if path not in _repo_cache:
-        key = os.path.realpath(path)
-        try:
-            r = subprocess.run(["git", "-C", path, "rev-parse", "--git-common-dir"],
-                               capture_output=True, text=True, timeout=2)
-            out = r.stdout.strip()
-            if r.returncode == 0 and out:
-                key = os.path.realpath(os.path.join(path, out))
-        except Exception:
-            pass
-        _repo_cache[path] = key
-    return _repo_cache[path]
-
-
-def find_orchestrator(cwd):
-    here = repo_key(cwd)
-    if not here:
-        return None
-    matches = [s for s in running_sessions()
-               if isinstance(s, dict) and (s.get("name") or "").startswith(MARKER) and repo_key(s.get("cwd")) == here]
-    return matches[0] if len(matches) == 1 else None
+def orchestrators_by_repo():
+    """owner/repo (lowercase) -> the one running session titled with the marker whose folder's origin is that
+    GitHub repo (worktrees share their repo's origin). A repo with several such sessions maps to None."""
+    out = {}
+    for s in running_sessions():
+        if not isinstance(s, dict) or not (s.get("name") or "").startswith(MARKER) or not s.get("cwd"):
+            continue
+        repo = dfg.repo_from_cwd(s["cwd"])
+        if repo:
+            key = repo.lower()
+            out[key] = None if key in out else s
+    return out
 
 
 # -------------------------------------------------------------------- state
@@ -177,14 +161,21 @@ def reported(session_id):
         return set()
 
 
-def mark_reported(session_id, refs):
+def claim(session_id, refs):
+    """Record refs as reported and return the ones no other call had recorded yet.
+    Read-check-write runs under flock, so parallel tool calls in one session never both claim a ref."""
     os.makedirs(STATE_DIR, exist_ok=True)
     gc()
-    done = sorted(reported(session_id) | set(refs))
-    tmp = _path(session_id) + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump({"reported": done}, f)
-    os.replace(tmp, _path(session_id))
+    with open(_path(session_id) + ".lock", "w") as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)
+        done = reported(session_id)
+        new = [r for r in refs if r not in done]
+        if new:
+            tmp = _path(session_id) + f".{os.getpid()}.tmp"
+            with open(tmp, "w") as f:
+                json.dump({"reported": sorted(done | set(new))}, f)
+            os.replace(tmp, _path(session_id))
+        return new
 
 
 def gc():
@@ -226,15 +217,25 @@ def on_post_tool_use(inp):
             new.append((kind, ref, key))
     if not new:
         return None
-    orch = find_orchestrator(cwd)
-    if not orch or orch.get("sessionId") == sid:
+    # Report to the orchestrator of the repository written to, which may differ from cwd's (gh -R, connector owner/repo)
+    orchs = orchestrators_by_repo()
+    to = {}  # orchestrator name -> [(kind, ref, key)]
+    for kind, ref, key in new:
+        orch = orchs.get(key.rsplit("#", 1)[0])
+        if orch and orch.get("sessionId") != sid:
+            to.setdefault(orch["name"], []).append((kind, ref, key))
+    claimed = set(claim(sid, [k for items in to.values() for _, _, k in items])) if to else set()
+    lines = []
+    for name, items in to.items():
+        items = [i for i in items if i[2] in claimed]
+        if items:
+            what = ", ".join(f"{kind} {ref} ({url_of(kind, ref)})" for kind, ref, _ in items)
+            lines.append(f"Send `{name}` (the orchestrator session of that repository) a one-line report with"
+                         f" SendMessage (to: `{name}`): what you did to which PR/issue, with its URL ({what}).")
+    if not lines:
         return None
-    mark_reported(sid, [k for _, _, k in new])
-    name = orch["name"]
-    what = ", ".join(f"{kind} {ref} ({url_of(kind, ref)})" for kind, ref, _ in new)
     return dfg.inject(
-        f"{TAG} This repo's orchestrator session is `{name}`. Send it a one-line report with SendMessage"
-        f" (to: `{name}`): what you did to which PR/issue, with its URL ({what})."
+        f"{TAG} " + " ".join(lines) +
         " If you were started by that orchestrator (a linked child session), skip this: your turn-end notes"
         " already reach it. If the name is ambiguous, resolve it with ListAgents.")
 
