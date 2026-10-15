@@ -46,6 +46,7 @@ TAG = "[orchestrator-report]"
 ISSUE_URL_RE = re.compile(r"github\.com/([\w.-]+/[\w.-]+)/issues/(\d+)")
 GH_TRIGGERS = {("pr", "create"), ("pr", "edit"), ("issue", "create"), ("issue", "edit"),
                ("issue", "comment"), ("issue", "close")}
+MCP_ERROR_RE = re.compile(r"\s*(MCP error|Error\b|failed\b)", re.I)
 MCP_TRIGGERS = {"create_pull_request", "update_pull_request", "issue_write", "add_issue_comment", "sub_issue_write"}
 
 
@@ -69,23 +70,32 @@ def targets_from_bash(cmd, cwd, tr):
     if not re.search(r"\bgh\b", cmd) or dfg.failed(tr):
         return []
     out_text = dfg.text_of(tr)
-    out = []
+    calls = []
     for call in dfg.gh_commands(cmd, cwd):
         pos, opts = dfg.parse_args(call["args"])
-        if len(pos) < 2 or (pos[0], pos[1]) not in GH_TRIGGERS:
-            continue
+        if len(pos) >= 2 and (pos[0], pos[1]) in GH_TRIGGERS:
+            calls.append((call, pos, opts))
+    # The output of one tool call holds every command's output. gh prints the created URL last, so the
+    # N creates of a kind take the last N URLs of that kind, in order (a URL printed earlier is not taken)
+    created = {}
+    for kind, rx in (("pr", dfg.PR_URL_RE), ("issue", ISSUE_URL_RE)):
+        n = sum(1 for _, p, _ in calls if p[0] == kind and p[1] == "create")
+        urls = [f"{m.group(1)}#{m.group(2)}" for m in rx.finditer(out_text)]
+        created[kind] = iter(urls[-n:] if n else [])
+    out = []
+    for call, pos, opts in calls:
         here = call["cwd"] or cwd
         repo = (dfg.opt(opts, "-R", "--repo") or call["env"].get("GH_REPO") or os.environ.get("GH_REPO")
                 or (dfg.repo_from_cwd(here) if here else None))
         sel = pos[2] if len(pos) > 2 else None
         if pos[0] == "pr":
             if pos[1] == "create":
-                ref = _url_ref(dfg.PR_URL_RE, out_text)
+                ref = next(created["pr"], None)
             else:
                 ref = _num_ref(sel, repo, "pull") or iw._resolve_pr(sel, repo, here, tr)
             out.append(("PR", ref))
         else:
-            ref = _url_ref(ISSUE_URL_RE, out_text) if pos[1] == "create" else _num_ref(sel, repo, "issues")
+            ref = next(created["issue"], None) if pos[1] == "create" else _num_ref(sel, repo, "issues")
             out.append(("issue", ref))
     return [(k, r) for k, r in out if r]
 
@@ -95,6 +105,8 @@ def targets_from_mcp(tool_name, ti, tr):
     if b not in MCP_TRIGGERS:
         return []
     text = dfg.text_of(tr)
+    if dfg.failed(tr) or MCP_ERROR_RE.match(text):
+        return []  # the write failed; claiming the ref would also silence the report for a successful retry
     if dfg.FORM_RE.search(text):
         return []  # only an approval form was shown; nothing is written until the user submits it
     if b == "create_pull_request":

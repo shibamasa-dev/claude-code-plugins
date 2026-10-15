@@ -90,6 +90,17 @@ row 'same PR twice in one session: told the first time only' \
   "$([ "$first $second" = 'inject none' ] && echo ok || echo "bad")" ok
 row 'gh issue close -c <comment> before the number' \
   "$(bash_post s-c4 "$T/repo" "gh issue close -c done 12 -R o/r" '')" inject
+row 'a connector update_pull_request that failed (is_error)' \
+  "$(post s-c5 "$T/repo" mcp__github__update_pull_request '{"owner":"o","repo":"r","pullNumber":7,"title":"x"}' '{"is_error":true,"content":"MCP error: not found"}')" none
+out=$(python3 - "$T/repo" <<'PY2' | python3 "$HOOK"
+import json, sys
+print(json.dumps({"hook_event_name": "PostToolUse", "session_id": "s-c6", "cwd": sys.argv[1], "tool_name": "Bash",
+                  "tool_input": {"command": "gh pr view 3 -R o/r --json url && gh pr create -R o/r -t a -b x && gh pr create -R o/r -t b -b y"},
+                  "tool_response": {"stdout": "https://github.com/o/r/pull/3\nhttps://github.com/o/r/pull/7\nhttps://github.com/o/r/pull/8", "stderr": ""}}))
+PY2
+)
+row 'two gh pr create in one call (after a printed URL): both, not the printed one' \
+  "$(printf '%s' "$out" | grep -q 'o/r#7' && printf '%s' "$out" | grep -q 'o/r#8' && ! printf '%s' "$out" | grep -q 'o/r#3' && echo ok || echo bad)" ok
 for i in 1 2 3 4 5 6; do
   bash_post s-c3 "$T/repo" "gh pr edit 7 -R o/r --title t$i" 'https://github.com/o/r/pull/7' > "$T/par.$i" &
 done
