@@ -22,7 +22,7 @@
 | `issue-ops` | issue の起票から close までの規約（本文の書き方、close 前の結果の書き戻し） |
 | `session-wrap` | セッションを閉じる前の残件確認と、次回への引き継ぎ |
 | `context-diet` | セッション開始時に毎回積まれるコンテキストを実測して減らす |
-| `weekly-orchestrator-base` | 週単位で「計画 → 委譲 → 確認 → 締め」を回すオーケストレータの土台 |
+| `weekly-orchestrator-base` | リポジトリごとに 1 つ置く長寿命のオーケストレータセッション（タイトルが `🎯 <リポ名>` で始まり、ピン留めして毎日使う）の土台。週単位で「計画 → 委譲 → 確認 → 締め」を回し、PR になる作業は子セッションへ、読むだけの調査・検証は subagent へ出す。状態はサイクル issue に置くので、手動の `/clear` で何も失わない。専用のオーケストレータスキルが無いリポ向けの既定（週単位のサイクル・issue のタイトル）も持つ |
 | `choice-board` | 10 個以上の項目それぞれについて決める必要があるとき、チャットではなくボードのページに出す。1 項目 1 行で、選択肢（推奨に印）とメモを並べ、Artifact のデータベースに保存して Claude が読み戻す。ボードは 1 プロジェクト 1 つを使い回す。Artifact のツール（claude.ai に接続した Claude Code）が必要 |
 
 ## フック
@@ -32,6 +32,7 @@
 | handoff | セッション開始 | 前のセッションが残した「次の入口」を注入する。書くのは `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/handoff.py" write --entry <owner>/<repo>#<n> --state "..." --next "..."`、消すのは `... consume --entry <入口>`。注入される文面に実行できるコマンドがそのまま出る |
 | issue-writeback | セッション開始・プロンプト送信・停止・終了、issue 操作の後 | 読んだ issue に決定事項を書き戻していなければ促す |
 | runbook | ブラウザ・画面操作の後、停止、セッション開始 | ブラウザ・画面操作の手順を記録する。最初の操作で、GIF 録画の開始（Chrome）か要所のメモ（録画できないツール）を促す。手順書を書き忘れたら止める |
+| orchestrator-report | PR の作成・更新、issue への書き込み（コネクタか `gh`）の後 | 書き込み先のリポジトリ（フォルダの `origin` で判定。worktree を含む）で動いているセッションのうち、タイトルが `🎯` で始まるものがちょうど 1 つあり、それが自分でなければ、SendMessage で 1 行報告するよう Claude に伝える。PR / issue ごとにセッションで 1 回だけ。クラウドと Claude Projects のセッションでは動かない |
 | knowledge-freshness | セッション開始 | 見直し期限を過ぎたナレッジを 1 行で知らせる |
 | artifact-ledger | Artifact の後 | 公開した Artifact をプロジェクトの `.artifacts/` に記録する |
 | dev-flow-gate | PR を作る前 | 本文に `Closes #N` / `Refs #N`（issue の無い依頼は `Refs: none (verbal request)`）と `Arch-Review:` の欄が無ければ止める |
@@ -40,6 +41,8 @@
 | | マージの前 | このセッションで作った PR の `Closes` 先の issue に、`## Result`（以前の `## 結果` も可）を書いた・読んで確かめた記録が無ければ止める |
 
 dev-flow-gate は GitHub コネクタ（`create_pull_request`・`merge_pull_request`・`enable_pr_auto_merge`・`issue_read`・`issue_write`）と `gh` の両方を見る。GitHub を自分では読みに行かず、判定に使うのはセッション中のツール呼び出しだけ（別のセッションで作った PR のマージは止めず、確かめるよう一言返す）。状態は `${CLAUDE_PLUGIN_DATA}/dev-flow-gate/<session_id>.json` に置き、30 日より古いものはセッションの開始時に消す。
+
+orchestrator-report は報告を促した PR / issue を `${CLAUDE_PLUGIN_DATA}/orchestrator-report/<session_id>.json` に記録する（30 日より古いファイルは書き込みのときに消す）。
 
 ## mod
 
@@ -108,6 +111,11 @@ reviews:
 |---|---|---|
 | `HANDOFF_STATE_DIR` | `~/.claude/state/handoff` | handoff の入口 |
 | `RUNBOOK_ROOT` | `~/.claude/runbooks` | runbook の生ログと手順書 |
+
+## 制限
+
+- orchestrator-report はオーケストレータを `claude agents --json` で探す。これはプロセスが動いているセッションしか返さないため、オーケストレータのプロセスが動いていない間（アプリの再起動後、そのセッションを開き直すまで等）は報告を促さない
+- クラウドのセッションと Claude Projects のセッションは、手元のオーケストレータに報告しない（手元のセッションへメッセージを送れないため）
 
 ## 前提
 
