@@ -153,6 +153,9 @@ row 'after writing `## Result` with gh issue edit (gh pr merge)' "$(pre c3 Bash 
 mk c4 "$OK_BODY" 23
 post c4 Bash "$(bash_in 'gh issue view 5 -R O/R')" "$(bash_out $'title: x\n--\nbody\n\n## Result\nok')" >/dev/null
 row 'after confirming with gh issue view (gh pr merge by branch name)' "$(pre c4 Bash "$(bash_in 'gh pr merge feat -R O/R')")" allow
+mk c4b "$OK_BODY" 23
+post c4b Bash "$(bash_in 'gh issue view -c 5 -R O/R')" "$(bash_out $'title: x\n--\nbody\n\n## Result\nok')" >/dev/null
+row 'gh issue view -c (a switch there, not a value) still confirms #5' "$(pre c4b Bash "$(bash_in 'gh pr merge feat -R O/R')")" allow
 mk c5 $'Refs #5\nArch-Review: not-needed — x' 24
 row 'a PR with only Refs is not stopped' "$(pre c5 $MERGE "$(mi 24)")" allow
 row 'a PR not created in this session is not stopped' "$(pre c5 $MERGE "$(mi 99)")" allow

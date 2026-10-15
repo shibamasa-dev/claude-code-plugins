@@ -88,6 +88,8 @@ first=$(bash_post s-c2 "$T/repo" "gh pr edit 7 -R o/r --body x" 'https://github.
 second=$(bash_post s-c2 "$T/repo" "gh pr edit 7 -R o/r --title y" 'https://github.com/o/r/pull/7')
 row 'same PR twice in one session: told the first time only' \
   "$([ "$first $second" = 'inject none' ] && echo ok || echo "bad")" ok
+row 'gh issue close -c <comment> before the number' \
+  "$(bash_post s-c4 "$T/repo" "gh issue close -c done 12 -R o/r" '')" inject
 for i in 1 2 3 4 5 6; do
   bash_post s-c3 "$T/repo" "gh pr edit 7 -R o/r --title t$i" 'https://github.com/o/r/pull/7' > "$T/par.$i" &
 done

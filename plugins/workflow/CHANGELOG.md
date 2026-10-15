@@ -10,6 +10,10 @@ Changes to the workflow plugin. The format follows [Keep a Changelog](https://ke
 
 ### Changed
 - weekly-orchestrator-base: work that produces a PR goes to a child session and read-only investigation or verification to a subagent. The plan section's "Handover" field became "Resume point".
+- weekly-orchestrator-base: the design-review exclusion no longer assumes a specific issue field (`Arch Review: Pending` is now only an example of how a project may mark it), and the reason for winding down finished child sessions is stated generally.
+
+### Fixed
+- dev-flow-gate (and orchestrator-report, which reuses its gh parsing): in `gh issue close` / `gh pr close`, `-c` / `--comment` now take a value, so `gh issue close -c "<comment>" 12` resolves issue 12 instead of reading the comment as the selector. `--reason` and `--duplicate-of` are also treated as value options. In `issue view`, `pr view` and `pr review`, `-c` stays a switch.
 
 ### Removed
 - weekly-orchestrator-base: handing over to a successor orchestrator session, including the successor prompt template and the successor-only triggers. The same session is cleared with `/clear` and resumes from the plan section.

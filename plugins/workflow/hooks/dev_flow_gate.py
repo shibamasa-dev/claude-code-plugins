@@ -339,8 +339,10 @@ _VALUE_OPTS = {
     "-T", "--template", "-a", "--assignee", "-l", "--label", "-m", "--milestone", "-p", "--project",
     "-r", "--reviewer", "--recover", "-A", "--author-email", "--subject", "--match-head-commit",
     "--add-label", "--remove-label", "--add-assignee", "--remove-assignee", "--add-project",
-    "--remove-project", "--attach",
+    "--remove-project", "--attach", "--reason", "--duplicate-of",
 }
+# -c / --comment take a value only in `issue close` and `pr close` (in `issue view`, `pr view` and `pr review` they are switches)
+_CLOSE_COMMENT_OPTS = {"-c", "--comment"}
 
 
 def parse_args(args):
@@ -354,7 +356,7 @@ def parse_args(args):
         if a.startswith("--") and "=" in a:
             k, v = a.split("=", 1)
             opts[k] = v
-        elif a in _VALUE_OPTS:
+        elif a in _VALUE_OPTS or (a in _CLOSE_COMMENT_OPTS and pos[1:2] == ["close"]):
             opts[a] = args[i + 1] if i + 1 < len(args) else ""
             i += 1
         elif a.startswith("-") and len(a) > 2 and a[:2] in _VALUE_OPTS and not a.startswith("--"):
