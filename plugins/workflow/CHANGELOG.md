@@ -6,7 +6,7 @@ Changes to the workflow plugin. The format follows [Keep a Changelog](https://ke
 
 ### Added
 - weekly-orchestrator-base: the plan section gets a "Goal progress" table above "Target goals": every open goal, one row each (children done, current work, next move or blocked reason), rebuilt from the goal list each cycle, with blocked goals kept as rows and lines of work tracked outside issues allowed. Target goals is the subset chosen for the cycle.
-- weekly-orchestrator-base: progress questions are answered from Goal progress, not from "Resume point" or the batches; once the minimum bar is met with capacity left, the orchestrator proposes the next child of a goal that is not blocked; receiving a result also updates Goal progress.
+- weekly-orchestrator-base: progress questions are answered from Goal progress, not from "Resume point" or the batches; once the minimum bar is met with capacity left, the orchestrator proposes the next child of a goal that is not blocked; receiving a result also updates Goal progress. A plan section written before the table existed gets one built from the goal list when progress is asked or after a `/clear`.
 
 ## [0.7.0] - 2026-10-15
 

@@ -25,7 +25,7 @@ The template, the marker contract, and the splice contract are in `references/pl
 - Do not create state that exists only in the conversation. After a `/clear`, the orchestrator resumes by reading only this section
 - **Rewrite it the moment you decide, the moment you delegate, and the moment you receive a result.** If you batch the writes for later, a `/clear` in between loses them
 - The body says "where things stand now"; the history goes in comments
-- **Progress is seen per goal.** When asked for progress ("how is it going", "overall status"), answer from the plan section's "Goal progress" table: every open goal with its children done, current work, and next move or blocked reason. Do not build the answer around "Resume point" or the cycle's batches; they hold only what this cycle chose, so goals that were not chosen or are blocked drop out. **A blocked goal still gets its own line**, with what it is waiting for
+- **Progress is seen per goal.** When asked for progress ("how is it going", "overall status"), answer from the plan section's "Goal progress" table: every open goal with its children done, current work, and next move or blocked reason. Do not build the answer around "Resume point" or the cycle's batches; they hold only what this cycle chose, so goals that were not chosen or are blocked drop out. **A blocked goal still gets its own line**, with what it is waiting for. If the plan section has no "Goal progress" table (a plan written before the table existed), build it from the goal list first and write it into the plan section, then answer
 - **Every write to an issue (creating, updating the body, closing, commenting) follows the `issue-ops` skill.** This skill does not decide the means of writing (MCP or gh). When a plan or answer lists a write, do not write only the command; state "following issue-ops" explicitly (so the reader can check the means in issue-ops)
 
 ## The orchestrator session
@@ -58,7 +58,7 @@ How to gather the situation (which issues, PRs, and records of the previous cycl
 
 1. **Fill in "Goal progress"**: one row for every open goal, rebuilt from the goal list (not from the previous cycle's plan), including goals that are blocked or have not moved. Lines of work the project tracks outside issues may get a row too
 2. **Choose the targets**: from the goal issues and their child issues, choose what to advance this cycle
-   - Exclude issues waiting for a design review (when the project marks them with an issue field or label, e.g. `Arch Review: Pending`) and goals whose start condition ("start after ... progresses", etc.) is not met yet. Write them under "deferred" in the plan section **with the reason** (if you drop them silently, neither you after a `/clear` nor the user can trace why), and put the goal-level reason in that goal's "Goal progress" row
+   - Exclude issues waiting for a design review (when the project marks them with an issue field or label, e.g. `Arch Review: Pending`) and goals whose start condition ("start after ... progresses", etc.) is not met yet. Write each one down **with the reason** (if you drop them silently, neither you after a `/clear` nor the user can trace why): a deferred child issue of a chosen goal goes in Target goals' "Deferred child issues" column; a goal deferred as a whole is left out of Target goals, and its reason goes in that goal's "Goal progress" row (Next move / blocked reason)
 3. **Set the minimum bar**: what must be finished by the end of the cycle
    - The minimum bar is **a floor, not a ceiling**. Once it is done and there is capacity left, look at "Goal progress" and propose the next child issue of a goal that is not blocked, so every goal advances as far as the cycle allows. Adding it as a batch needs the user's OK (item 6 below)
    - Do not silently carry over what does not fit in the weekdays. Consult the user on what to push to the next cycle
@@ -121,7 +121,7 @@ No other session takes over. The user clears this same session with `/clear` whe
 1. **Keep the plan section current so a clear loses nothing.** Decisions, delegations and received results are already written as they happen; before a natural break, also fill in "Resume point" (what to do next, the batches being waited on and the session each one reports from)
 2. **Suggest a clear** when any of these holds: a compaction happened / you have read 3 or more batch reports / right after closing out. Suggest it once; the user decides when
 3. **If subagents are running, say so before the user clears.** A subagent's report comes back only into this conversation, so clearing while one runs can lose its report. Name them and suggest waiting for their reports first
-4. **After a clear**: find the cycle issue (the project skill's title, or the default title), read its plan section, check running child sessions with `ListAgents`, and resume from "Resume point". Child sessions keep reporting to the same session name, so nothing needs re-routing
+4. **After a clear**: find the cycle issue (the project skill's title, or the default title), read its plan section, check running child sessions with `ListAgents`, and resume from "Resume point". If the section has no "Goal progress" table, build it from the goal list and write it in. Child sessions keep reporting to the same session name, so nothing needs re-routing
 
 ## Don'ts
 
