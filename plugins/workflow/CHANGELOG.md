@@ -2,6 +2,12 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.7.1] - 2026-10-18
+
+### Added
+- weekly-orchestrator-base: the plan section gets a "Goal progress" table above "Target goals": every open goal, one row each (children done, current work, next move or blocked reason), rebuilt from the goal list each cycle, with blocked goals kept as rows and lines of work tracked outside issues allowed. Target goals is the subset chosen for the cycle.
+- weekly-orchestrator-base: progress questions are answered from Goal progress, not from "Resume point" or the batches; once the minimum bar is met with capacity left, the orchestrator proposes the next child of a goal that is not blocked; receiving a result also updates Goal progress.
+
 ## [0.7.0] - 2026-10-15
 
 ### Added
