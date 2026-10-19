@@ -38,6 +38,10 @@ Fill in `{period}` to match the project's cycle.
 
 **Plan status**: Draft (before the user's OK)
 
+### Goal progress
+| Goal | Children done | Current work | Next move / blocked reason |
+|---|---|---|---|
+
 ### Target goals
 | Goal | Child issues to advance this cycle | Deferred child issues (reason) |
 |---|---|---|
@@ -60,13 +64,15 @@ Fill in `{period}` to match the project's cycle.
 
 ### How to fill the fields
 
+- **Goal progress**: **every open goal, one row each**, whether or not it was chosen this cycle. Rebuild it from the goal list each cycle (do not carry the previous cycle's rows over); a goal that is blocked or has not moved still gets a row. Children done is `completed/total` of its child issues; Current work names the batch or child issue in progress (empty if none); the last column holds the next child to advance, or why the goal is blocked (waiting for a design review, a start condition, the user). A line of work the project tracks outside issues (a progress table, a database) may get a row too, with its own count. Projects may add columns (e.g. how many children wait for a design review, when a child was last updated)
+- **Target goals**: the subset of Goal progress chosen for this cycle, with the child issues to advance. Its "Deferred child issues" column is per child within a chosen goal; Goal progress's last column is per goal across all of them. Goal progress answers "how far along is each goal"; Target goals and Batches answer "what this cycle does about it"
 - **Plan status**: `Draft` while it is still the template. Once you get the user's OK and write it in, `Confirmed YYYY-MM-DD`. After a `/clear`, the orchestrator uses this to decide whether to "make the plan" or "resume from where it left off"
 - **Minimum bar**: write as checkboxes. Items still `- [ ]` at close-out become candidates for carry-over
 - **Run via column**: `subagent <name>` / `start_session <name>` (the name it returns; `start_session <task_id>` for a card not started yet) / `<route> <identifier>` (other separate sessions) / `paste-in`
 - **Status column**: `Not started` / `Running` / `PR #N` (a PR exists but is not merged) / `Done` (merged and acceptance criteria verified) / `Blocked (reason)`
 - **Batch column**: work that was not in the plan but was reported by another session goes in as `Unplanned: <what>`, with Run via `reported by <session name>`
-- **Resume point**: keep it current before any natural break, so the orchestrator can carry on after a `/clear`
-- Older cycle issues may use the Japanese template; read `未確定` / `確定` as `Draft` / `Confirmed`, and the statuses `未着手` / `実行中` / `完了` / `止まっている` as `Not started` / `Running` / `Done` / `Blocked`
+- **Resume point**: keep it current before any natural break, so the orchestrator can carry on after a `/clear`. It is the cycle's to-do list, not a progress report: goals that were not chosen or are blocked do not appear in it
+- Older cycle issues may use the Japanese template; read `未確定` / `確定` as `Draft` / `Confirmed`, and the statuses `未着手` / `実行中` / `完了` / `止まっている` as `Not started` / `Running` / `Done` / `Blocked`. A project template may name the Goal progress heading 「ゴール別の進み具合」
 
 ## `## Result` when closing
 
