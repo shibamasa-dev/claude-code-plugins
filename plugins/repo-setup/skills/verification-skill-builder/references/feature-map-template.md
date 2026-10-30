@@ -18,7 +18,7 @@ The maintained recipes for checking <app> the way its users run it. Read this fi
 
 ## Proof rules
 
-- Each step keeps its command, stdout, stderr and exit code
+- Every step records what was typed, both output streams and the return code
 - A change of state is confirmed from a second view (`<db query or listing command>`)
 - Network, external processes and file writes are counted, not assumed from a flag name
 - A skipped path is reported as unverified with its reason, never as passed

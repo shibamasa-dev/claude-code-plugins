@@ -1,6 +1,6 @@
 ---
 name: verification-skill-builder
-description: Builds a project's own real-app verification skill (`.claude/skills/verify-<app>/`) that drives the app the way its users do — a launch that isolates the run, a doctor that says whether it is safe to drive, commands run in the order of a script, evidence that is observed rather than trusted, and a cleanup that stops only what it started — plus a feature map of action → command → observed result. Use when codebase-doctor reports no real-app verification path, or for "make a verification skill for this repo", "prove this CLI works end to end", "script a way to drive the real app", or in Japanese 「検証スキルを作って」「verify スキルを作って」「実アプリで動作確認する手順をスキルにしたい」「台本どおりに CLI を叩いて確かめたい」.
+description: Builds a project's own real-app verification skill (`.claude/skills/verify-<app>/`) that drives the app the way its users do — a launch that isolates the run, a doctor that says whether it is safe to drive, commands run in the order of a script, evidence that is observed rather than trusted, and a cleanup that stops only what it started — plus a feature map of action → command → observed result. Use when codebase-doctor reports no real-app verification path, or for "make a verification skill for this repo", "prove this CLI works end to end", "script how to run the real app", or in Japanese 「検証スキルを作って」「verify スキルを作って」「実アプリで動作確認する手順をスキルにしたい」「台本どおりに CLI を叩いて確かめたい」.
 last_reviewed: 2026-10-30
 review_after: 2027-04-30
 ---
@@ -9,7 +9,7 @@ review_after: 2027-04-30
 
 Unit tests show that functions behave. They don't show that the app works when a user runs its commands one after another, with real state in between. This skill writes a project-local skill that does that: it starts an isolated copy of the app, drives it through a script, and leaves evidence behind.
 
-The skill you write is read by an agent that has never seen the app, in the middle of another task. Write every step so it can be followed cold: real commands, real paths, no placeholders.
+Its reader is another agent, busy with some other task, meeting this app for the first time. Write every step so it can be followed cold: real commands, real paths, no placeholders.
 
 ## 0. Decide whether the project needs one
 
@@ -20,19 +20,19 @@ The result is a few helper scripts and a feature map, often several hundred line
 
 ## 1. Read the repo before asking the user
 
-Answer these from the code, README and existing scripts. Ask the user only what the repo cannot tell you.
+Work these out from the code, README and existing scripts. Ask the user only what the repo cannot tell you.
 
-- **Surface**: what do users touch — CLI, web UI, API, desktop app? Pick the main one and note the rest.
+- **Surface**: what do users touch — CLI, web UI, API, desktop app? Pick the main one; list the others.
 - **Start**: the repo's own command for running it locally, with the env vars, ports, data directories and seed data it needs.
 - **Drive**: an existing harness first (end-to-end specs, scripts the repo already uses), then a generic one (plain shell for a CLI, HTTP for a service, a browser driver for a UI).
 - **Observe**: exit codes, output, files written, database rows, logs.
 - **Isolate**: can state, output and config be pointed at a throwaway directory? Which commands reach production services, spend money, send messages or need someone's credentials?
 
-If the checkout does not run as it is, fix only what belongs to the verification setup (its environment, dependencies, or the run's own config). Do not change the app's code: report the failure with its exact output and stop building. A skill written against a broken base teaches wrong steps.
+If the checkout does not run as it is, fix only what belongs to the verification setup (its environment, dependencies, or the run's own config). Do not change the app's code: report the failure with its exact output and stop building. Steps recorded against a checkout that doesn't start are wrong from the first line.
 
 ## 2. Write `.claude/skills/verify-<app>/SKILL.md`
 
-Frontmatter: `name: verify-<app>` and a `description` that names the app, its surface and when to use the skill (without frontmatter the skill is never picked up). The body has these parts, each built from what step 1 found.
+Frontmatter gives the skill its `name` (`verify-<app>`) and a `description` saying which app and surface it covers and when to use it; a skill without frontmatter is never loaded. The body has these parts, each built from what step 1 found.
 
 **Launch** — one command that creates an isolated run:
 
@@ -49,11 +49,11 @@ Frontmatter: `name: verify-<app>` and a `description` that names the app, its su
 
 Run it before driving and whenever something looks off. Never drive a run that Doctor rejects.
 
-**Drive** — the script: an ordered list of commands taken from this repo (real flags, real IDs, real file names). Each step saves its command, stdout, stderr and exit code. Prefer stable handles (subcommands, flags, routes, accessible names) over positions and timing.
+**Drive** — the script: an ordered list of commands taken from this repo (real flags, real IDs, real file names). For every step, record what was typed, both output streams and the return code. Prefer stable handles (subcommands, flags, routes, accessible names) over positions and timing.
 
 **Evidence** — where proof goes (outside the run directory, ignored by git) and what counts as proof:
 
-- The user's real path, not internal setters or test-only endpoints.
+- Go in through the entry points users have; don't reach into internals or call hooks that exist only for tests.
 - The action and the state it left, checked from a second view: query the database directly, list the output directory, read the log.
 - **Don't trust a dry-run or test mode by its name.** Observe what it actually did: count network connections, external processes started, and files written and where (an audit hook, `strace`, `fs_usage`, or a wrapping shim). Some dry-runs still open connections or write state.
 - A test that was skipped is not a pass. Report skips with their reason as unverified.
@@ -64,9 +64,9 @@ Run it before driving and whenever something looks off. Never drive a run that D
 - Removes the run directory and keeps the evidence.
 - Compares a fingerprint of the production state taken at launch with one taken now, and exits non-zero when it changed or could not be taken.
 
-**Helpers** — every script the skill ships is executable, and the skill body shows how to call it.
+**Helpers** — mark each bundled script runnable (`chmod +x`) and give its exact call in the skill body.
 
-## 3. Seed the feature map
+## 3. Start the feature map
 
 Create `features/README.md` and one file per user-facing feature, three to five to start (from commands, routes, menus or docs). Use [references/feature-map-template.md](references/feature-map-template.md).
 
@@ -77,13 +77,13 @@ Create `features/README.md` and one file per user-facing feature, three to five 
 
 ## 4. Prove it once before handing over
 
-Follow the new skill's own steps end to end: Launch → Doctor → Drive one mapped feature → Evidence → Cleanup.
+Follow the new skill's own steps end to end: Launch → Doctor → Drive one feature from the map → Evidence → Cleanup.
 
 - After Cleanup, list the evidence directory. If cleanup removed the proof, this step fails.
 - Run Cleanup after failed attempts too, so they don't leave processes or directories behind.
 - List every stand-in that differs from the real environment (unset tokens, a local directory in place of mounted storage, synthetic input files). Those parts stay unverified until a run in the real environment covers them.
 
-A skill that was never run is a draft.
+Until it has run once, the skill is unfinished.
 
 ## 5. Report
 
