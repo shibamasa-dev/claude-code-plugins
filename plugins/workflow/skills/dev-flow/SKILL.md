@@ -15,7 +15,7 @@ review_after: 2027-04-06
 |---|---|---|
 | 1. Take the request | Tell an issue from a verbal request | issue-ops |
 | 2. Structural-change check | If it is a structural change, get a GO from architecture review. Do not open an implementation PR before the GO | this SKILL |
-| 3. Implement and verify | Run the repo's checks and reread your own diff | this SKILL |
+| 3. Implement and verify | Run the repo's checks and reread your own diff. For a bug fix, follow "Bug fixes"; state why the change is safe ("Why the change is safe") | this SKILL |
 | 4. Open the PR | Put `Closes` / `Refs` and `Arch-Review:` in the body | this SKILL |
 | 5. Wait for review and CI | Route by how heavy the diff is (light: Claude reviews; heavy: ask the review tools), then wait for those results and CI | pr-review-triage |
 | 6. Evaluate and fix findings | Check and judge each finding, keep a response table in the PR body. If you fixed at least the threshold number of heavy findings, re-review → back to 5 | pr-review-triage |
@@ -103,6 +103,8 @@ Create it with the connector's `create_pull_request`. If the repo has a PR templ
 - **One `Arch-Review:` line**
   - Not a structural change: `Arch-Review: not-needed — <reason>`
   - Structural change with a GO: `Arch-Review: approved — <where the GO is (link to the issue, design doc, or message)>`
+
+Also put in the body the safety fact from step 3, "Why the change is safe" (the hook does not check it).
 
 **In repos where the tools' automatic review is ON (`review-auto: on`), route before opening the PR.** Following pr-review-triage 2.1, if it is light (and `review-light:` includes `claude`), open it with the `review:light` label. Adding the label after opening may be too late for the tool's first automatic review. The connector's `create_pull_request` cannot pass labels, so only in this case open it with `gh pr create --label review:light`.
 
