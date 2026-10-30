@@ -28,7 +28,7 @@ Answer these from the code, README and existing scripts. Ask the user only what 
 - **Observe**: exit codes, output, files written, database rows, logs.
 - **Isolate**: can state, output and config be pointed at a throwaway directory? Which commands reach production services, spend money, send messages or need someone's credentials?
 
-If the checkout does not run as it is, fix that first or report exactly what fails. A skill written against a broken base teaches wrong steps.
+If the checkout does not run as it is, fix only what belongs to the verification setup (its environment, dependencies, or the run's own config). Do not change the app's code: report the failure with its exact output and stop building. A skill written against a broken base teaches wrong steps.
 
 ## 2. Write `.claude/skills/verify-<app>/SKILL.md`
 

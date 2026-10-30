@@ -329,7 +329,7 @@ Whether the project's lint / format / test / CI machinery is wired — not wheth
 - **Fix**: if the project has `.claude/commands/init/setup.md`, **propose running `/init:setup` rather than proposing individual tool installs** — that command is interactive, reads the project's own metadata, and merges instead of overwriting. Only when no such command exists, propose the tools directly
 
 #### 17. Real-app verification path
-Whether the project has its own skill that drives the real app the way users do (the same commands or screens, in order) and keeps evidence. Tests check functions; this checks that someone can run the app end to end without touching production. **Only presence — never judge the contents** (same rule as 6b).
+Whether the project has its own skill that drives the real app the way users do (the same commands or screens, in order) and keeps evidence. Tests check functions; such a skill lets someone run the app end-to-end without touching production. **Only presence — never judge the contents** (same rule as 6b): `[PASS]` means the files exist, not that the skill isolates the run, keeps credentials out, has a read-only Doctor, observes its evidence or cleans up safely.
 
 - **Signals**: `.claude/skills/verify-*/SKILL.md`, and `features/README.md` next to it
 - **SKIP**: the phase is `setup`, the repository has nothing a user runs (a library, docs-only, config-only), or the guideline file from Check 1 records that the project needs no verification skill
