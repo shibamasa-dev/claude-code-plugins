@@ -81,7 +81,7 @@ Things the user decides (whether to make an issue, the GO from architecture revi
 
 **Why the change is safe**:
 
-- In the PR body, name the one fact that makes the change safe and how far you checked it: pointed at the line (`file:line`), walked the bad case and showed it can't be reached, or ran code that fails if the fact is false. If you only asserted it, write "unverified".
+- In the PR body, state the single fact the change's safety rests on and how far you checked it: pointed at the line (`file:line`), walked the bad case and showed it can't be reached, or ran code that fails if the fact is false. If you only asserted it, write "unverified".
 - Before removing or loosening a guard, retry, or timeout, find the commit that added it (`git blame`) and read its PR or issue. It may handle a failure you haven't seen.
 
 ## 4. Open the PR
