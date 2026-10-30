@@ -41,8 +41,8 @@ Use Glob and Read on manifest files. Do NOT ask the user — detect automaticall
 | Phase | Signals | Weighted checks |
 |-------|---------|-----------------|
 | `setup` | few commits, no tests, no CI, no CLAUDE.md | 1, 12, 13, 16 — guidelines, permissions, stack-matched skills, toolchain |
-| `build` | source growing, tests thin or absent, no deploy config | 2-5, 13, 14, 16 — implementation basics, skills, automation, toolchain |
-| `test` | tests exist or user says testing is starting; CI config present | 6, 6b, 9, 10, 12, 13, 16 — testing, test-design knowledge, validation, test-command permissions, testing skills, CI wiring |
+| `build` | source growing, tests thin or absent, no deploy config | 2-5, 13, 14, 16, 17 — implementation basics, skills, automation, toolchain, real-app verification |
+| `test` | tests exist or user says testing is starting; CI config present | 6, 6b, 9, 10, 12, 13, 16, 17 — testing, test-design knowledge, validation, test-command permissions, testing skills, CI wiring, real-app verification |
 | `release` | deploy config, tags/releases, production branch | 4, 11, 12, 15 — config, security, permissions, remote execution |
 
 State the detected phase in the report. Checks outside the weighted set still run, but fixes for them are proposed at lower priority.
@@ -328,6 +328,17 @@ Whether the project's lint / format / test / CI machinery is wired — not wheth
 - **FAIL**: none configured
 - **Fix**: if the project has `.claude/commands/init/setup.md`, **propose running `/init:setup` rather than proposing individual tool installs** — that command is interactive, reads the project's own metadata, and merges instead of overwriting. Only when no such command exists, propose the tools directly
 
+#### 17. Real-app verification path
+Whether the project has its own skill that drives the real app the way users do (the same commands or screens, in order) and keeps evidence. Tests check functions; this checks that someone can run the app end to end without touching production. **Only presence — never judge the contents** (same rule as 6b).
+
+- **Signals**: `.claude/skills/verify-*/SKILL.md`, and `features/README.md` next to it
+- **SKIP**: the phase is `setup`, the repository has nothing a user runs (a library, docs-only, config-only), or the guideline file from Check 1 records that the project needs no verification skill
+- **PASS**: a `verify-*` skill exists and has `features/README.md`
+- **WARN**: a `verify-*` skill exists but has no `features/README.md`
+- **FAIL**: no `verify-*` skill
+- **Do not put the phase into the PASS/WARN/FAIL decision.** As with 6b, the phase only sets how loudly to report
+- **Fix**: propose running the `verification-skill-builder` skill (this plugin). It first decides whether the project is big enough to need one, so a small CLI may end with "not needed" — report that outcome as is. This check does not write the skill itself
+
 ## Boundaries with other skills
 
 This skill **audits and proposes; it does not build**. When a fix needs building, hand it to the skill that owns it. Run this one first when the question is "what is missing", then delegate each fix.
@@ -342,6 +353,7 @@ This skill **audits and proposes; it does not build**. When a fix needs building
 | Scaffold the project's test-design knowledge layer | `testcase-generator` | Check 6b detects absence only; that skill owns the layout |
 | Install lint/format/test/CI interactively | the project's `/init:setup` when it exists | Check 16 defers to it rather than installing tools itself |
 | Set up a cloud execution environment | `remote-setup` | Check 15 is SKIP by default |
+| Build a project's real-app verification skill | `verification-skill-builder` | Check 17 detects absence only |
 | Hunt for vulnerabilities | `security-review` | Check 11 only verifies the basics are configured |
 | Review a diff or a PR | `code-review` | this skill audits the whole project, not a change |
 | Find and install a skill by capability | the user's skill catalog (if any) → `find-skills` | Check 13 uses that route; it is not a search tool itself |
