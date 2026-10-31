@@ -2,6 +2,12 @@
 
 Change history of the repo-setup plugin (named devtools up to 0.2.2). Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
 
+## [0.5.0] - 2026-10-30
+
+### Added
+- verification-skill-builder: writes a project's own `.claude/skills/verify-<app>/` skill that drives the real app the way users do. The generated skill has a Launch that isolates the run (own run directory, production tokens unset, sending or secret-reading commands replaced by logging stand-ins), a read-only Doctor that refuses unsafe runs, a Drive script of real commands, Evidence that observes what a dry-run actually did instead of trusting its name, and a Cleanup that stops only what the run started, keeps the evidence and fails when production state changed. It also seeds a feature map with fixed headings (action → command → observed result, Gotchas), leaves journeys that need credentials or production services as unverified, and is run end-to-end once before hand-over. It builds one only where the app has several commands run in order.
+- codebase-doctor: Check 17, "Real-app verification path". Presence only: PASS with a `verify-*` skill and its `features/README.md`, WARN without the map, FAIL without the skill; SKIP in the `setup` phase, for repos with nothing a user runs, or when CLAUDE.md records that none is needed. Weighted in the `build` and `test` phases. The fix proposes verification-skill-builder.
+
 ## [0.4.2] - 2026-10-13
 
 ### Removed

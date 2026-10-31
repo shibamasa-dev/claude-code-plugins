@@ -17,6 +17,7 @@ Skills for bootstrapping a repo.
 |---|---|
 | `codebase-doctor` | Checks whether a repo has the basics in place (tests, CI, lint, initial security settings, …) |
 | `remote-setup` | Creates a setup scaffold for cloud environments such as claude.ai/code and Cowork |
+| `verification-skill-builder` | Writes a project's own `verify-<app>` skill that drives the real app in script order in an isolated run, keeps observed evidence, and maps each feature as action → command → result |
 
 The test-design check in `codebase-doctor` (Check 6b) reads where test artifacts belong from the `testcase-generator` skill in [testing](../testing/README.md). Without the testing plugin, that check is SKIPPED (excluded from the score).
 

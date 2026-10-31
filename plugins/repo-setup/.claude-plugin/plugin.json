@@ -1,7 +1,7 @@
 {
   "name": "repo-setup",
-  "version": "0.4.2",
-  "description": "Skills for starting up a repo (auditing the basic setup, setting up cloud environments)",
+  "version": "0.5.0",
+  "description": "Skills for starting up a repo (auditing the basic setup, setting up cloud environments, building a real-app verification skill)",
   "author": {
     "name": "shibamasa-dev"
   },
