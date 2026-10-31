@@ -2,6 +2,13 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.7.2] - 2026-10-30
+
+### Added
+- dev-flow step 3: a "Bug fixes" block (make the bug happen first; when a cheap test reaches it, write the test first and see it fail for the bug's reason; after two failed fixes on the same assumption, write the assumption down and check it directly; no guards, retries or swallowed errors without evidence, and revert what a disproved hypothesis led to) and a "Why the change is safe" block (state in the PR body the single fact the change's safety rests on and how far it was checked; read the PR that added a guard, retry or timeout before removing or loosening it).
+- dev-flow: the step 3 row of the 9-step table points to "Bug fixes" and "Why the change is safe", and step 4 asks for the safety fact in the PR body (not checked by the hook).
+- dev-flow step 2: a design sent for a GO includes at least one structurally different alternative, why it lost and a recommendation, and is checked for hand-synced lists, two ways to do one job and state with more than one writer.
+
 ## [0.7.1] - 2026-10-18
 
 ### Added

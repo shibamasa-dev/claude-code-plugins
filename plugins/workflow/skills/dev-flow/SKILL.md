@@ -15,7 +15,7 @@ review_after: 2027-04-06
 |---|---|---|
 | 1. Take the request | Tell an issue from a verbal request | issue-ops |
 | 2. Structural-change check | If it is a structural change, get a GO from architecture review. Do not open an implementation PR before the GO | this SKILL |
-| 3. Implement and verify | Run the repo's checks and reread your own diff | this SKILL |
+| 3. Implement and verify | Run the repo's checks and reread your own diff. For a bug fix, follow "Bug fixes"; state why the change is safe ("Why the change is safe") | this SKILL |
 | 4. Open the PR | Put `Closes` / `Refs` and `Arch-Review:` in the body | this SKILL |
 | 5. Wait for review and CI | Route by how heavy the diff is (light: Claude reviews; heavy: ask the review tools), then wait for those results and CI | pr-review-triage |
 | 6. Evaluate and fix findings | Check and judge each finding, keep a response table in the PR body. If you fixed at least the threshold number of heavy findings, re-review → back to 5 | pr-review-triage |
@@ -59,6 +59,7 @@ Things the user decides (whether to make an issue, the GO from architecture revi
 - If the issue has `Arch Review` set, its value overrides your judgment. `Pending` means no implementation PR. `Approved` means the GO is given.
 - A structural change without a GO: if Issue Fields exist, set `Arch Review: Pending`, write the chosen approach and design requirements in the issue body (or a design doc if large), and ask the user for a GO. Until the GO, only investigation, design discussion, and design comments are allowed.
 - When in doubt, treat it as a structural change. Design decisions you made yourself (boundaries, references between parts, deletions) are laid out in the issue for confirmation before the PR.
+- A design sent for a GO includes at least one alternative with a different overall shape (not a variation inside the same shape), why it lost, and which option you recommend. Before sending, check the chosen design for three smells: the same list kept in sync by hand in more than one place, two ways to do one job, and one piece of state with more than one writer.
 - The gate is lifted when the user changes it to `Approved` or gives an explicit GO.
 
 ## 3. Implement and verify
@@ -70,6 +71,18 @@ Things the user decides (whether to make an issue, the GO from architecture revi
   - Missing updates to version, CHANGELOG, README
   - Behavior changed without tests
 - Fix what you find before opening the PR.
+
+**Bug fixes**:
+
+- Make the bug happen before changing anything, on the path the user hit. If it won't happen, narrow the conditions or add logging until it does; don't fix a guess.
+- When a cheap test can reach the bug, write it first and run it. It must fail, and for the reason the bug describes (not an import error or a typo). Skip it when it would need heavy setup, mocks of most of the system, or production-only state, and say which check you used instead.
+- If two fixes that rest on the same assumption fail the same check, stop. Write the assumption as one sentence and check it directly before trying a third.
+- Change only what the evidence supports. No "just in case" guards, retries, or swallowed errors. When a hypothesis turns out wrong, revert the changes it led to.
+
+**Why the change is safe**:
+
+- In the PR body, state the single fact the change's safety rests on and how far you checked it: pointed at the line (`file:line`), walked the bad case and showed it can't be reached, or ran code that fails if the fact is false. If you only asserted it, write "unverified".
+- Before removing or loosening a guard, retry, or timeout, find the commit that added it (`git blame`) and read its PR or issue. It may handle a failure you haven't seen.
 
 ## 4. Open the PR
 
@@ -90,6 +103,8 @@ Create it with the connector's `create_pull_request`. If the repo has a PR templ
 - **One `Arch-Review:` line**
   - Not a structural change: `Arch-Review: not-needed — <reason>`
   - Structural change with a GO: `Arch-Review: approved — <where the GO is (link to the issue, design doc, or message)>`
+
+Also put in the body the safety fact from step 3, "Why the change is safe" (the hook does not check it).
 
 **In repos where the tools' automatic review is ON (`review-auto: on`), route before opening the PR.** Following pr-review-triage 2.1, if it is light (and `review-light:` includes `claude`), open it with the `review:light` label. Adding the label after opening may be too late for the tool's first automatic review. The connector's `create_pull_request` cannot pass labels, so only in this case open it with `gh pr create --label review:light`.
 
