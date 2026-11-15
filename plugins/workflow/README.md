@@ -116,6 +116,7 @@ Organization values (GitHub org, default repo, Issue Fields, project board) aren
 
 - orchestrator-report finds the orchestrator with `claude agents --json`, which lists only sessions whose process is running. While the orchestrator's process is not running (e.g. after the app restarts, before the session is opened again), no report is requested
 - Cloud sessions and Claude Projects sessions do not report to a local orchestrator (they cannot send messages to local sessions)
+- choice-board: one person decides per board (every viewer writes to the same rows, so a later click overwrites an earlier one), and each field takes a single choice plus a per-row memo
 
 ## Requirements
 
