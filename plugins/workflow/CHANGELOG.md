@@ -2,6 +2,11 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.7.3] - 2026-11-15
+
+### Changed
+- choice-board: the steps no longer assume software work. A project can be a repository, a claude.ai project or a named effort; outside a repository the board is found where the work is tracked or with `Artifact list`. The examples for options, evidence and source text cover non-code decisions (applicants, vendor contracts), and the read-back follows `next_cursor` past 1000 rows. A new Limits section states that one person decides (viewers share the same rows) and that each field takes a single choice plus a memo.
+
 ## [0.7.2] - 2026-10-30
 
 ### Added
