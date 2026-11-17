@@ -1,0 +1,68 @@
+{
+  "name": "research",
+  "version": "0.1.0",
+  "description": "Skills that read X and the web. Currently research-x, which summarizes update announcements from a list of X accounts (through the xAI API's X search) and posts one Slack message per announcement",
+  "author": {
+    "name": "shibamasa-dev"
+  },
+  "homepage": "https://github.com/shibamasa-dev/claude-code-plugins/tree/main/plugins/research",
+  "repository": "https://github.com/shibamasa-dev/claude-code-plugins",
+  "license": "MIT",
+  "keywords": [
+    "x",
+    "twitter",
+    "xai",
+    "slack",
+    "release-notes"
+  ],
+  "userConfig": {
+    "accounts": {
+      "type": "string",
+      "title": "X accounts to watch",
+      "description": "Comma-separated X handles without @ (for example vendor_a,vendor_b). research-x asks about 10 of them per xAI request",
+      "required": true
+    },
+    "slack_channel": {
+      "type": "string",
+      "title": "Slack channel ID",
+      "description": "ID of the channel research-x posts to and reads its history from (for example C0123456789, not the #name). Its history is research-x's only state. Required to post; a dry run without it doesn't skip what was already posted",
+      "required": false,
+      "default": ""
+    },
+    "summary_language": {
+      "type": "string",
+      "title": "Summary language",
+      "description": "Language of the summaries (for example English or Japanese). Empty means the language you write to Claude in; a run outside Claude uses English",
+      "required": false,
+      "default": ""
+    },
+    "tone": {
+      "type": "string",
+      "title": "Summary tone",
+      "description": "Free text describing the tone of the summaries. Empty means neutral and factual",
+      "required": false,
+      "default": ""
+    },
+    "topic_filter": {
+      "type": "string",
+      "title": "What counts as an announcement",
+      "description": "Free text telling the model which posts to keep. Empty means: new or changed application features only, no research results, only clear update announcements",
+      "required": false,
+      "default": ""
+    },
+    "timezone": {
+      "type": "string",
+      "title": "Timezone",
+      "description": "IANA timezone for the times in the prompt and the report (for example Europe/Berlin). Empty means the system's local timezone",
+      "required": false,
+      "default": ""
+    },
+    "model": {
+      "type": "string",
+      "title": "xAI model",
+      "description": "xAI model to use. Empty means the newest plain grok-<version> in the xAI model list, picked on every run",
+      "required": false,
+      "default": ""
+    }
+  }
+}
