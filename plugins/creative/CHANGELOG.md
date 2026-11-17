@@ -6,7 +6,7 @@ Changelog of the creative plugin (named docs up to 0.1.4). Format: [Keep a Chang
 
 ### Added
 - `diagram-frames` skill: read before drawing an architecture, flow, sequence or state diagram as markup or code. It declares in one line what a box stands for (components, process steps, actors or states), puts that in the caption or legend, checks every box against it, and splits the figure in two instead of mixing kinds.
-- motion-video: `last_reviewed` / `review_after` frontmatter, so freshness checks can track it like the other skills.
+- motion-video: `last_reviewed` / `review_after` frontmatter, the same review dates the plugin's other skills carry.
 
 ## [0.3.3] - 2026-10-13
 

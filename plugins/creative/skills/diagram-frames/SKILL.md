@@ -1,13 +1,13 @@
 ---
 name: diagram-frames
-description: Read before drawing a structural diagram as markup or code (Mermaid, SVG, HTML, draw.io, PlantUML, ASCII): architecture, system or component diagrams, flowcharts, sequence, swimlane or state diagrams. Declares in one line what a box stands for (components, process steps, actors or states), writes that in the caption or legend, checks every box against it, and splits the figure in two instead of mixing kinds. Use it for "draw an architecture diagram", "make a flowchart", "diagram this system", "the boxes in this diagram are inconsistent", or in Japanese 「構成図を描いて」「フロー図を作って」「図解して」「システム構成図」「業務フロー図」「状態遷移図」「図の枠がバラバラ」「図の粒度が揃っていない」. Not for generated images or illustrations (use image-generation-prompt) and not for data charts.
+description: Read first whenever you draw, sketch or fix a box-and-arrow diagram as markup or code: a flowchart, architecture or system diagram, sequence diagram, swimlane or state diagram, in Mermaid, PlantUML, SVG, HTML, draw.io or ASCII. It sets what a box means: declare one axis (components, process steps, actors or states), write it in the caption or legend, check every box against it, and split the figure in two instead of mixing kinds. It draws nothing: use it alongside whatever skill or tool draws the diagram. Use it for "draw an architecture diagram", "sketch a flowchart in Mermaid", "PlantUML sequence diagram", "the boxes in this diagram are inconsistent", or in Japanese 「構成図を描いて」「フロー図を作って」「図解して」「システム構成図」「業務フロー図」「シーケンス図」「状態遷移図」「図の枠がバラバラ」「図の粒度が揃っていない」. Not for generated images or illustrations (use image-generation-prompt) and not for data charts.
 last_reviewed: 2026-11-17
 review_after: 2027-05-16
 ---
 
 # diagram-frames: decide what a box means before drawing
 
-A diagram breaks when its boxes mean different kinds of things. A typical failure: an architecture diagram that puts processing steps (split, extract, verify), a place where data sits (an inbox folder) and a piece of software (a server) side by side in identical boxes. The cause is pouring items from the text straight into boxes without first deciding what a box means. Copying the look of a sample diagram does not help either: the sample worked because it kept one meaning per box, and that is the part that gets lost.
+A diagram breaks when its boxes mean different kinds of things. A typical failure: an architecture diagram that puts processing steps (split, extract, verify) in the same boxes as the components they run on (an inbox folder, a server). The cause is pouring items from the text straight into boxes without first deciding what a box means. Copying the look of a sample diagram does not help either: the sample worked because it kept one meaning per box, and that is the part that gets lost.
 
 This skill only fixes the meaning of the boxes. Layout, styling and rendering are up to whatever skill or tool draws the diagram.
 
