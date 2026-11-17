@@ -86,7 +86,7 @@ def unwrap(c):
         elif os.path.basename(t) in _WRAPPERS:
             name, vopts = os.path.basename(t), _WRAPPERS[os.path.basename(t)]
             if name == "command" and i + 1 < len(c) and c[i + 1] in ("-v", "-V"):
-                return env, []  # command -v X only looks X up, it does not run it
+                return env, [], None  # command -v X only looks X up, it does not run it
             i += 1
             while i < len(c) and c[i].startswith("-") and c[i] != "-":
                 if c[i] == "--":
@@ -129,7 +129,7 @@ def resolve_dir(d, cur):
             if not top:
                 return None
             d = _TOP_RE.sub(lambda m: top, d)
-    if "$" in d or "`" in d:
+    if "$" in d or "`" in d or re.match(r"~[-+\d]", d):  # ~- / ~+ (OLDPWD, PWD, the dir stack): not followed
         return None
     d = os.path.expanduser(d)
     if os.path.isabs(d):
@@ -160,9 +160,28 @@ def resolve_cd(args, cur):
     return resolve_dir(dests[0], cur)
 
 
+REDIR_TAG = "__SHELL_REDIR__"  # put before an unquoted redirection operator by strip_comments()
+_REDIR_OP_RE = re.compile(r"\d*(?:>>|>&|>\||<&|<>|>|<)(?![(])")
+
+
+def strip_redirections(tokens):
+    """tokens without the redirections strip_comments() tagged (unquoted, so certainly redirections) and their targets."""
+    out, skip = [], False
+    for t in tokens:
+        if skip:
+            skip = False
+        elif t.startswith(REDIR_TAG):
+            skip = _REDIR_OP_RE.fullmatch(t[len(REDIR_TAG):]) is not None  # `> f`: the target is the next word
+        else:
+            out.append(t)
+    return out
+
+
 def strip_comments(command):
     """Drop `# ...` to the end of the line where `#` starts a word outside quotes, as the shell does.
-    A `#` inside a word (`docs/a#b.md`) or inside quotes stays (shlex would cut the word and the rest of the line)."""
+    A `#` inside a word (`docs/a#b.md`) or inside quotes stays (shlex would cut the word and the rest of the line).
+    Also tags each unquoted redirection operator at the start of a word (`>`, `2>`, `>>`, `<`, ...) with REDIR_TAG, so
+    callers can tell it from a quoted '>' once the quotes are gone. `<<` (heredoc markers, here-strings) is left alone."""
     out, i, quote, n = [], 0, None, len(command)
     subst, boundary = 0, True  # open $( ... ) count; whether the next character starts a word
     while i < n:
@@ -181,6 +200,18 @@ def strip_comments(command):
         elif ch in "'\"":
             quote = ch
             out.append(ch)
+        elif not subst and command.startswith("<<", i):
+            while i < n and command[i] == "<":  # heredoc marker or here-string: not a redirection to strip
+                out.append("<")
+                i += 1
+            continue
+        elif not subst and (ch in "<>" or was) and _REDIR_OP_RE.match(command, i):
+            # An unquoted < or > always redirects, also inside a word (m.py>out); digits only at a word start (2>)
+            op = _REDIR_OP_RE.match(command, i).group(0)
+            out.append(("" if was else " ") + REDIR_TAG + op)
+            i += len(op)
+            boundary = command[i:i + 1] in (" ", "\t")
+            continue
         elif ch == "#" and was:
             while i < n and command[i] != "\n":
                 i += 1
@@ -248,6 +279,8 @@ def commands(command, exes, cwd=None, _depth=0):
     out, exported = [], {}
     dirs, saved = [], []  # the pushd stack; (cwd, stack) saved at each "(" and restored at its ")"
     for c in cmds:
+        if isinstance(c, list):
+            c = strip_redirections(c)
         if c == "(":
             saved.append((cwd, list(dirs)))
             continue

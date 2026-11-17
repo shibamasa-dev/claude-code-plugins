@@ -16,7 +16,7 @@ Query unverified commits with `git log origin/<default> --grep='^Verification: n
 
 Modes (`off` / `observe` / `enforce`): `.claude/verification.json` {"commitGate": ..., "verifiers": ...} on origin's
 default branch, else userConfig `commit_gate` / `commit_gate_verifiers`, else off. The repo file is read from
-`refs/remotes/origin/HEAD` (never the working tree, so a branch cannot change the rule it is judged by); without an
+`refs/remotes/origin/HEAD` (not the working tree, so a branch cannot change the rule it is judged by); without an
 origin remote the working tree is read. When origin's default branch is unknown locally (no origin/HEAD), it does not gate.
   off      nothing is written and nothing is said. What still runs (all local, no network): PreToolUse returns at once
            unless the command contains both `git` and `commit`, then reads the repo's config with two to four git
@@ -404,35 +404,35 @@ def _add(parts, text):
 
 
 def commit_message(c, top):
-    """{"msg", "dry", "paths", "include"}. msg is None when the message cannot be inspected (a variable, the editor,
-    piped stdin). paths: the pathspecs named on the command line (None when read from a file); include: -i / --include."""
+    """{"msg", "dry", "paths", "include", "all"}. msg is None when the message cannot be inspected (a variable, the
+    editor, piped stdin). paths: the pathspecs named on the command line (None when unknown: read from a file, or next
+    to a word that cannot be told apart); include: -i / --include; all: -a / --all.
+    Unquoted redirections never get here (_shell.commands() strips them); a word that still looks like one was quoted
+    or came from an expansion, so it may be a path, a message or a redirection."""
     args, call, cwd = c["args"], c["call"], c["cwd"] or top
     parts, trailers, src, amend, dry, unknown = [], [], None, False, False, False
-    paths, include, redirect, dropped, ambiguous = [], False, False, set(), False  # ambiguous: paths unknown
+    paths, include, redirect, ambiguous = [], False, False, False  # ambiguous: paths unknown
+    stages_all = False  # -a / --all, read here so that an option's value (-m '-a') is never taken for it
     i = 0
     while i < len(args):
         a = args[i]
         nxt = args[i + 1] if i + 1 < len(args) else None
         if redirect:  # the target of `>` / `2>` / `<`, whatever it looks like (`> -a` writes a file named -a)
             redirect = False
-            dropped.add(i)
             i += 1
             continue
         if a == "--":
             rest = _no_redirects(args[i + 1:])  # no options after --, so every redirection here is one
-            dropped |= {j for j in range(i + 1, len(args))}
             ambiguous |= len(rest) < len(args) - i - 1
             paths = None if paths is None else paths + rest
             break
         if not a.startswith("-") or a == "-":
-            # Where a word starts, `2>&1`, `> f` and `>/dev/null` are redirections, not paths. An option's value
-            # (-m '> note') is consumed by its option below and never reaches this branch
+            # A quoted '>' or one from an expansion: it may be a redirection, so the paths are unknown (fail closed).
+            # An option's value (-m '> note') is consumed by its option below and never reaches this branch
             if re.fullmatch(r"\d*(>>?|<|&>)", a):
                 redirect = ambiguous = True
-                dropped.add(i)
             elif re.match(r"\d*(>>?|<|&>)", a):
                 ambiguous = True
-                dropped.add(i)
             elif paths is not None:
                 paths.append(a)
         elif a.startswith("--"):
@@ -456,12 +456,16 @@ def commit_message(c, top):
                 dry = True
             elif k == "--include":
                 include = True
+            elif k == "--all":
+                stages_all = True
             elif k == "--pathspec-from-file":
                 paths = None
         else:
             for j, ch in enumerate(a[1:], 1):
                 if ch == "i":
                     include = True
+                if ch == "a":
+                    stages_all = True
                 if ch not in _COMMIT_SHORT_VALUE and ch not in _COMMIT_SHORT_FLAGS:
                     break  # -S<key>, -u<mode> and unknown letters: the rest of the word is that option's value
                 if ch in _COMMIT_SHORT_VALUE:
@@ -500,12 +504,11 @@ def commit_message(c, top):
         msg = "\n".join(trailers) or None
     else:
         msg = "\n\n".join(parts) + "".join("\n" + t for t in trailers)
-    flags = [a for j, a in enumerate(args) if j not in dropped]  # the options, without redirections
     if ambiguous and paths:
         # A word read as a redirection may have been a quoted path or option ('>' -i), and an abbreviated option may
         # have taken a word read as a path: the named paths are unknown, so they do not narrow or skip the check
         paths = None
-    return {"msg": msg, "dry": dry, "paths": paths, "include": include, "args": flags}
+    return {"msg": msg, "dry": dry, "paths": paths, "include": include, "all": stages_all}
 
 
 def parse_trailer(msg):
@@ -625,7 +628,7 @@ def on_pre_bash(inp):
             continue
         # git commit <paths> (without -i) takes the named paths from the working tree, like -a does for all of them.
         # Paths read from a file (--pathspec-from-file) are unknown: the check runs on everything (fails closed)
-        stages = commits_all(m["args"]) or bool(m["paths"]) and not m["include"]
+        stages = m["all"] or bool(m["paths"]) and not m["include"]
         named = (m["paths"] or []) if m["include"] else []
         res = decide(inp, s, top, common, m["msg"], cmd, stages, named, c["cwd"] or top)
         if res and res[0] == "deny":
@@ -755,29 +758,19 @@ def staged_differs(top, named=(), cwd=None):
     both = set(filter(None, staged.split("\0"))) & set(filter(None, unstaged.split("\0")))
     # `git rm --cached f` leaves f in the working tree (untracked, so plain `git diff` does not list it): the verified
     # tree has f, the commit drops it
-    both |= {f for f in filter(None, deleted.split("\0")) if os.path.lexists(os.path.join(top, f))}
+    left = [f for f in filter(None, deleted.split("\0")) if os.path.lexists(os.path.join(top, f))]
+    if left:  # an ignored one is left out of the fingerprint (`add -A`) too, so it does not differ
+        try:
+            r = subprocess.run(["git", "-C", top, "check-ignore", "--no-index", "--stdin", "-z"], capture_output=True,
+                               text=True, timeout=10, env=GIT_ENV, input="\0".join(left) + "\0")
+            ignored = set(filter(None, r.stdout.split("\0"))) if r.returncode in (0, 1) else set()
+        except (subprocess.TimeoutExpired, OSError):
+            ignored = set()
+        both |= set(left) - ignored
     base, root = os.path.realpath(cwd or top), os.path.realpath(top)  # toplevel is resolved (/private/var vs /var)
     specs = [os.path.relpath(os.path.join(base, p), root).replace(os.sep, "/") for p in named]
     return sorted(f for f in both if not any(f == p or f.startswith(p.rstrip("/") + "/") or p == "."
                                              or fnmatch.fnmatchcase(f, p) for p in specs))
-
-
-def commits_all(args):
-    """True when the commit stages tracked changes itself (`-a` / `--all`), so the index is not committed as it is."""
-    for a in args:
-        if a == "--":
-            break
-        if a == "--all":
-            return True
-        if a.startswith("-") and not a.startswith("--"):
-            for ch in a[1:]:
-                if ch in _COMMIT_SHORT_VALUE:
-                    break  # the rest is that option's value (as in -mall)
-                if ch not in _COMMIT_SHORT_FLAGS:
-                    break  # -u<mode>, -S<key> and unknown letters: the rest may be a value (as in -unormal)
-                if ch == "a":
-                    return True
-    return False
 
 
 def heads_path(sid):
@@ -861,8 +854,8 @@ def main():
         inp = json.load(sys.stdin)
     except Exception:
         return 0
-    if not inp.get("session_id"):
-        return 0
+    if not isinstance(inp, dict) or not inp.get("session_id"):
+        return 0  # valid JSON that is not an event object ([], null, "x")
     ev = inp.get("hook_event_name", "")
     try:
         out = None
@@ -890,9 +883,17 @@ def main():
         if out:
             print(json.dumps(out, ensure_ascii=False))
     except Exception as e:  # never stop the work, but leave a trace that the gate did not run
-        if os.path.isdir(state_dir()):
-            log({"session": inp.get("session_id"), "decision": "error", "event": ev,
-                 "error": f"{type(e).__name__}: {e}"[:200]})
+        try:
+            if not os.path.isdir(state_dir()):  # first use: log only where the gate is on (off creates nothing)
+                top, _ = repo_of(inp.get("cwd") if isinstance(inp.get("cwd"), str) else None)
+                mode = settings(top)["mode"] if top else norm_mode(os.environ.get("CLAUDE_PLUGIN_OPTION_COMMIT_GATE"))
+                if mode != "off":
+                    os.makedirs(state_dir(), exist_ok=True)
+            if os.path.isdir(state_dir()):
+                log({"session": inp.get("session_id"), "decision": "error", "event": ev,
+                     "error": f"{type(e).__name__}: {e}"[:200]})
+        except Exception:
+            pass
     return 0
 
 

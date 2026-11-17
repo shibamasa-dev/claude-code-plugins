@@ -222,6 +222,7 @@ row 'git -C $(pwd) commit (unquoted) + trailer: passes' "$(commit s9t4 p2 'git -
 row 'git -C "$PWD" commit: judged here (no trailer)' "$(commit s9t5 p2 'git -C "$PWD" commit -am x' >/dev/null; lastlog decision | tr -d _)" wouldblock
 row 'cd ${PWD} && git commit + trailer: passes' "$(commit s9t6 p2 'cd ${PWD} && git commit -am x -m "'"$TR"'"')" allow
 row 'cd `pwd` && git commit: judged here (no trailer)' "$(commit s9t7 p2 'cd `pwd` && git commit -am x' >/dev/null; lastlog decision | tr -d _)" wouldblock
+row 'command -v git && git commit (no trailer): judged, not a crash' "$(commit s9cv p2 'command -v git && git commit -am x')" deny
 row 'sh -c -- '"'"'git commit'"'"' is seen' "$(commit s9b2 p2 "sh -c -- 'git commit -am x'")" deny
 row 'git commit -S<keyid> -am x -m <trailer>: the key does not swallow the options' "$(commit s9k1 p2 "git commit -SDEADBEEFCAFE -am x -m '$TR'")" allow
 row 'git commit -S<email>: same' "$(commit s9k2 p2 "git commit -Sci@example.com -am x -m '$TR'")" allow
@@ -240,6 +241,9 @@ row 'same, with -a (stages the verified version): passes' "$(commit s9s2 p2 "$CM
 row 'same, naming the path (git commit <path> takes it from the working tree): passes' "$(commit s9s3 p2 "git commit -m x -m '$TR' m.py")" allow
 row 'same, --only -- <path>: passes' "$(commit s9s4 p2 "git commit --only -m x -m '$TR' -- m.py")" allow
 row 'same, -i <path> (stages that path): passes' "$(commit s9s5 p2 "git commit -i -m x -m '$TR' m.py")" allow
+row 'same, naming the path, then 2>&1 | tail -3: passes (the redirection is not an argument)' "$(commit s9s15 p2 "git commit m.py -m x -m '$TR' 2>&1 | tail -3")" allow
+row 'same, naming the path, then >/dev/null: passes' "$(commit s9s16 p2 "git commit m.py -m x -m '$TR' >/dev/null")" allow
+row "same, -m '-a' (a message, not the option): still blocked" "$(commit s9s17 p2 "git commit -m '-a' -m '$TR'")" deny
 row 'same, -i <another path>: still blocked' "$(commit s9s6 p2 "git commit -i -m x -m '$TR' other.txt")" deny
 row 'same, ... 2>&1 | tail -1 (a redirect is not a path): still blocked' "$(commit s9s7 p2 "git commit -m x -m '$TR' 2>&1 | tail -1")" deny
 row 'same, ... > /dev/null: still blocked' "$(commit s9s8 p2 "git commit -m x -m '$TR' > /dev/null")" deny
@@ -258,6 +262,9 @@ reset; git rm -q --cached m.py; review s9r p1; stop s9r p1
 row 'git rm --cached <file> with the file still in the working tree (verified with it): blocked' "$(commit s9r p2 "git commit -m x -m '$TR'")" deny
 git reset -q --hard; reset; git rm -q m.py; review s9r2 p1; stop s9r2 p1
 row 'git rm <file> (gone from the working tree too): passes' "$(commit s9r2 p2 "git commit -m x -m '$TR'")" allow
+git reset -q --hard
+reset; git rm -q --cached m.py; echo m.py > .gitignore; git add .gitignore; review s9r3 p1; stop s9r3 p1
+row 'git rm --cached <file> that .gitignore now ignores (left out of the verified tree too): passes' "$(commit s9r3 p2 "git commit -m x -m '$TR'")" allow
 git reset -q --hard
 S="$T/subsrc"; git init -q -b main "$S"; ( in_dir "$S"; echo s > s; git add s; git commit -qm s )
 reset; git -c protocol.file.allow=always submodule add -q "$S" sub 2>/dev/null; echo dirty >> sub/s
@@ -306,6 +313,7 @@ row 'env -uFOOS git commit (-u takes the rest of the word): the commit is seen' 
 row 'env --weird X git commit (an option env does not have): unresolved, not hidden' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14o p1 "env --weird X git commit -am x")" unresolved
 row 'mirror: env --chd <gated> (an abbreviated --chdir) git commit from the ungated repo: judged there' "$(W0="$W"; W="$OT" CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14l p1 "env --chd '$W0' git commit -am x")" deny
 row 'env -C <a> -C <b> git commit: unresolved' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14m p1 "env -C '$OT' -C '$W' git commit -am x")" unresolved
+row 'cd ~- && git commit: unresolved' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14p p1 'cd ~- && git commit -am x')" unresolved
 row 'popd with an empty stack: unresolved' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14g p1 "popd && git commit -am x")" unresolved
 set_repo_cfg -
 
@@ -353,4 +361,7 @@ PY
 )" changed
 row 'the repo itself is untouched (no stray objects from the fingerprint)' "$(in_dir "$W"; before=$(git count-objects -v | sed -n 's/^count: //p'); review s12 p1; edit h; stop s12 p1; commit s12 p2 "$BARE" >/dev/null; [ "$(git count-objects -v | sed -n 's/^count: //p')" = "$before" ] && echo clean || echo wrote)" clean
 
+row 'stdin that is JSON but not an object ([]): no traceback, exit 0' "$(out=$(printf '[]' | python3 "$HOOK" 2>&1); rc=$?; if printf %s "$out" | grep -q Traceback; then echo noisy; elif [ $rc = 0 ]; then echo quiet; else echo failed; fi)" quiet
+row 'an internal error on first use (no state dir yet), gate on: logged' "$(rm -rf "$CLAUDE_PLUGIN_DATA"; ev - s12e p1 'hook_event_name="PreToolUse"' 'tool_name="Bash"' 'tool_input="x"' >/dev/null; grep -q '"decision": "error"' "$LOG" 2>/dev/null && echo logged || echo none)" logged
+row 'the same error with the gate off: no state dir is created' "$(rm -rf "$CLAUDE_PLUGIN_DATA"; CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off ev - s12f p1 'hook_event_name="PreToolUse"' 'tool_name="Bash"' 'tool_input="x"' >/dev/null; [ -e "$CLAUDE_PLUGIN_DATA/commit-gate" ] && echo created || echo none)" none
 rm -rf "$T"
