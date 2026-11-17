@@ -39,8 +39,18 @@ If you used the former `review` plugin, uninstall it and move its settings to th
 | | After creating a PR | Tells Claude the next stage (wait for reviews and CI) |
 | | Before ending a turn | Blocks once per PR if waiting (a PR event subscription or a Monitor) has not started for a PR created in this session |
 | | Before a merge | Blocks if there is no record that the `## Result` section (the older `## 結果` also counts) of the issue the PR closes was written or read and confirmed |
+| commit-gate | When a verifier skill runs (typed `/code-review`, or through the Skill tool), at the end of that turn, before `git commit` | Off by default. When on, checks that a review or verification ran on the tree being committed and that the commit message's `Verification:` trailer says so. `observe` only says what it would have done; `enforce` blocks |
 
 dev-flow-gate watches both the GitHub connector (`create_pull_request`, `merge_pull_request`, `enable_pr_auto_merge`, `issue_read`, `issue_write`) and `gh`. It never queries GitHub itself; it decides only from tool calls made in the session (merging a PR created in another session isn't blocked, it just asks Claude to check). State lives in `${CLAUDE_PLUGIN_DATA}/dev-flow-gate/<session_id>.json`, and files older than 30 days are removed at session start.
+
+commit-gate:
+
+- **Evidence**: a verifier is a skill whose name matches `commit_gate_verifiers` (default `^(code-review|(.+:)?verify-.+|coderabbit:code-review)$`). It is seen when typed (`/code-review`, through the `UserPromptExpansion` event) or when Claude calls it with the Skill tool. It counts as fresh until the end of the turn it ran in, so fixes made in that turn are covered; at the end of the turn it is tied to a fingerprint of the tree. After that it counts only while the fingerprint is unchanged, and is stale once the tree changes.
+- **Fingerprint**: the working tree's change against `merge-base(HEAD, origin/HEAD)`, untracked files included (`git diff --raw` hashed, through a temporary index and object directory, so nothing is written to the repo). Committing part of the change, pushing, or a clean rebase keeps it; any edit, by any tool, changes it. Without a merge-base it is the tree hash.
+- **Stamp**: end each commit message with `Verification: <kinds> — <names>` (for example `Verification: review — code-review`; kinds are `review` and `verify`) or `Verification: none — <reason>`. The gate checks named verifiers against its record. Find unverified commits with `git log origin/main --grep='^Verification: none'`.
+- **At `git commit`** (`enforce`): fresh evidence and a matching trailer pass; `none — <reason>` passes and is logged as explained; anything else is blocked: no evidence, stale evidence, a trailer naming a verifier with no record, a missing trailer (the block names the line to add), or a message that cannot be read (a variable, the editor). After two blocks in a session the next commit is let through (logged as released) and the count resets. `observe` never blocks: it tells Claude what it would have done, runs the same count, and allows stale evidence with a note to mark the trailer `(stale)`.
+- **Log**: every decision goes to `${CLAUDE_PLUGIN_DATA}/commit-gate/log.jsonl`; `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/commit_gate.py" report` lists the would-be blocks (`--all` lists everything). Evidence and the block count live in `${CLAUDE_PLUGIN_DATA}/commit-gate/` (`~/.claude/state/commit-gate/` when that variable is not set); files older than 30 days are removed at session start.
+- **Cost**: in `off` it reads no state and makes no network call; each `git commit` costs a local `git show` of the repo file. When on, the fingerprint is computed at each commit and at the end of a turn in which a verifier ran (about 0.3 s on a 12,000-file repo).
 
 orchestrator-report keeps the PRs and issues it already asked about in `${CLAUDE_PLUGIN_DATA}/orchestrator-report/<session_id>.json` (files older than 30 days are removed when it writes).
 
@@ -60,6 +70,8 @@ The output looks like `{"five_hour": {"used_percentage": 17, "resets_at": 179155
 | `review_light` | `claude` | What reviews light PRs. `claude` means Claude reviews. Listing tool ids treats light PRs like heavy ones (no label) |
 | `review_auto` | `off` | Whether the tool's auto review is on (`on` / `off`). See "Keeping auto review on" below |
 | `rereview_threshold` | 3 | Request a re-review only when you fixed at least this many severe findings (Critical / P1 or equivalent) |
+| `commit_gate` | `off` | The commit gate's mode: `off`, `observe` or `enforce` (any other value is `off`). A repo's `.claude/verification.json` overrides it |
+| `commit_gate_verifiers` | empty | A regex of skill names that count as verification. Empty means `^(code-review\|(.+:)?verify-.+\|coderabbit:code-review)$` |
 
 Available tool ids are the file names in `skills/pr-review-triage/references/tools/` (`codex`, `coderabbit`, `copilot`, `gemini`, `cursor-bugbot`).
 
@@ -70,6 +82,12 @@ review-heavy: coderabbit, codex
 review-light: claude
 review-auto: on
 review-notes: please look closely at permission changes
+```
+
+To set the commit gate per repo, put `.claude/verification.json` on the default branch. It takes precedence over userConfig and, like the `review-*:` lines, is read from `origin/<default>` (through the local `origin/HEAD`), so a branch cannot turn off or loosen the gate it is judged by; a change takes effect once it is merged and fetched. A repo without an `origin` remote reads the working tree:
+
+```json
+{"commitGate": "observe", "verifiers": "^(code-review|verify-.+)$"}
 ```
 
 ### Keeping auto review on (`review-auto: on`)
@@ -119,6 +137,9 @@ Organization values (GitHub org, default repo, Issue Fields, project board) aren
 - The checks that read their config from the default branch (pr-review-triage's `review-*:` lines) defend against what a branch's content can change (committed files, pushed branches). They trust the local git configuration and environment, and origin's default branch is the authority: in a fork workflow that is the fork, not `upstream`.
 - When origin's default branch cannot be determined (no usable local `origin/HEAD` and origin unreachable), the check does not run, says so, and asks origin again no sooner than an hour later.
 - When `origin/<default>`, or a file on it, cannot be read, the repo's `review-*:` lines are skipped with a note on stderr, and userConfig and then the defaults apply (`review-heavy` has no default, so `detect-bots.sh` exits 4). An `origin/<default>` already fetched is read as it is, even when it is behind origin.
+- commit-gate reads the repo file through the local `origin/HEAD` only, so the per-call path makes no network call. When `origin/HEAD` is missing it does not gate and says so (with userConfig on, session start asks origin once and saves the answer; `git remote set-head origin --auto` also fixes it).
+- commit-gate's evidence means a verifier was invoked, not that it finished or passed. In a long autonomous turn, a verifier invoked early stays fresh until that turn ends.
+- commit-gate does not see commits made through a connector (`push_files`, `create_or_update_file`) or by `git merge`, `rebase`, `cherry-pick` and `revert`.
 - A project `.claude/settings.json` can disable a plugin (`enabledPlugins`) and set environment variables for the session (`env`), so a PR that changes that file needs a human look at the diff; only managed settings can prevent it.
 
 ## Requirements

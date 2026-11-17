@@ -39,8 +39,18 @@
 | | PR を作った後 | 次の段（レビューと CI を待つ）を伝える |
 | | ターンを終える前 | このセッションで作った PR の待ち（PR イベントの購読か Monitor）を始めていなければ、PR ごとに1回だけ止める |
 | | マージの前 | このセッションで作った PR の `Closes` 先の issue に、`## Result`（以前の `## 結果` も可）を書いた・読んで確かめた記録が無ければ止める |
+| commit-gate | 検証スキルが動いたとき（`/code-review` の入力、または Skill ツール経由）、そのターンの終わり、`git commit` の前 | 既定はオフ。オンにすると、コミットする作業ツリーに対してレビューか検証が走ったこと、コミットメッセージの `Verification:` トレーラーがそれを書いていることを確かめる。`observe` はどうしたかを伝えるだけ、`enforce` は止める |
 
 dev-flow-gate は GitHub コネクタ（`create_pull_request`・`merge_pull_request`・`enable_pr_auto_merge`・`issue_read`・`issue_write`）と `gh` の両方を見る。GitHub を自分では読みに行かず、判定に使うのはセッション中のツール呼び出しだけ（別のセッションで作った PR のマージは止めず、確かめるよう一言返す）。状態は `${CLAUDE_PLUGIN_DATA}/dev-flow-gate/<session_id>.json` に置き、30 日より古いものはセッションの開始時に消す。
+
+commit-gate:
+
+- **証跡**: 検証スキルとは、名前が `commit_gate_verifiers`（既定 `^(code-review|(.+:)?verify-.+|coderabbit:code-review)$`）に合うスキル。入力した `/code-review`（`UserPromptExpansion` イベント）と、Claude が Skill ツールで呼んだものの両方を拾う。動いたターンの終わりまでは新しい証跡として扱うので、同じターンの修正も含まれる。ターンの終わりに作業ツリーの指紋と結びつけ、それ以降は指紋が変わらない間だけ有効で、ツリーが変われば古い（stale）証跡になる。
+- **指紋**: `merge-base(HEAD, origin/HEAD)` から見た作業ツリーの変更（未追跡ファイルを含む）。`git diff --raw` をハッシュしたもので、一時インデックスと一時オブジェクトディレクトリで計算するのでリポには何も書かない。変更の一部だけのコミット・push・衝突のない rebase では変わらず、どのツールによる編集でも変わる。merge-base が無いときはツリーのハッシュ。
+- **スタンプ**: コミットメッセージの末尾に `Verification: <種類> — <名前>`（例 `Verification: review — code-review`。種類は `review` と `verify`）か `Verification: none — <理由>` を書く。名前を書いた検証スキルは、ゲートが自分の記録と突き合わせる。検証なしのコミットは `git log origin/main --grep='^Verification: none'` で引ける。
+- **`git commit` の判定**（`enforce`）: 新しい証跡があり、トレーラーが合っていれば通す。`none — <理由>` は通して explained として記録する。それ以外は止める。証跡なし、古い証跡、記録の無い検証スキルを名乗るトレーラー、トレーラー無し（足す行を示す）、読めないメッセージ（変数・エディタ）がこれに当たる。1 セッションで 2 回止めたら、次のコミットは通して released として記録し、回数を戻す。`observe` は止めずにどうしたかを Claude に伝え、同じ回数も数える。古い証跡は通し、トレーラーに `(stale)` を付けるよう伝える。
+- **記録**: すべての判定を `${CLAUDE_PLUGIN_DATA}/commit-gate/log.jsonl` に書く。`python3 "${CLAUDE_PLUGIN_ROOT}/hooks/commit_gate.py" report` で止めるはずだったものを一覧にする（`--all` で全件）。証跡と止めた回数は `${CLAUDE_PLUGIN_DATA}/commit-gate/`（その変数が無ければ `~/.claude/state/commit-gate/`）に置き、30 日より古いものはセッションの開始時に消す。
+- **コスト**: `off` では状態を読まず、ネットワークにも出ない。`git commit` ごとにリポのファイルをローカルで `git show` するだけ。オンでは、コミットごとと、検証スキルが動いたターンの終わりに指紋を計算する（12,000 ファイルのリポで約 0.3 秒）。
 
 orchestrator-report は報告を促した PR / issue を `${CLAUDE_PLUGIN_DATA}/orchestrator-report/<session_id>.json` に記録する（30 日より古いファイルは書き込みのときに消す）。
 
@@ -60,6 +70,8 @@ orchestrator-report は報告を促した PR / issue を `${CLAUDE_PLUGIN_DATA}/
 | `review_light` | `claude` | 軽い PR に使うもの。`claude` なら Claude がレビューする。ツールの id を書けば軽い PR も重い PR と同じ扱い（ラベルを付けない） |
 | `review_auto` | `off` | ツールの自動レビューが ON か（`on` / `off`）。下の「自動レビューを ON のまま使う」 |
 | `rereview_threshold` | 3 | 重い指摘（Critical・P1 相当）をこの件数以上直したときだけ再レビューを頼む |
+| `commit_gate` | `off` | コミットゲートのモード。`off`・`observe`・`enforce`（それ以外の値は `off`）。リポの `.claude/verification.json` が優先する |
+| `commit_gate_verifiers` | 空 | 検証として数えるスキル名の正規表現。空なら `^(code-review\|(.+:)?verify-.+\|coderabbit:code-review)$` |
 
 使えるツールの id は `skills/pr-review-triage/references/tools/` のファイル名（`codex`・`coderabbit`・`copilot`・`gemini`・`cursor-bugbot`）。
 
@@ -70,6 +82,12 @@ review-heavy: coderabbit, codex
 review-light: claude
 review-auto: on
 review-notes: 権限まわりの変更は特に見てほしい
+```
+
+コミットゲートをリポごとに決めるには、既定ブランチに `.claude/verification.json` を置く。userConfig より優先し、`review-*:` の行と同じく `origin/<既定ブランチ>` から（ローカルの `origin/HEAD` を通して）読むので、ブランチは自分を判定するゲートを切ったり緩めたりできない。変更はマージして fetch してから効く。`origin` リモートの無いリポは作業ツリーを読む:
+
+```json
+{"commitGate": "observe", "verifiers": "^(code-review|verify-.+)$"}
 ```
 
 ### 自動レビューを ON のまま使う（`review-auto: on`）
@@ -119,6 +137,9 @@ reviews:
 - 既定ブランチから設定を読むチェック（pr-review-triage の `review-*:` 行）が防ぐのは、ブランチの中身（コミットしたファイル・push したブランチ）で変えられるものまで。手元の git の設定と環境変数は信頼し、既定ブランチは `origin` のものを正とする。fork で作業する場合は `upstream` ではなく fork の既定ブランチになる。
 - origin の既定ブランチが分からないとき（使える手元の `origin/HEAD` が無く、origin にも届かない）、チェックは動かず、その旨を出し、origin に聞き直すのは 1 時間以上あとになる。
 - `origin/<既定>` やその上のファイルを読めないときは、リポの `review-*:` 行を飛ばして stderr にその旨を出し、userConfig、次に既定値を使う（`review-heavy` には既定値が無いので `detect-bots.sh` は終了コード 4 で終わる）。取得済みの `origin/<既定>` は、origin より古くてもそのまま読む。
+- commit-gate はリポのファイルをローカルの `origin/HEAD` からしか読まないので、呼び出しごとの処理はネットワークに出ない。`origin/HEAD` が無いときはゲートせず、その旨を伝える（userConfig でオンにしていれば、セッション開始時に origin に一度だけ聞いて保存する。`git remote set-head origin --auto` でも直る）。
+- commit-gate の証跡は、検証スキルが呼ばれたことを表し、終わったことや通ったことは表さない。長い自律ターンでは、早くに呼んだ検証スキルがそのターンの終わりまで新しい証跡のまま残る。
+- commit-gate はコネクタ経由のコミット（`push_files`・`create_or_update_file`）と、`git merge`・`rebase`・`cherry-pick`・`revert` によるコミットを見ない。
 - プロジェクトの `.claude/settings.json` はプラグインを無効にでき（`enabledPlugins`）、セッションの環境変数も設定できる（`env`）。このファイルを変える PR は人が差分を見る必要がある。止められるのは managed settings だけ。
 
 ## 前提

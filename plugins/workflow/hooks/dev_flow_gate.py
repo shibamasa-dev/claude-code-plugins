@@ -19,11 +19,13 @@ import fcntl
 import json
 import os
 import re
-import shlex
 import subprocess
 import sys
 import time
 from datetime import datetime
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _shell import HEREDOC_MARK_RE, commands  # noqa: E402
 
 STATE_DIR = os.path.join(os.environ.get("CLAUDE_PLUGIN_DATA") or os.path.expanduser("~/.claude/state"),
                          "dev-flow-gate")
@@ -38,19 +40,6 @@ ARCH_RE = re.compile(r"^[ \t]*Arch-Review:[ \t]*(?:not-needed|approved)[ \t]*[\u
 RESULT_RE = re.compile(r"^##[ \t]*(?:Results?|Notes for next time|結果|次回への引き継ぎ)[ \t]*$", re.M)
 HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
 FENCE_RE = re.compile(r"^[ \t]*(```|~~~).*?^[ \t]*\1[ \t]*$", re.S | re.M)
-# Heredoc: the rest of the <<[-]['"]DELIM['"] line (group 4), the body (group 5), the closing DELIM line
-HEREDOC_RE = re.compile(r"(?<!<)<<(?!<)(-?)[ \t]*(['\"]?)(\w+)\2([^\n]*)\n(.*?)\n[ \t]*\3[ \t]*(?=\n|$)", re.S)
-HEREDOC_MARK_RE = re.compile(r"<<__HEREDOC_(\d+)__")
-ASSIGN_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", re.S)
-# Wrappers that can precede gh, and their options that take a value (skipped so we can see the gh inside)
-_WRAPPERS = {
-    "env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"},
-    "command": set(), "builtin": set(), "exec": {"-a"}, "nohup": set(), "time": set(),
-    "nice": {"-n", "--adjustment"}, "timeout": {"-s", "--signal", "-k", "--kill-after"},
-    "sudo": {"-u", "--user", "-g", "--group", "-h", "--host", "-p", "--prompt", "-C", "-D", "--chdir"},
-    "stdbuf": {"-i", "-o", "-e"},
-}
-_KEYWORDS = {"!", "{", "}", "if", "then", "else", "elif", "do", "while", "until", "time"}
 PR_URL_RE = re.compile(r"github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)")
 
 
@@ -217,120 +206,9 @@ def failed(tr):
 
 
 # --------------------------------------------------------------- gh parsing
-def split_heredocs(command):
-    """Pull heredoc bodies out and leave only a `<<__HEREDOC_i__` marker in the command."""
-    docs = []
-
-    def repl(m):
-        docs.append(m.group(5) + "\n")
-        return f"<<__HEREDOC_{len(docs) - 1}__{m.group(4)}"
-    return HEREDOC_RE.sub(repl, command), docs
-
-
-def unwrap(c):
-    """Strip leading assignments, keywords and wrappers from the tokens of one simple command. Returns (env, rest)."""
-    env, i = {}, 0
-    while i < len(c):
-        t = c[i]
-        m = ASSIGN_RE.match(t)
-        if m:
-            env[m.group(1)] = m.group(2)
-            i += 1
-        elif t in _KEYWORDS:
-            i += 1
-        elif os.path.basename(t) in _WRAPPERS:
-            name, vopts = os.path.basename(t), _WRAPPERS[os.path.basename(t)]
-            if name == "command" and i + 1 < len(c) and c[i + 1] in ("-v", "-V"):
-                return env, []  # command -v gh only looks gh up, it does not run it
-            i += 1
-            while i < len(c) and c[i].startswith("-") and c[i] != "-":
-                if c[i] == "--":
-                    i += 1
-                    break
-                i += 2 if (c[i] in vopts and "=" not in c[i]) else 1
-            if name == "timeout" and i < len(c) and re.fullmatch(r"[\d.]+[smhd]?", c[i]):
-                i += 1  # the timeout duration
-            if name == "nice" and i < len(c) and re.fullmatch(r"-?\d+", c[i]):
-                i += 1
-        else:
-            break
-    return env, c[i:]
-
-
-def resolve_cd(args, cur):
-    """Where `cd` goes. None when unknown (a variable, `cd -`, or a relative path from an unknown place)."""
-    dests = [a for a in args if not (a.startswith("-") and a != "-")]
-    if not dests:
-        return os.path.expanduser("~")
-    d = dests[0]
-    if d == "-" or "$" in d or "`" in d:
-        return None
-    d = os.path.expanduser(d)
-    if os.path.isabs(d):
-        return os.path.normpath(d)
-    return os.path.normpath(os.path.join(cur, d)) if cur else None
-
-
-def gh_commands(command, cwd=None, _depth=0):
-    """Return the gh calls in a Bash command as [{"args", "env", "stdin", "docs"}].
-
-    Heredoc bodies are pulled out before lexing (so a ' or # in the body cannot break it). stdin is the index of the
-    heredoc passed to that gh with `<<`. cwd is the directory that gh runs in (follows earlier `cd`s; None if unknown).
-    Also looks through wrappers such as env, command and timeout, and inside `sh -c '...'`.
-    A command that shlex cannot read yields nothing (lean towards not stopping, so symbols a PR body may contain don't misfire)."""
-    command, docs = split_heredocs(command)
-    command = command.replace("\\\n", " ")  # a trailing \ continues the line
-    try:
-        # A newline also separates commands (newlines inside quotes are kept)
-        lex = shlex.shlex(command, posix=True, punctuation_chars=";&|()\n")
-        lex.whitespace = " \t\r"
-        lex.whitespace_split = True
-        toks = list(lex)
-    except ValueError:
-        return []
-    cmds, cur = [], []
-    for t in toks:
-        if t and set(t) <= set(";&|()\n"):
-            cmds.append(cur)
-            cur = []
-        else:
-            cur.append(t)
-    cmds.append(cur)
-    out, exported = [], {}
-    for c in cmds:
-        if c and c[0] in ("cd", "pushd"):
-            cwd = resolve_cd(c[1:], cwd)
-            continue
-        if c and c[0] == "export":
-            for t in c[1:]:
-                m = ASSIGN_RE.match(t)
-                if m:
-                    exported[m.group(1)] = m.group(2)
-            continue
-        env, rest = unwrap(c)
-        if not rest:
-            exported.update(env)  # a line with only `A=B` sets a shell variable (passed to children if the name was exported)
-            continue
-        env = {**exported, **env}
-        exe = os.path.basename(rest[0])
-        if exe in ("sh", "bash", "zsh", "dash") and "-c" in rest[1:] and _depth < 3:
-            k = rest.index("-c")
-            if k + 1 < len(rest):
-                for call in gh_commands(rest[k + 1], cwd, _depth + 1):
-                    call["env"] = {**env, **call["env"]}
-                    out.append(call)
-            continue
-        if exe != "gh":
-            continue
-        stdin, args = None, []
-        for a in rest[1:]:
-            m = HEREDOC_MARK_RE.fullmatch(a)
-            if m:
-                stdin = int(m.group(1))
-            else:
-                args.append(a)
-        out.append({"args": args, "env": env, "stdin": stdin, "docs": docs, "cwd": cwd})
-    return out
+def gh_commands(command, cwd=None):
+    """The gh calls in a Bash command (see _shell.commands)."""
+    return commands(command, {"gh"}, cwd)
 
 
 # gh options that take a value (listed so we can skip them; we only pick up the values we need)
@@ -343,7 +221,6 @@ _VALUE_OPTS = {
 }
 # -c / --comment take a value only in `issue close` and `pr close` (in `issue view`, `pr view` and `pr review` they are switches)
 _CLOSE_COMMENT_OPTS = {"-c", "--comment"}
-
 
 def parse_args(args):
     """(positional, opts). opts keeps the last value (including the `--x=v` form)."""
