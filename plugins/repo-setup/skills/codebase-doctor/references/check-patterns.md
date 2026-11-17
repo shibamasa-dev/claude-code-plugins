@@ -136,12 +136,15 @@ For languages not listed above (Java, Ruby, Swift, C#, Elixir, etc.), the AI sho
 Used by Step 1a when no manifest exists. Look at the tracked files (`git ls-files`). The repo is at **project start** only when every tracked file is documentation or repo metadata:
 
 - `README*`, `LICENSE*`, `CHANGELOG*`, `CONTRIBUTING*`, `CODE_OF_CONDUCT*`, `SECURITY*`
-- `*.md`, `*.txt`, `*.rst`, `*.adoc`, and prose under `docs/`
+- `*.md`, `*.rst`, `*.adoc`, and prose under `docs/`
+- `*.txt` only under `docs/` or with a README / LICENSE / NOTICE / CHANGELOG / AUTHORS-style name. Any other `.txt` (`CMakeLists.txt`, `requirements.txt`, …) is something else
 - `CLAUDE.md`, `AGENTS.md`
 - `.gitignore`, `.gitattributes`, `.editorconfig`
 - issue and PR templates under `.github/` (`ISSUE_TEMPLATE/`, `PULL_REQUEST_TEMPLATE*`, `CODEOWNERS`, `FUNDING.yml`)
 
-Anything else tracked — a script in any language, a `Makefile`, a `Dockerfile`, `*.tf`, YAML or TOML config (`mkdocs.yml`, `k8s/*.yaml`), a workflow under `.github/workflows/`, a dotfile with content — means **not** project start: infer what the files show and mark it `[inferred]`.
+Zero-byte files and `.gitkeep` / `.keep` placeholders are ignored when classifying, so a repo with only `LICENSE` and `src/.gitkeep` is at project start.
+
+Anything else tracked — a script in any language, a `Makefile`, a `Dockerfile`, `*.tf`, YAML or TOML config (`mkdocs.yml`, `k8s/*.yaml`), a workflow under `.github/workflows/`, a non-empty dotfile — means **not** project start: infer what the files show and mark it `[inferred]`.
 
 ## Detection: Components
 

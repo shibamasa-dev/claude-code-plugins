@@ -23,7 +23,7 @@ digraph doctor {
   review [label="6. User Review" shape=doublecircle];
 
   detect -> select -> run -> report -> propose -> review;
-  detect -> start [label="no manifest, no code"];
+  detect -> start [label="only docs tracked"];
   start -> select;
 }
 ```
@@ -41,9 +41,9 @@ Look for manifests anywhere in the repository (a monorepo's `apps/web/package.js
 
 | Repo state | Mode |
 |---|---|
-| CLAUDE.md has broken `codebase-doctor:decided-setup` markers (an opening marker without a closing one, or more than one section) | Not project start. Edit nothing, report `[WARN]` under Check 1, ask the user to fix the markers; detect the stack as in the rows below |
+| CLAUDE.md has broken `codebase-doctor:decided-setup` markers (an opening marker without a closing one, or more than one section) | Not project start. Edit nothing, report `[WARN]` under Check 1, ask the user to fix the markers. Take the stack from manifests or inference if the repo has anything to infer from; otherwise report `Stack: undetermined (Decided setup markers are broken)` |
 | A manifest exists | Normal audit |
-| No manifest, but something other than docs and repo metadata is tracked (rule in `references/check-patterns.md`, "Detection: Project start") — a script, a Makefile, a Dockerfile, `*.tf`, YAML/TOML config, a dotfile with content | Not project start. Ask nothing. A Decided setup section, if present, is the stack; inference from file names and extensions fills only the areas it has no line for, marked `[inferred]` |
+| No manifest, but something other than docs and repo metadata is tracked (rule in `references/check-patterns.md`, "Detection: Project start") — a script, a Makefile, a Dockerfile, `*.tf`, YAML/TOML config, a non-empty dotfile (zero-byte files and `.gitkeep` placeholders do not count) | Not project start. Ask nothing. A Decided setup section, if present, is the stack; inference from file names and extensions fills only the areas it has no line for, marked `[inferred]` |
 | Only docs and repo metadata, and CLAUDE.md has a Decided setup section | Not project start again. Use the section as the stack and ask nothing |
 | Only docs and repo metadata, no Decided setup section | **Project start** — run 1a-start |
 
@@ -74,7 +74,7 @@ Look for manifests anywhere in the repository (a monorepo's `apps/web/package.js
    | CI | | |
    | Hosting (omit when question 2 was "The user's own machine" or "Not decided yet") | | |
 
-   Choose in this order: a hard constraint from question 4; then the default the hosting platform documents first; then the ecosystem's default tool. One tool per job, preferring a combined linter and formatter where the ecosystem has one. Fewest moving parts for "Just me". No version numbers — the manifest will carry them.
+   Choose in this order: a hard constraint from question 4; then the default the hosting platform documents first; then a language the user or the repo's docs already name; then the ecosystem's common default for the project type, saying in its reason that it is a default the user can change in "Change some rows". One tool per job, preferring a combined linter and formatter where the ecosystem has one. Fewest moving parts for "Just me". No version numbers — the manifest will carry them.
 
 3. **Ask once more** with `AskUserQuestion` (or in plain text, as above): Adopt / Change some rows (Other: which) / Don't record. Only "Adopt" (after any changes) writes the Decided setup section. Installing the tools is not part of this step: they come later as Check 16 fixes through Steps 5 and 6.
 
@@ -281,7 +281,11 @@ to report (Step 1c weights checks; Step 5 orders fixes), not whether the check h
 - Lock file tracked in VCS (verify with `git ls-files <lockfile>`, not just .gitignore)
 - **Signals**: lock file in project root, tracked in git
 - Note: `requirements.txt` is a dependency declaration, NOT a lock file. Look for `poetry.lock`, `Pipfile.lock`, `uv.lock` for Python.
-- No manifest at all: rate `[FAIL]` and propose creating one when the inferred stack's ecosystem uses one (Python, JS/TS, Go, Rust, …). Rate `[SKIP]` when it has none (shell scripts, a Makefile, Terraform, plain HTML)
+- No manifest at all — decide by where the stack came from:
+  - from the Decided setup section: evaluate against that stack (a manifest is FAIL when its ecosystem uses one), not as `[inferred]`
+  - inferred, and the ecosystem uses a manifest (Python, JS/TS, Go, Rust, …): `[FAIL]`, propose creating one
+  - inferred, and the ecosystem has none (shell scripts, a Makefile, Terraform, a Dockerfile only, MkDocs, workflow-only, dotfiles, plain HTML): `[SKIP]` with that reason
+  - no stack at all (a run that could not ask, broken markers in a docs-only repo): `[SKIP]` with that reason
 
 ### Conditional Checks (when component detected)
 
@@ -399,7 +403,7 @@ This skill **audits and proposes; it does not build**. The one thing it writes o
 | To actually do this | Use | Why not this skill |
 |---|---|---|
 | Author a CLAUDE.md from scratch | `/init` | Check 1 detects its absence; this skill writes only its own Decided setup section |
-| Keep always-loaded CLAUDE.md small | `context-diet` (workflow plugin) | this skill writes only a 10–15 line section and shrinks it; it does not trim other content |
+| Keep always-loaded CLAUDE.md small | `context-diet` (workflow plugin) | this skill writes only a 13–15 line section and shrinks it; it does not trim other content |
 | Rewrite or improve an existing CLAUDE.md | `claude-md-improver` | same — detection only |
 | Add or relocate permission entries | `update-config` | Check 12 reports the gap; that skill edits settings.json |
 | Derive an allowlist from real usage | `fewer-permission-prompts` | it reads transcripts, which this skill does not |

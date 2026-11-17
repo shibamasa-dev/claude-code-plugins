@@ -28,7 +28,7 @@ Recorded by codebase-doctor at project start. A line leaves once the repo's own 
 - **Size when first written**: 13–15 lines from the opening marker to the closing marker inclusive (15 in full, one less per omitted bullet). Later runs shrink it below that; that is intended
 - **No CLAUDE.md**: create it holding only the block and a final newline. **AGENTS.md but no CLAUDE.md**: create CLAUDE.md with `@AGENTS.md`, a blank line, then the block; never edit AGENTS.md
 - **Existing CLAUDE.md**: append at the end. Add a `\n` only if the file does not end in one, then one blank line, then the block and a final `\n`. Nothing before the original end of file changes, so the hand-written text stays a byte-identical prefix
-- **The skill's own bytes** are the block (opening marker to closing marker) plus the one separating blank line it wrote before it. It never changes any other byte of CLAUDE.md
+- **The skill's own bytes** are the block (opening marker to closing marker) plus the one separating blank line it wrote before it. It never changes any other byte of CLAUDE.md. One exception it cannot undo: when the original file had no final newline, the `\n` added to end its last line stays after the block is removed, so the file ends one byte longer than the original (the skill keeps no record of whether it added that byte)
 - **Find the section only by its markers**, never by heading text. At most one section exists
 
 ## Removal on later runs
