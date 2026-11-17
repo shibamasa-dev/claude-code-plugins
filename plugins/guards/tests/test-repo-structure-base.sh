@@ -64,4 +64,5 @@ w=$(repo "日本語 dir/プロジェクト" base.md sneaky.md)
 row 'non-ASCII path with a space: the default branch rule denies'  "$(probe "$w/docs/sneaky.md")" deny
 w=$(repo unreadable '' sneaky.md); git -C "$w" remote set-url origin "$R/missing.git"; git -C "$w" update-ref -d refs/remotes/origin/main
 row 'origin unreadable: the working tree rule is not used'         "$(probe "$w/docs/other.md")" silent
+row 'origin unreadable, no user rule: a "check did not run" note'  "$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$w/docs/other.md" | env -u REPO_STRUCTURE_SPEC HOME="$R/home" python3 "$H" 2>/dev/null | grep -q 'NOT RUN' && echo note || echo quiet)" note
 exit $FAIL

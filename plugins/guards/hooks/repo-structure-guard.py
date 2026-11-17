@@ -126,13 +126,13 @@ def default_branch(root: str):
 
 
 def base_spec(root: str):
-    """The repo's rule file as (label, text) from the default branch. None when it is not there or the default branch
-    cannot be told. Read from origin/<default branch>, not the working tree, so a branch cannot loosen the rule it is judged by."""
+    """The repo's rule file as (label, text) from the default branch. None when it is not there; False when it cannot be
+    read (the default branch cannot be told, or its ref is unavailable). Read from origin/<default branch>, not the working tree, so a branch cannot loosen the rule it is judged by."""
     name = default_branch(root)
     if name is None:
         print("repo-structure-guard: cannot tell origin's default branch (no local origin/HEAD, origin unreachable; "
               "retried after 1 hour); skipping the repo's rule file", file=sys.stderr)
-        return None
+        return False
     ref = f"refs/remotes/origin/{name}"
     if not _has_ref(root, ref) and _net_allowed(root):
         # fetch it once into the ref, so a single-branch clone (whose refspec does not cover name) gets it too;
@@ -140,23 +140,26 @@ def base_spec(root: str):
         _net(root, "fetch", "--quiet", "origin", "--", f"+refs/heads/{name}:{ref}")
     if not _has_ref(root, ref):
         print(f"repo-structure-guard: cannot read origin/{name}; skipping the repo's rule file", file=sys.stderr)
-        return None
+        return False
     rc, text = _git(root, "show", f"{ref}:{SPEC_RELPATH.replace(os.sep, '/')}")
     return (f"origin/{name}:{SPEC_RELPATH}", text) if rc == 0 else None
 
 
 def resolve_spec(path: str):
     """The rules that apply to the write target path, as (label, text). text None means "read the file at label".
-    None if there are none (do nothing)."""
+    None if there are none (do nothing). When the repo's rules on the default branch cannot be read and no user rule
+    applies, the Write is allowed with a "check did not run" note (see the design promises above)."""
     env = os.environ.get("REPO_STRUCTURE_SPEC")
     if env:
         return os.path.expanduser(env), None
     root = repo_root(path)
+    unreadable = False
     if root:
         if _git(root, "remote", "get-url", "origin")[0] == 0:
             spec = base_spec(root)
             if spec:
                 return spec
+            unreadable = spec is False
         else:  # no origin, so no PR can exist: the working tree is all there is
             repo = os.path.join(root, SPEC_RELPATH)
             if os.path.exists(repo):
@@ -165,6 +168,13 @@ def resolve_spec(path: str):
     user = os.path.join(os.path.expanduser("~"), SPEC_RELPATH)
     if os.path.exists(user):
         return user, None
+    if unreadable:
+        allow_with_notice(
+            f"[repo-structure guard NOT RUN] {path}\n"
+            f"Could not read the repo's {SPEC_RELPATH} on origin's default branch (default branch unknown or its ref "
+            f"unavailable; origin is retried after 1 hour).\n"
+            f"The layout rules were not checked. **Do not treat this write as layout-checked.**"
+        )
     return None
 
 
