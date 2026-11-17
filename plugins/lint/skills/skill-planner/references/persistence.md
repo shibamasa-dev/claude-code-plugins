@@ -61,8 +61,7 @@ Rules:
 
 - Do not commit credentials.
 - Do not create remote schema or sync data without explicit user approval.
-- Degrade gracefully when credentials or network are unavailable.
-- Prefer a local fallback or read-only mode when practical.
+- When credentials or network are unavailable, stop and report that the store is unavailable. A read-only mode is fine; do not fall back to a separate local store, or the data splits across two places.
 
 ## Data Boundary
 
