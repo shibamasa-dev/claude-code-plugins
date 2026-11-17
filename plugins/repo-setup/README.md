@@ -15,7 +15,7 @@ Skills for bootstrapping a repo.
 
 | Skill | Use it for |
 |---|---|
-| `codebase-doctor` | Checks whether a repo has the basics in place (tests, CI, lint, initial security settings, …) |
+| `codebase-doctor` | Checks whether a repo has the basics in place (tests, CI, lint, initial security settings, …). In an empty repo it asks the purpose, proposes a stack and records it in CLAUDE.md |
 | `remote-setup` | Creates a setup scaffold for cloud environments such as claude.ai/code and Cowork |
 | `verification-skill-builder` | Writes a project's own `verify-<app>` skill that drives the real app in script order in an isolated run, keeps observed evidence, and maps each feature as action → command → result |
 

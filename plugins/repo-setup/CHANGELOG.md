@@ -2,6 +2,15 @@
 
 Change history of the repo-setup plugin (named devtools up to 0.2.2). Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
 
+## [0.6.0] - 2026-11-17
+
+### Added
+- codebase-doctor: project start. In a repo with no manifest and no source files, the skill asks up to four questions (what the project is, where it runs, who works on it, hard constraints), skipping any the request already answers, then proposes a stack (language, package manager, framework, test runner, lint/format, CI, hosting) with one reason per row. After the user adopts it, the skill writes a 10–15 line "Decided setup" section between `<!-- codebase-doctor:decided-setup -->` markers in CLAUDE.md, creating the file if needed and appending without changing any existing byte. On later runs, each line that a manifest or config file now states is proposed for removal in one grouped proposal; a line that contradicts the repo is kept and reported; free text inside the markers is never touched.
+- codebase-doctor: Check 16 checks that the test runner's watch mode is off by default.
+
+### Changed
+- codebase-doctor: Check 16's fix proposes the tools the Decided setup section names (or tools matching the detected stack), in the order hygiene files → linter → formatter → test runner → CI, instead of deferring to a project-local setup command. The Boundaries table names `context-diet`, `full-test-gate` and `repo-structure-guard`.
+
 ## [0.5.1] - 2026-11-17
 
 ### Changed

@@ -38,7 +38,7 @@ Agent working environment. All checks are diff-based — read the current state,
 | Project-scoped Skills | `<project>/.claude/skills/` `<project>/skills-lock.json` | What is installed; diff against the capabilities the stack and phase call for. Look capabilities up in the user's skill catalog (if they keep one) before searching with `find-skills` |
 | Hooks | `.claude/hooks/` and `hooks` in `settings.json` | Repeated manual steps or operations that must be blocked are wired |
 | Remote Execution | `.claude/` session-start scaffold, `environment-setup.sh` | Only when the project is meant to run in a cloud environment |
-| Toolchain | `.eslintrc*` `eslint.config.*` `ruff.toml` `pyproject.toml` `.golangci.yml` `clippy.toml` `.prettierrc*` `.editorconfig` `.gitattributes` `.github/workflows/*.yml` | Linter/Formatter configured for the detected language; formatter's linter-conflict rules disabled; test runner bound to a command; CI steps actually invoke lint/typecheck/test |
+| Toolchain | `.eslintrc*` `eslint.config.*` `ruff.toml` `pyproject.toml` `.golangci.yml` `clippy.toml` `.prettierrc*` `.editorconfig` `.gitattributes` `.github/workflows/*.yml` | Linter/Formatter configured for the detected language; formatter's linter-conflict rules disabled; test runner bound to a command; test runner's watch mode off by default; CI steps actually invoke lint/typecheck/test |
 | Real-app verification (Check 17) | `.claude/skills/verify-*/SKILL.md` `.claude/skills/verify-*/features/README.md` | Presence only, never the contents. Skill present with its map → PASS, skill without the map → WARN, no skill → FAIL; SKIP rules are in SKILL.md Check 17 |
 
 ### Phase detection signals
@@ -130,6 +130,10 @@ For languages not listed above (Java, Ruby, Swift, C#, Elixir, etc.), the AI sho
 | `Gemfile` | Ruby |
 | `mix.exs` | Elixir |
 | `Package.swift` | Swift |
+
+## Detection: Source files
+
+Used by Step 1a when no manifest exists. A **source file** is any file outside `docs/`, `node_modules/`, `vendor/` and dot-directories (`.git/`, `.github/`, `.claude/`, …) whose extension belongs to a programming or markup language: the languages in the table above plus `.sh`, `.bash`, `.ps1`, `.js`, `.ts`, `.html`, `.css`, `.sql`, `.c`, `.cpp`, `.h`, `.java`, `.kt`, `.rb`, `.php`, `.swift`, `.ex`, `.lua`. Markdown, plain text, licence files and config-only files (`.json`, `.yaml`, `.toml`, `.ini`) do not count. Even one source file means the repo is not at project start.
 
 ## Detection: Components
 
