@@ -7,6 +7,13 @@ Changes to the workflow plugin. The format follows [Keep a Changelog](https://ke
 ### Changed
 - pr-review-triage: `detect-bots.sh` reads the `review-*:` lines from CLAUDE.md / AGENTS.md / .claude/CLAUDE.md on the default branch (`origin/<default>`), not the working tree, so a PR cannot pick the tools that review it. A line a PR adds or changes takes effect once it is merged. When no file on the default branch has the line, userConfig and then the default apply; the working tree is read only when the repo has no `origin` remote (with a note on stderr). The default branch is the local `origin/HEAD` when the ref it names exists locally; otherwise (none, or dangling after a prune) origin is asked once (5 s, no prompt) and a success is kept as the local `origin/HEAD`, while a failure is kept for an hour so the hook does not wait on every call. `origin/main` / `origin/master` is never guessed. Git variables that select a repository (`GIT_DIR` and the like) are ignored; when the default branch cannot be told, it exits 4 (stderr says so). A missing `origin/<default>` is fetched once into that ref (#77).
 
+## [0.7.4] - 2026-11-17
+
+### Added
+- dev-flow step 3: run the repo's verification skill (`.claude/skills/verify-*`) before committing and keep its evidence for the PR body; stop and bring in the user if the check still fails after a third fix round once the assumption has been checked; flaky tests are not skipped, slept around or retried, and are deleted with the reason in the PR body when the root cause can't be found.
+- pr-review-triage: the response table gets a severity column (Important / Nit / Pre-existing); a Pre-existing finding is not fixed in the PR and gets a disposition under `## Out-of-scope notes`.
+- pr-review-triage step 6: below the re-review threshold, reread the fix commits' diff (`git diff <reviewed sha>..HEAD`) before the merge decision and record the checked head commit and result in one line in the PR body (no extra bot request). When a re-review is requested, the previous round's response table goes to tools that accept prompt text (Codex takes only a one-line English summary).
+
 ## [0.7.3] - 2026-11-17
 
 ### Fixed

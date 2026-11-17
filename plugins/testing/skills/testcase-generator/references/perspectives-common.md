@@ -49,7 +49,7 @@ Do not stop at one random number. Wrong amounts **flow through while looking nor
 - [ ] When a precondition is not met, **which error state it falls into**
 - [ ] Allowed / denied by permission or role
 - [ ] Not logged in / session expired
-- [ ] Running the same operation twice (idempotency, double registration)
+- [ ] Running the same operation twice (idempotency, double registration) — for migrations, normalization and retries, also consider a property test (see SKILL.md, "Beyond example cases")
 - [ ] Target data with 0 / 1 / many records
 
 ## 4. Where to verify (UI or API)
