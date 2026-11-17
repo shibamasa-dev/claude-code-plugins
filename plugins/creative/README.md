@@ -18,6 +18,8 @@ Skills for making images and videos.
 | `image-generation-prompt` | Structures prompts for image generation. Independent of the generator (Gemini API, OpenAI Image API, fal.ai, …) |
 | `motion-video` | Draws motion-graphics videos in code and renders them, with your product images, screenshots, logos or live-action clips |
 
+`DESIGN.md` linting moved to the `lint` plugin. To keep it, run `/plugin install lint@shibamasa-plugins`.
+
 ## Requirements
 
 - `motion-video`: Node.js, Chrome, ffmpeg
