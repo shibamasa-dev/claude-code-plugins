@@ -5,7 +5,7 @@ Change history of the repo-setup plugin (named devtools up to 0.2.2). Format fol
 ## [0.5.1] - 2026-11-17
 
 ### Changed
-- verification-skill-builder: for a UI, Evidence keeps a screenshot at the checked step, and a failure carries the trace of steps up to it with what was on screen. The feature map is stated as the pass / fail rubric of a run, and its template gains a keyboard-shortcut line for apps that have shortcuts. The proof step now runs the finished skill several times in a row and records run time and whether every run passed; a run that passes only sometimes is a defect to fix before hand-over. A new step 6 says to remove or rename a feature's map row and verification step when the feature is removed or renamed.
+- verification-skill-builder: for a UI, Evidence keeps a screenshot at the checked step, and a failure carries the trace of steps up to it with what was on screen. The feature map is stated as the pass / fail rubric of a run (a feature with an unverified journey is reported as unverified, and expected results are checked against the README, docs or spec where they cover them), and its template gains a keyboard-shortcut line for apps that have shortcuts. The proof step now runs the finished skill several times in a row and records the duration and pass or fail result of each run; a run that passes only sometimes is a defect to fix before hand-over. A new step 6 says to remove or rename a feature's map row and verification step when the feature is removed or renamed.
 
 ## [0.5.0] - 2026-10-30
 
