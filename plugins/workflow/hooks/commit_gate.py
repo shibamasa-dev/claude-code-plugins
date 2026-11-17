@@ -635,7 +635,7 @@ def remember_head(sid, top):
         h[top] = head
 
 
-def decide(inp, s, top, common, msg, cmd, commits_all=False):
+def decide(inp, s, top, common, msg, cmd, stages_all=False):
     """("deny", reason) | ("note", text) | None."""
     sid, mode, key = inp["session_id"], s["mode"], repo_key(common)
     fp = fingerprint(top)
@@ -649,7 +649,7 @@ def decide(inp, s, top, common, msg, cmd, commits_all=False):
     verdict, problem = judge(trailer, fresh, stale)
     entry["verifiers"] = sorted(fresh)
     remember_head(sid, top)
-    if verdict == "allow" and not commits_all:
+    if verdict == "allow" and not stages_all:
         split = staged_differs(top)
         if split:
             verdict, problem = "would_block", (
