@@ -2,6 +2,11 @@
 
 Changes to the guards plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
 
+## [0.8.0] - 2026-11-18
+
+### Changed
+- The bash-guard docs (README row in both languages, `plugin.json` description, the script's "Current rules" list) now describe gh-comments-guard (denies `gh issue view --comments` without `--json`) and pip-freeze-guard (denies `pip freeze`; use `uv pip freeze` or `PIP_FREEZE_OK=1`). No behavior change (#93).
+
 ## [0.7.0] - 2026-11-17
 
 ### Changed

@@ -15,7 +15,7 @@ Hooks that stop Claude Code before it does something you can't undo.
 
 | Hook | When | What it does |
 |---|---|---|
-| bash-guard | Before Bash | Blocks recursive deletes of home or system directories, deleting an unmerged worktree (wherever it lives, including `.claude/worktrees` inside a repo), and pushing from a branch that is behind the default branch (asked from origin; falls back to the local `origin/HEAD`, then `main` / `master`). Deletes outside the safe area are allowed through macOS `trash`. Deleting a merged, clean worktree is allowed |
+| bash-guard | Before Bash | Blocks recursive deletes of home or system directories, deleting an unmerged worktree (wherever it lives, including `.claude/worktrees` inside a repo), and pushing from a branch that is behind the default branch (asked from origin; falls back to the local `origin/HEAD`, then `main` / `master`). Deletes outside the safe area are allowed through macOS `trash`. Deleting a merged, clean worktree is allowed. Also blocks (gh-comments-guard) `gh issue view --comments` without `--json` (it prints nothing on an issue with no comments) and (pip-freeze-guard) `pip freeze` (empty in uv-made venvs; use `uv pip freeze`, or prefix `PIP_FREEZE_OK=1`) |
 | repo-structure-guard | Before Write | Active only when a rules file exists. Blocks writes that break the repo layout rules (for example, a new `.md` directly under `docs/` or a script directly under `scripts/`) |
 | git-freshness | After Bash, and after a merge through the GitHub connector | After a merge, fast-forwards (`--ff-only`) the PR's base branch if you have it checked out (the default branch if the base is unknown). If it can't, it only tells you; it never blocks. For connector merges, only when the local clone is the same repo |
 
