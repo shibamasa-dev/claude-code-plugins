@@ -13,11 +13,11 @@ spec() { mkdir -p "$(dirname "$1")"; printf '%s\n' '<!-- guard:docs-allow-filena
 # repo <name> <allowed name on the default branch, or empty> <allowed name on the branch> [origin|none] -> the clone
 repo() {
   d="$R/$1"; w="$d/work"; mkdir -p "$w/docs" || exit 1; g() { git -C "$w" -c user.name=t -c user.email=t@t "$@"; }
-  g init -q -b main; echo x > "$w/README.md"
+  b=${B:-main}; g init -q -b "$b"; echo x > "$w/README.md"
   [ -n "$2" ] && spec "$w/.claude/rules/repo-structure.md" "$2"
   g add -A; g commit -qm base
   if [ "${4:-origin}" = origin ]; then
-    git init -q --bare -b main "$d/origin.git" && g remote add origin "$d/origin.git" && g push -q origin main && g fetch -q origin || exit 1
+    git init -q --bare -b "$b" "$d/origin.git" && g remote add origin "$d/origin.git" && g push -q origin "$b" && g fetch -q origin || exit 1
   fi
   g checkout -qb feat; spec "$w/.claude/rules/repo-structure.md" "$3"; g add -A; g commit -qm loosen; echo "$w"
 }
@@ -39,4 +39,8 @@ row 'no origin: the working tree rule applies'                     "$(probe "$w/
 note=$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$w/docs/other.md" \
   | env -u REPO_STRUCTURE_SPEC HOME="$R/home" python3 "$H" 2>&1 >/dev/null)
 row 'no origin: a one-line note on stderr'                         "$(printf '%s' "$note" | grep -q 'no origin remote' && echo note || echo quiet)" note
+w=$(B=trunk repo trunk base.md sneaky.md); git -C "$w" remote set-head origin -d 2>/dev/null   # as with git < 2.48
+row 'default branch trunk (no local origin/HEAD): its rule denies'  "$(probe "$w/docs/sneaky.md")" deny
+w=$(repo unreadable '' sneaky.md); git -C "$w" remote set-url origin "$R/missing.git"; git -C "$w" update-ref -d refs/remotes/origin/main
+row 'origin unreadable: the working tree rule is not used'         "$(probe "$w/docs/other.md")" silent
 exit $FAIL

@@ -29,16 +29,19 @@ BOTS='coderabbit=coderabbitai\[bot\] codex=chatgpt-codex-connector\[bot\] copilo
 
 root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 # Read the files from the default branch (origin/<default>), not the working tree, so a PR cannot pick the tools that review it.
-# The name comes from local refs (origin/HEAD, else origin/main or origin/master); a stale ref is fine (the older line applies).
+# The name comes from local refs (origin/HEAD, else origin/main or origin/master; origin is asked only when none exists);
+# a stale ref is fine (the older line applies).
 # If the ref is missing, fetch it once (5 s, no prompt). Without an origin remote no PR exists, so the working tree is read.
 ref=
 if git -C "$root" remote get-url origin >/dev/null 2>&1; then
   name=$(git -C "$root" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null); name=${name#origin/}
-  if [ -z "$name" ]; then
-    name=main
-    git -C "$root" rev-parse --verify --quiet refs/remotes/origin/main >/dev/null \
-      || ! git -C "$root" rev-parse --verify --quiet refs/remotes/origin/master >/dev/null || name=master
-  fi
+  for n in main master; do
+    [ -z "$name" ] && git -C "$root" rev-parse --verify --quiet "refs/remotes/origin/$n" >/dev/null && name=$n
+  done
+  # None of those locally: ask origin (5 s, no prompt)
+  [ -n "$name" ] || name=$(GIT_TERMINAL_PROMPT=0 perl -e 'alarm 5; exec @ARGV' git -C "$root" ls-remote --symref origin HEAD </dev/null 2>/dev/null \
+                           | sed -n 's|^ref: refs/heads/\([^[:space:]]*\)[[:space:]]*HEAD$|\1|p')
+  name=${name:-main}
   ref=refs/remotes/origin/$name
   git -C "$root" rev-parse --verify --quiet "$ref" >/dev/null \
     || GIT_TERMINAL_PROMPT=0 perl -e 'alarm 5; exec @ARGV' git -C "$root" fetch --quiet origin -- "$name" </dev/null >/dev/null 2>&1

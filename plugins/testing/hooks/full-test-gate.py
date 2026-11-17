@@ -47,15 +47,16 @@ def read_config(top, working_tree=False):
     a pass or drop the gate that blocks its own release. None when the file is not there (= not opted in; never falls back
     to the working tree). Without an origin remote no PR can exist, so the working tree is read and stderr says so.
     working_tree=True (`run --working-tree`) reads the working tree on purpose."""
-    if not working_tree and git(top, "remote", "get-url", "origin")[0] != 0:
-        print(f"[full-test-gate] no origin remote: reading {CONFIG} from the working tree", file=sys.stderr)
-        working_tree = True
-    if working_tree:
+    no_origin = not working_tree and git(top, "remote", "get-url", "origin")[0] != 0
+    if working_tree or no_origin:
         try:
             with open(os.path.join(top, CONFIG)) as f:
-                return f.read()
+                text = f.read()
         except OSError:
             return None
+        if no_origin:
+            print(f"[full-test-gate] no origin remote: reading {CONFIG} from the working tree", file=sys.stderr)
+        return text
     name = _local_default(top)
     if not _has_remote_ref(top, name):
         print(f"[full-test-gate] cannot read origin/{name} (not available locally and fetch failed): not gating", file=sys.stderr)
@@ -126,15 +127,16 @@ def default_base(top):
 
 
 def _local_default(top):
-    """The default branch name from local refs only (origin/HEAD, else origin/main or origin/master). Used to find the config,
-    which is read on every Bash call, so it does not ask origin over the network. A stale ref is fine (the older rules apply)."""
+    """The default branch name from local refs (origin/HEAD, else origin/main or origin/master). Used to find the config,
+    which is read on every Bash call, so origin is asked over the network (default_base) only when none of those exists
+    locally. A stale ref is fine (the older rules apply)."""
     rc, ref = git(top, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
     if rc == 0 and ref.startswith("origin/"):
         return ref[len("origin/"):]
-    if git(top, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/main")[0] != 0 \
-            and git(top, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/master")[0] == 0:
-        return "master"
-    return "main"
+    for name in ("main", "master"):
+        if git(top, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{name}")[0] == 0:
+            return name
+    return default_base(top)[len("origin/"):]
 
 
 def base_of(top, cfg):

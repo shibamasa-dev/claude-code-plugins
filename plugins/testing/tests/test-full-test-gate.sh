@@ -12,12 +12,12 @@ g() { git -C "$1" -c user.name=t -c user.email=t@t "${@:2}"; }
 # repo <name> <config on the default branch, or empty> [origin|none] -> path of a clone on branch feat
 repo() {
   d="$T/$1"; w="$d/work"; mkdir -p "$w/src" "$w/.claude" || exit 1
-  g "$w" init -q -b main && echo a > "$w/src/a"
+  g "$w" init -q -b "${B:-main}" && echo a > "$w/src/a"
   [ -n "$2" ] && printf '%s\n' "$2" > "$w/.claude/full-test.json"
   g "$w" add src .claude 2>/dev/null; g "$w" commit -qm base
   if [ "${3:-origin}" = origin ]; then
-    git init -q --bare -b main "$d/origin.git" && g "$w" remote add origin "$d/origin.git" \
-      && g "$w" push -q origin main && g "$w" fetch -q origin || exit 1
+    git init -q --bare -b "${B:-main}" "$d/origin.git" && g "$w" remote add origin "$d/origin.git" \
+      && g "$w" push -q origin "${B:-main}" && g "$w" fetch -q origin || exit 1
   fi
   g "$w" checkout -qb feat; echo "$w"
 }
@@ -48,4 +48,13 @@ w=$(repo noorigin '{"command": "echo base > ran", "paths": ["src"], "base": "mai
 err=$(cd "$w" && python3 "$H" run 2>&1 >/dev/null)
 row 'no origin: the working tree config is run'                  "$(ran "$w")" base
 row 'no origin: a one-line note on stderr'                       "$(printf '%s' "$err" | grep -q 'no origin remote' && echo note || echo quiet)" note
+
+# default branch trunk, no local origin/HEAD (git < 2.48 does not create it on fetch): origin is asked for the name
+w=$(B=trunk repo trunk "$BASE_CFG"); g "$w" remote set-head origin -d 2>/dev/null; branch_cfg "$w" '{"command": "echo branch > ran", "paths": ["src"], "gate": []}'
+rm -rf "$FULL_TEST_STATE_DIR"; (cd "$w" && python3 "$H" run >/dev/null 2>&1)
+row 'default branch trunk: run uses its command'                  "$(ran "$w")" base
+
+# origin exists but cannot be read: not opted in (the working tree config is not used)
+w=$(repo unreadable "$BASE_CFG"); g "$w" remote set-url origin "$T/missing.git"; g "$w" update-ref -d refs/remotes/origin/main
+row 'origin unreadable: not opted in (status)'                    "$(cd "$w" && python3 "$H" status 2>/dev/null | grep -q 'Not configured' && echo off || echo on)" off
 exit $fail

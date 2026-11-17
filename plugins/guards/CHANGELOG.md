@@ -5,7 +5,7 @@ Changes to the guards plugin. The format follows [Keep a Changelog](https://keep
 ## [0.7.0] - 2026-11-17
 
 ### Changed
-- repo-structure-guard reads the repo's `.claude/rules/repo-structure.md` from the default branch (`origin/<default>`), not the working tree, so a branch cannot loosen the layout rule it is judged by. When the default branch has no rule file, the user's `~/.claude/rules/repo-structure.md` applies (never the working tree). Without an `origin` remote the working tree is read (with a note on stderr). The default branch name comes from local refs; a missing `origin/<default>` is fetched once (5 s, no prompt) (#77).
+- repo-structure-guard reads the repo's `.claude/rules/repo-structure.md` from the default branch (`origin/<default>`), not the working tree, so a branch cannot loosen the layout rule it is judged by. When the default branch has no rule file, the user's `~/.claude/rules/repo-structure.md` applies (never the working tree). Without an `origin` remote the working tree is read (with a note on stderr). The default branch name comes from local refs (`origin/HEAD`, else `origin/main` / `origin/master`; origin is asked only when none of those exists); a missing `origin/<default>` is fetched once (5 s, no prompt) (#77).
 
 ## [0.6.0] - 2026-10-11
 

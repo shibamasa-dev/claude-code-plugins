@@ -69,14 +69,16 @@ def _has_ref(root: str, ref: str) -> bool:
 
 
 def default_branch(root: str) -> str:
-    """The default branch name from local refs only (origin/HEAD, else origin/main or origin/master).
-    This runs on every new file under docs/ or scripts/, so it does not ask origin over the network."""
+    """The default branch name from local refs (origin/HEAD, else origin/main or origin/master). This runs on every new
+    file under docs/ or scripts/, so origin is asked over the network (ls-remote, 5 s) only when none of those exists."""
     rc, ref = _git(root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
     if rc == 0 and ref.strip().startswith("origin/"):
         return ref.strip()[len("origin/"):]
-    if not _has_ref(root, "refs/remotes/origin/main") and _has_ref(root, "refs/remotes/origin/master"):
-        return "master"
-    return "main"
+    for name in ("main", "master"):
+        if _has_ref(root, f"refs/remotes/origin/{name}"):
+            return name
+    m = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", _git(root, "ls-remote", "--symref", "origin", "HEAD")[1], re.M)
+    return m.group(1) if m else "main"
 
 
 def base_spec(root: str):

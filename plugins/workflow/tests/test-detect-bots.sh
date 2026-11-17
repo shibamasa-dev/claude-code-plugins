@@ -33,12 +33,16 @@ row 'review-auto: other than on / off: exit 5' "$(det "$(repo auto2 'review-auto
 # The review-* lines are read from the default branch (origin/<default>), so a PR cannot pick the tools that review it.
 # base <name> <CLAUDE.md on the default branch, or empty> <CLAUDE.md on the branch> -> a clone on branch feat with an origin
 base() { d="$T/$1"; w="$d/work"; mkdir -p "$w" || exit 1; g() { git -C "$w" -c user.name=t -c user.email=t@t "$@"; }
-         g init -q -b main; printf '%s\n' "${2:-# no line}" > "$w/CLAUDE.md"; g add CLAUDE.md; g commit -qm base
-         git init -q --bare -b main "$d/origin.git" && g remote add origin "$d/origin.git" && g push -q origin main && g fetch -q origin || exit 1
+         b=${B:-main}; g init -q -b "$b"; printf '%s\n' "${2:-# no line}" > "$w/CLAUDE.md"; g add CLAUDE.md; g commit -qm base
+         git init -q --bare -b "$b" "$d/origin.git" && g remote add origin "$d/origin.git" && g push -q origin "$b" && g fetch -q origin || exit 1
          g checkout -qb feat; printf '%s\n' "$3" > "$w/CLAUDE.md"; g commit -qam branch; echo "$w"; }
 row 'branch edits review-heavy: the default branch line wins' "$(det "$(base edit 'review-heavy: coderabbit' 'review-heavy: none')")" 'coderabbit/0'
 row 'line only on the branch: userConfig is used' "$(det "$(base new '' 'review-heavy: codex')" '' CLAUDE_PLUGIN_OPTION_REVIEW_HEAVY=gemini)" 'gemini/0'
 row 'line only on the branch, no setting: exit 4' "$(det "$(base new2 '' 'review-heavy: codex')")" '/4'
 note=$(cd "$(repo noorigin 'review-heavy: codex')" && env -u CLAUDE_PLUGIN_OPTION_REVIEW_HEAVY bash "$D" 2>&1 >/dev/null)
 row 'no origin: a one-line note on stderr' "$(printf '%s' "$note" | grep -q 'no origin remote' && echo yes || echo no)" 'yes'
+w=$(B=trunk base trunk 'review-heavy: coderabbit' 'review-heavy: none'); git -C "$w" remote set-head origin -d 2>/dev/null   # as with git < 2.48
+row 'default branch trunk (no local origin/HEAD): its line wins' "$(det "$w")" 'coderabbit/0'
+w=$(base unreadable '' 'review-heavy: codex'); git -C "$w" remote set-url origin "$T/missing.git"; git -C "$w" update-ref -d refs/remotes/origin/main
+row 'origin unreadable: the working tree line is not used' "$(det "$w")" '/4'
 exit $fail
