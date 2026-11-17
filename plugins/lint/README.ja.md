@@ -31,5 +31,6 @@
 ## 前提
 
 - `python3`（標準ライブラリだけ）
+- `skill-creator`（別の marketplace のスキル）は任意。入っていれば `skill-planner` が計画を渡し、無ければ計画をそのまま使って直接作る
 - 任意: `gh`（reviewer が gh のログイン名をヒントにする）、`gitleaks`（secret の検査を任せる。無ければ `skipped` と出る）
 - eval グループ B（`scripts/run_reviewer_eval.py`）は `claude` CLI。eval のスクリプトはメンテナ用で、公開していない手元の `evals/` の eval セットを読む

@@ -173,7 +173,7 @@ Document config precedence:
 3. config file
 4. defaults
 
-Do not store secrets in plaintext config unless the user explicitly accepts that tradeoff. Prefer environment variables or an existing secret manager.
+Do not store secrets in plaintext config unless the user explicitly accepts that tradeoff. Where the secret comes from depends on how the skill ships (see `persistence.md`): a `sensitive` plugin option does not reach commands run through Bash, so a standalone skill uses environment variables or an existing secret manager, and a plugin skill routes it through an MCP server or hook.
 
 ## Machine-Readable Output
 
@@ -189,7 +189,10 @@ Human output should be readable. JSON output should be stable enough for scripts
 
 ## Build And Distribution
 
-If the CLI needs a build step, keep the build system in the skill directory (state-like output goes under `${CLAUDE_PLUGIN_DATA}`).
+If the CLI needs a build step, keep the source in the skill directory. Where dependencies and build output go depends on how the skill ships:
+
+- **Plugin skill**: the plugin root is replaced on update, so dependencies (`node_modules`, virtual environments), generated code and caches go under `${CLAUDE_PLUGIN_DATA}`. The plugins reference describes that directory for this purpose (https://code.claude.com/docs/en/plugins-reference).
+- **Standalone skill**: no plugin update replaces it, so building in the skill directory is fine; state still goes to a path the user chooses.
 
 Document:
 
@@ -202,6 +205,7 @@ Document:
 Example:
 
 ```bash
+# plugin skill: run these with the output directed under ${CLAUDE_PLUGIN_DATA}
 npm install
 npm run build
 npm test

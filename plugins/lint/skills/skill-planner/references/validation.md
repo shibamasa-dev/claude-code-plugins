@@ -8,7 +8,7 @@ Validation effort should match the implementation level and risk.
 | L2 | Representative script execution |
 | L3 | Build command and CLI/app smoke test |
 | L4 | Persistence smoke test: create/read/update/reset or export |
-| L5 | Remote config/sync smoke test plus offline/failure behavior check |
+| L5 | Remote config smoke test plus an unavailable-store check (it stops and reports; no fallback to another store) |
 
 ## When To Use Evals
 

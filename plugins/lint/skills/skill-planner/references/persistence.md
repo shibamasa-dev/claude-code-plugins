@@ -4,14 +4,17 @@ Use persistence only when it materially improves future runs.
 
 ## Where state lives
 
-Never write state into the skill's own directory. A plugin's skill directory is read-only and is replaced on update, so state there is lost or the write fails.
+Never write state into the skill's own directory. The plugin root is replaced on update, so anything stored there is lost. Two cases:
 
-- Default: SQLite or files under `${CLAUDE_PLUGIN_DATA}`, so the skill works with no setup. Say in the README that uninstalling the plugin from the last place it is installed deletes `${CLAUDE_PLUGIN_DATA}` (and a SQLite database inside it) unless `--keep-data` is passed.
-- Let users move it: offer a `userConfig` option such as `sqlite_path`. A database outside `${CLAUDE_PLUGIN_DATA}` is not touched on uninstall.
-- Remote (Postgres, Supabase, Turso): take the connection string as a `sensitive` `userConfig` option (`database_url`), never from a file in the skill.
-- A skill that is not shipped in a plugin (a personal skill) still keeps state outside its own directory, in a documented path of the user's choosing.
+- **Skill shipped in a plugin**: state goes under `${CLAUDE_PLUGIN_DATA}` (the plugin's persistent data directory), so the skill works with no setup. Say in the README that uninstalling the plugin from the last place it is installed deletes that directory, and a SQLite database inside it, unless `--keep-data` is passed.
+- **Standalone skill** (personal or project skill, no plugin): that variable does not exist. Keep state at a path the user chooses, outside the skill directory, and document it.
+
+Either way:
+
+- Let users move it: offer a setting such as `sqlite_path` (a `userConfig` option in a plugin). A database outside the plugin data directory is not touched on uninstall.
+- Remote store (Postgres, Supabase, Turso): the connection string is a secret. In a plugin it is a `sensitive` `userConfig` option (`database_url`). Such a value is substituted into MCP/LSP server config and exec-form hook args and exported to hooks as `CLAUDE_PLUGIN_OPTION_<KEY>`; skill text gets a placeholder and commands run through Bash get nothing (see the userConfig section of https://code.claude.com/docs/en/plugins-reference). So plan for it: a CLI that the skill runs through Bash cannot read the value, and a direct remote store needs an MCP server bundled with the plugin as the runner (the value goes in its `env`), or a connector route instead. A standalone skill uses an environment variable or a secret manager.
 - Schema changes apply automatically and idempotently; never ask the user to run an `ALTER` by hand.
-- Decide the store once, save the choice in `userConfig`, and when it is unavailable stop and say so instead of falling back to another store (the data would split across two places).
+- Decide the store once and save the choice. When it is unavailable, stop and say so; never fall back to another store, or the data splits across two places.
 
 ## Local Persistence
 
@@ -51,17 +54,16 @@ Document:
 - setup steps
 - credential configuration
 - schema creation and migration
-- sync behavior
-- offline behavior
-- conflict behavior
+- behavior when two writers collide
+- behavior when the store is unavailable (stop and report; see the rule below)
 - data boundaries
 - delete/export behavior
 
 Rules:
 
 - Do not commit credentials.
-- Do not create remote schema or sync data without explicit user approval.
-- When credentials or network are unavailable, stop and report that the store is unavailable. A read-only mode is fine; do not fall back to a separate local store, or the data splits across two places.
+- Do not create remote schema or write data without explicit user approval.
+- When credentials or network are unavailable, stop and report that the store is unavailable. Never fall back to another store (no local copy, no cache that accepts writes); reads come only from the configured store.
 
 ## Data Boundary
 

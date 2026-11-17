@@ -14,14 +14,14 @@ The goal is not to over-design. The goal is to pick the smallest implementation 
 1. Decide whether the request should become a skill or remain a one-off task.
 2. Select the minimum implementation level.
 3. Identify required skill contents: `SKILL.md`, `references/`, `assets/`, `scripts/`, CLI/mini app code, SQLite, or remote persistence.
-4. Plan validation: manual review, smoke test, eval cases, persistence checks, or remote sync checks.
-5. If the user wants to proceed with creation or improvement, hand off to `skill-creator`.
+4. Plan validation: manual review, smoke test, eval cases, persistence checks, or remote store checks.
+5. If the user wants to proceed with creation or improvement, hand off to `skill-creator` if it is installed (it ships separately from this plugin); otherwise give the user the plan and build the skill from it directly.
 
 ## Read references as needed
 
 - Read `references/implementation-levels.md` when choosing how much to build.
 - Read `references/cli-design.md` when the skill may include scripts, CLI commands, a mini app, daemon, service registration, or logs.
-- Read `references/persistence.md` when the skill may remember state with SQLite, files, or a remote database. **State never goes into the skill's own directory**: a plugin's skill directory is read-only and replaced on update, so state lives under `${CLAUDE_PLUGIN_DATA}` (or the user's own configured path for a standalone skill).
+- Read `references/persistence.md` when the skill may remember state with SQLite, files, or a remote database. **State never goes into the skill's own directory.** A skill shipped in a plugin keeps state in that plugin's data directory (the `CLAUDE_PLUGIN_DATA` variable, spelled out in the reference); a standalone skill keeps it at a path the user chooses. The plugin root is replaced on update, so anything stored there is lost.
 - Read `references/validation.md` when deciding completion criteria, smoke tests, evals, or the skill-creator handoff.
 
 ## Planning output
@@ -38,7 +38,7 @@ Return a concise plan with these fields:
 - Name:
 - Trigger:
 - Files:
-- State (location under ${CLAUDE_PLUGIN_DATA}, or none):
+- State (plugin skill: the plugin's data directory; standalone skill: a user-chosen path outside the skill directory; or none):
 - CLI:
 - Validation:
 
@@ -57,7 +57,7 @@ If the request is clearly one-off, say so and do the task directly instead of fo
 
 ## Handoff to skill-creator
 
-When the plan is accepted and the user wants the skill created or updated, use the `skill-creator` skill for implementation, evals, improvement loops, and trigger description optimization.
+When the plan is accepted and the user wants the skill created or updated, use the `skill-creator` skill, if it is installed, for implementation, evals, improvement loops, and trigger description optimization. If it is not installed, build the skill from the plan yourself and say that no eval loop was run.
 
 Pass this information forward:
 

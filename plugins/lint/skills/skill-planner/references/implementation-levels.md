@@ -8,8 +8,8 @@ Choose the smallest level that makes the workflow reliable and repeatable.
 | L1. References/assets | The workflow needs examples, schemas, templates, prompts, or static knowledge | `SKILL.md`, `references/`, `assets/` | The model can load only the relevant reference files |
 | L2. Scripts | The workflow has deterministic, repetitive, or error-prone steps | `scripts/` plus instructions | At least one script path works manually |
 | L3. CLI/mini app | Users or agents should run a reusable local command, parser, generator, evaluator, or app | Self-contained code (no state) in the skill directory | Build/run/smoke test commands are documented and pass |
-| L4. Local persistence | The skill needs local history, indexes, caches, preferences, queues, or eval results | SQLite or local files under `${CLAUDE_PLUGIN_DATA}` | Schema, update path, reset/export behavior are documented |
-| L5. Cross-environment persistence | State must work across machines, sessions, or deployments | Turso or another remote store | Setup, auth, sync, failure behavior, and data boundaries are documented |
+| L4. Local persistence | The skill needs local history, indexes, caches, preferences, queues, or eval results | SQLite or local files in the state location (`persistence.md`) | Schema, update path, reset/export behavior are documented |
+| L5. Cross-environment persistence | State must work across machines, sessions, or deployments | A remote store (Postgres, Supabase, Turso, etc.) | Setup, auth, unavailable-store behavior, and data boundaries are documented |
 
 ## Escalation Heuristics
 
@@ -25,7 +25,7 @@ When uncertain, start lower and leave an upgrade path.
 
 ## Skill Directory Boundary
 
-Keep code (scripts, CLI tools, build configuration, mini-app source) self-contained in the skill directory. Keep state elsewhere: a plugin's skill directory is read-only and replaced on every update, so anything written there is lost.
+Keep code (scripts, CLI tools, build configuration, mini-app source) self-contained in the skill directory. Keep state elsewhere: the plugin root is replaced on update, so anything stored there is lost.
 
 Recommended layout:
 
@@ -44,6 +44,6 @@ skill-name/
 Rules:
 
 - Do not scatter skill implementation files into Claude's user configuration directory or unrelated project directories.
-- Write databases, caches, logs, run records and generated output to `${CLAUDE_PLUGIN_DATA}` (see `persistence.md`), never into the skill directory. Temporary work goes to a temp directory.
+- Write databases, caches, logs, run records and generated output to the state location, never into the skill directory: for a plugin skill `${CLAUDE_PLUGIN_DATA}`, for a standalone skill a path the user chooses (see `persistence.md`). Temporary work goes to a temp directory.
 - Document install/build/run commands when dependencies are needed.
 - Prefer small deterministic scripts before creating a larger CLI or app.
