@@ -2,6 +2,11 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.7.3] - 2026-11-17
+
+### Fixed
+- hooks/rate-limits.ts and rate-limits.test.ts type-check again under Claude Code 2.1.323+, where `claude plugin validate --strict` fails on TypeScript findings: `Engine` is now `EngineInterface`, and the test's `process.run` results carry the now-required `isStdoutTruncated` / `isStderrTruncated`. No runtime change.
+
 ## [0.7.2] - 2026-10-30
 
 ### Added
