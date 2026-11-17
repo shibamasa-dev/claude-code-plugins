@@ -64,13 +64,13 @@ Things the user decides (whether to make an issue, the GO from architecture revi
 
 ## 3. Implement and verify
 
-- Run the repo's checks (whatever CONTRIBUTING, the PR template, and the CI config list: tests, lint, validators, version and CHANGELOG checks). If the repo has a verification skill (`.claude/skills/verify-*`), run it before committing and keep its evidence for the PR body.
+- Run the repo's checks (whatever CONTRIBUTING, the PR template, and the CI config list: tests, lint, validators, version and CHANGELOG checks). If the repo has verification skills (`.claude/skills/verify-*`), run every one of them before committing and keep their evidence for the PR body.
 - **Reread your own diff** (`git diff origin/<base>...HEAD`). Read it as if looking for reasons CI or a reviewer would reject it:
   - Changes nobody asked for, leftover debug output
   - Personal paths, email addresses, specific personal names or internal proper names (especially in a distributed repo)
   - Missing updates to version, CHANGELOG, README
   - Behavior changed without tests
-- Fix what you find before opening the PR.
+- Fix what you find before opening the PR. If that changes the diff, rerun the checks and the `verify-*` skills on the final diff and keep that result as the evidence.
 
 **Bug fixes**:
 
