@@ -245,6 +245,8 @@ row 'same, ... 2>&1 | tail -1 (a redirect is not a path): still blocked' "$(comm
 row 'same, ... > /dev/null: still blocked' "$(commit s9s8 p2 "git commit -m x -m '$TR' > /dev/null")" deny
 row 'same, --pathspec-from-file (paths unknown): still blocked' "$(commit s9s9 p2 "git commit --pathspec-from-file=list.txt -m x -m '$TR'")" deny
 row "same, -m '>x' (a message, not a redirection): still blocked" "$(commit s9s10 p2 "git commit --trailer '$TR' -m '>x' -m y")" deny
+row 'same, > -a (a file named -a, not the option): still blocked' "$(commit s9s11 p2 "git commit -m x -m '$TR' > -a")" deny
+row 'same, -- >/dev/null (a redirection after --, not a path): still blocked' "$(commit s9s12 p2 "git commit -m x -m '$TR' -- >/dev/null")" deny
 reset; edit f; review s9 p1; stop s9 p1
 git add -A; git commit -qm "x" -m "$TR"
 row '--amend --no-edit keeps HEAD trailer' "$(commit s9 p2 'git commit --amend --no-edit')" allow

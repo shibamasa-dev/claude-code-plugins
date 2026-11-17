@@ -56,7 +56,7 @@ import time
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _shell import HEREDOC_MARK_RE, commands, lex, resolve_dir  # noqa: E402
+from _shell import HEREDOC_MARK_RE, _no_redirects, commands, lex, resolve_dir  # noqa: E402
 
 TAG = "[commit-gate]"
 MODES = ("off", "observe", "enforce")
@@ -399,22 +399,30 @@ def commit_message(c, top):
     piped stdin). paths: the pathspecs named on the command line (None when read from a file); include: -i / --include."""
     args, call, cwd = c["args"], c["call"], c["cwd"] or top
     parts, trailers, src, amend, dry, unknown = [], [], None, False, False, False
-    paths, include, redirect = [], False, False
+    paths, include, redirect, dropped = [], False, False, set()
     i = 0
     while i < len(args):
         a = args[i]
         nxt = args[i + 1] if i + 1 < len(args) else None
+        if redirect:  # the target of `>` / `2>` / `<`, whatever it looks like (`> -a` writes a file named -a)
+            redirect = False
+            dropped.add(i)
+            i += 1
+            continue
         if a == "--":
-            paths = None if paths is None else paths + args[i + 1:]
+            rest = _no_redirects(args[i + 1:])  # no options after --, so every redirection here is one
+            dropped |= {j for j in range(i + 1, len(args))}
+            paths = None if paths is None else paths + rest
             break
         if not a.startswith("-") or a == "-":
-            # Where a path goes, `2>&1`, `> f` and `>/dev/null` are redirections, not paths (only here: an option's
-            # value such as -m '> note' is consumed above and never reaches this branch)
-            if redirect:
-                redirect = False
-            elif re.fullmatch(r"\d*(>>?|<|&>)", a):
-                redirect = True  # the target is the next word
-            elif paths is not None and not re.match(r"\d*(>>?|<|&>)", a):
+            # Where a word starts, `2>&1`, `> f` and `>/dev/null` are redirections, not paths. An option's value
+            # (-m '> note') is consumed by its option below and never reaches this branch
+            if re.fullmatch(r"\d*(>>?|<|&>)", a):
+                redirect = True
+                dropped.add(i)
+            elif re.match(r"\d*(>>?|<|&>)", a):
+                dropped.add(i)
+            elif paths is not None:
                 paths.append(a)
         elif a.startswith("--"):
             k, eq, v = a.partition("=")
@@ -480,7 +488,8 @@ def commit_message(c, top):
         msg = "\n".join(trailers) or None
     else:
         msg = "\n\n".join(parts) + "".join("\n" + t for t in trailers)
-    return {"msg": msg, "dry": dry, "paths": paths, "include": include}
+    flags = [a for j, a in enumerate(args) if j not in dropped]  # the options, without redirections
+    return {"msg": msg, "dry": dry, "paths": paths, "include": include, "args": flags}
 
 
 def parse_trailer(msg):
@@ -600,7 +609,7 @@ def on_pre_bash(inp):
             continue
         # git commit <paths> (without -i) takes the named paths from the working tree, like -a does for all of them.
         # Paths read from a file (--pathspec-from-file) are unknown: the check runs on everything (fails closed)
-        stages = commits_all(c["args"]) or bool(m["paths"]) and not m["include"]
+        stages = commits_all(m["args"]) or bool(m["paths"]) and not m["include"]
         named = (m["paths"] or []) if m["include"] else []
         res = decide(inp, s, top, common, m["msg"], cmd, stages, named, c["cwd"] or top)
         if res and res[0] == "deny":
