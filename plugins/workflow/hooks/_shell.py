@@ -76,13 +76,43 @@ def resolve_cd(args, cur):
     return os.path.normpath(os.path.join(cur, d)) if cur else None
 
 
+def strip_comments(command):
+    """Drop `# ...` to the end of the line where `#` starts a word outside quotes, as the shell does.
+    A `#` inside a word (`docs/a#b.md`) or inside quotes stays (shlex would cut the word and the rest of the line)."""
+    out, i, quote, n = [], 0, None, len(command)
+    while i < n:
+        ch = command[i]
+        if quote:
+            out.append(ch)
+            if ch == "\\" and quote == '"' and i + 1 < n:
+                out.append(command[i + 1])
+                i += 1
+            elif ch == quote:
+                quote = None
+        elif ch == "\\" and i + 1 < n:
+            out.append(ch + command[i + 1])
+            i += 1
+        elif ch in "'\"":
+            quote = ch
+            out.append(ch)
+        elif ch == "#" and (i == 0 or command[i - 1] in " \t\n;&|()"):
+            while i < n and command[i] != "\n":
+                i += 1
+            continue
+        else:
+            out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 def lex(command):
     """(tokens, heredoc bodies), or None when shlex cannot read the command (an unbalanced quote, say)."""
     command, docs = split_heredocs(command)
     command = command.replace("\\\n", " ")  # a trailing \ continues the line
     try:
         # A newline also separates commands (newlines inside quotes are kept)
-        lx = shlex.shlex(command, posix=True, punctuation_chars=";&|()\n")
+        lx = shlex.shlex(strip_comments(command), posix=True, punctuation_chars=";&|()\n")
+        lx.commenters = ""  # comments were removed above, only where they start a word
         lx.whitespace = " \t\r"
         lx.whitespace_split = True
         return list(lx), docs

@@ -154,6 +154,10 @@ set_repo_cfg '{"commitGate": "enforce", "verifiers": "^my-check$"}'
 row 'default-branch verifiers: my-check counts' "$(reset; edit d2; skill s7d p1 my-check; stop s7d p1; commit s7d p2 "git commit -am x -m 'Verification: review — my-check'")" allow
 row 'default-branch verifiers: code-review no longer counts' "$(reset; edit d3; review s7e p1; stop s7e p1; commit s7e p2 "$CM")" deny
 
+set_repo_cfg '{"commitGate": true}'
+row 'default branch has a non-string commitGate: userConfig enforce still applies' "$(reset; edit d4; CLAUDE_PLUGIN_OPTION_COMMIT_GATE=enforce commit s7f p1 "$BARE")" deny
+row 'no error was logged for it' "$(grep -c '"decision": "error"' "$LOG" 2>/dev/null || echo 0)" 0
+
 echo '=== E: a branch cannot change the rule in its own working tree ==='
 set_repo_cfg '{"commitGate": "enforce"}'
 reset; edit e; mkdir -p .claude
@@ -190,12 +194,19 @@ row 'trailer through --trailer' "$(commit s9 p2 "git commit -am x --trailer 'Ver
 row 'en dash and hyphen separators' "$(commit s9 p2 "git commit -am x -m 'Verification: review - code-review'")" allow
 row 'message in a variable (cannot be read)' "$(commit s9 p2 'git commit -am "$MSG"')" deny
 row 'git -C <dir with space> commit' "$(cd "$T" && commit s9 p2 "git -C '$W' commit -am x -m '$TR'")" allow
+row 'a # inside a word does not hide the commit after it' "$(commit s9h p2 "git add docs/a#b.md && git commit -am x")" deny
+row 'a commit inside a shell comment is not a commit' "$(commit s9c p2 'echo ok # then git commit -am x')" allow
+row 'git -C "$REPO" commit (a variable): checked in the hook cwd' "$(commit s9v p2 'git -C "$REPO" commit -am x')" deny
 row 'after cd && git commit, no trailer' "$(commit s9 p2 "cd '$W' && git commit -am x")" deny
 row 'not a commit: git commit-tree' "$(commit s9 p2 'git commit-tree HEAD^{tree} -m x')" allow
 row 'not a commit: the words inside echo' "$(commit s9 p2 "echo 'git commit -am x'")" allow
 row 'not a commit: --dry-run' "$(commit s9 p2 'git commit --dry-run -a')" allow
 row 'an unlexable command (unbalanced quote) is logged as not checked' "$(commit s9 p2 'git commit -am "unterminated')" unparsed
 row '-C <option-looking value> never reaches git log as an option' "$(r=$(commit s9 p2 "git commit -C '--output=$T/pwned'"); [ -e "$T/pwned" ] && echo written || echo "$r")" deny
+reset; edit f2; git add m.py; review s9s p1; edit f2-fixed; stop s9s p1
+row 'staged version differs from the verified working tree: blocked' "$(commit s9s p2 "git commit -m x -m '$TR'")" deny
+row 'same, with -a (stages the verified version): passes' "$(commit s9s2 p2 "$CM")" allow
+reset; edit f; review s9 p1; stop s9 p1
 git add -A; git commit -qm "x" -m "$TR"
 row '--amend --no-edit keeps HEAD trailer' "$(commit s9 p2 'git commit --amend --no-edit')" allow
 row 'subagent payload (agent_id, same session) is read like the main one' "$(ev pre-bash-subagent s9 p2 "tool_input={\"command\":$(j "git commit -am x")}" | grep -q '"deny"' && echo deny || echo allow)" deny
@@ -213,11 +224,17 @@ row 'no origin remote: the working tree file applies' "$(W="$N" CLAUDE_PLUGIN_OP
 echo '=== H: the log and report ==='
 row 'report lists would-be blocks' "$(python3 "$HOOK" report | grep -q would_block && echo listed || echo missing)" listed
 reset; edit h0; review s13 p1; stop s13 p1
-git commit -qam x -m "$TR"; posted() { ev - s13 p2 'hook_event_name="PostToolUse"' 'tool_name="Bash"' "tool_input={\"command\":$(j "$1")}" "tool_response={\"stdout\":$(j "$2"),\"stderr\":\"\"}" >/dev/null; lastlog stamp; }
-row 'after the commit: logged as committed with a backed stamp' "$(posted "$CM" "[main $(git rev-parse --short HEAD)] x")" backed
+# PreToolUse, then the real commit, then PostToolUse with what Bash printed
+posted() { ev - s13 p2 'hook_event_name="PostToolUse"' 'tool_name="Bash"' "tool_input={\"command\":$(j "$1")}" "tool_response={\"stdout\":$(j "$2"),\"stderr\":\"\"}" >/dev/null; lastlog decision; }
+commit s13 p2 "$CM" >/dev/null; git commit -qam x -m "$TR"
+row 'after the commit: logged as committed' "$(posted "$CM" "[main $(git rev-parse --short HEAD)] x")" committed
+row 'its stamp is backed by the record' "$(lastlog stamp)" backed
 row 'the log line names the branch' "$(lastlog branch)" main
-edit h1; git commit -qam y
-row 'after a commit with no trailer: stamp missing' "$(posted "$BARE" "[main $(git rev-parse --short HEAD)] y")" missing
+edit h1; commit s13 p2 'git commit -qam y' >/dev/null; git commit -qam y
+row 'git commit -q (no summary printed) is still logged' "$(posted 'git commit -qam y' '')" committed
+row 'after a commit with no trailer: stamp missing' "$(lastlog stamp)" missing
+edit h2; n0=$(loglines); commit s13 p2 'git commit -qam z' >/dev/null; posted 'git commit -qam z' '' >/dev/null
+row 'a refused commit (HEAD did not move) is not logged as committed' "$(lastlog decision)" would_block
 row 'the repo itself is untouched (no stray objects from the fingerprint)' "$(in_dir "$W"; before=$(git count-objects -v | sed -n 's/^count: //p'); review s12 p1; edit h; stop s12 p1; commit s12 p2 "$BARE" >/dev/null; [ "$(git count-objects -v | sed -n 's/^count: //p')" = "$before" ] && echo clean || echo wrote)" clean
 
 rm -rf "$T"

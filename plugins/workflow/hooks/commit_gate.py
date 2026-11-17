@@ -122,7 +122,7 @@ def repo_config(top):
 
 
 def norm_mode(v):
-    v = (v or "").strip().lower()
+    v = v.strip().lower() if isinstance(v, str) else ""  # a non-string (true, 1) is not a mode
     return v if v in MODES else "off"
 
 
@@ -130,8 +130,11 @@ def settings(top):
     """{"mode", "verifiers", "source"}. The repo file on the default branch wins over userConfig; unknown values are off."""
     cfg, source = repo_config(top)
     user_mode = norm_mode(os.environ.get("CLAUDE_PLUGIN_OPTION_COMMIT_GATE"))
-    mode = norm_mode(cfg["commitGate"]) if "commitGate" in cfg else user_mode
-    pattern = cfg.get("verifiers") or os.environ.get("CLAUDE_PLUGIN_OPTION_COMMIT_GATE_VERIFIERS") or DEFAULT_VERIFIERS
+    repo_mode = cfg.get("commitGate")
+    valid = isinstance(repo_mode, str) and repo_mode.strip().lower() in MODES
+    mode = norm_mode(repo_mode) if valid else user_mode  # an unreadable repo value does not switch the gate off
+    pattern = cfg.get("verifiers") if isinstance(cfg.get("verifiers"), str) else None
+    pattern = pattern or os.environ.get("CLAUDE_PLUGIN_OPTION_COMMIT_GATE_VERIFIERS") or DEFAULT_VERIFIERS
     try:
         verifiers = re.compile(pattern)
     except (re.error, TypeError):
@@ -255,7 +258,7 @@ def log(entry):
 
 def gc():
     cutoff = time.time() - GC_DAYS * 86400
-    for sub in ("pending", "repos"):
+    for sub in ("pending", "repos", "heads"):
         d = os.path.join(state_dir(), sub)
         try:
             for n in os.listdir(d):
@@ -329,7 +332,10 @@ def git_commits(command, cwd):
             a = args[i]
             if a == "-C" and i + 1 < len(args):
                 d = os.path.expanduser(args[i + 1])
-                here = d if os.path.isabs(d) else (os.path.join(here, d) if here else None)
+                if "$" in d or "`" in d:
+                    here = None  # unknown (a variable or command substitution): the hook's cwd is used
+                else:
+                    here = d if os.path.isabs(d) else (os.path.join(here, d) if here else None)
                 i += 2
             elif a in _GIT_VALUE_OPTS and "=" not in a:
                 i += 2
@@ -537,7 +543,7 @@ def on_pre_bash(inp):
         msg, dry = commit_message(c, top)
         if dry:
             continue
-        res = decide(inp, s, top, common, msg, cmd)
+        res = decide(inp, s, top, common, msg, cmd, commits_all(c["args"]))
         if res and res[0] == "deny":
             denial = res[1]
             break
@@ -572,18 +578,18 @@ def on_post_bash(inp):
     cmd = (inp.get("tool_input") or {}).get("command", "")
     if "commit" not in cmd or "git" not in cmd:
         return None
-    tr = inp.get("tool_response")
-    out = tr.get("stdout", "") if isinstance(tr, dict) else (tr if isinstance(tr, str) else "")
-    m = re.search(r"^\[[^\]\n]*?([0-9a-f]{7,40})\]", out or "", re.M)
     calls = git_commits(cmd, inp.get("cwd"))
-    if not m or not calls:
-        return None
+    hp = heads_path(inp["session_id"])
+    if not calls or not os.path.exists(hp):
+        return None  # no checked commit in this session (the gate is off, or PreToolUse did not get that far)
     top, common = repo_of(calls[0]["cwd"] or inp.get("cwd"))
-    if not top or settings(top)["mode"] in ("off", "unknown"):
+    if not top:
         return None
-    rc, sha = git(top, "rev-parse", "--verify", "--quiet", "--end-of-options", m.group(1) + "^{commit}")
-    if rc != 0:
-        return None
+    with Locked(hp, {}) as h:
+        before = h.pop(top, None)
+    rc, sha = git(top, "rev-parse", "--verify", "--quiet", "HEAD")
+    if before is None or rc != 0 or sha == before:
+        return None  # HEAD did not move: the commit failed or was refused
     _, body = git(top, "log", "-1", "--format=%B", sha, "--")
     trailer = parse_trailer(body)
     fresh, _ = evidence_for(repo_key(common), inp["session_id"], inp.get("prompt_id"), fingerprint(top))
@@ -594,7 +600,42 @@ def on_post_bash(inp):
     return None
 
 
-def decide(inp, s, top, common, msg, cmd):
+def staged_differs(top):
+    """Paths whose staged content differs both from HEAD and from the working tree (staged, then edited again)."""
+    _, staged = git(top, "diff", "--cached", "--name-only", "-z")
+    _, unstaged = git(top, "diff", "--name-only", "-z")
+    both = set(filter(None, staged.split("\0"))) & set(filter(None, unstaged.split("\0")))
+    return sorted(both)
+
+
+def commits_all(args):
+    """True when the commit stages tracked changes itself (`-a` / `--all`), so the index is not committed as it is."""
+    for a in args:
+        if a == "--":
+            break
+        if a == "--all":
+            return True
+        if a.startswith("-") and not a.startswith("--"):
+            for ch in a[1:]:
+                if ch in _COMMIT_SHORT_VALUE:
+                    break  # the rest is that option's value (as in -mall)
+                if ch == "a":
+                    return True
+    return False
+
+
+def heads_path(sid):
+    return os.path.join(state_dir(), "heads", re.sub(r"[^\w.-]", "_", sid) + ".json")
+
+
+def remember_head(sid, top):
+    """HEAD before a checked commit, so PostToolUse can tell that a commit happened (`-q` prints no summary)."""
+    _, head = git(top, "rev-parse", "--verify", "--quiet", "HEAD")
+    with Locked(heads_path(sid), {}) as h:
+        h[top] = head
+
+
+def decide(inp, s, top, common, msg, cmd, commits_all=False):
     """("deny", reason) | ("note", text) | None."""
     sid, mode, key = inp["session_id"], s["mode"], repo_key(common)
     fp = fingerprint(top)
@@ -607,6 +648,13 @@ def decide(inp, s, top, common, msg, cmd):
     fresh, stale = evidence_for(key, sid, inp.get("prompt_id"), fp)
     verdict, problem = judge(trailer, fresh, stale)
     entry["verifiers"] = sorted(fresh)
+    remember_head(sid, top)
+    if verdict == "allow" and not commits_all:
+        split = staged_differs(top)
+        if split:
+            verdict, problem = "would_block", (
+                f"the staged version of {', '.join(split[:5])} differs from the working tree, which is what was verified; "
+                "the commit would record the staged one. Stage it again (`git add`), or write `Verification: none \u2014 <reason>`")
     if verdict in ("allow", "explained"):
         with Locked(repo_path(key), REPO_DEFAULT) as r:
             r["blocks"].pop(sid, None)
@@ -681,8 +729,10 @@ def main():
                 gc()
         if out:
             print(json.dumps(out, ensure_ascii=False))
-    except Exception:
-        pass
+    except Exception as e:  # never stop the work, but leave a trace that the gate did not run
+        if os.path.isdir(state_dir()):
+            log({"session": inp.get("session_id"), "decision": "error", "event": ev,
+                 "error": f"{type(e).__name__}: {e}"[:200]})
     return 0
 
 
