@@ -37,27 +37,30 @@ digraph doctor {
 
 Use Glob and Read on manifest files. Do NOT ask the user — detect automatically. **One exception: project start** — see 1a-start.
 
-Look for manifests anywhere in the repository (a monorepo's `apps/web/package.json` or `packages/api/go.mod` counts), ignoring `node_modules/`, `.git/`, `vendor/` and build output (`dist/`, `build/`, `target/`). Then pick the mode:
+Look for manifests anywhere in the repository (a monorepo's `apps/web/package.json` or `packages/api/go.mod` counts), ignoring `node_modules/`, `.git/`, `vendor/` and build output (`dist/`, `build/`, `target/`). Then pick the mode from the repo's tracked files (`git ls-files`):
 
 | Repo state | Mode |
 |---|---|
+| CLAUDE.md has broken `codebase-doctor:decided-setup` markers (an opening marker without a closing one, or more than one section) | Not project start. Edit nothing, report `[WARN]` under Check 1, ask the user to fix the markers; detect the stack as in the rows below |
 | A manifest exists | Normal audit |
-| No manifest, but source files exist (rule in `references/check-patterns.md`, "Detection: Source files") | Not project start. The code already fixes the language: infer the stack from file extensions, mark it `[inferred]`, ask nothing. Checks 7 and 16 report the missing manifest as a fix |
-| No manifest, no source files, CLAUDE.md has a Decided setup section | Not project start again. Use the section as the stack and ask nothing |
-| No manifest, no source files, no Decided setup section | **Project start** — run 1a-start |
+| No manifest, but something other than docs and repo metadata is tracked (rule in `references/check-patterns.md`, "Detection: Project start") — a script, a Makefile, a Dockerfile, `*.tf`, YAML/TOML config, a dotfile with content | Not project start. Ask nothing. A Decided setup section, if present, is the stack; inference from file names and extensions fills only the areas it has no line for, marked `[inferred]` |
+| Only docs and repo metadata, and CLAUDE.md has a Decided setup section | Not project start again. Use the section as the stack and ask nothing |
+| Only docs and repo metadata, no Decided setup section | **Project start** — run 1a-start |
 
 **1a-start. Project start: ask, propose, record.**
+
+**Can this run ask?** Only an interactive session can. When the skill runs as a subagent, headless, or without `AskUserQuestion` and with no user turn to follow, it does not ask and does not wait: it writes nothing, reports `Stack: none yet (project start)` with one line saying the project-start questions were skipped because the run cannot ask, and continues the audit. In an interactive session without `AskUserQuestion`, ask the same questions in one plain-text message and wait.
 
 1. **Ask only what the user's request does not already answer** ("make a CLI in Go" fixes the type and the language, so those questions are skipped). Use one `AskUserQuestion` call with at most these four questions; "Other" gives free text:
 
    | # | Question | Options | What it changes |
    |---|---|---|---|
    | 1 | What is this project? (the answer, plus any text typed under Other, becomes the Purpose line) | Web app with a UI / HTTP API or backend service / CLI or script / Library | Whether a framework, a UI test runner and a deploy target are needed |
-   | 2 | Where will it run? | Serverless or edge platform / Container or VM / The user's own machine / Not decided yet | Language and runtime limits, the Hosting line |
+   | 2 | Where will it run? | Serverless or edge platform / Container or VM / The user's own machine / Not decided yet | Language and runtime limits, whether there is a Hosting line |
    | 3 | Who works on it? | Just me / A small team / A team with required CI gates | CI strictness (lint and test only, or also typecheck and branch protection) |
    | 4 | Any language or tool you must use or avoid? | No constraints / Yes (type it under Other) | Hard constraints override every default |
 
-   Without `AskUserQuestion`, ask the same questions in one plain-text message and wait. If the user declines or does not answer, write nothing, say so in the report, and continue the audit with `Stack: none yet (project start)`.
+   If the user declines or does not answer, write nothing, say so in the report, and continue the audit with `Stack: none yet (project start)`.
 
 2. **Propose a stack** as a table in chat, one row per area, each with one reason tied to an answer above:
 
@@ -65,73 +68,19 @@ Look for manifests anywhere in the repository (a monorepo's `apps/web/package.js
    |---|---|---|
    | Language / runtime | | |
    | Package manager | | |
-   | Framework (omit the row when the project type needs none) | | |
+   | Framework (omit when the project type needs none) | | |
    | Test runner (watch mode off) | | |
    | Lint / format | | |
    | CI | | |
-   | Hosting (or "not decided") | | |
+   | Hosting (omit when question 2 was "The user's own machine" or "Not decided yet") | | |
 
    Choose in this order: a hard constraint from question 4; then the default the hosting platform documents first; then the ecosystem's default tool. One tool per job, preferring a combined linter and formatter where the ecosystem has one. Fewest moving parts for "Just me". No version numbers — the manifest will carry them.
 
-3. **Ask once more** with `AskUserQuestion`: Adopt / Change some rows (Other: which) / Don't record. Only "Adopt" (after any changes) writes the Decided setup section (see "Decided setup section" below). Installing the tools is not part of this step: they come later as Check 16 fixes through Steps 5 and 6.
+3. **Ask once more** with `AskUserQuestion`: Adopt / Change some rows (Other: which) / Don't record. Only "Adopt" (after any changes) writes the Decided setup section. Installing the tools is not part of this step: they come later as Check 16 fixes through Steps 5 and 6.
 
 4. Continue the audit with phase `setup`, using the section as the stack.
 
-### Decided setup section
-
-The one block of CLAUDE.md this skill writes. Template (the keys are fixed, so removal works per key):
-
-```markdown
-<!-- codebase-doctor:decided-setup -->
-## Decided setup
-
-Recorded by codebase-doctor at project start. A line leaves once the repo's own files state it.
-
-- Purpose: <from question 1>
-- Constraints: <from question 4, or "none">
-- Language / runtime: <choice> — <reason>
-- Package manager: <choice> — <reason>
-- Framework: <choice> — <reason>
-- Test runner: <choice>, watch mode off — <reason>
-- Lint / format: <choice> — <reason>
-- CI: <choice> — <reason>
-- Hosting: <choice> — <reason>
-<!-- /codebase-doctor:decided-setup -->
-```
-
-- **Size**: 10–15 lines from the opening marker to the closing marker inclusive (15 in full, 14 without Framework)
-- **No CLAUDE.md**: create it holding only the block and a final newline. **AGENTS.md but no CLAUDE.md**: create CLAUDE.md with `@AGENTS.md`, a blank line, then the block; never edit AGENTS.md
-- **Existing CLAUDE.md**: append at the end. Add a `\n` only if the file does not end in one, then one blank line, then the block and a final `\n`. Nothing before the original end of file changes, so the hand-written text stays a byte-identical prefix
-- **Find the section only by its markers**, never by heading text. At most one section exists
-
-**On every later run**, check each bullet against its evidence:
-
-| Key | Proposed for removal when the repo states the same value in |
-|---|---|
-| Purpose, Constraints | never — code cannot state them |
-| Language / runtime | a manifest of that language |
-| Package manager | that manager's lock file tracked in git, or a `packageManager` field naming it |
-| Framework | the manifest's dependencies |
-| Test runner | a command wiring the runner (Check 16) **and** watch mode off in its config or in the command |
-| Lint / format | the tool's config file (Check 16's list) |
-| CI | a workflow file that runs the named steps |
-| Hosting | the platform's deploy config (`wrangler.toml`, `vercel.json`, `fly.toml`, `Dockerfile`, …) |
-
-- **Same value stated** → propose removing the line. Every part of the value must be stated: "TypeScript on Cloudflare Workers" needs both a TypeScript manifest and the Workers runtime in the repo (`wrangler.toml`, or `@cloudflare/workers-types` in the manifest). A partly stated line stays. All removals of one run form **one grouped Step 6 proposal** naming the evidence ("Shrink Decided setup: remove 3 lines now stated by package.json, pnpm-lock.yaml, eslint.config.js"). Never remove a line without approval
-- **A different value stated** (the section says pnpm, the tracked lock file is `package-lock.json`) → keep the line, report `[WARN]` under Check 1 ("Decided setup contradicts the repo: Package manager"), and let Step 6 ask whether to keep or remove it
-- **Only manifests and config files are evidence.** Prose elsewhere in CLAUDE.md removes nothing
-- **Lines the user edited or added inside the markers**: a bullet with a known key is compared using its current value — the edit is the current decision. Any other line (free text, a bullet with an unknown key) is never removed or rewritten, and keeps the section alive
-- **Empty section**: once no bullet and no user line would remain, the proposal removes the whole block — markers, heading and intro line — with the one blank line before it. If CLAUDE.md would then hold only whitespace or only `@AGENTS.md`, the same proposal offers to delete the file; Check 1 then proposes `/init` as usual
-- **Broken markers** (an opening marker without a closing one, or more than one section): edit nothing, report `[WARN]` under Check 1, and ask the user to fix the markers
-
-| Manifest | Section | This run |
-|---|---|---|
-| no (and no source files) | no | project start: ask → propose → write on Adopt |
-| no | yes | ask nothing; use the section as the stack; Check 16 proposes what it names |
-| yes | yes | removal check above; with nothing to remove, note "Decided setup: N lines still needed" and propose nothing |
-| yes | no | normal audit, no questions, nothing written |
-
-A user who chose "Don't record" leaves no trace, so the next run in a still-empty repo asks again. There is no hidden state file.
+**The Decided setup section** — its template, where it goes, how later runs shrink it, and what happens to edits inside it — is defined in `references/decided-setup.md`. Read it before writing the section and on every run where CLAUDE.md has one.
 
 **1b. Read AI agent guidelines** (AGENTS.md, CLAUDE.md, or equivalent) if present. A Decided setup section counts as the stack while no manifest states it. This provides project-specific conventions (tech stack, commands, logging rules, coding standards) that inform all subsequent checks. For example, if AGENTS.md specifies "use slog for logging", the Logging check should verify slog usage specifically — not just any logging library.
 
@@ -152,7 +101,7 @@ Based on detected stack, select from the check catalog below. Skip checks that d
 
 **Check execution order**: Run Check 1 (AI Agent Guidelines) first — its findings calibrate subsequent checks. Settle Check 6 (Testing) before finalizing any other rating, because a Testing `[FAIL]` adds the `[*]` suffix to every other check (see Check dependencies below). Other checks can run in any order.
 
-**Idempotency (MANDATORY)**: this skill runs repeatedly over a project's life. Never propose what already exists. Read the current state first — installed skills, existing permission entries, existing hooks — and diff against what the phase needs. Report an already-satisfied item as `[PASS]` and propose nothing for it. Never overwrite a hand-written CLAUDE.md, permission list, or hook; propose additions only. One exception: this skill writes and removes text only between its own `codebase-doctor:decided-setup` markers in CLAUDE.md, and never changes a byte outside them (see "Decided setup section").
+**Idempotency (MANDATORY)**: this skill runs repeatedly over a project's life. Never propose what already exists. Read the current state first — installed skills, existing permission entries, existing hooks — and diff against what the phase needs. Report an already-satisfied item as `[PASS]` and propose nothing for it. Never overwrite a hand-written CLAUDE.md, permission list, or hook; propose additions only. One exception: in CLAUDE.md this skill writes and removes only the block it added — its `codebase-doctor:decided-setup` markers, what lies between them, and the one separating blank line it wrote — and never changes any other byte (see `references/decided-setup.md`).
 
 ### Step 3: Run Checks
 
@@ -250,7 +199,7 @@ For each `[FAIL]` and `[WARN]` item, propose a concrete fix:
 - **PASS**: guideline file exists with stack, commands, and conventions defined
 - **WARN**: file exists but incomplete (e.g., stack listed but no conventions)
 - **FAIL**: no guideline file found
-- A CLAUDE.md holding only the Decided setup section rates `[WARN]`. Broken markers or a contradiction with the repo (see "Decided setup section") also rate `[WARN]`
+- A CLAUDE.md holding only the Decided setup section rates `[WARN]`. Broken markers or a contradiction with the repo (see `references/decided-setup.md`) also rate `[WARN]`
 - **Impact on subsequent checks**:
   - **PASS/WARN**: If guidelines define specific rules (e.g., "use slog"), subsequent checks validate against those rules — not just generic patterns. This tightens the audit.
   - **FAIL**: No project-specific rules available. Subsequent checks fall back to generic ecosystem patterns only. Note this in the report: "No project guidelines found — checks use generic patterns."
@@ -332,6 +281,7 @@ to report (Step 1c weights checks; Step 5 orders fixes), not whether the check h
 - Lock file tracked in VCS (verify with `git ls-files <lockfile>`, not just .gitignore)
 - **Signals**: lock file in project root, tracked in git
 - Note: `requirements.txt` is a dependency declaration, NOT a lock file. Look for `poetry.lock`, `Pipfile.lock`, `uv.lock` for Python.
+- No manifest at all: rate `[FAIL]` and propose creating one when the inferred stack's ecosystem uses one (Python, JS/TS, Go, Rust, …). Rate `[SKIP]` when it has none (shell scripts, a Makefile, Terraform, plain HTML)
 
 ### Conditional Checks (when component detected)
 

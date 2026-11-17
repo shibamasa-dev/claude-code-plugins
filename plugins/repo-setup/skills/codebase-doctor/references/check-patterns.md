@@ -131,9 +131,17 @@ For languages not listed above (Java, Ruby, Swift, C#, Elixir, etc.), the AI sho
 | `mix.exs` | Elixir |
 | `Package.swift` | Swift |
 
-## Detection: Source files
+## Detection: Project start
 
-Used by Step 1a when no manifest exists. A **source file** is any file outside `docs/`, `node_modules/`, `vendor/` and dot-directories (`.git/`, `.github/`, `.claude/`, …) whose extension belongs to a programming or markup language: the languages in the table above plus `.sh`, `.bash`, `.ps1`, `.js`, `.ts`, `.html`, `.css`, `.sql`, `.c`, `.cpp`, `.h`, `.java`, `.kt`, `.rb`, `.php`, `.swift`, `.ex`, `.lua`. Markdown, plain text, licence files and config-only files (`.json`, `.yaml`, `.toml`, `.ini`) do not count. Even one source file means the repo is not at project start.
+Used by Step 1a when no manifest exists. Look at the tracked files (`git ls-files`). The repo is at **project start** only when every tracked file is documentation or repo metadata:
+
+- `README*`, `LICENSE*`, `CHANGELOG*`, `CONTRIBUTING*`, `CODE_OF_CONDUCT*`, `SECURITY*`
+- `*.md`, `*.txt`, `*.rst`, `*.adoc`, and prose under `docs/`
+- `CLAUDE.md`, `AGENTS.md`
+- `.gitignore`, `.gitattributes`, `.editorconfig`
+- issue and PR templates under `.github/` (`ISSUE_TEMPLATE/`, `PULL_REQUEST_TEMPLATE*`, `CODEOWNERS`, `FUNDING.yml`)
+
+Anything else tracked — a script in any language, a `Makefile`, a `Dockerfile`, `*.tf`, YAML or TOML config (`mkdocs.yml`, `k8s/*.yaml`), a workflow under `.github/workflows/`, a dotfile with content — means **not** project start: infer what the files show and mark it `[inferred]`.
 
 ## Detection: Components
 
