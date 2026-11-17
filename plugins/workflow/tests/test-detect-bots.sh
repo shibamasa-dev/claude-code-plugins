@@ -5,6 +5,8 @@
 # Background: it used to guess from the bots on recent PRs, but with automatic review turned off, light PRs leave no trace,
 #       the guess comes out empty, and some PRs get no review at all. Guessing was dropped; with no line and no setting it exits 4 so the caller asks.
 set -u
+# A caller's repo-selecting git variables (a git hook sets GIT_DIR) must not point the fixtures at the caller's repo
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
 D="$(cd "$(dirname "$0")/.." && pwd)/skills/pr-review-triage/scripts/detect-bots.sh"
 T=$(mktemp -d "${TMPDIR:-/tmp}/detect-bots-test.XXXX")
 trap 'rm -rf "$T"' EXIT
@@ -30,4 +32,51 @@ row 'review-light: claude plus a tool prints both' "$(det "$(repo light2 'review
 row 'no review-auto: line: off' "$(det "$(repo auto0 'review-heavy: codex')" --auto)" 'off/0'
 row 'reads review-auto: on' "$(det "$(repo auto1 '- review-auto: ON')" --auto)" 'on/0'
 row 'review-auto: other than on / off: exit 5' "$(det "$(repo auto2 'review-auto: yes')" --auto)" '/5'
+# The review-* lines are read from the default branch (origin/<default>), so a PR cannot pick the tools that review it.
+# base <name> <CLAUDE.md on the default branch, or empty> <CLAUDE.md on the branch> -> a clone on branch feat with an origin
+base() { d="$T/$1"; w="$d/work"; mkdir -p "$w" || exit 1; g() { git -C "$w" -c user.name=t -c user.email=t@t "$@"; }
+         b=${B:-main}; g init -q -b "$b"; printf '%s\n' "${2:-# no line}" > "$w/CLAUDE.md"; g add CLAUDE.md; g commit -qm base
+         git init -q --bare -b "$b" "$d/origin.git" && g remote add origin "$d/origin.git" && g push -q origin "$b" && g fetch -q origin || exit 1
+         g checkout -qb feat; printf '%s\n' "$3" > "$w/CLAUDE.md"; g commit -qam branch; echo "$w"; }
+row 'branch edits review-heavy: the default branch line wins' "$(det "$(base edit 'review-heavy: coderabbit' 'review-heavy: none')")" 'coderabbit/0'
+row 'line only on the branch: userConfig is used' "$(det "$(base new '' 'review-heavy: codex')" '' CLAUDE_PLUGIN_OPTION_REVIEW_HEAVY=gemini)" 'gemini/0'
+row 'line only on the branch, no setting: exit 4' "$(det "$(base new2 '' 'review-heavy: codex')")" '/4'
+note=$(cd "$(repo noorigin 'review-heavy: codex')" && env -u CLAUDE_PLUGIN_OPTION_REVIEW_HEAVY bash "$D" 2>&1 >/dev/null)
+row 'no origin: a one-line note on stderr' "$(printf '%s' "$note" | grep -q 'no origin remote' && echo yes || echo no)" 'yes'
+# trunk default, a non-default origin/main carrying the branch's line, no local origin/HEAD (as with git < 2.48)
+w=$(B=trunk base trunk 'review-heavy: coderabbit' 'review-heavy: none')
+git -C "$w" push -q origin feat:main && git -C "$w" fetch -q origin && git -C "$w" remote set-head origin -d 2>/dev/null
+row 'default branch trunk (no local origin/HEAD): its line wins' "$(det "$w")" 'coderabbit/0'
+w=$(base unreadable '' 'review-heavy: codex'); git -C "$w" remote set-url origin "$T/missing.git"; git -C "$w" update-ref -d refs/remotes/origin/main
+row 'origin unreadable: the working tree line is not used' "$(det "$w")" '/4'
+w=$(base single 'review-heavy: coderabbit' 'review-heavy: none'); git -C "$w" push -q origin feat; git clone -q --single-branch -b feat "$T/single/origin.git" "$T/single/clone"
+row 'single-branch clone: the default branch line is fetched' "$(det "$T/single/clone")" 'coderabbit/0'
+# origin unreachable and no origin/HEAD: exit 4, and a second run makes no network call (the failure is kept for an hour)
+w=$(base netmiss 'review-heavy: coderabbit' 'review-heavy: none'); git -C "$w" remote set-head origin -d 2>/dev/null; git -C "$w" remote set-url origin ssh://nohost.invalid/x.git
+row 'origin unreachable, no origin/HEAD: exit 4' "$(det "$w" '' "GIT_SSH_COMMAND=touch $T/net; false")" '/4'
+rm -f "$T/net"; det "$w" '' "GIT_SSH_COMMAND=touch $T/net; false" >/dev/null
+row 'origin unreachable: a second run makes no network call' "$([ -f "$T/net" ] && echo network || echo cached)" 'cached'
+# trunk default, pushed non-default main with the branch's line, no origin/HEAD, origin unreachable: main is never used
+w=$(B=trunk base unreach 'review-heavy: coderabbit' 'review-heavy: none')
+git -C "$w" push -q origin feat:main && git -C "$w" fetch -q origin && git -C "$w" remote set-head origin -d 2>/dev/null; mv "$T/unreach/origin.git" "$T/unreach/moved.git"
+row 'origin unreachable, pushed main: main is not used (exit 4)' "$(det "$w")" '/4'
+git init -q "$T/gdother"
+row 'GIT_DIR naming another repo: the default branch line wins' "$(det "$(base gitdir 'review-heavy: coderabbit' 'review-heavy: none')" '' "GIT_DIR=$T/gdother/.git")" 'coderabbit/0'
+row 'non-ASCII path with a space: the default branch line wins' "$(det "$(base "日本語 dir/プロジェクト" 'review-heavy: coderabbit' 'review-heavy: none')")" 'coderabbit/0'
+# origin's default moved to trunk, main deleted, the clone's origin/HEAD dangles; then someone pushes a main with `none`
+rot() { w=$(base "$1" 'review-heavy: coderabbit' 'review-heavy: none'); o="$T/$1/origin.git"
+  git -C "$w" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+  git -C "$o" branch trunk main && git -C "$o" symbolic-ref HEAD refs/heads/trunk && git -C "$o" branch -D -q main \
+    && git -C "$w" fetch -q --prune origin || exit 1
+  echo "$w"; }
+row 'dangling origin/HEAD, origin reachable: asks origin (trunk)' "$(det "$(rot dangleA)")" 'coderabbit/0'
+w=$(rot dangleB); git -C "$w" push -q origin feat:x && git -C "$T/dangleB/origin.git" update-ref refs/heads/main refs/heads/x || exit 1
+row 'dangling origin/HEAD, pushed main: main is not fetched' "$(det "$w")" 'coderabbit/0'
+# partial clone (blob:none) with origin gone: CLAUDE.md's blob cannot be fetched; AGENTS.md (fetched earlier) must not stand in
+w=$(base partial 'review-heavy: coderabbit' 'review-heavy: none'); g() { git -C "$w" -c user.name=t -c user.email=t@t "$@"; }
+g checkout -q main && printf '%s\n' 'review-heavy: none' > "$w/AGENTS.md" && g add AGENTS.md && g commit -qm agents && g push -q origin main || exit 1
+git -C "$T/partial/origin.git" config uploadpack.allowFilter true
+git clone -q --filter=blob:none --no-checkout "file://$T/partial/origin.git" "$T/partial/clone" 2>/dev/null \
+  && git -C "$T/partial/clone" cat-file -p origin/main:AGENTS.md >/dev/null && mv "$T/partial/origin.git" "$T/partial/gone.git" || exit 1
+row 'partial clone offline: an unreadable CLAUDE.md skips the lines' "$(det "$T/partial/clone")" '/4'
 exit $fail

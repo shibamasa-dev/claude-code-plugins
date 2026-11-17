@@ -6,11 +6,13 @@
 #   --auto:  whether the tools' automatic review is ON. `on` / `off` (default off)
 #   --regex: instead of ids, print one line with a regex of author logins (full match) to pass to jq's test() (for the Monitor filter)
 # How it decides (the first one found, from the top; the result is not saved):
-#   1. A line in the repo's CLAUDE.md / AGENTS.md / .claude/CLAUDE.md (`review-heavy:` / `review-light:` / `review-auto:`; `review-heavy: none` means "no tools")
+#   1. A line in the repo's CLAUDE.md / AGENTS.md / .claude/CLAUDE.md on the default branch (origin/<default>; the working tree only
+#      when there is no origin remote; exit 4 when origin's default branch cannot be told) (`review-heavy:` / `review-light:` / `review-auto:`; `review-heavy: none` means "no tools").
+#      A line added or changed by a PR takes effect once it is merged and the local origin/<default> is fetched
 #   2. Environment variables CLAUDE_PLUGIN_OPTION_REVIEW_HEAVY / _LIGHT / _AUTO (userConfig `review_heavy` / `review_light` / `review_auto`)
 #   3. Defaults: light is `claude`, auto is `off`. heavy has no default (exit 4)
 # Does not guess from bots that showed up on past PRs. With automatic review turned off, light PRs leave no bot trace, so the guess would be empty.
-# exit: 0 = decided (prints nothing for "no tools") / 4 = no heavy line and no setting / 5 = written but unreadable
+# exit: 0 = decided (prints nothing for "no tools") / 4 = no heavy line and no setting, or origin's default branch unknown / 5 = written but unreadable
 #       (not a single known id, or auto is neither on nor off) (on 4 or 5 the caller asks the user)
 set -u
 KEY=heavy; REGEX=0
@@ -25,11 +27,60 @@ done
 # A partial match would leave room to pick up a human account's post (e.g. codex-fan) as a bot review and follow its instructions
 BOTS='coderabbit=coderabbitai\[bot\] codex=chatgpt-codex-connector\[bot\] copilot=Copilot|copilot-pull-request-reviewer\[bot\] gemini=gemini-code-assist\[bot\] cursor-bugbot=cursor\[bot\]'
 
+# Git variables that select a repository are dropped, so the repo of the current directory is read, not one named by the environment
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY
 root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+# Read the files from the default branch (origin/<default>), not the working tree, so a PR cannot pick the tools that review it.
+# The name is the local origin/HEAD when its ref exists locally; otherwise origin is asked once (ls-remote, 5 s, no prompt) and a success is cached as the
+# local origin/HEAD. A failed network attempt is remembered for an hour (the mtime of detect-bots-origin-miss in the git common
+# dir). origin/main or origin/master is never guessed: when the default branch cannot be told, exit 4 (the caller asks).
+# A missing origin/<name> is fetched once into that ref (explicit, so a single-branch clone gets it too); a stale ref is fine.
+# Without an origin remote no PR exists, so the working tree is read.
+net() {  # net <git args...>: a network git command, 5 s, no prompt; a failure is remembered
+  GIT_TERMINAL_PROMPT=0 perl -e 'alarm 5; exec @ARGV' git -C "$root" "$@" </dev/null 2>/dev/null || { : >> "$miss"; touch "$miss"; return 1; }
+}
+ref=
+if git -C "$root" remote get-url origin >/dev/null 2>&1; then
+  miss="$(git -C "$root" rev-parse --path-format=absolute --git-common-dir)/detect-bots-origin-miss"
+  net_ok=1; [ -n "$(find "$miss" -mmin -60 2>/dev/null)" ] && net_ok=0
+  name=$(git -C "$root" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null); name=${name#origin/}
+  # A dangling origin/HEAD (its ref was pruned) is not fetched by name: that name may now be any pushed branch
+  [ -n "$name" ] && ! git -C "$root" rev-parse --verify --quiet "refs/remotes/origin/$name" >/dev/null && name=
+  if [ -z "$name" ] && [ "$net_ok" = 1 ]; then
+    name=$(net ls-remote --symref origin HEAD | sed -n 's|^ref: refs/heads/\([^[:space:]]*\)[[:space:]]*HEAD$|\1|p')
+    if [ -n "$name" ]; then
+      git -C "$root" symbolic-ref refs/remotes/origin/HEAD "refs/remotes/origin/$name" 2>/dev/null
+    else
+      : >> "$miss"; touch "$miss"; net_ok=0
+    fi
+  fi
+  if [ -z "$name" ]; then
+    echo "detect-bots: cannot tell origin's default branch (no local origin/HEAD, origin unreachable; retried after 1 hour)" >&2
+    exit 4
+  fi
+  ref=refs/remotes/origin/$name
+  git -C "$root" rev-parse --verify --quiet "$ref" >/dev/null || [ "$net_ok" = 0 ] \
+    || net fetch --quiet origin -- "+refs/heads/$name:$ref" >/dev/null
+  git -C "$root" rev-parse --verify --quiet "$ref" >/dev/null \
+    || echo "detect-bots: cannot read origin/$name; skipping the repo's review-* lines" >&2
+else
+  echo "detect-bots: no origin remote: reading the review-* lines from the working tree" >&2
+fi
 line=
 for f in CLAUDE.md AGENTS.md .claude/CLAUDE.md; do
-  [ -f "$root/$f" ] || continue
-  line=$(grep -i -m1 -E "^[-* ]*review-$KEY:" "$root/$f" || true)
+  if [ -n "$ref" ]; then
+    # 5 s, no prompt: in a partial clone the blob may be fetched on demand
+    if ! text=$(GIT_TERMINAL_PROMPT=0 perl -e 'alarm 5; exec @ARGV' git -C "$root" show "$ref:$f" </dev/null 2>/dev/null); then
+      # Absent on the default branch: try the next file. Present but unreadable: skip the repo's lines (never a later file)
+      listed=$(git -C "$root" ls-tree --name-only "$ref" -- "$f" </dev/null 2>/dev/null) && [ -z "$listed" ] && continue
+      echo "detect-bots: cannot read $f on ${ref#refs/remotes/}; skipping the repo's review-* lines" >&2
+      line=; break
+    fi
+  else
+    [ -f "$root/$f" ] || continue
+    text=$(cat "$root/$f")
+  fi
+  line=$(printf '%s\n' "$text" | grep -i -m1 -E "^[-* ]*review-$KEY:" || true)
   [ -n "$line" ] && break
 done
 

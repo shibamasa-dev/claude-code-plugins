@@ -63,7 +63,7 @@ The output looks like `{"five_hour": {"used_percentage": 17, "resets_at": 179155
 
 Available tool ids are the file names in `skills/pr-review-triage/references/tools/` (`codex`, `coderabbit`, `copilot`, `gemini`, `cursor-bugbot`).
 
-To override per repo, add lines to the repo's CLAUDE.md (or AGENTS.md). Lines take precedence over userConfig. `review-notes:` is free text describing what reviewers should focus on; it goes into the request and into Claude's review (it isn't used for routing):
+To override per repo, add lines to the repo's CLAUDE.md (or AGENTS.md). Lines take precedence over userConfig. They are read from the default branch (`origin/<default>`), not the working tree, so a line added or changed in a PR takes effect once that PR is merged and your local `origin/<default>` is fetched (a repo without an `origin` remote reads the working tree). `review-notes:` is free text describing what reviewers should focus on; it goes into the request and into Claude's review (it isn't used for routing):
 
 ```
 review-heavy: coderabbit, codex
@@ -116,6 +116,10 @@ Organization values (GitHub org, default repo, Issue Fields, project board) aren
 
 - orchestrator-report finds the orchestrator with `claude agents --json`, which lists only sessions whose process is running. While the orchestrator's process is not running (e.g. after the app restarts, before the session is opened again), no report is requested
 - Cloud sessions and Claude Projects sessions do not report to a local orchestrator (they cannot send messages to local sessions)
+- The checks that read their config from the default branch (pr-review-triage's `review-*:` lines) defend against what a branch's content can change (committed files, pushed branches). They trust the local git configuration and environment, and origin's default branch is the authority: in a fork workflow that is the fork, not `upstream`.
+- When origin's default branch cannot be determined (no usable local `origin/HEAD` and origin unreachable), the check does not run, says so, and asks origin again no sooner than an hour later.
+- When `origin/<default>`, or a file on it, cannot be read, the repo's `review-*:` lines are skipped with a note on stderr, and userConfig and then the defaults apply (`review-heavy` has no default, so `detect-bots.sh` exits 4). An `origin/<default>` already fetched is read as it is, even when it is behind origin.
+- A project `.claude/settings.json` can disable a plugin (`enabledPlugins`) and set environment variables for the session (`env`), so a PR that changes that file needs a human look at the diff; only managed settings can prevent it.
 
 ## Requirements
 
