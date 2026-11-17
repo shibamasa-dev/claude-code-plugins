@@ -22,6 +22,7 @@ A Claude Code plugin marketplace: guard hooks and workflow skills from daily dev
 /plugin install lint@shibamasa-plugins
 /plugin install inventory@shibamasa-plugins
 /plugin install instructions@shibamasa-plugins
+/plugin install research@shibamasa-plugins
 ```
 
 Every plugin is independent. Install only the ones you need.
@@ -38,6 +39,7 @@ Every plugin is independent. Install only the ones you need.
 | [lint](plugins/lint/README.md) | Linters for artifacts. Currently `skill-lint`, which checks whether a skill leaks details about its author, company or machine before you publish it |
 | [inventory](plugins/inventory/README.md) | An inventory database of the things you own. Claude registers items from photos, keeps what it couldn't read as `needs_review`, and searches with NFKC-normalized text. SQLite by default, or Postgres / Supabase directly or through a claude.ai connector |
 | [instructions](plugins/instructions/README.md) | A mod that loads bundled instruction files the way Claude Code loads your `~/.claude/CLAUDE.md`, so the same working rules apply on every machine. Currently one file on reply language and linking files. No effect where managed settings or a Team / Enterprise plan seat Claude Code's built-in guard |
+| [research](plugins/research/README.md) | Skills that read X and the web. Currently `research-x`, which asks xAI's X search about the X accounts you choose, keeps clear update announcements, summarizes them in your language and tone, and posts one Slack message each. The channel history is its only state |
 
 Each plugin's README lists its skills, hooks and settings.
 
@@ -66,6 +68,7 @@ English is the base language, and the plugins are being translated from Japanese
 - macOS or Linux, `python3`, `git`, `gh`
 - `motion-video` also needs Node.js, Chrome and ffmpeg
 - `inventory` also needs `uv` (to start its MCP server)
+- `research` also needs an xAI API key and a Slack bot token
 
 ## Contributing
 

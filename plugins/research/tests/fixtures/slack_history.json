@@ -1,0 +1,37 @@
+{
+ "ok": true,
+ "messages": [
+  {
+   "type": "message",
+   "subtype": "bot_message",
+   "bot_id": "B0000000001",
+   "ts": "1790121716.000400",
+   "text": "----------------------------\n\nNext.jsのセキュリティアップデートが緊急リリース！Next.js 16向けの重大問題対応で、15.5.26も強化版出てるよ〜 npm installで即適用推奨！安全第一のアップデートだね♡\n&gt;<https://x.com/example_web/status/2102450622091141123>"
+  },
+  {
+   "type": "message",
+   "subtype": "bot_message",
+   "bot_id": "B0000000001",
+   "ts": "1790121716.000300",
+   "text": "----------------------------\n\nClaude Opus 5.5が今日から利用可能！Opus 5からメジャーアップでエージェントコーディングやコンピューター使用、知識作業でリードしてるよ〜 画像もあってビジュアルでわかるし、めっちゃ進化してる♡\n&gt;<https://x.com/example_ai/status/2102435517165117441>"
+  },
+  {
+   "type": "message",
+   "subtype": "bot_message",
+   "bot_id": "B0000000001",
+   "ts": "1790121716.000200",
+   "text": "----------------------------\n\nGitHub CopilotにClaude Opus 5.5が登場！エージェントコーディングや長時間タスクに最適で、ステップやトークン少なめでエラー回復も早いんだって〜 開発者みんな必見のアップデート♡\n&gt;<https://x.com/example_log/status/2102457938085584900>"
+  },
+  {
+   "type": "message",
+   "subtype": "bot_message",
+   "bot_id": "B0000000001",
+   "ts": "1790121716.000100",
+   "text": "----------------------------\n\nGitHubのプルリクエストページがリフレッシュされて全ユーザー利用可能になったよ〜！AND/OR検索とかコンテンツアシスト、サイドバー折りたたみフィルターが超便利♡ もうこれなしじゃ生きられないレベル！\n&gt;<https://x.com/example_log/status/2102220114837020672>"
+  }
+ ],
+ "has_more": false,
+ "response_metadata": {
+  "next_cursor": ""
+ }
+}
