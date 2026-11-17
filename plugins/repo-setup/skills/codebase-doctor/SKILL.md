@@ -117,7 +117,7 @@ Recorded by codebase-doctor at project start. A line leaves once the repo's own 
 | CI | a workflow file that runs the named steps |
 | Hosting | the platform's deploy config (`wrangler.toml`, `vercel.json`, `fly.toml`, `Dockerfile`, …) |
 
-- **Same value stated** → propose removing the line. All removals of one run form **one grouped Step 6 proposal** naming the evidence ("Shrink Decided setup: remove 3 lines now stated by package.json, pnpm-lock.yaml, eslint.config.js"). Never remove a line without approval
+- **Same value stated** → propose removing the line. Every part of the value must be stated: "TypeScript on Cloudflare Workers" needs both a TypeScript manifest and the Workers runtime in the repo (`wrangler.toml`, or `@cloudflare/workers-types` in the manifest). A partly stated line stays. All removals of one run form **one grouped Step 6 proposal** naming the evidence ("Shrink Decided setup: remove 3 lines now stated by package.json, pnpm-lock.yaml, eslint.config.js"). Never remove a line without approval
 - **A different value stated** (the section says pnpm, the tracked lock file is `package-lock.json`) → keep the line, report `[WARN]` under Check 1 ("Decided setup contradicts the repo: Package manager"), and let Step 6 ask whether to keep or remove it
 - **Only manifests and config files are evidence.** Prose elsewhere in CLAUDE.md removes nothing
 - **Lines the user edited or added inside the markers**: a bullet with a known key is compared using its current value — the edit is the current decision. Any other line (free text, a bullet with an unknown key) is never removed or rewritten, and keeps the section alive
@@ -420,7 +420,7 @@ Re-run Check 13 through this lens: for each skill this project depends on, confi
 #### 16. Toolchain
 Whether the project's lint / format / test / CI machinery is wired — not whether the code passes it (that is Checks 2-6).
 
-- **Linter** configured for the detected language: `.eslintrc*` / `eslint.config.*`, `ruff.toml` or `[tool.ruff]` in `pyproject.toml`, `.golangci.yml`, `clippy.toml`
+- **Linter** configured for the detected language: `.eslintrc*` / `eslint.config.*`, `ruff.toml` or `[tool.ruff]` in `pyproject.toml`, `.golangci.yml`, `clippy.toml`, `biome.json` (linter and formatter in one)
 - **Formatter** configured **and not fighting the linter** — a formatter with no linter-conflict rules disabled is a `[WARN]`, because the two will churn the same lines
 - **Test runner wired to a command**, not merely test files present (`scripts.test`, `Makefile` target, `pyproject` entry)
 - **Test runner watch mode off by default**, so an agent's run exits instead of waiting for file changes (e.g. Vitest `test: { watch: false }`, or a `test` script running `vitest run`). A runner that watches by default with no override is a `[WARN]`. Whole-suite runs are Check 12's concern, not this one

@@ -38,7 +38,7 @@ Agent working environment. All checks are diff-based — read the current state,
 | Project-scoped Skills | `<project>/.claude/skills/` `<project>/skills-lock.json` | What is installed; diff against the capabilities the stack and phase call for. Look capabilities up in the user's skill catalog (if they keep one) before searching with `find-skills` |
 | Hooks | `.claude/hooks/` and `hooks` in `settings.json` | Repeated manual steps or operations that must be blocked are wired |
 | Remote Execution | `.claude/` session-start scaffold, `environment-setup.sh` | Only when the project is meant to run in a cloud environment |
-| Toolchain | `.eslintrc*` `eslint.config.*` `ruff.toml` `pyproject.toml` `.golangci.yml` `clippy.toml` `.prettierrc*` `.editorconfig` `.gitattributes` `.github/workflows/*.yml` | Linter/Formatter configured for the detected language; formatter's linter-conflict rules disabled; test runner bound to a command; test runner's watch mode off by default; CI steps actually invoke lint/typecheck/test |
+| Toolchain | `.eslintrc*` `eslint.config.*` `ruff.toml` `pyproject.toml` `.golangci.yml` `clippy.toml` `biome.json` `.prettierrc*` `.editorconfig` `.gitattributes` `.github/workflows/*.yml` | Linter/Formatter configured for the detected language; formatter's linter-conflict rules disabled; test runner bound to a command; test runner's watch mode off by default; CI steps actually invoke lint/typecheck/test |
 | Real-app verification (Check 17) | `.claude/skills/verify-*/SKILL.md` `.claude/skills/verify-*/features/README.md` | Presence only, never the contents. Skill present with its map → PASS, skill without the map → WARN, no skill → FAIL; SKIP rules are in SKILL.md Check 17 |
 
 ### Phase detection signals
