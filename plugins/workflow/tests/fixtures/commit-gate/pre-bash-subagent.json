@@ -1,0 +1,1 @@
+{"hook_event_name": "PreToolUse", "tool_name": "Bash", "agent_id": "a4e476d1f8f1d6fb9", "agent_type": "general-purpose", "tool_input": {"command": "git status --short; echo \"EXIT:$?\"", "description": "Show short working tree status"}}

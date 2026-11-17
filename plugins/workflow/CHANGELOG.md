@@ -2,6 +2,15 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.9.0] - 2026-11-17
+
+### Added
+- commit-gate hook (`hooks/commit_gate.py`), off by default (userConfig `commit_gate`: `off` / `observe` / `enforce`; `commit_gate_verifiers` for the skill names that count). It records verifier skills as they run (typed, through `UserPromptExpansion`, or through the Skill tool), ties them at the end of the turn to a fingerprint of the working tree against `merge-base(HEAD, origin/HEAD)`, and at `git commit` checks the message's `Verification:` trailer against that record. `observe` never blocks; `enforce` blocks missing or stale evidence and unbacked trailers, and lets the next commit through after two blocks in a session. A repo's `.claude/verification.json` on the default branch overrides the mode and verifiers; the working tree's copy is ignored when the repo has an `origin` remote (without one, the working tree is read). Commits whose target repo cannot be told statically (`cd`/`-C` to a variable, `cd -`, `GIT_DIR`, `--git-dir`) are never judged against the session cwd and never blocked: with the gate on they are logged as `unresolved`; `$PWD`, `$(pwd)` and `$(git rev-parse --show-toplevel)` are followed. A commit made by a command the check did not read as one (`make`, `eval`, aliases) is logged once as `committed` with `unseen: true` when the hook input has `duration_ms`. A `commitGate` value that is not a mode is logged as `config_invalid` when the gate is on. The per-call path makes no network call; session start asks origin for its default branch only when the local `origin/HEAD` is missing and the gate may apply (userConfig on, or the repo file at HEAD or in the working tree), with ssh in BatchMode (#77).
+- dev-flow step 3: end each commit message with a `Verification:` trailer (#77).
+
+### Changed
+- The shell parser that dev-flow-gate used for `gh` moved to `hooks/_shell.py`, shared with commit-gate. It now finds commands after `sh -lc` / `bash -ic` (any short-option cluster with `c`) and after `sh -c --`, and treats `#` as a comment only where it starts a word, so `docs/a#b.md` no longer cuts the rest of the line. A `cd` inside `( … )` now ends with the subshell, `pushd` / `popd` keep a stack, `env -C <dir>` is followed, and `cd "$PWD"`, `cd "$(pwd)"` and `cd "$(git rev-parse --show-toplevel)"` are followed.
+
 ## [0.8.0] - 2026-11-17
 
 ### Changed
