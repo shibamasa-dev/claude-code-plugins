@@ -41,6 +41,36 @@ def split_heredocs(command):
     return HEREDOC_RE.sub(repl, command), docs
 
 
+_ENV_LONG_VALUE = ("--unset", "--chdir", "--split-string")
+_ENV_LONG_FLAG = ("--ignore-environment", "--null", "--debug", "--help", "--version", "--list-signal-handling",
+                  "--block-signal", "--default-signal", "--ignore-signal")  # the signal ones take only =SIG
+
+
+def _env_option(c, i):
+    """One option of `env` at c[i] (it starts with -). (directory for -C or None, words used). A spelling that cannot
+    be read for sure gives the directory _UNKNOWN_DIR (the caller then finds the command by name)."""
+    o, nxt = c[i], (c[i + 1] if i + 1 < len(c) else "")
+    if o.startswith("--"):
+        key, eq, val = o.partition("=")
+        value_opts = [x for x in _ENV_LONG_VALUE if x.startswith(key)]
+        flag_opts = [x for x in _ENV_LONG_FLAG if x.startswith(key)]
+        if len(value_opts) == 1 and not flag_opts:  # git-style unambiguous prefix (--chd, --un)
+            d = (val if eq else nxt) if value_opts[0] == "--chdir" else None
+            return d, 1 if eq else 2
+        if flag_opts and not value_opts:
+            return None, 1
+        return _UNKNOWN_DIR, 1
+    for j in range(1, len(o)):  # a short cluster, read like getopt: -i0v take nothing, -u -S -C take a value
+        ch = o[j]
+        if ch in "i0v":
+            continue
+        if ch in "uSC":
+            val, used = (o[j + 1:], 1) if o[j + 1:] else (nxt, 2)
+            return (val if ch == "C" else None), used
+        return _UNKNOWN_DIR, 1
+    return None, 1
+
+
 def unwrap(c):
     """Strip leading assignments, keywords and wrappers from the tokens of one simple command.
     Returns (env, rest, chdir): chdir is the directory `env -C` / `env --chdir` runs the command in (None if none)."""
@@ -64,23 +94,11 @@ def unwrap(c):
                     break
                 o = c[i]
                 if name == "env":
-                    key = o.split("=", 1)[0]
-                    if key.startswith("--ch") and "--chdir".startswith(key):  # git-style abbreviations: --chd
-                        d = o.split("=", 1)[1] if "=" in o else (c[i + 1] if i + 1 < len(c) else "")
+                    d, used = _env_option(c, i)
+                    if d is not None:
                         chdir = d if chdir is None else _UNKNOWN_DIR  # a second -C: not followed
-                        i += 1 if "=" in o else 2
-                        continue
-                    if not o.startswith("--") and "C" in o[1:]:
-                        k = o.index("C", 1)
-                        if k == 1 and chdir is None:  # -C dir / -Cdir
-                            chdir = o[2:] or (c[i + 1] if i + 1 < len(c) else "")
-                        else:
-                            chdir = _UNKNOWN_DIR  # -iC dir, or a second -C: not followed
-                        i += 1 if o[k + 1:] else 2
-                        continue
-                    if not o.startswith("--") and len(o) > 2 and o[-1] in "uS":
-                        i += 2  # a cluster ending in an option that takes a value (-iu NAME)
-                        continue
+                    i += used
+                    continue
                 i += 2 if (o in vopts and "=" not in o) else 1
             if name == "timeout" and i < len(c) and re.fullmatch(r"[\d.]+[smhd]?", c[i]):
                 i += 1  # the timeout duration
@@ -260,6 +278,10 @@ def commands(command, exes, cwd=None, _depth=0):
             continue
         env, rest, chdir = unwrap(c)
         here = cwd if chdir is None else resolve_dir(chdir, cwd)  # env -C <dir> runs it there (unknown: None)
+        if chdir == _UNKNOWN_DIR and rest and os.path.basename(rest[0]) not in exes:
+            # env options that could not be read for sure: the command is the next word naming a watched executable
+            k = next((j for j, t in enumerate(rest) if os.path.basename(t) in exes), None)
+            rest = rest[k:] if k is not None else rest
         if not rest:
             exported.update(env)  # a line with only `A=B` sets a shell variable (passed to children if the name was exported)
             continue

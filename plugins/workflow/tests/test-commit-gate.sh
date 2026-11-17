@@ -301,7 +301,9 @@ row 'mirror: pushd <gated> && popd && git commit stays ungated' "$(W0="$W"; W="$
 row 'env -C <other> git commit: judged there (ungated)' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14h p1 "env -C '$OT' git commit -am x")" allow
 row 'mirror: env --chdir=<gated> git commit from the ungated repo: judged there' "$(W0="$W"; W="$OT" CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14i p1 "env --chdir='$W0' git commit -am x")" deny
 row 'env -C "$VAR" git commit: unresolved' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14j p1 'env -C "$REPO" git commit -am x')" unresolved
-row 'env -iC <dir> git commit (C inside a cluster): unresolved, not hidden' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14k p1 "env -iC '$OT' git commit -am x")" unresolved
+row 'mirror: env -iC <gated> git commit (C inside a cluster, read like getopt): judged there' "$(W0="$W"; W="$OT" CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14k p1 "env -iC '$W0' git commit -am x")" deny
+row 'env -uFOOS git commit (-u takes the rest of the word): the commit is seen' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14n p1 "env -uFOOS git commit -am x")" deny
+row 'env --weird X git commit (an option env does not have): unresolved, not hidden' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14o p1 "env --weird X git commit -am x")" unresolved
 row 'mirror: env --chd <gated> (an abbreviated --chdir) git commit from the ungated repo: judged there' "$(W0="$W"; W="$OT" CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14l p1 "env --chd '$W0' git commit -am x")" deny
 row 'env -C <a> -C <b> git commit: unresolved' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14m p1 "env -C '$OT' -C '$W' git commit -am x")" unresolved
 row 'popd with an empty stack: unresolved' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14g p1 "popd && git commit -am x")" unresolved
