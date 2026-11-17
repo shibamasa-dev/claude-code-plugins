@@ -34,7 +34,7 @@
 | runbook | ブラウザ・画面操作の後、停止、セッション開始 | ブラウザ・画面操作の手順を記録する。最初の操作で、GIF 録画の開始（Chrome）か要所のメモ（録画できないツール）を促す。手順書を書き忘れたら止める |
 | orchestrator-report | PR の作成・更新、issue への書き込み（コネクタか `gh`）の後 | 書き込み先のリポジトリ（フォルダの `origin` で判定。worktree を含む）で動いているセッションのうち、タイトルが `🎯` で始まるものがちょうど 1 つあり、それが自分でなければ、SendMessage で 1 行報告するよう Claude に伝える。PR / issue ごとにセッションで 1 回だけ。クラウドと Claude Projects のセッションでは動かない |
 | knowledge-freshness | セッション開始 | 見直し期限を過ぎたナレッジを 1 行で知らせる |
-| artifact-ledger | Artifact の後 | 公開した Artifact をプロジェクトの `.artifacts/` に記録する |
+| artifact-ledger | Artifact の後 | 公開した Artifact をプロジェクトの `.artifacts/` に記録する（[Artifact 台帳](#artifact-台帳)） |
 | dev-flow-gate | PR を作る前 | 本文に `Closes #N` / `Refs #N`（issue の無い依頼は `Refs: none (verbal request)`）と `Arch-Review:` の欄が無ければ止める |
 | | PR を作った後 | 次の段（レビューと CI を待つ）を伝える |
 | | ターンを終える前 | このセッションで作った PR の待ち（PR イベントの購読か Monitor）を始めていなければ、PR ごとに1回だけ止める |
@@ -70,6 +70,7 @@ orchestrator-report は報告を促した PR / issue を `${CLAUDE_PLUGIN_DATA}/
 | `review_light` | `claude` | 軽い PR に使うもの。`claude` なら Claude がレビューする。ツールの id を書けば軽い PR も重い PR と同じ扱い（ラベルを付けない） |
 | `review_auto` | `off` | ツールの自動レビューが ON か（`on` / `off`）。下の「自動レビューを ON のまま使う」 |
 | `rereview_threshold` | 3 | 重い指摘（Critical・P1 相当）をこの件数以上直したときだけ再レビューを頼む |
+| `freshness_targets` | `~/.claude/rules:*.md,~/.claude/reference:*.md,~/.claude/skills:*/SKILL.md` | knowledge-freshness フックが調べる場所。`<dir>:<glob>` をカンマで並べる（`~` は展開）。`review_after` を過ぎたファイルと `last_reviewed` が無いファイルをセッション開始時に挙げる。空なら既定 |
 | `commit_gate` | `off` | コミットゲートのモード。`off`・`observe`・`enforce`（それ以外の値は `off`）。リポの `.claude/verification.json` が優先する |
 | `commit_gate_verifiers` | 空 | 検証として数えるスキル名の正規表現。空なら `^(code-review\|(.+:)?verify-.+\|coderabbit:code-review)$` |
 
@@ -129,6 +130,17 @@ reviews:
 |---|---|---|
 | `HANDOFF_STATE_DIR` | `~/.claude/state/handoff` | handoff の入口 |
 | `RUNBOOK_ROOT` | `~/.claude/runbooks` | runbook の生ログと手順書 |
+
+### Artifact 台帳
+
+artifact-ledger フックは、プロジェクトのルートの `.artifacts/` に 2 つのファイルを置く。
+
+- `ledger.jsonl` が正本で、git で追跡する。公開のたびに 1 行（Artifact の id・URL・タイトル・説明・バージョン・リポからの相対パスのソース・セッション id）を追記する。追記だけで、書き換えない。
+- `index.html` は台帳から生成する（タイトル・初回公開・最終更新の表）。追跡しない前提で、フックは `.gitignore` を書き換えないので `.artifacts/index.html` を自分で足す。追記のたびに作り直し、無くなっていれば台帳から作り直す。
+- worktree では親リポのルートに台帳を置くので、worktree を消しても台帳は消えない。
+- `list` を呼んでも Artifact は増えない。台帳にすでにある id についてだけ、応答の `updatedAt` を追記する（一覧には全プロジェクトの分が混ざるため）。
+
+フックは何も出力せず、常に終了コード 0 で終わる。
 
 ## 制限
 

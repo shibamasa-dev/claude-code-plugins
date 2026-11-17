@@ -1,6 +1,8 @@
 ---
 name: weekly-orchestrator-base
 description: Base practices (the project-independent part only) for an orchestrator: one long-lived session per repository (title starting with 🎯) that runs a cycle (a week by default) as plan → bundle into batches and delegate → verify → close out, keeping its state in the cycle issue's plan section so a manual /clear loses nothing. Project orchestrator skills build on it by saying "read and follow weekly-orchestrator-base" at the start; when you see that, always read this first. Also use it on its own to set up a repo's orchestrator session, route a batch to a subagent or a child session, resume after a /clear, receive a batch report or a report from another session, or close a cycle, or in Japanese 「オーケストレータを作って」「オーケストレータセッション」「このリポのオーケストレータ」「オーケストレータの基本所作」「オーケストレータとして計画と委譲だけして」「このバッチは subagent に出す？別セッションに出す？」「委譲先を subagent にするか別セッションにするか」「/clear していい？」「サイクルを締めて次の issue に計画を書いて」「バッチの報告が来たので受け取って」. Holds no shared resources or report building (the project skill adds those).
+last_reviewed: 2026-11-18
+review_after: 2027-05-18
 ---
 
 # weekly-orchestrator-base — base practices for an orchestrator

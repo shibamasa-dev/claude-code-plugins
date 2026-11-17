@@ -1,6 +1,6 @@
 {
   "name": "workflow",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Skills and hooks for the development flow from request to merge (including how PR reviews are routed and awaited), issue operations, session handoffs and runbook recording, plus a mod that writes usage limits to a file",
   "author": {
     "name": "shibamasa-dev"
@@ -44,6 +44,13 @@
       "required": false,
       "default": 3,
       "min": 1
+    },
+    "freshness_targets": {
+      "type": "string",
+      "title": "Directories the knowledge-freshness hook checks",
+      "description": "Comma-separated <dir>:<glob> pairs; ~ in a dir is expanded. The hook warns at session start about files there whose review_after has passed or that have no last_reviewed. Empty means the default (~/.claude/rules:*.md,~/.claude/reference:*.md,~/.claude/skills:*/SKILL.md)",
+      "required": false,
+      "default": "~/.claude/rules:*.md,~/.claude/reference:*.md,~/.claude/skills:*/SKILL.md"
     },
     "commit_gate": {
       "type": "string",

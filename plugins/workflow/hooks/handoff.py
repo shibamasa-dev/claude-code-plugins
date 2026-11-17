@@ -99,7 +99,7 @@ def cli(argv):
         if er and cr and er != cr and not opts.get("force"):
             print(f"Don't write another repo's entry to handoff (entry={er} / this project={cr}).\n"
                   "  It would be injected into this project's next session, where it is irrelevant.\n"
-                  "  -> Put the leftover in an issue of that repo (issue-ops). To have it started right away, propose a waiting session (spinoff-session).\n"
+                  "  -> Put the leftover in an issue of that repo (issue-ops). To have it started right away, propose a session that starts in a waiting state, using whatever mechanism your environment has.\n"
                   "  -> Use --force if you really mean it", file=sys.stderr)
             return 2
         items, p, root = load(cwd)
