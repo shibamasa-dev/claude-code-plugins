@@ -4,7 +4,7 @@ Use persistence only when it materially improves future runs.
 
 ## Where state lives
 
-Never write state into the skill's own directory. The plugin root is replaced on update, so anything stored there is lost. Two cases:
+Never write state into the skill's own directory. In a plugin, the plugin root is replaced on update, so anything stored there is lost. Two cases:
 
 - **Skill shipped in a plugin**: state goes under `${CLAUDE_PLUGIN_DATA}` (the plugin's persistent data directory), so the skill works with no setup. Say in the README that uninstalling the plugin from the last place it is installed deletes that directory, and a SQLite database inside it, unless `--keep-data` is passed.
 - **Standalone skill** (personal or project skill, no plugin): that variable does not exist. Keep state at a path the user chooses, outside the skill directory, and document it.

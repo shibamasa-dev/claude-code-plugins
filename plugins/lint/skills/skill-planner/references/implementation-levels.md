@@ -25,7 +25,7 @@ When uncertain, start lower and leave an upgrade path.
 
 ## Skill Directory Boundary
 
-Keep code (scripts, CLI tools, build configuration, mini-app source) self-contained in the skill directory. Keep state elsewhere: the plugin root is replaced on update, so anything stored there is lost.
+Keep code (scripts, CLI tools, build configuration, mini-app source) self-contained in the skill directory. Keep state elsewhere. In a plugin the plugin root is replaced on update, so anything stored there is lost.
 
 Recommended layout:
 
@@ -44,6 +44,6 @@ skill-name/
 Rules:
 
 - Do not scatter skill implementation files into Claude's user configuration directory or unrelated project directories.
-- Write databases, caches, logs, run records and generated output to the state location, never into the skill directory: for a plugin skill `${CLAUDE_PLUGIN_DATA}`, for a standalone skill a path the user chooses (see `persistence.md`). Temporary work goes to a temp directory.
+- Write state (databases, caches, logs, run records) to the state location, never into the skill directory: for a plugin skill `${CLAUDE_PLUGIN_DATA}`, for a standalone skill a path the user chooses (see `persistence.md`). Generated output of a plugin skill (dependencies, build output) also goes under `${CLAUDE_PLUGIN_DATA}`; a standalone skill may build in its own directory (see `cli-design.md`). Temporary work goes to a temp directory.
 - Document install/build/run commands when dependencies are needed.
 - Prefer small deterministic scripts before creating a larger CLI or app.
