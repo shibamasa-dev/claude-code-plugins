@@ -39,18 +39,18 @@
 | | PR を作った後 | 次の段（レビューと CI を待つ）を伝える |
 | | ターンを終える前 | このセッションで作った PR の待ち（PR イベントの購読か Monitor）を始めていなければ、PR ごとに1回だけ止める |
 | | マージの前 | このセッションで作った PR の `Closes` 先の issue に、`## Result`（以前の `## 結果` も可）を書いた・読んで確かめた記録が無ければ止める |
-| commit-gate | 検証スキルが動いたとき（`/code-review` の入力、または Skill ツール経由）、そのターンの終わり、`git commit` の前 | 既定はオフ。オンにすると、コミットする作業ツリーに対してレビューか検証が走ったこと、コミットメッセージの `Verification:` トレーラーがそれを書いていることを確かめる。`observe` はどうしたかを伝えるだけ、`enforce` は止める |
+| commit-gate | 検証スキルが動いたとき（`/code-review` の入力、または Skill ツール経由）、そのターンの終わり、`git commit` の前と後 | 既定はオフ。オンにすると、コミットする作業ツリーに対してレビューか検証が走ったこと、コミットメッセージの `Verification:` トレーラーがそれを書いていることを確かめる。`observe` はどうしたかを伝えるだけ、`enforce` は止める |
 
 dev-flow-gate は GitHub コネクタ（`create_pull_request`・`merge_pull_request`・`enable_pr_auto_merge`・`issue_read`・`issue_write`）と `gh` の両方を見る。GitHub を自分では読みに行かず、判定に使うのはセッション中のツール呼び出しだけ（別のセッションで作った PR のマージは止めず、確かめるよう一言返す）。状態は `${CLAUDE_PLUGIN_DATA}/dev-flow-gate/<session_id>.json` に置き、30 日より古いものはセッションの開始時に消す。
 
 commit-gate:
 
-- **証跡**: 検証スキルとは、名前が `commit_gate_verifiers`（既定 `^(code-review|(.+:)?verify-.+|coderabbit:code-review)$`）に合うスキル。入力した `/code-review`（`UserPromptExpansion` イベント）と、Claude が Skill ツールで呼んだものの両方を拾う。動いたターンの終わりまでは新しい証跡として扱うので、同じターンの修正も含まれる。ターンの終わりに作業ツリーの指紋と結びつけ、それ以降は指紋が変わらない間だけ有効で、ツリーが変われば古い（stale）証跡になる。
+- **証跡**: 検証スキルとは、名前が `commit_gate_verifiers`（既定 `^(code-review|(.+:)?verify-.+|coderabbit:code-review)$`）に合うスキル。入力した `/code-review`（`UserPromptExpansion` イベント）と、Claude が Skill ツールで呼んだものの両方を拾う。動いたターンの終わりまでは新しい証跡として扱うので、同じターンの修正も含まれる。ターンの終わりに作業ツリーの指紋と結びつけ、それ以降は、どのセッションからも指紋が変わらない間だけ有効。ツリーが変わると、動かしたセッションにとっては古い（stale）証跡になり、他のセッションにとっては証跡なしと同じになる。
 - **指紋**: `merge-base(HEAD, origin/HEAD)` から見た作業ツリーの変更（未追跡ファイルを含む）。`git diff --raw` をハッシュしたもので、一時インデックスと一時オブジェクトディレクトリで計算するのでリポには何も書かない。変更の一部だけのコミット・push・衝突のない rebase では変わらず、どのツールによる編集でも変わる。merge-base が無いときはツリーのハッシュ。
 - **スタンプ**: コミットメッセージの末尾に `Verification: <種類> — <名前>`（例 `Verification: review — code-review`。種類は `review` と `verify`）か `Verification: none — <理由>` を書く。名前を書いた検証スキルは、ゲートが自分の記録と突き合わせる。検証なしのコミットは `git log origin/main --grep='^Verification: none'` で引ける。
 - **`git commit` の判定**（`enforce`）: 新しい証跡があり、トレーラーが合っていれば通す。`none — <理由>` は通して explained として記録する。それ以外は止める。証跡なし、古い証跡、記録の無い検証スキルを名乗るトレーラー、トレーラー無し（足す行を示す）、読めないメッセージ（変数・エディタ）がこれに当たる。1 セッションで 2 回止めたら、次のコミットは通して released として記録し、回数を戻す。`observe` は止めずにどうしたかを Claude に伝え、同じ回数も数える。古い証跡は通し、トレーラーに `(stale)` を付けるよう伝える。
-- **記録**: すべての判定を `${CLAUDE_PLUGIN_DATA}/commit-gate/log.jsonl` に書く。`python3 "${CLAUDE_PLUGIN_ROOT}/hooks/commit_gate.py" report` で止めるはずだったものを一覧にする（`--all` で全件）。証跡と止めた回数は `${CLAUDE_PLUGIN_DATA}/commit-gate/`（その変数が無ければ `~/.claude/state/commit-gate/`）に置き、30 日より古いものはセッションの開始時に消す。
-- **コスト**: `off` では状態を読まず、ネットワークにも出ない。`git commit` ごとにリポのファイルをローカルで `git show` するだけ。オンでは、コミットごとと、検証スキルが動いたターンの終わりに指紋を計算する（12,000 ファイルのリポで約 0.3 秒）。
+- **記録**: すべての判定を、セッション・リポ・ブランチ・指紋と一緒に `${CLAUDE_PLUGIN_DATA}/commit-gate/log.jsonl` に書く。コミットが成功したら、その sha とスタンプが記録に裏付けられているかを `committed` の行として書く。`git commit` を含むのに読めないコマンド（引用符の閉じ忘れなど）は確かめず、`unparsed` として記録して Claude に伝える。`python3 "${CLAUDE_PLUGIN_ROOT}/hooks/commit_gate.py" report` で止めるはずだったものを一覧にする（`--all` で全件）。証跡と止めた回数は `${CLAUDE_PLUGIN_DATA}/commit-gate/`（その変数が無ければ `~/.claude/state/commit-gate/`）に置き、30 日より古いものはセッションの開始時に消す。
+- **コスト**: `off` では状態を読まず、ネットワークにも出ない。Bash の呼び出しごとにフックは起動するが、コマンドに `git` と `commit` が無ければすぐ終わる。`git commit` のときはリポのファイルをローカルで `git show` するだけ。オンでは、コミットごとと、検証スキルが動いたターンの終わりに指紋を計算する（12,000 ファイルのリポで約 0.3 秒）。
 
 orchestrator-report は報告を促した PR / issue を `${CLAUDE_PLUGIN_DATA}/orchestrator-report/<session_id>.json` に記録する（30 日より古いファイルは書き込みのときに消す）。
 

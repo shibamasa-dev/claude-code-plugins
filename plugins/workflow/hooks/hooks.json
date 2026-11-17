@@ -122,7 +122,7 @@
         ]
       },
       {
-        "matcher": "^Skill$",
+        "matcher": "^(Skill|Bash)$",
         "hooks": [
           {
             "type": "command",

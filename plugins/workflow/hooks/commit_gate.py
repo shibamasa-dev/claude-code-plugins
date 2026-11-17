@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """commit-gate: check at `git commit` that a review or verification ran on the tree being committed.
 
-Evidence (what counts as "ran"): a verifier skill invoked in this session, seen as
+Evidence (what counts as "ran"): a verifier skill invoked, seen as
   - UserPromptExpansion `command_name` (typing `/code-review` never reaches the Skill tool hooks), or
   - PostToolUse on the Skill tool, `tool_input.skill`.
 A verifier is a name matching the verifiers regex (default `^(code-review|(.+:)?verify-.+|coderabbit:code-review)$`).
 Evidence is fresh until the Stop of the turn it was invoked in (fixes made in that turn are covered); at that Stop it
-is pinned to the tree's fingerprint. Later it counts only while the fingerprint is unchanged; otherwise it is stale.
+is pinned to the tree's fingerprint. Later it counts, for any session, only while the fingerprint is unchanged.
+Evidence of this session on an earlier tree is stale (stale is per session; another session's old review says nothing).
 
 Stamp: the commit message carries a `Verification:` trailer, which this hook checks against its own record:
   Verification: review — code-review            (kinds: review / verify; names: the verifiers that ran)
@@ -26,6 +27,8 @@ Fingerprint: a hash of `git diff --raw` between merge-base(HEAD, origin/HEAD) an
 files (through a temporary index and object directory, so nothing is written to the repo). Partial commits, pushes and
 clean rebases keep it; any edit, by any tool, changes it. Without a merge-base it is the tree hash.
 
+After a successful `git commit` (PostToolUse) it logs the commit and whether its stamp is backed by the record.
+A command that mentions git commit but cannot be lexed is not checked; with the gate on, that is logged and said.
 No network on the per-call path. SessionStart asks origin once for its default branch, only when userConfig turns the gate on.
 State: state_dir() (see there). Log: state_dir()/log.jsonl. `commit_gate.py report` lists what would have been blocked.
 Whatever happens it never raises and exits 0.
@@ -43,7 +46,7 @@ import time
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _shell import HEREDOC_MARK_RE, commands  # noqa: E402
+from _shell import HEREDOC_MARK_RE, commands, lex  # noqa: E402
 
 TAG = "[commit-gate]"
 MODES = ("off", "observe", "enforce")
@@ -238,7 +241,7 @@ def pending_path(sid):
     return os.path.join(state_dir(), "pending", re.sub(r"[^\w.-]", "_", sid) + ".json")
 
 
-REPO_DEFAULT = {"evidence": {}, "seen": {}, "blocks": {}}
+REPO_DEFAULT = {"evidence": {}, "seen": {}, "blocks": {}}   # seen and blocks are keyed by session
 
 
 def log(entry):
@@ -301,8 +304,9 @@ def on_stop(inp):
         this_turn = ent.get("prompt_id") == inp.get("prompt_id")
         fp = fingerprint(ent["top"]) if this_turn and ent.get("names") else None
         with Locked(repo_path(key), REPO_DEFAULT) as r:
+            seen = r["seen"].setdefault(inp["session_id"], {})
             for name in ent.get("names", []) + ent.get("carried", []):
-                r["seen"][name] = now()
+                seen[name] = now()
             if fp:
                 ev = r["evidence"].setdefault(fp, {})
                 for name in ent["names"]:
@@ -409,7 +413,13 @@ def commit_message(c, top):
             body = _read(src[1], cwd)
         unknown |= _add(parts, body)
     elif src and src[0] == "commit":
-        rc, body = git(top, "log", "-1", "--format=%B", src[1])
+        # Resolve to a commit id first, so a value such as `--output=x` never reaches git log as an option
+        body = None
+        rc, sha = git(top, "rev-parse", "--verify", "--quiet", "--end-of-options", src[1] + "^{commit}")
+        if rc == 0 and re.fullmatch(r"[0-9a-f]{40,64}", sha):
+            rc, body = git(top, "log", "-1", "--format=%B", sha, "--")
+        else:
+            rc = 1
         unknown |= _add(parts, body if rc == 0 else None)
     elif not parts and amend:
         rc, body = git(top, "log", "-1", "--format=%B", "HEAD")  # --amend without a new message keeps HEAD's
@@ -485,7 +495,7 @@ def evidence_for(key, sid, prompt_id, fp):
     except Exception:
         r = json.loads(json.dumps(REPO_DEFAULT))
     fresh = set((r.get("evidence") or {}).get(fp, {})) if fp else set()
-    seen = set(r.get("seen") or {})
+    seen = set((r.get("seen") or {}).get(sid, {}))  # stale is per session: another branch's review says nothing here
     try:
         with open(pending_path(sid)) as f:
             ent = json.load(f).get(key) or {}
@@ -505,6 +515,8 @@ def on_pre_bash(inp):
         return None
     calls = git_commits(cmd, inp.get("cwd"))
     if not calls:
+        if lex(cmd) is None and re.search(r"\bgit\b.*\bcommit\b", cmd):
+            return unparsed(inp, cmd)
         return None
     notes, denial = [], None
     for c in calls:
@@ -515,9 +527,13 @@ def on_pre_bash(inp):
         if s["mode"] == "off":
             continue
         if s["mode"] == "unknown":
+            log({"session": inp["session_id"], "repo": top, "branch": branch_of(top), "mode": "unknown",
+                 "decision": "nogate", "cmd": cmd[:200]})
             notes.append(f"{TAG} cannot tell origin's default branch (no local origin/HEAD), so the repo's {CONFIG} "
                          "cannot be read: not gating. `git remote set-head origin --auto` fixes it.")
             continue
+        if s["source"] == "working-tree":
+            notes.append(f"{TAG} no origin remote: {CONFIG} is read from the working tree.")
         msg, dry = commit_message(c, top)
         if dry:
             continue
@@ -535,13 +551,56 @@ def on_pre_bash(inp):
     return None
 
 
+def branch_of(top):
+    rc, b = git(top, "rev-parse", "--abbrev-ref", "HEAD")
+    return b if rc == 0 else None
+
+
+def unparsed(inp, cmd):
+    """A command that mentions git commit but cannot be lexed: not checked. Logged and said when the gate is on."""
+    top, _ = repo_of(inp.get("cwd"))
+    if not top or settings(top)["mode"] in ("off", "unknown"):
+        return None
+    log({"session": inp["session_id"], "repo": top, "branch": branch_of(top), "decision": "unparsed", "cmd": cmd[:200]})
+    return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext":
+            f"{TAG} could not read this command (unbalanced quotes?), so the commit was not checked."}}
+
+
+def on_post_bash(inp):
+    """After a successful git commit, log the commit and whether its stamp is backed by the record (section 2's
+    observe step). The PreToolUse log has the attempts; this one has the commits that were made."""
+    cmd = (inp.get("tool_input") or {}).get("command", "")
+    if "commit" not in cmd or "git" not in cmd:
+        return None
+    tr = inp.get("tool_response")
+    out = tr.get("stdout", "") if isinstance(tr, dict) else (tr if isinstance(tr, str) else "")
+    m = re.search(r"^\[[^\]\n]*?([0-9a-f]{7,40})\]", out or "", re.M)
+    calls = git_commits(cmd, inp.get("cwd"))
+    if not m or not calls:
+        return None
+    top, common = repo_of(calls[0]["cwd"] or inp.get("cwd"))
+    if not top or settings(top)["mode"] in ("off", "unknown"):
+        return None
+    rc, sha = git(top, "rev-parse", "--verify", "--quiet", "--end-of-options", m.group(1) + "^{commit}")
+    if rc != 0:
+        return None
+    _, body = git(top, "log", "-1", "--format=%B", sha, "--")
+    trailer = parse_trailer(body)
+    fresh, _ = evidence_for(repo_key(common), inp["session_id"], inp.get("prompt_id"), fingerprint(top))
+    backed = bool(trailer) and (trailer[0] == "none" or set(trailer[1]) <= fresh)
+    log({"session": inp["session_id"], "repo": top, "branch": branch_of(top), "decision": "committed", "sha": sha,
+         "trailer": (TRAILER_RE.findall(body) or [None])[-1], "stamp": "backed" if backed else
+         ("missing" if not trailer else "unbacked"), "cmd": cmd[:200]})
+    return None
+
+
 def decide(inp, s, top, common, msg, cmd):
     """("deny", reason) | ("note", text) | None."""
     sid, mode, key = inp["session_id"], s["mode"], repo_key(common)
     fp = fingerprint(top)
     trailer = parse_trailer(msg)
-    entry = {"session": sid, "repo": top, "mode": mode, "fingerprint": fp, "trailer": (TRAILER_RE.findall(msg or "")
-             or [None])[-1], "cmd": cmd[:200]}
+    entry = {"session": sid, "repo": top, "branch": branch_of(top), "mode": mode, "fingerprint": fp,
+             "trailer": (TRAILER_RE.findall(msg or "") or [None])[-1], "cmd": cmd[:200]}
     if fp is None:
         log({**entry, "decision": "unchecked"})
         return "note", f"{TAG} could not fingerprint the tree in time: not checked."
@@ -605,6 +664,8 @@ def main():
         out = None
         if ev == "PreToolUse" and inp.get("tool_name") == "Bash":
             out = on_pre_bash(inp)
+        elif ev == "PostToolUse" and inp.get("tool_name") == "Bash":
+            out = on_post_bash(inp)
         elif ev == "UserPromptExpansion":
             out = record_invocation(inp, inp.get("command_name"))
         elif ev == "PostToolUse" and inp.get("tool_name") == "Skill":

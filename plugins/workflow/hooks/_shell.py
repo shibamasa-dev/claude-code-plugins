@@ -76,6 +76,20 @@ def resolve_cd(args, cur):
     return os.path.normpath(os.path.join(cur, d)) if cur else None
 
 
+def lex(command):
+    """(tokens, heredoc bodies), or None when shlex cannot read the command (an unbalanced quote, say)."""
+    command, docs = split_heredocs(command)
+    command = command.replace("\\\n", " ")  # a trailing \ continues the line
+    try:
+        # A newline also separates commands (newlines inside quotes are kept)
+        lx = shlex.shlex(command, posix=True, punctuation_chars=";&|()\n")
+        lx.whitespace = " \t\r"
+        lx.whitespace_split = True
+        return list(lx), docs
+    except ValueError:
+        return None
+
+
 def commands(command, exes, cwd=None, _depth=0):
     """Return the calls to the executables in `exes` (basenames) in a Bash command as
     [{"exe", "args", "env", "stdin", "docs", "cwd"}].
@@ -84,16 +98,10 @@ def commands(command, exes, cwd=None, _depth=0):
     heredoc passed to that call with `<<`. cwd is the directory that it runs in (follows earlier `cd`s; None if unknown).
     Also looks through wrappers such as env, command and timeout, and inside `sh -c '...'`.
     A command that shlex cannot read yields nothing (lean towards not stopping, so symbols a PR body may contain don't misfire)."""
-    command, docs = split_heredocs(command)
-    command = command.replace("\\\n", " ")  # a trailing \ continues the line
-    try:
-        # A newline also separates commands (newlines inside quotes are kept)
-        lex = shlex.shlex(command, posix=True, punctuation_chars=";&|()\n")
-        lex.whitespace = " \t\r"
-        lex.whitespace_split = True
-        toks = list(lex)
-    except ValueError:
+    lexed = lex(command)
+    if lexed is None:
         return []
+    toks, docs = lexed
     cmds, cur = [], []
     for t in toks:
         if t and set(t) <= set(";&|()\n"):

@@ -52,17 +52,19 @@ j() { python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1"; }
 review() { ev upe-code-review "$1" "$2" >/dev/null; }                                # typed /code-review
 skill() { ev post-skill-code-review "$1" "$2" "tool_input={\"skill\":$(j "$3")}" >/dev/null; }  # Skill tool
 stop() { ev - "$1" "$2" 'hook_event_name="Stop"' 'stop_hook_active=false' >/dev/null; }
-# commit <session> <prompt> <bash command> -> deny / block / stale / release / nogate / allow
+LOG="$CLAUDE_PLUGIN_DATA/commit-gate/log.jsonl"
+loglines() { [ -f "$LOG" ] && wc -l < "$LOG" | tr -d ' ' || echo 0; }
+lastlog() { tail -1 "$LOG" | python3 -c 'import json,sys; print(json.load(sys.stdin).get(sys.argv[1]))' "$1"; }
+# commit <session> <prompt> <bash command> -> deny (the hook's JSON) or, from the decision it logged:
+# block (would_block in observe) / stale / release / nogate / unparsed / allow (allow, explained, or nothing logged)
 commit() {
+  n0=$(loglines)
   out=$(ev - "$1" "$2" 'hook_event_name="PreToolUse"' 'tool_name="Bash"' "tool_input={\"command\":$(j "$3")}")
-  case "$out" in
-    *'"deny"'*) echo deny ;;
-    *'would be blocked'*) echo block ;;
-    *'stale evidence'*) echo stale ;;
-    *'let through'*) echo release ;;
-    *'not gating'*) echo nogate ;;
-    '') echo allow ;;
-    *) echo "other:$out" ;;
+  case "$out" in *'"permissionDecision": "deny"'*) echo deny; return ;; esac
+  [ "$(loglines)" = "$n0" ] && { echo allow; return; }
+  case "$(lastlog decision)" in
+    would_block) echo block ;; stale) echo stale ;; released) echo release ;; nogate) echo nogate ;;
+    unparsed) echo unparsed ;; allow|explained) echo allow ;; *) echo "other:$(lastlog decision)" ;;
   esac
 }
 row() { printf '  %s -> %s (expect %s)\n' "$1" "$2" "$3"; }
@@ -125,6 +127,11 @@ for MODE in observe enforce; do
   row "$MODE: stale evidence (tree edited after the review) + trailer" "$(commit s4 p2 "$CM")" $STALE
   row "$MODE: stale evidence, no trailer" "$(commit s4 p2 "$BARE")" $STALE
   row "$MODE: interrupted turn (review never reached Stop), next turn" "$(reset; edit b5; review s5 p1; commit s5 p2 "$CM")" $STALE
+  # No reset between these two: session A's review of an earlier tree is not "stale" evidence for session B
+  reset; edit b6; review sA p1; stop sA p1; edit b6-later
+  row "$MODE: another session's review of an earlier tree is not stale here (no trailer)" "$(commit sB p1 "$BARE")" $NO
+  row "$MODE: another session's review of an earlier tree, trailer claims it" "$(commit sB2 p1 "$CM")" $NO
+  row "$MODE: the session that ran it does see it as stale" "$(commit sA p2 "$CM")" $STALE
   echo "=== C: $MODE: two blocks, then the next commit passes ==="
   reset; edit c
   row "$MODE: block 1" "$(commit s6 p1 "$BARE")" $NO
@@ -187,6 +194,8 @@ row 'after cd && git commit, no trailer' "$(commit s9 p2 "cd '$W' && git commit 
 row 'not a commit: git commit-tree' "$(commit s9 p2 'git commit-tree HEAD^{tree} -m x')" allow
 row 'not a commit: the words inside echo' "$(commit s9 p2 "echo 'git commit -am x'")" allow
 row 'not a commit: --dry-run' "$(commit s9 p2 'git commit --dry-run -a')" allow
+row 'an unlexable command (unbalanced quote) is logged as not checked' "$(commit s9 p2 'git commit -am "unterminated')" unparsed
+row '-C <option-looking value> never reaches git log as an option' "$(r=$(commit s9 p2 "git commit -C '--output=$T/pwned'"); [ -e "$T/pwned" ] && echo written || echo "$r")" deny
 git add -A; git commit -qm "x" -m "$TR"
 row '--amend --no-edit keeps HEAD trailer' "$(commit s9 p2 'git commit --amend --no-edit')" allow
 row 'subagent payload (agent_id, same session) is read like the main one' "$(ev pre-bash-subagent s9 p2 "tool_input={\"command\":$(j "git commit -am x")}" | grep -q '"deny"' && echo deny || echo allow)" deny
@@ -203,6 +212,12 @@ row 'no origin remote: the working tree file applies' "$(W="$N" CLAUDE_PLUGIN_OP
 
 echo '=== H: the log and report ==='
 row 'report lists would-be blocks' "$(python3 "$HOOK" report | grep -q would_block && echo listed || echo missing)" listed
+reset; edit h0; review s13 p1; stop s13 p1
+git commit -qam x -m "$TR"; posted() { ev - s13 p2 'hook_event_name="PostToolUse"' 'tool_name="Bash"' "tool_input={\"command\":$(j "$1")}" "tool_response={\"stdout\":$(j "$2"),\"stderr\":\"\"}" >/dev/null; lastlog stamp; }
+row 'after the commit: logged as committed with a backed stamp' "$(posted "$CM" "[main $(git rev-parse --short HEAD)] x")" backed
+row 'the log line names the branch' "$(lastlog branch)" main
+edit h1; git commit -qam y
+row 'after a commit with no trailer: stamp missing' "$(posted "$BARE" "[main $(git rev-parse --short HEAD)] y")" missing
 row 'the repo itself is untouched (no stray objects from the fingerprint)' "$(in_dir "$W"; before=$(git count-objects -v | sed -n 's/^count: //p'); review s12 p1; edit h; stop s12 p1; commit s12 p2 "$BARE" >/dev/null; [ "$(git count-objects -v | sed -n 's/^count: //p')" = "$before" ] && echo clean || echo wrote)" clean
 
 rm -rf "$T"
