@@ -241,6 +241,9 @@ row 'same, naming the path (git commit <path> takes it from the working tree): p
 row 'same, --only -- <path>: passes' "$(commit s9s4 p2 "git commit --only -m x -m '$TR' -- m.py")" allow
 row 'same, -i <path> (stages that path): passes' "$(commit s9s5 p2 "git commit -i -m x -m '$TR' m.py")" allow
 row 'same, -i <another path>: still blocked' "$(commit s9s6 p2 "git commit -i -m x -m '$TR' other.txt")" deny
+row 'same, ... 2>&1 | tail -1 (a redirect is not a path): still blocked' "$(commit s9s7 p2 "git commit -m x -m '$TR' 2>&1 | tail -1")" deny
+row 'same, ... > /dev/null: still blocked' "$(commit s9s8 p2 "git commit -m x -m '$TR' > /dev/null")" deny
+row 'same, --pathspec-from-file (paths unknown): still blocked' "$(commit s9s9 p2 "git commit --pathspec-from-file=list.txt -m x -m '$TR'")" deny
 reset; edit f; review s9 p1; stop s9 p1
 git add -A; git commit -qm "x" -m "$TR"
 row '--amend --no-edit keeps HEAD trailer' "$(commit s9 p2 'git commit --amend --no-edit')" allow
@@ -267,6 +270,9 @@ SSHR="$T/ssh-repo"; git init -q -b main "$SSHR"; ( in_dir "$SSHR"; mkdir -p .cla
   git add .claude; git commit -qm cfg; git remote add origin ssh://nohost.invalid/r.git )
 printf '#!/bin/sh\necho "$@" >> "%s"\nexit 1\n' "$T/ssh.args" > "$T/fakessh"; chmod +x "$T/fakessh"
 row 'repo file at HEAD: SessionStart asks origin, ssh in BatchMode' "$(W="$SSHR" GIT_SSH_COMMAND="$T/fakessh" CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off ev - s10c p1 'hook_event_name="SessionStart"' >/dev/null; grep -q 'BatchMode=yes' "$T/ssh.args" 2>/dev/null && echo batch || { [ -s "$T/ssh.args" ] && echo prompting || echo none; })" batch
+SSHR2="$T/ssh-repo2"; git clone -q "$SSHR" "$SSHR2"; git -C "$SSHR2" remote set-url origin ssh://nohost.invalid/r.git; git -C "$SSHR2" remote set-head origin -d
+git -C "$SSHR2" config core.sshCommand "$T/fakessh2"; sed "s#ssh.args#ssh2.args#" "$T/fakessh" > "$T/fakessh2"; chmod +x "$T/fakessh2"
+row 'core.sshCommand is kept (BatchMode added to it)' "$(W="$SSHR2" GIT_SSH_COMMAND= CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off ev - s10d p1 'hook_event_name="SessionStart"' >/dev/null; grep -q 'BatchMode=yes' "$T/ssh2.args" 2>/dev/null && echo kept || echo dropped)" kept
 set_repo_cfg -
 git remote set-head origin main
 N="$T/no origin"; git init -q -b main "$N"; ( in_dir "$N"; echo a > a; git add a; git commit -qm a; echo b >> a

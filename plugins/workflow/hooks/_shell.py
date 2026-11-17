@@ -1,7 +1,8 @@
 """Shell-command parsing shared by this plugin's hooks (dev_flow_gate.py, commit_gate.py).
 
 commands() finds the calls to given executables in a Bash command, looking through heredocs, wrappers
-(env, command, timeout, ...), `cd`, `export` and `sh -c '...'`. It never runs anything.
+(env, command, timeout, ...), `cd`, `export` and `sh -c '...'`. It runs nothing from the command; the one thing it
+runs itself is `git rev-parse --show-toplevel`, to follow `cd "$(git rev-parse --show-toplevel)"`.
 """
 import os
 import re

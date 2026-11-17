@@ -47,6 +47,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -55,7 +56,7 @@ import time
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _shell import HEREDOC_MARK_RE, commands, lex, resolve_dir  # noqa: E402
+from _shell import HEREDOC_MARK_RE, _no_redirects, commands, lex, resolve_dir  # noqa: E402
 
 TAG = "[commit-gate]"
 MODES = ("off", "observe", "enforce")
@@ -170,7 +171,10 @@ def warm_default_branch(top, common):
             return
     except OSError:
         pass
-    net = {**GIT_ENV, "GIT_SSH_COMMAND": (os.environ.get("GIT_SSH_COMMAND") or "ssh") + " -o BatchMode=yes"}
+    # The user's own ssh command (GIT_SSH_COMMAND, else core.sshCommand, else GIT_SSH), never asking for a password
+    ssh = os.environ.get("GIT_SSH_COMMAND") or git(top, "config", "core.sshCommand")[1] \
+        or (shlex.quote(os.environ["GIT_SSH"]) if os.environ.get("GIT_SSH") else "ssh")
+    net = {**GIT_ENV, "GIT_SSH_COMMAND": ssh + " -o BatchMode=yes"}
     rc, out = git(top, "ls-remote", "--symref", "origin", "HEAD", env=net, timeout=5)
     m = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", out, re.M) if rc == 0 else None
     if m:
@@ -393,7 +397,7 @@ def _add(parts, text):
 def commit_message(c, top):
     """{"msg", "dry", "paths", "include"}. msg is None when the message cannot be inspected (a variable, the editor,
     piped stdin). paths: the pathspecs named on the command line (None when read from a file); include: -i / --include."""
-    args, call, cwd = c["args"], c["call"], c["cwd"] or top
+    args, call, cwd = _no_redirects(c["args"]), c["call"], c["cwd"] or top  # `2>&1`, `>/dev/null` are not paths
     parts, trailers, src, amend, dry, unknown = [], [], None, False, False, False
     paths, include = [], False
     i = 0
@@ -588,8 +592,9 @@ def on_pre_bash(inp):
         m = commit_message(c, top)
         if m["dry"]:
             continue
-        # git commit <paths> (without -i) takes the named paths from the working tree, like -a does for all of them
-        stages = commits_all(c["args"]) or (m["paths"] is None or bool(m["paths"])) and not m["include"]
+        # git commit <paths> (without -i) takes the named paths from the working tree, like -a does for all of them.
+        # Paths read from a file (--pathspec-from-file) are unknown: the check runs on everything (fails closed)
+        stages = commits_all(c["args"]) or bool(m["paths"]) and not m["include"]
         named = (m["paths"] or []) if m["include"] else []
         res = decide(inp, s, top, common, m["msg"], cmd, stages, named, c["cwd"] or top)
         if res and res[0] == "deny":
