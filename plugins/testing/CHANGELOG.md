@@ -2,6 +2,11 @@
 
 Change history of the testing plugin. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
 
+## [0.4.0] - 2026-11-17
+
+### Added
+- testcase-generator: a section "Beyond example cases" with property tests (round-trip, invariant, idempotency, equivalence; fast-check, Hypothesis, proptest; when to propose them), differential tests for migrations (same inputs through old and new, normalized differences, a list of approved differences), and a test-cost policy (flaky tests train reruns, slow tests get run less; propose deterministic tests and mark heavy ones "run before commit / before PR"). The idempotency perspective in `perspectives-common.md` points to it.
+
 ## [0.3.1] - 2026-10-13
 
 ### Removed

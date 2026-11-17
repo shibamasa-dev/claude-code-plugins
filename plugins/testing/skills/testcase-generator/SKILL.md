@@ -109,6 +109,25 @@ Run the "Self-check after generation" in `perspectives-common.md`. Write the res
 
 If the self-check reveals a new kind of hole, **write a proposal in the output** to add it to "Lessons from past failures" in `perspectives-common.md`. Do not edit the file — it is global (shared by every project) knowledge, so pouring in a finding from the one product in front of you would affect other projects too. The user decides whether to add it.
 
+## Beyond example cases: property tests, differential tests, test cost
+
+An example case pins one input to one expected value. Where the risk is "some input nobody thought of", propose one of the following next to the Gherkin cases (as a case's note or under `## Points to confirm`). Implementing them stays out of scope.
+
+**Property tests** state something that must always hold and let a library generate inputs that try to break it. Four kinds:
+
+| Kind | Holds when | Typical target |
+|---|---|---|
+| Round-trip | encode then decode gives the original | parsers, serializers |
+| Invariant | a rule survives every operation (a balance never goes negative) | state, money, counters |
+| Idempotency | running twice equals running once | migrations, normalization, retries |
+| Equivalence | optimized code matches a naive, obviously correct version | rewrites, caches |
+
+Libraries: fast-check (JS/TS), Hypothesis (Python), proptest (Rust). Propose them for parsers and serializers, normalization, migrations, and rewrites whose spec has drifted from production behavior. Generated inputs are fine for a property; the rule above still holds for example cases, whose expected values come from real data or an external source of truth, never from the implementation.
+
+**Differential tests** fit a migration or rewrite where behavior must stay the same: run old and new on the same inputs and compare. Take inputs from random generation or sample real traffic or real files. Normalize differences that carry no meaning (whitespace, ordering). Keep a list of approved differences where the new system is meant to differ; any other difference is a failure.
+
+**Test cost**: a flaky test trains the agent to rerun instead of fixing, and a slow test gets run less often. Propose deterministic tests (fix seeds, clocks and ordering; a property test prints the seed of a failing run). Mark heavy tests "run before commit / before PR", not on every edit.
+
 ## Output structure
 
 **Always include this frontmatter.** Without it the checking hook skips the file, and style-guide violations go unnoticed. If you output a `.feature` file, no frontmatter is needed.
