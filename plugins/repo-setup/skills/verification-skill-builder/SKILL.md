@@ -49,13 +49,14 @@ Frontmatter gives the skill its `name` (`verify-<app>`) and a `description` sayi
 
 Run it before driving and whenever something looks off. Never drive a run that Doctor rejects.
 
-**Drive** — the script: an ordered list of commands taken from this repo (real flags, real IDs, real file names). For every step, record what was typed, both output streams and the return code. Prefer stable handles (subcommands, flags, routes, accessible names) over positions and timing.
+**Drive** — the script: an ordered list of commands taken from this repo (real flags, real IDs, real file names). For every step, record what was typed, both output streams and the return code. For a UI, also keep a screenshot at each checked step. Prefer stable handles (subcommands, flags, routes, accessible names) over positions and timing.
 
 **Evidence** — where proof goes (outside the run directory, ignored by git) and what counts as proof:
 
 - Go in through the entry points users have; don't reach into internals or call hooks that exist only for tests.
 - The action and the state it left, checked from a second view: query the database directly, list the output directory, read the log.
 - **Don't trust a dry-run or test mode by its name.** Observe what it actually did: count network connections, external processes started, and files written and where (an audit hook, `strace`, `fs_usage`, or a wrapping shim). Some dry-runs still open connections or write state.
+- **For a UI, a failure carries its trace**: the steps up to the one that failed, with what was on screen at each, and a screenshot at the checked step. "Timeout" alone is not evidence.
 - A test that was skipped is not a pass. Report skips with their reason as unverified.
 
 **Cleanup**:
@@ -70,8 +71,9 @@ Run it before driving and whenever something looks off. Never drive a run that D
 
 Create `features/README.md` and one file per user-facing feature, three to five to start (from commands, routes, menus or docs). Use [references/feature-map-template.md](references/feature-map-template.md).
 
+- The map is also the pass / fail rubric for a run: a feature passes when every `Driving it` line shows its recorded result and Gotchas lists no unverified journey for it. A feature with an unverified journey is reported as unverified, not as passed.
 - Every feature file uses the same fixed headings in the same order. Write them in the language the project's docs use, pick them once, and keep them identical across files so a reader always knows where to look.
-- `Driving it` pairs each user action with the exact command and the result a run actually showed. Write expected results from an observed run, not from reading the code. When a later run differs, either the app changed or the map was wrong; both are worth knowing.
+- `Driving it` pairs each user action with the exact command and the result a run actually showed. Write expected results from an observed run, not from reading the code, and check each one against the README, docs or spec where they cover it. When an observed result contradicts them, report the feature as failing instead of recording the wrong result as expected. Where no document covers a result, record what was observed and note `observed, no spec` under `Gotchas`. When a later run differs, either the app changed or the map was wrong; both are worth knowing.
 - **Journeys that need someone's credentials or touch production external services** (real logins, sending messages, payments, writes to shared storage) are not driven. List them under `Gotchas` as `unverified: needs <what>`.
 - Never weaken a journey to make it pass. A missing precondition is a failure, with the reason in `Gotchas`.
 
@@ -83,14 +85,20 @@ Follow the new skill's own steps end to end: Launch → Doctor → Drive one fea
 - Run Cleanup after failed attempts too, so they don't leave processes or directories behind.
 - List every stand-in that differs from the real environment (unset tokens, a local directory in place of mounted storage, synthetic input files). Those parts stay unverified until a run in the real environment covers them.
 
-Until it has run once, the skill is unfinished.
+One successful run is not enough. Run the finished skill several times in a row (three is a reasonable start), and record the duration and the pass or fail result of each run. A run that passes only sometimes is a defect of the skill (a race, leftover state, a timing guess): fix it before calling the skill done.
+
+Until it has run cleanly several times, the skill is unfinished.
 
 ## 5. Report
 
 - Path of the new skill and its files
-- The proof run: its ID, each step's exit code, where the evidence is, and that it survived cleanup
+- The proof runs: how many, the duration and the pass or fail result of each run, and for one run its ID, each step's exit code, where the evidence is, and that it survived cleanup
 - Stand-ins and journeys left unverified
 - Bugs in the app found along the way, reported only (this skill does not change the app under test)
+
+## 6. Keep it current
+
+When a feature is removed or renamed, delete or rename its feature-map row and its verification step in the same change. A map that still lists a removed feature fails every run for the wrong reason.
 
 ## Boundaries with other skills
 
