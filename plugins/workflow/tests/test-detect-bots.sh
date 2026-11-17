@@ -45,4 +45,6 @@ w=$(B=trunk base trunk 'review-heavy: coderabbit' 'review-heavy: none'); git -C 
 row 'default branch trunk (no local origin/HEAD): its line wins' "$(det "$w")" 'coderabbit/0'
 w=$(base unreadable '' 'review-heavy: codex'); git -C "$w" remote set-url origin "$T/missing.git"; git -C "$w" update-ref -d refs/remotes/origin/main
 row 'origin unreadable: the working tree line is not used' "$(det "$w")" '/4'
+w=$(base single 'review-heavy: coderabbit' 'review-heavy: none'); git -C "$w" push -q origin feat; git clone -q --single-branch -b feat "$T/single/origin.git" "$T/single/clone"
+row 'single-branch clone: the default branch line is fetched' "$(det "$T/single/clone")" 'coderabbit/0'
 exit $fail

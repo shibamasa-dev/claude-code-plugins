@@ -54,6 +54,11 @@ w=$(B=trunk repo trunk "$BASE_CFG"); g "$w" remote set-head origin -d 2>/dev/nul
 rm -rf "$FULL_TEST_STATE_DIR"; (cd "$w" && python3 "$H" run >/dev/null 2>&1)
 row 'default branch trunk: run uses its command'                  "$(ran "$w")" base
 
+# single-branch clone of feat: origin/main is fetched into its ref (the clone's refspec does not cover it)
+d="$T/single"; g "$T/changed/work" push -q origin feat && git clone -q --single-branch -b feat "$T/changed/origin.git" "$d" || exit 1
+rm -rf "$FULL_TEST_STATE_DIR"; (cd "$d" && python3 "$H" run >/dev/null 2>&1)
+row 'single-branch clone: run uses the default branch command'     "$(ran "$d")" base
+
 # origin exists but cannot be read: not opted in (the working tree config is not used)
 w=$(repo unreadable "$BASE_CFG"); g "$w" remote set-url origin "$T/missing.git"; g "$w" update-ref -d refs/remotes/origin/main
 row 'origin unreadable: not opted in (status)'                    "$(cd "$w" && python3 "$H" status 2>/dev/null | grep -q 'Not configured' && echo off || echo on)" off

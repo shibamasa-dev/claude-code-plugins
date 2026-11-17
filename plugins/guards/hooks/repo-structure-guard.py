@@ -88,7 +88,8 @@ def base_spec(root: str):
     ref = f"refs/remotes/origin/{name}"
     if not _has_ref(root, ref):
         try:  # fetch it once; a stale origin/<default> is fine (the older rules apply)
-            subprocess.run(["git", "-C", root, "fetch", "--quiet", "origin", "--", name], capture_output=True,
+            # an explicit destination, so a single-branch clone (whose refspec does not cover name) still gets the ref
+            subprocess.run(["git", "-C", root, "fetch", "--quiet", "origin", "--", f"+refs/heads/{name}:{ref}"], capture_output=True,
                            stdin=subprocess.DEVNULL, timeout=5, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
         except (subprocess.TimeoutExpired, OSError):
             pass

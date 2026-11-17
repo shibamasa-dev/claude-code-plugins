@@ -31,7 +31,7 @@ root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 # Read the files from the default branch (origin/<default>), not the working tree, so a PR cannot pick the tools that review it.
 # The name comes from local refs (origin/HEAD, else origin/main or origin/master; origin is asked only when none exists);
 # a stale ref is fine (the older line applies).
-# If the ref is missing, fetch it once (5 s, no prompt). Without an origin remote no PR exists, so the working tree is read.
+# If the ref is missing, fetch it once into that ref (5 s, no prompt; explicit so a single-branch clone gets it too). Without an origin remote no PR exists, so the working tree is read.
 ref=
 if git -C "$root" remote get-url origin >/dev/null 2>&1; then
   name=$(git -C "$root" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null); name=${name#origin/}
@@ -44,7 +44,7 @@ if git -C "$root" remote get-url origin >/dev/null 2>&1; then
   name=${name:-main}
   ref=refs/remotes/origin/$name
   git -C "$root" rev-parse --verify --quiet "$ref" >/dev/null \
-    || GIT_TERMINAL_PROMPT=0 perl -e 'alarm 5; exec @ARGV' git -C "$root" fetch --quiet origin -- "$name" </dev/null >/dev/null 2>&1
+    || GIT_TERMINAL_PROMPT=0 perl -e 'alarm 5; exec @ARGV' git -C "$root" fetch --quiet origin -- "+refs/heads/$name:$ref" </dev/null >/dev/null 2>&1
   git -C "$root" rev-parse --verify --quiet "$ref" >/dev/null \
     || echo "detect-bots: cannot read origin/$name; skipping the repo's review-* lines" >&2
 else

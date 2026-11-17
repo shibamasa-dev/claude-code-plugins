@@ -41,6 +41,8 @@ note=$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$w/docs/o
 row 'no origin: a one-line note on stderr'                         "$(printf '%s' "$note" | grep -q 'no origin remote' && echo note || echo quiet)" note
 w=$(B=trunk repo trunk base.md sneaky.md); git -C "$w" remote set-head origin -d 2>/dev/null   # as with git < 2.48
 row 'default branch trunk (no local origin/HEAD): its rule denies'  "$(probe "$w/docs/sneaky.md")" deny
+w=$(repo single base.md sneaky.md); git -C "$w" push -q origin feat; git clone -q --single-branch -b feat "$R/single/origin.git" "$R/single/clone"
+row 'single-branch clone: the default branch rule is fetched'     "$(probe "$R/single/clone/docs/sneaky.md")" deny
 w=$(repo unreadable '' sneaky.md); git -C "$w" remote set-url origin "$R/missing.git"; git -C "$w" update-ref -d refs/remotes/origin/main
 row 'origin unreadable: the working tree rule is not used'         "$(probe "$w/docs/other.md")" silent
 exit $FAIL

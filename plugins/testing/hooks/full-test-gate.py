@@ -99,7 +99,9 @@ def _has_remote_ref(top, name):
     if git(top, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{name}")[0] == 0:
         return True
     try:
-        subprocess.run(["git", "-C", top, "fetch", "--quiet", "origin", "--", name], capture_output=True, stdin=subprocess.DEVNULL,
+        # An explicit destination, so a single-branch clone (whose refspec does not cover name) still gets origin/<name>
+        subprocess.run(["git", "-C", top, "fetch", "--quiet", "origin", "--", f"+refs/heads/{name}:refs/remotes/origin/{name}"],
+                       capture_output=True, stdin=subprocess.DEVNULL,
                        timeout=5, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
     except (subprocess.TimeoutExpired, OSError):
         return False
