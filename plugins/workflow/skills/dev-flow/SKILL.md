@@ -64,19 +64,20 @@ Things the user decides (whether to make an issue, the GO from architecture revi
 
 ## 3. Implement and verify
 
-- Run the repo's checks (whatever CONTRIBUTING, the PR template, and the CI config list: tests, lint, validators, version and CHANGELOG checks).
+- Run the repo's checks (whatever CONTRIBUTING, the PR template, and the CI config list: tests, lint, validators, version and CHANGELOG checks). If the repo has verification skills (`.claude/skills/verify-*`), run every one of them before committing and keep their evidence for the PR body.
 - **Reread your own diff** (`git diff origin/<base>...HEAD`). Read it as if looking for reasons CI or a reviewer would reject it:
   - Changes nobody asked for, leftover debug output
   - Personal paths, email addresses, specific personal names or internal proper names (especially in a distributed repo)
   - Missing updates to version, CHANGELOG, README
   - Behavior changed without tests
-- Fix what you find before opening the PR.
+- Fix what you find before opening the PR. If that changes the diff, rerun the checks and the `verify-*` skills on the final diff and keep that result as the evidence.
 
 **Bug fixes**:
 
 - Make the bug happen before changing anything, on the path the user hit. If it won't happen, narrow the conditions or add logging until it does; don't fix a guess.
 - When a cheap test can reach the bug, write it first and run it. It must fail, and for the reason the bug describes (not an import error or a typo). Skip it when it would need heavy setup, mocks of most of the system, or production-only state, and say which check you used instead.
-- If two fixes that rest on the same assumption fail the same check, stop. Write the assumption as one sentence and check it directly before trying a third.
+- If two fixes that rest on the same assumption fail the same check, stop. Write the assumption as one sentence and check it directly before trying a third. If the check still fails after a third fix round (once the assumption has been checked), stop and bring in the user with what was tried.
+- Flaky tests: don't skip them, add sleeps, or retry until they pass. If you can't find the root cause, delete the test and write down why in the PR body.
 - Change only what the evidence supports. No "just in case" guards, retries, or swallowed errors. When a hypothesis turns out wrong, revert the changes it led to.
 
 **Why the change is safe**:
@@ -117,7 +118,7 @@ The procedure is in pr-review-triage (routing, how to request, how to wait, dete
 - **Waiting differs between cloud and local.** A cloud session ends its turn after subscribing to PR events (`subscribe_pr_activity` if available). The events wake it up across turns. Locally, start a Monitor. A Monitor runs shell commands, so use `gh` inside it (the exception where the CLI remains because connectors cannot be used).
 - **A tool stopped by a rate limit or quota counts as not reviewed**; after the wait, re-request only that tool.
 - **Re-review only when you fixed at least the threshold number (userConfig `rereview_threshold`, default 3) of heavy findings (Critical / P1 level)**, and request it from the tools asked in that round. Otherwise push and wait only for CI. Either way, go back to step 5.
-- Do not reply to threads about findings; write the response in the PR body's response table (finding / verdict / action / evidence).
+- Do not reply to threads about findings; write the response in the PR body's response table (finding / severity / verdict / action / basis).
 
 ## 7. Write `## Result`
 
