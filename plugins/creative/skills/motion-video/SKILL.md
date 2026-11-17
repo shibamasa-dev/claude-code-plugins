@@ -1,6 +1,8 @@
 ---
 name: motion-video
 description: Renders motion-graphics videos (intros, product demos, vertical shorts, loops) from product images, screenshots, logos and live-action clips by drawing each frame in code. The agent writes an HTML/Canvas seek(t) renderer, headless Chrome captures 60fps frames, ffmpeg encodes H.264, and BGM and beat-synced sound effects are composed in code and played with FluidSynth. It goes from a brief to a feasibility test of hard scenes, a cut sheet iterated with a human, then the final render in 9:16 / 1:1 / 16:9. Always use it for "make a video", "intro video", "promo video", "motion graphics", "logo animation", "vertical video", "for Reels / Shorts", "animate these screenshots", "export to mp4", "storyboard", "cut sheet", or in Japanese 「動画を作って」「紹介動画」「プロモ動画」「モーショングラフィックス」「モーションデザイン」「アニメーション動画」「ロゴアニメ」「縦動画」「リール / ショート用」「スクショを動かして見せたい」「mp4 で書き出して」「絵コンテ」「カット表」「動画に BGM を付けて」. Not for generative-AI live-action video or narration, and it calls no image-generation API (it lists the images it needs).
+last_reviewed: 2026-11-17
+review_after: 2027-05-16
 ---
 
 # motion-video

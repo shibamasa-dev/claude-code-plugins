@@ -35,7 +35,7 @@ Every plugin is independent. Install only the ones you need.
 | [workflow](plugins/workflow/README.md) | Skills and hooks for the path from request to merge (including routing and waiting for PR reviews), issue hygiene, session handoff and runbook recording, plus a mod that writes usage limits to a file |
 | [testing](plugins/testing/README.md) | Designing and running tests: Gherkin test cases, linting the test artifacts, and a gate that requires a full test run before releases |
 | [repo-setup](plugins/repo-setup/README.md) | Bootstrapping a repo: a health check of the basics and a setup scaffold for cloud environments |
-| [creative](plugins/creative/README.md) | Skills for image-generation prompts and code-driven motion videos, and a lint hook for `DESIGN.md` |
+| [creative](plugins/creative/README.md) | Skills for image-generation prompts, diagram box semantics and code-driven motion videos, and a lint hook for `DESIGN.md` |
 | [lint](plugins/lint/README.md) | Linters for artifacts. Currently `skill-lint`, which checks whether a skill leaks details about its author, company or machine before you publish it |
 | [inventory](plugins/inventory/README.md) | An inventory database of the things you own. Claude registers items from photos, keeps what it couldn't read as `needs_review`, and searches with NFKC-normalized text. SQLite by default, or Postgres / Supabase directly or through a claude.ai connector |
 | [instructions](plugins/instructions/README.md) | A mod that loads bundled instruction files the way Claude Code loads your `~/.claude/CLAUDE.md`, so the same working rules apply on every machine. Currently one file on reply language and linking files. No effect where managed settings or a Team / Enterprise plan seat Claude Code's built-in guard |

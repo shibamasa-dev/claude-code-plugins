@@ -16,6 +16,7 @@ Skills and hooks for making images, videos and designs.
 | Skill | Use it for |
 |---|---|
 | `image-generation-prompt` | Structures prompts for image generation. Independent of the generator (Gemini API, OpenAI Image API, fal.ai, …) |
+| `diagram-frames` | Read before drawing an architecture, flow, sequence or state diagram in Mermaid, SVG, HTML and the like. Fixes what a box means (one kind per figure) and checks every box against it |
 | `motion-video` | Draws motion-graphics videos in code and renders them, with your product images, screenshots, logos or live-action clips |
 
 ## Hooks
