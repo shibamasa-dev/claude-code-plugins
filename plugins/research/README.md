@@ -21,7 +21,7 @@ Then set `accounts` (and `slack_channel` to post) in the plugin's settings, and 
 
 ## How research-x works
 
-1. It reads the last 7 days of the channel's history (longer if `--since-hours` asks for it). From research-x's own bot posts it takes where to search from and the X status IDs already posted (from the quoted status URL at the end of each post). Each post's metadata (`event_type: research_x_post`) holds the run's start time, the window it searched and, on its last post, `last: true`. After a run that finished posting, the next one starts at that run's start. After a run that died midway, it searches the same window again. With no such post, it looks back 24 hours.
+1. It reads the last 7 days of the channel's history (further back if `--since-hours` asks for it, or if it is retrying a run that searched further back). From research-x's own bot posts it takes where to search from and the X status IDs already posted (from the quoted status URL at the end of each post). Each post's metadata (`event_type: research_x_post`) holds the run's start time, the window it searched and, on its last post, `last: true`. After a run that finished posting, the next one starts at that run's start. After a run that died midway, it searches the same window again, as long as that run's posts are still within the 7-day history read. A retry more than 7 days after the dead run doesn't see it, starts as a first run, and doesn't send the posts that run never sent. With no such post, it looks back 24 hours.
 2. It asks xAI about the accounts, 10 per request, with X search required, low reasoning effort and a strict JSON schema.
 3. It keeps posts by those accounts made since the start point, using the time encoded in each status ID rather than the model's date, and drops IDs already in the channel.
 4. It posts them oldest first, one message each: a separator line, the summary (with Slack control characters escaped, so a summary can't `@here` the channel), and the post URL as a quote.
@@ -75,7 +75,7 @@ The plugin doesn't schedule runs. To run daily, call the script from your own sc
 
 1. `--dry-run` with `XAI_API_KEY` only: the summaries come back in your language and tone, and only from your accounts.
 2. Add `SLACK_BOT_TOKEN` and `slack_channel`, `--dry-run` again: `history_read: true`. A `not_in_channel` error means the bot hasn't joined the channel.
-3. Post once, then `--dry-run` again: `since_source: slack_history`, and the posts just sent show up under `dropped.already_posted`. If they don't, the metadata didn't round-trip; don't schedule runs until it does.
+3. Post once and note `run_started_at` in that run's JSON output. Then `--dry-run` again: `since` must equal that `run_started_at` exactly. If `since` is instead about 15 minutes before the time of the last post, the metadata did not round-trip, and research-x is dating posts from their timestamps. Then a retry after a run that died midway would treat that run as finished and skip the posts it never sent. Don't schedule runs until `since` matches. (`since_source: slack_history` and `dropped.already_posted` look the same either way, because posted IDs come from the message text.)
 
 ## Requirements
 

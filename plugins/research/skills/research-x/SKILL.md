@@ -40,7 +40,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/research-x/scripts/research_x.py" --dry-ru
 2. **Post only when the user explicitly asks** (posting sends messages to a channel other people read). Run the same command without `--dry-run`.
    - If the same job also runs on a schedule somewhere, don't run it at the same time: two runs started within minutes of each other can both post the same announcement.
    - `ok: false` after a failed xAI request: nothing was posted, so running again is safe.
-   - `ok: false` while posting (Slack error midway): run again with no options. The next run searches the failed run's window again and skips what it already posted by ID.
+   - `ok: false` while posting (Slack error midway): run again with no options, within 7 days. The next run searches the failed run's window again and skips what it already posted by ID. Later than that, the failed run is outside the history read and its unsent posts are not recovered.
 
 3. Report the result in one or two lines: how many were posted, their URLs, or why it failed.
 

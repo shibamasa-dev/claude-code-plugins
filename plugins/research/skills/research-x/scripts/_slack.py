@@ -138,6 +138,9 @@ def fetch_history(tok, oldest: datetime, *, channel: str, opener=None) -> list:
         messages.extend(page.get("messages", []))
         cursor = (page.get("response_metadata") or {}).get("next_cursor")
         if not cursor:
+            if page.get("has_more"):
+                # Stopping here would miss older posts and post them again; fail closed instead
+                raise SlackError("conversations.history: has_more without a next_cursor")
             return messages
 
 

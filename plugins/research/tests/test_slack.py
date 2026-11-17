@@ -131,6 +131,15 @@ class ApiTest(unittest.TestCase):
         self.assertIn(f"channel={CHANNEL}", opener.requests[0].full_url)
         self.assertIn("cursor=bmV4dA%3D%3D", opener.requests[1].full_url)
 
+    def test_more_pages_without_a_cursor_is_an_error(self):
+        """`has_more` with no cursor would end the read early and miss posted IDs; fail instead of guessing."""
+        opener = FakeOpener({"ok": True, "messages": HISTORY["messages"][:2], "has_more": True,
+                             "response_metadata": {"next_cursor": ""}})
+
+        with self.assertRaises(_slack.SlackError):
+            _slack.fetch_history("xoxb-test", datetime(2026, 9, 16, tzinfo=timezone.utc),
+                                 channel=CHANNEL, opener=opener)
+
     def test_not_in_channel_is_an_error(self):
         """If the bot is not in the channel, the history can't be read. Treating it as empty would post everything again."""
         opener = FakeOpener({"ok": False, "error": "not_in_channel"})
