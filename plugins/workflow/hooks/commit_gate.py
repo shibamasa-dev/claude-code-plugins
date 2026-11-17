@@ -56,7 +56,7 @@ import time
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _shell import HEREDOC_MARK_RE, _no_redirects, commands, lex, resolve_dir  # noqa: E402
+from _shell import HEREDOC_MARK_RE, commands, lex, resolve_dir  # noqa: E402
 
 TAG = "[commit-gate]"
 MODES = ("off", "observe", "enforce")
@@ -397,9 +397,9 @@ def _add(parts, text):
 def commit_message(c, top):
     """{"msg", "dry", "paths", "include"}. msg is None when the message cannot be inspected (a variable, the editor,
     piped stdin). paths: the pathspecs named on the command line (None when read from a file); include: -i / --include."""
-    args, call, cwd = _no_redirects(c["args"]), c["call"], c["cwd"] or top  # `2>&1`, `>/dev/null` are not paths
+    args, call, cwd = c["args"], c["call"], c["cwd"] or top
     parts, trailers, src, amend, dry, unknown = [], [], None, False, False, False
-    paths, include = [], False
+    paths, include, redirect = [], False, False
     i = 0
     while i < len(args):
         a = args[i]
@@ -408,7 +408,13 @@ def commit_message(c, top):
             paths = None if paths is None else paths + args[i + 1:]
             break
         if not a.startswith("-") or a == "-":
-            if paths is not None:
+            # Where a path goes, `2>&1`, `> f` and `>/dev/null` are redirections, not paths (only here: an option's
+            # value such as -m '> note' is consumed above and never reaches this branch)
+            if redirect:
+                redirect = False
+            elif re.fullmatch(r"\d*(>>?|<|&>)", a):
+                redirect = True  # the target is the next word
+            elif paths is not None and not re.match(r"\d*(>>?|<|&>)", a):
                 paths.append(a)
         elif a.startswith("--"):
             k, eq, v = a.partition("=")
