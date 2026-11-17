@@ -10,6 +10,7 @@ import shlex
 # Heredoc: the rest of the <<[-]['"]DELIM['"] line (group 4), the body (group 5), the closing DELIM line
 HEREDOC_RE = re.compile(r"(?<!<)<<(?!<)(-?)[ \t]*(['\"]?)(\w+)\2([^\n]*)\n(.*?)\n[ \t]*\3[ \t]*(?=\n|$)", re.S)
 HEREDOC_MARK_RE = re.compile(r"<<__HEREDOC_(\d+)__")
+SHELL_C_RE = re.compile(r"-[A-Za-z]*c[A-Za-z]*")  # sh -c, bash -lc, zsh -ic, ...
 ASSIGN_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", re.S)
 # Wrappers that can precede a command, and their options that take a value (skipped so we can see the command inside)
 _WRAPPERS = {
@@ -115,7 +116,9 @@ def strip_comments(command):
             out.append(ch)
         else:
             out.append(ch)
-            boundary = ch in " \t\n;&|()"
+            # Not after ")": it may close $( ), <( ), >( ) or a case pattern, where # is mid-word or literal.
+            # Keeping the rest of the line errs on seeing too much rather than too little
+            boundary = ch in " \t\n;&|("
         i += 1
     return "".join(out)
 
@@ -172,8 +175,8 @@ def commands(command, exes, cwd=None, _depth=0):
             continue
         env = {**exported, **env}
         exe = os.path.basename(rest[0])
-        if exe in ("sh", "bash", "zsh", "dash") and "-c" in rest[1:] and _depth < 3:
-            k = rest.index("-c")
+        k = next((j for j, a in enumerate(rest[1:], 1) if SHELL_C_RE.fullmatch(a)), None)
+        if exe in ("sh", "bash", "zsh", "dash") and k and _depth < 3:
             if k + 1 < len(rest):
                 for call in commands(rest[k + 1], exes, cwd, _depth + 1):
                     call["env"] = {**env, **call["env"]}

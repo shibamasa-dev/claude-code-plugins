@@ -5,11 +5,11 @@ Changes to the workflow plugin. The format follows [Keep a Changelog](https://ke
 ## [0.9.0] - 2026-11-17
 
 ### Added
-- commit-gate hook (`hooks/commit_gate.py`), off by default (userConfig `commit_gate`: `off` / `observe` / `enforce`; `commit_gate_verifiers` for the skill names that count). It records verifier skills as they run (typed, through `UserPromptExpansion`, or through the Skill tool), ties them at the end of the turn to a fingerprint of the working tree against `merge-base(HEAD, origin/HEAD)`, and at `git commit` checks the message's `Verification:` trailer against that record. `observe` never blocks; `enforce` blocks missing or stale evidence and unbacked trailers, and lets the next commit through after two blocks in a session. A repo's `.claude/verification.json` on the default branch overrides the mode and verifiers; the working tree's copy is ignored. The per-call path makes no network call (#77).
+- commit-gate hook (`hooks/commit_gate.py`), off by default (userConfig `commit_gate`: `off` / `observe` / `enforce`; `commit_gate_verifiers` for the skill names that count). It records verifier skills as they run (typed, through `UserPromptExpansion`, or through the Skill tool), ties them at the end of the turn to a fingerprint of the working tree against `merge-base(HEAD, origin/HEAD)`, and at `git commit` checks the message's `Verification:` trailer against that record. `observe` never blocks; `enforce` blocks missing or stale evidence and unbacked trailers, and lets the next commit through after two blocks in a session. A repo's `.claude/verification.json` on the default branch overrides the mode and verifiers; the working tree's copy is ignored. Commits whose target repo cannot be told statically (`cd`/`-C` to a variable, `GIT_DIR`, `--git-dir`) are allowed and logged as `unresolved`; a commit made by a command the check did not read as one (`make`, `eval`, aliases) is logged as `committed` with `unseen: true`. The per-call path makes no network call; session start asks origin for its default branch only when the local `origin/HEAD` is missing (#77).
 - dev-flow step 3: end each commit message with a `Verification:` trailer (#77).
 
 ### Changed
-- The shell parser that dev-flow-gate used for `gh` moved to `hooks/_shell.py`, shared with commit-gate. No behaviour change.
+- The shell parser that dev-flow-gate used for `gh` moved to `hooks/_shell.py`, shared with commit-gate. It now finds commands after `sh -lc` / `bash -ic` (any short-option cluster with `c`) and treats `#` as a comment only where it starts a word, so `docs/a#b.md` no longer cuts the rest of the line.
 
 ## [0.8.0] - 2026-11-17
 

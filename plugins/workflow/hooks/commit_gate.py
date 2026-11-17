@@ -29,7 +29,8 @@ clean rebases keep it; any edit, by any tool, changes it. Without a merge-base i
 
 After a successful `git commit` (PostToolUse) it logs the commit and whether its stamp is backed by the record.
 A command that mentions git commit but cannot be lexed is not checked; with the gate on, that is logged and said.
-No network on the per-call path. SessionStart asks origin once for its default branch, only when userConfig turns the gate on.
+No network on the per-call path. SessionStart asks origin for its default branch only when the local origin/HEAD is missing
+(at most once an hour per repo), whatever userConfig says, since a repo can opt in through its own file.
 State: state_dir() (see there). Log: state_dir()/log.jsonl. `commit_gate.py report` lists what would have been blocked.
 Whatever happens it never raises and exits 0.
 """
@@ -190,7 +191,9 @@ def fingerprint(top):
                "GIT_OBJECT_DIRECTORY": os.path.join(tmp, "objects"), "GIT_ALTERNATE_OBJECT_DIRECTORIES": objs}
         os.makedirs(env["GIT_OBJECT_DIRECTORY"])
         if os.path.exists(idx):
-            shutil.copyfile(idx, env["GIT_INDEX_FILE"])  # keeps the stat cache, so `add -A` rehashes only changed files
+            # copy2 keeps the index's mtime: git rehashes entries modified in the same instant as the index was
+            # written ("racily clean"); a fresh mtime would let a same-size edit pass as unchanged
+            shutil.copy2(idx, env["GIT_INDEX_FILE"])  # keeps the stat cache, so `add -A` rehashes only changed files
         if git(top, "add", "-A", env=env, timeout=20)[0] != 0:
             return None
         rc, tree = git(top, "write-tree", env=env)
@@ -325,16 +328,22 @@ _COMMIT_SHORT_FLAGS = set("aqsvenzpio")  # short options that take none (a clust
 
 
 def git_commits(command, cwd):
-    """The `git commit` calls in a Bash command: [{"cwd", "args", "call"}]."""
+    """The `git commit` calls in a Bash command: [{"cwd", "args", "call", "unresolved"}]. unresolved names why the
+    target repo cannot be told from the command (a `cd` or `-C` to a variable, GIT_DIR, --git-dir); None otherwise."""
     out = []
     for call in commands(command, {"git"}, cwd):
         args, i, here = call["args"], 0, call["cwd"]
+        why = None if here else "cd to a directory that cannot be resolved"
+        if any(k in call["env"] for k in ("GIT_DIR", "GIT_WORK_TREE")):
+            why = "GIT_DIR / GIT_WORK_TREE"
         while i < len(args) and args[i].startswith("-"):
             a = args[i]
+            if a.split("=", 1)[0] in ("--git-dir", "--work-tree"):
+                why = a.split("=", 1)[0]
             if a == "-C" and i + 1 < len(args):
                 d = os.path.expanduser(args[i + 1])
                 if "$" in d or "`" in d:
-                    here = None  # unknown (a variable or command substitution): the hook's cwd is used
+                    here, why = None, "-C to a variable"
                 else:
                     here = d if os.path.isabs(d) else (os.path.join(here, d) if here else None)
                 i += 2
@@ -343,7 +352,7 @@ def git_commits(command, cwd):
             else:
                 i += 1
         if i < len(args) and args[i] == "commit":
-            out.append({"cwd": here, "args": args[i + 1:], "call": call})
+            out.append({"cwd": here, "args": args[i + 1:], "call": call, "unresolved": why})
     return out
 
 
@@ -527,6 +536,10 @@ def on_pre_bash(inp):
         return None
     notes, denial = [], None
     for c in calls:
+        if c["unresolved"]:
+            note = unresolved(inp, cmd, c["unresolved"])
+            notes += [note] if note else []
+            continue
         top, common = repo_of(c["cwd"] or inp.get("cwd"))
         if not top:
             continue
@@ -563,6 +576,19 @@ def branch_of(top):
     return b if rc == 0 else None
 
 
+def unresolved(inp, cmd, why):
+    """A commit whose repo cannot be told statically: not judged against the session cwd. Logged and said when the
+    gate is on for the session's repo (or in userConfig). Allowed in both modes: observe data first."""
+    top, _ = repo_of(inp.get("cwd"))
+    mode = settings(top)["mode"] if top else norm_mode(os.environ.get("CLAUDE_PLUGIN_OPTION_COMMIT_GATE"))
+    if mode in ("off", "unknown"):
+        return None
+    log({"session": inp["session_id"], "repo": top, "mode": mode, "decision": "unresolved", "why": why,
+         "cmd": cmd[:200]})
+    return (f"{TAG} cannot tell which repo this commit goes to ({why}), so it was not checked. "
+            "Name the repo literally (`git -C <path> commit`) to have it checked.")
+
+
 def unparsed(inp, cmd):
     """A command that mentions git commit but cannot be lexed: not checked. Logged and said when the gate is on."""
     top, _ = repo_of(inp.get("cwd"))
@@ -577,9 +603,10 @@ def on_post_bash(inp):
     """After a successful git commit, log the commit and whether its stamp is backed by the record (section 2's
     observe step). The PreToolUse log has the attempts; this one has the commits that were made."""
     cmd = (inp.get("tool_input") or {}).get("command", "")
-    if "commit" not in cmd or "git" not in cmd:
-        return None
-    calls = git_commits(cmd, inp.get("cwd"))
+    calls = [c for c in git_commits(cmd, inp.get("cwd")) if not c["unresolved"]] \
+        if "commit" in cmd and "git" in cmd else []
+    if not calls:
+        return unseen_commit(inp, cmd)
     hp = heads_path(inp["session_id"])
     if not calls or not os.path.exists(hp):
         return None  # no checked commit in this session (the gate is off, or PreToolUse did not get that far)
@@ -598,6 +625,35 @@ def on_post_bash(inp):
     log({"session": inp["session_id"], "repo": top, "branch": branch_of(top), "decision": "committed", "sha": sha,
          "trailer": (TRAILER_RE.findall(body) or [None])[-1], "stamp": "backed" if backed else
          ("missing" if not trailer else "unbacked"), "cmd": cmd[:200]})
+    return None
+
+
+REFLOG_RE = re.compile(r"^([0-9a-f]{40,64})\t\S*@\{(\d+)\}\tcommit")
+
+
+def unseen_commit(inp, cmd):
+    """Observe-only signal for commits the PreToolUse side did not read as one (make, eval, aliases, python -c ...):
+    if HEAD's newest reflog entry is a commit made during this command, log it as committed with unseen=True.
+    One local git call per Bash command; the settings are read only when such a commit is found."""
+    cwd = inp.get("cwd") or "."
+    rc, out = git(cwd, "log", "-g", "-1", "--date=unix", "--format=%H%x09%gd%x09%gs", "HEAD")
+    m = REFLOG_RE.match(out) if rc == 0 else None
+    if not m:
+        return None
+    window = (inp.get("duration_ms") or 120000) / 1000 + 2
+    if int(m.group(2)) < time.time() - window:
+        return None
+    top, common = repo_of(cwd)
+    if not top or settings(top)["mode"] in ("off", "unknown"):
+        return None
+    sha = m.group(1)
+    with Locked(heads_path(inp["session_id"]), {}) as h:
+        if h.get("unseen:" + top) == sha:
+            return None  # already logged by an earlier command in the same window
+        h["unseen:" + top] = sha
+    _, body = git(top, "log", "-1", "--format=%B", sha, "--")
+    log({"session": inp["session_id"], "repo": top, "branch": branch_of(top), "decision": "committed", "sha": sha,
+         "unseen": True, "trailer": (TRAILER_RE.findall(body) or [None])[-1], "cmd": cmd[:200]})
     return None
 
 
@@ -727,10 +783,11 @@ def main():
         elif ev == "Stop":
             out = on_stop(inp)
         elif ev == "SessionStart":
-            if norm_mode(os.environ.get("CLAUDE_PLUGIN_OPTION_COMMIT_GATE")) != "off":
-                top, common = repo_of(inp.get("cwd"))
-                if top:
-                    warm_default_branch(top, common)
+            # Regardless of userConfig: a repo can opt in through its file, which needs origin/HEAD to be read.
+            # Asks origin only when origin/HEAD is missing (at most once an hour); never on the per-call path
+            top, common = repo_of(inp.get("cwd"))
+            if top:
+                warm_default_branch(top, common)
             if os.path.isdir(state_dir()):
                 gc()
         if out:

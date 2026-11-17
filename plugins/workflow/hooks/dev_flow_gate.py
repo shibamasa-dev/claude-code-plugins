@@ -222,6 +222,7 @@ _VALUE_OPTS = {
 # -c / --comment take a value only in `issue close` and `pr close` (in `issue view`, `pr view` and `pr review` they are switches)
 _CLOSE_COMMENT_OPTS = {"-c", "--comment"}
 
+
 def parse_args(args):
     """(positional, opts). opts keeps the last value (including the `--x=v` form)."""
     pos, opts, i = [], {}, 0

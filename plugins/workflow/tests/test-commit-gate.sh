@@ -64,7 +64,7 @@ commit() {
   [ "$(loglines)" = "$n0" ] && { echo allow; return; }
   case "$(lastlog decision)" in
     would_block) echo block ;; stale) echo stale ;; released) echo release ;; nogate) echo nogate ;;
-    unparsed) echo unparsed ;; allow|explained) echo allow ;; *) echo "other:$(lastlog decision)" ;;
+    unparsed) echo unparsed ;; unresolved) echo unresolved ;; allow|explained) echo allow ;; *) echo "other:$(lastlog decision)" ;;
   esac
 }
 row() { printf '  %s -> %s (expect %s)\n' "$1" "$2" "$3"; }
@@ -132,6 +132,8 @@ for MODE in observe enforce; do
   row "$MODE: another session's review of an earlier tree is not stale here (no trailer)" "$(commit sB p1 "$BARE")" $NO
   row "$MODE: another session's review of an earlier tree, trailer claims it" "$(commit sB2 p1 "$CM")" $NO
   row "$MODE: the session that ran it does see it as stale" "$(commit sA p2 "$CM")" $STALE
+  reset; edit b7; review sU p1; stop sU p1; printf 'new\n' > untracked-after-review.txt
+  row "$MODE: an untracked file added after the review makes it stale" "$(commit sU p2 "$CM")" $STALE
   echo "=== C: $MODE: two blocks, then the next commit passes ==="
   reset; edit c
   row "$MODE: block 1" "$(commit s6 p1 "$BARE")" $NO
@@ -139,6 +141,11 @@ for MODE in observe enforce; do
   row "$MODE: third commit is released" "$(commit s6 p1 "$BARE")" release
   row "$MODE: counter reset: the next one is blocked again" "$(commit s6 p1 "$BARE")" $NO
   row "$MODE: the count is per session" "$(commit s6x p1 "$BARE")" $NO
+  reset; edit c2
+  commit s21 p1 "$BARE" >/dev/null; review s21 p1; stop s21 p1
+  row "$MODE: a passing commit after one block" "$(commit s21 p2 "$CM")" allow
+  commit s21 p2 "$BARE" >/dev/null
+  row "$MODE: an allow resets the count (second block after it is still a block)" "$(commit s21 p2 "$BARE")" $NO
 done
 
 echo '=== D: per-repo override on the default branch ==='
@@ -156,7 +163,7 @@ row 'default-branch verifiers: code-review no longer counts' "$(reset; edit d3; 
 
 set_repo_cfg '{"commitGate": true}'
 row 'default branch has a non-string commitGate: userConfig enforce still applies' "$(reset; edit d4; CLAUDE_PLUGIN_OPTION_COMMIT_GATE=enforce commit s7f p1 "$BARE")" deny
-row 'no error was logged for it' "$(grep -c '"decision": "error"' "$LOG" 2>/dev/null || echo 0)" 0
+row 'no error was logged for it' "$(grep -q '"decision": "error"' "$LOG" 2>/dev/null && echo logged || echo none)" none
 
 echo '=== E: a branch cannot change the rule in its own working tree ==='
 set_repo_cfg '{"commitGate": "enforce"}'
@@ -198,7 +205,11 @@ row 'a # inside a word does not hide the commit after it' "$(commit s9h p2 "git 
 row 'a commit inside a shell comment is not a commit' "$(commit s9c p2 'echo ok # then git commit -am x')" allow
 row 'a # right after $(...) is part of the word: the commit after it is seen' "$(commit s9d p2 'echo $(true)# ; git commit -am x')" deny
 row 'git commit -unormal (an option value with an a) is not -a' "$(reset; edit f3; git add m.py; review s9u p1; edit f3-fixed; stop s9u p1; commit s9u p2 "git commit -unormal -m x -m '$TR'")" deny
-row 'git -C "$REPO" commit (a variable): checked in the hook cwd' "$(commit s9v p2 'git -C "$REPO" commit -am x')" deny
+row 'bash -lc '"'"'git commit'"'"' (a -c cluster) is seen' "$(commit s9b p2 "bash -lc 'git commit -am x'")" deny
+row 'git -C "$REPO" commit (a variable): logged as unresolved' "$(commit s9v p2 'git -C "$REPO" commit -am x')" unresolved
+row 'cd "$REPO" && git commit: logged as unresolved' "$(commit s9v p2 'cd "$REPO" && git commit -am x')" unresolved
+row 'GIT_DIR=<repo>/.git git commit: logged as unresolved' "$(commit s9v p2 "GIT_DIR='$W/.git' git commit -am x")" unresolved
+row 'git --git-dir --work-tree commit from another dir: logged as unresolved' "$(cd "$T" && commit s9v p2 "git --git-dir='$W/.git' --work-tree='$W' commit -am x")" unresolved
 row 'after cd && git commit, no trailer' "$(commit s9 p2 "cd '$W' && git commit -am x")" deny
 row 'not a commit: git commit-tree' "$(commit s9 p2 'git commit-tree HEAD^{tree} -m x')" allow
 row 'not a commit: the words inside echo' "$(commit s9 p2 "echo 'git commit -am x'")" allow
@@ -218,6 +229,10 @@ reset; edit g
 git remote set-head origin -d
 row 'no local origin/HEAD: does not gate, says so' "$(commit s10 p1 "$BARE")" nogate
 row 'no local origin/HEAD, userConfig off: silent' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s10 p1 "$BARE")" allow
+set_repo_cfg '{"commitGate": "enforce"}'; git remote set-head origin -d
+row 'opt-in only in the repo file, origin/HEAD missing, before SessionStart: silent (cannot be read)' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s10b p1 "$BARE")" allow
+row 'opt-in only in the repo file, origin/HEAD missing: SessionStart resolves it, then gated' "$(export CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off; ev - s10b p1 'hook_event_name="SessionStart"' >/dev/null; commit s10b p1 "$BARE")" deny
+set_repo_cfg -
 git remote set-head origin main
 N="$T/no origin"; git init -q -b main "$N"; ( in_dir "$N"; echo a > a; git add a; git commit -qm a; echo b >> a
   mkdir -p .claude; printf '{"commitGate": "enforce"}\n' > .claude/verification.json )
@@ -227,7 +242,7 @@ echo '=== H: the log and report ==='
 row 'report lists would-be blocks' "$(python3 "$HOOK" report | grep -q would_block && echo listed || echo missing)" listed
 reset; edit h0; review s13 p1; stop s13 p1
 # PreToolUse, then the real commit, then PostToolUse with what Bash printed
-posted() { ev - s13 p2 'hook_event_name="PostToolUse"' 'tool_name="Bash"' "tool_input={\"command\":$(j "$1")}" "tool_response={\"stdout\":$(j "$2"),\"stderr\":\"\"}" >/dev/null; lastlog decision; }
+posted() { ev - s13 p2 'hook_event_name="PostToolUse"' 'tool_name="Bash"' "tool_input={\"command\":$(j "$1")}" "tool_response={\"stdout\":$(j "$2"),\"stderr\":\"\"}" 'duration_ms=2000' >/dev/null; lastlog decision; }
 commit s13 p2 "$CM" >/dev/null; git commit -qam x -m "$TR"
 row 'after the commit: logged as committed' "$(posted "$CM" "[main $(git rev-parse --short HEAD)] x")" committed
 row 'its stamp is backed by the record' "$(lastlog stamp)" backed
@@ -237,6 +252,27 @@ row 'git commit -q (no summary printed) is still logged' "$(posted 'git commit -
 row 'after a commit with no trailer: stamp missing' "$(lastlog stamp)" missing
 edit h2; n0=$(loglines); commit s13 p2 'git commit -qam z' >/dev/null; posted 'git commit -qam z' '' >/dev/null
 row 'a refused commit (HEAD did not move) is not logged as committed' "$(lastlog decision)" would_block
+edit h3; git commit -qam w   # a commit the PreToolUse side never saw (as through make, eval, an alias)
+row 'HEAD moved in a command not read as a commit: logged as committed' "$(n0=$(loglines); posted 'make release' ''; )" committed
+row 'that line is marked unseen by the pre-commit check' "$([ "$(lastlog unseen)" = True ] && echo unseen || echo missing)" unseen
+row 'a command that did not commit adds no line' "$(n0=$(loglines); posted 'ls -la' '' >/dev/null; [ "$(loglines)" = "$n0" ] && echo none || echo added)" none
+row 'fingerprint changes on every same-size edit right after a commit (200 rounds, racy-clean index)' "$(in_dir "$W"; printf '\0\1A' > b.bin; git add b.bin; git commit -qm bin; python3 - "$HOOK" <<'PY'
+import os, subprocess, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(sys.argv[1])))
+import importlib.util
+spec = importlib.util.spec_from_file_location("cg", sys.argv[1]); g = importlib.util.module_from_spec(spec); spec.loader.exec_module(g)
+same = 0
+for i in range(200):
+    # Commit first, so the index is written in the same instant as the file (the racily clean case of git)
+    with open("b.bin", "wb") as f: f.write(b"\0\1A" if i % 2 else b"\0\1C")
+    subprocess.run(["git", "commit", "-qam", f"r{i}"], check=True)
+    a = g.fingerprint(os.getcwd())
+    with open("b.bin", "wb") as f: f.write(b"\0\1B")
+    b = g.fingerprint(os.getcwd())
+    same += a == b
+print("changed" if same == 0 else f"same{same}")
+PY
+)" changed
 row 'the repo itself is untouched (no stray objects from the fingerprint)' "$(in_dir "$W"; before=$(git count-objects -v | sed -n 's/^count: //p'); review s12 p1; edit h; stop s12 p1; commit s12 p2 "$BARE" >/dev/null; [ "$(git count-objects -v | sed -n 's/^count: //p')" = "$before" ] && echo clean || echo wrote)" clean
 
 rm -rf "$T"

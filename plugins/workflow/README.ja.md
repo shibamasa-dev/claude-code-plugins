@@ -50,7 +50,7 @@ commit-gate:
 - **スタンプ**: コミットメッセージの末尾に `Verification: <種類> — <名前>`（例 `Verification: review — code-review`。種類は `review` と `verify`）か `Verification: none — <理由>` を書く。名前を書いた検証スキルは、ゲートが自分の記録と突き合わせる。検証なしのコミットは `git log origin/main --grep='^Verification: none'` で引ける。
 - **`git commit` の判定**（`enforce`）: 新しい証跡があり、トレーラーが合っていれば通す。`none — <理由>` は通して explained として記録する。それ以外は止める。証跡なし、古い証跡、記録の無い検証スキルを名乗るトレーラー、トレーラー無し（足す行を示す）、読めないメッセージ（変数・エディタ）、`-a` 無しで、検証した作業ツリーとステージ済みの版が違うファイルがあるときがこれに当たる。1 セッションで 2 回止めたら、次のコミットは通して released として記録し、回数を戻す。`observe` は止めずにどうしたかを Claude に伝え、同じ回数も数える。古い証跡は通し、トレーラーに `(stale)` を付けるよう伝える。
 - **記録**: すべての判定を、セッション・リポ・ブランチ・指紋と一緒に `${CLAUDE_PLUGIN_DATA}/commit-gate/log.jsonl` に書く。コミットしたら（HEAD が動いたことで判断するので `git commit -q` も含む）、その sha とスタンプが記録に裏付けられているかを `committed` の行として書く。フック内の予期しないエラーは `error` として記録する（そのコミットは確かめていない）。`git commit` を含むのに読めないコマンド（引用符の閉じ忘れなど）は確かめず、`unparsed` として記録して Claude に伝える。`python3 "${CLAUDE_PLUGIN_ROOT}/hooks/commit_gate.py" report` で止めるはずだったものを一覧にする（`--all` で全件）。証跡と止めた回数は `${CLAUDE_PLUGIN_DATA}/commit-gate/`（その変数が無ければ `~/.claude/state/commit-gate/`）に置き、30 日より古いものはセッションの開始時に消す。
-- **コスト**: `off` では状態を読まず、ネットワークにも出ない。Bash の呼び出しごとにフックは起動するが、コマンドに `git` と `commit` が無ければすぐ終わる。`git commit` のときはリポのファイルをローカルで `git show` するだけ。オンでは、コミットごとと、検証スキルが動いたターンの終わりに指紋を計算する（12,000 ファイルのリポで約 0.3 秒）。
+- **コスト**: `off` では状態を読まず、呼び出しごとの処理はネットワークにも出ない。Bash の各呼び出しの前にフックは起動するが、コマンドに `git` と `commit` が無ければすぐ終わる（`git commit` のときはリポのファイルをローカルで `git show` する）。各呼び出しの後には HEAD の最新の reflog を 1 回読む。オンでは、コミットごとと、検証スキルが動いたターンの終わりに指紋を計算する（12,000 ファイルのリポで約 0.3 秒）。
 
 orchestrator-report は報告を促した PR / issue を `${CLAUDE_PLUGIN_DATA}/orchestrator-report/<session_id>.json` に記録する（30 日より古いファイルは書き込みのときに消す）。
 
@@ -137,7 +137,10 @@ reviews:
 - 既定ブランチから設定を読むチェック（pr-review-triage の `review-*:` 行）が防ぐのは、ブランチの中身（コミットしたファイル・push したブランチ）で変えられるものまで。手元の git の設定と環境変数は信頼し、既定ブランチは `origin` のものを正とする。fork で作業する場合は `upstream` ではなく fork の既定ブランチになる。
 - origin の既定ブランチが分からないとき（使える手元の `origin/HEAD` が無く、origin にも届かない）、チェックは動かず、その旨を出し、origin に聞き直すのは 1 時間以上あとになる。
 - `origin/<既定>` やその上のファイルを読めないときは、リポの `review-*:` 行を飛ばして stderr にその旨を出し、userConfig、次に既定値を使う（`review-heavy` には既定値が無いので `detect-bots.sh` は終了コード 4 で終わる）。取得済みの `origin/<既定>` は、origin より古くてもそのまま読む。
-- commit-gate はリポのファイルをローカルの `origin/HEAD` からしか読まないので、呼び出しごとの処理はネットワークに出ない。`origin/HEAD` が無いときはゲートせず、その旨を伝える（userConfig でオンにしていれば、セッション開始時に origin に一度だけ聞いて保存する。`git remote set-head origin --auto` でも直る）。
+- commit-gate は忘れ防止の後押しであって、意図して避ける人への壁ではない。既定の検証スキルの正規表現はどの `verify-*` スキルも受け入れ、コミットするブランチで足したスキルも含む。`Verification: none — <理由>` も常に通る。それ以上を求めるリポは、既定ブランチの `.claude/verification.json` に `verifiers` を書く。ローカルでの証跡の偽造（イベントをフックに流し込む、状態ファイルを書き換える）は守る範囲の外。
+- commit-gate はリポのファイルをローカルの `origin/HEAD` からしか読まないので、呼び出しごとの処理はネットワークに出ない。`origin/HEAD` が無いときは、セッション開始時に origin に一度だけ聞いて保存する（リポは自分のファイルでオンにできるので、userConfig に関係なく行う。リポごとに 1 時間に 1 回まで）。それまではゲートしない（`git remote set-head origin --auto` でも直る）。
+- commit-gate は `cd "$VAR" && git commit`・`git -C "$VAR" commit`・`GIT_DIR=… git commit`・`git --git-dir=… commit` のコミット先を判別できない。これらは確かめず、どちらのモードでも通す。ゲートがオンなら `unresolved` として記録し、リポをそのまま書くよう Claude に伝える。
+- commit-gate は `eval`・`xargs`・`$(which git)`・引用符で分けた名前（`"g""it"`）・git のエイリアス・`python -c`・`make` などを通したコミットを読まない。Bash の各コマンドの後に HEAD の最新の reflog を 1 回だけローカルで見て、確認で見えなかったコミットがそのコマンドの間にできていれば、`unseen: true` 付きの `committed` として記録する。observe モードでこれがどれくらい起きるかが分かる。
 - commit-gate の証跡は、検証スキルが呼ばれたことを表し、終わったことや通ったことは表さない。長い自律ターンでは、早くに呼んだ検証スキルがそのターンの終わりまで新しい証跡のまま残る。
 - commit-gate はコネクタ経由のコミット（`push_files`・`create_or_update_file`）と、`git merge`・`rebase`・`cherry-pick`・`revert` によるコミットを見ない。
 - プロジェクトの `.claude/settings.json` はプラグインを無効にでき（`enabledPlugins`）、セッションの環境変数も設定できる（`env`）。このファイルを変える PR は人が差分を見る必要がある。止められるのは managed settings だけ。
