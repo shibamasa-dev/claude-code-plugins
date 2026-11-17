@@ -1,7 +1,7 @@
 {
   "name": "lint",
-  "version": "0.2.2",
-  "description": "Linters for artifacts such as skills. Currently skill-lint (checks whether a skill contains information specific to the person, company or machine that made it) and a hook that prompts skill-lint after skill-creator",
+  "version": "0.3.0",
+  "description": "Tools for making skills: skill-planner (plans a skill before it is built), skill-lint (checks whether a skill contains information specific to the person, company or machine that made it) and a hook that prompts skill-lint after skill-creator",
   "author": {
     "name": "shibamasa-dev"
   },
@@ -11,6 +11,7 @@
   "keywords": [
     "skills",
     "lint",
-    "privacy"
+    "privacy",
+    "planning"
   ]
 }
