@@ -173,6 +173,12 @@ def run(opts, now=None) -> dict:
             # Look as far back for posted IDs as for posts, so a wide --since-hours doesn't post twice
             oldest = now - max(HISTORY_WINDOW, timedelta(hours=opts.since_hours or 0))
             state = _slack.history_state(_slack.fetch_history(slack_token, oldest, channel=cfg["channel"]))
+            since, _ = resolve_since(opts, state, now)
+            if since < oldest:
+                # A retry of a wide run that died midway searches further back than the window read so far:
+                # read the history from there too, or posts made in between would be posted again
+                wider = _slack.fetch_history(slack_token, since, channel=cfg["channel"])
+                state = {"since": state["since"], "posted_ids": _slack.history_state(wider)["posted_ids"]}
         else:
             report["warning"] = (f"{_slack.TOKEN_ENV} or RESEARCH_X_SLACK_CHANNEL is not set, so the history "
                                  "was not read (posts already in the channel are not skipped)")

@@ -2,7 +2,7 @@
 """End-to-end tests of the CLI: settings, two runs in a row, first run, dry-run, failed fetch, missing key.
 
 xAI replies come from a real API response (fixtures/xai_response.json, handles redacted) and one post seen in a
-real dry-run (status 2102563629866320156). Slack is a fake that keeps posted messages in memory and returns them
+real dry-run. Status IDs in the fixtures and here are synthetic, with the real timestamp bits. Slack is a fake that keeps posted messages in memory and returns them
 as history, so "the next run reads what the previous run posted" goes through the real code path.
 Run: python3 tests/test_cli.py
 """
@@ -28,7 +28,7 @@ REAL_RESPONSE = json.loads((HERE / "fixtures" / "xai_response.json").read_text(e
 REAL_HISTORY = json.loads((HERE / "fixtures" / "slack_history.json").read_text(encoding="utf-8"))
 REAL_POSTS = research_x._xai.parse_posts(REAL_RESPONSE)  # four posts, 2026-09-22 02:15Z to 18:00Z
 NEW_POST = {  # posted 2026-09-23 01:00Z; from a real dry-run
-    "url": "https://x.com/example_log/status/2102563629866320156",
+    "url": "https://x.com/example_log/status/2102563629865541638",
     "posted_at": "2026-09-23T01:00:07Z",
     "summary": "GitHub Copilot for JetBrains 1.18.0リリース！AIアシスト承認や共有orgスキル、"
                "Codexエージェントのプランmode追加でめっちゃ進化してるよ〜 詳細リンクあり",
@@ -208,6 +208,24 @@ class StateTest(unittest.TestCase):
         quoted = [m["text"].rsplit("/", 1)[1].strip() for m in channel.messages]
         self.assertEqual(sorted(quoted), sorted(p["url"].rsplit("/", 1)[1] for p in REAL_POSTS))
 
+    def test_a_retry_of_a_wide_run_reads_the_history_as_far_back_as_it_searches(self):
+        """A run with --since-hours 240 died after one post. The plain retry searches its 240 h window again,
+        so posts made 8 days earlier (outside the usual 7-day history read) must still count as posted."""
+        died = {
+            "type": "message", "bot_id": "B0000000001",
+            "ts": f"{datetime(2026, 10, 1, 3, 5, tzinfo=timezone.utc).timestamp():.6f}",
+            "text": f"----------------------------\n\nx\n&gt;<{NEW_POST['url']}>",
+            "metadata": {"event_type": "research_x_post", "event_payload": {
+                "run_started_at": "2026-10-01T03:00:00+00:00", "since": "2026-09-21T03:00:00+00:00"}},
+        }
+        channel = FakeChannel(REAL_HISTORY["messages"] + [died])  # four real posts from 2026-09-23 00:01Z
+
+        report = run(channel, datetime(2026, 10, 1, 4, 0, tzinfo=timezone.utc), REAL_POSTS + [NEW_POST])
+
+        self.assertEqual(report["since"], "2026-09-21T12:00:00+09:00")
+        self.assertEqual(report["posts"], [])
+        self.assertEqual(report["dropped"], {"already_posted": 5})
+
     def test_posts_already_in_the_channel_are_not_posted_again(self):
         """Posts older than the 7-day window are still skipped when --since-hours reaches back that far."""
         channel = FakeChannel(REAL_HISTORY["messages"])  # four real posts from 2026-09-23 00:01Z
@@ -231,7 +249,7 @@ class StateTest(unittest.TestCase):
 class SelectTest(unittest.TestCase):
     def test_status_urls_without_the_author_are_dropped(self):
         """`x.com/i/status/<id>` has no author, so it can't be confirmed as one of the accounts."""
-        post = dict(REAL_POSTS[0], url="https://x.com/i/status/2102450622092239171")
+        post = dict(REAL_POSTS[0], url="https://x.com/i/status/2102450622091141123")
 
         picked, dropped = research_x.select_posts(
             [post], datetime(2026, 9, 22, tzinfo=timezone.utc), set(), ACCOUNTS, timezone.utc)

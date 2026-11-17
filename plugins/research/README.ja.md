@@ -68,6 +68,14 @@ X や Web を読むスキル群。今は `research-x` の 1 つだけ。選ん�
 - 同時に 2 つ走ると、同じ告知が 2 回流れうる（ロックは無く、状態はチャンネルの履歴だけ）。
 - 投稿者が URL に無い投稿（`x.com/i/status/<id>`）は落とす。対象アカウントの投稿か確かめられないため。
 - 要約はモデルが書く。research-x が確かめるのはアカウントと日時で、中身ではない。
+- スキルは設定値をシングルクォートで囲んでコマンドに入れる。`'` を含む設定（`tone` か `topic_filter` くらい）は `'\''` とエスケープする必要がある。スキルは Claude にそうさせるが、値をそのまま写すとコマンドが壊れる。
+- 本物のサービスではまだ確かめていない。確かめたのは記録した応答と合成した応答だけ。未確認なのは、本物のチャンネルへの投稿、metadata の往復（`chat.postMessage` で書いた `run_started_at`・`since`・`last` を、`include_all_metadata` 付きの `conversations.history` で読み戻せるか）、英語のプロンプトを今の xAI のモデルに投げたときの結果。
+
+### 初回の確かめ方
+
+1. `XAI_API_KEY` だけで `--dry-run`。要約が指定した言語と口調で、指定したアカウントの分だけ返る。
+2. `SLACK_BOT_TOKEN` と `slack_channel` を足して、もう一度 `--dry-run`。`history_read: true` になる。`not_in_channel` が出たら bot がチャンネルに入っていない。
+3. 1 回投稿してから `--dry-run`。`since_source: slack_history` になり、いま流した投稿が `dropped.already_posted` に数えられる。数えられなければ metadata が往復していないので、定期実行には載せない。
 
 ## 前提
 

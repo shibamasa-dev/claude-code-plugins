@@ -1,50 +1,50 @@
 {
- "id": "a22a5c5d-dd4f-9059-b025-824dda2b2bc8",
+ "id": "00000000-0000-4000-8000-000000000001",
  "model": "grok-4.3",
  "object": "response",
  "status": "completed",
  "output": [
   {
-   "call_id": "xs_call-3c898df4-f9f1-48ea-b514-6b63a85035cb-0",
+   "call_id": "xs_call-00000000-0000-4000-8000-000000000002-0",
    "input": "{\"query\":\"(アップデート OR 更新 OR \\\"新バージョン\\\" OR リリース OR \\\"version up\\\") (アプリ OR アプリケーション OR app) since:2026-09-22 lang:ja min_faves:1\",\"limit\":\"10\",\"mode\":\"Latest\"}",
    "name": "x_keyword_search",
    "type": "custom_tool_call",
-   "id": "ctc_a22a5c5d-dd4f-9059-b025-824dda2b2bc8_call-3c898df4-f9f1-48ea-b514-6b63a85035cb-0",
+   "id": "ctc_00000000-0000-4000-8000-000000000001_call-00000000-0000-4000-8000-000000000002-0",
    "status": "completed"
   },
   {
-   "call_id": "xs_call-3c898df4-f9f1-48ea-b514-6b63a85035cb-1",
+   "call_id": "xs_call-00000000-0000-4000-8000-000000000002-1",
    "input": "{\"query\":\"アプリケーションの明確なアップデート告知\",\"limit\":\"5\",\"from_date\":\"2026-09-22\",\"min_score_threshold\":\"0.2\"}",
    "name": "x_semantic_search",
    "type": "custom_tool_call",
-   "id": "ctc_a22a5c5d-dd4f-9059-b025-824dda2b2bc8_call-3c898df4-f9f1-48ea-b514-6b63a85035cb-1",
+   "id": "ctc_00000000-0000-4000-8000-000000000001_call-00000000-0000-4000-8000-000000000002-1",
    "status": "completed"
   },
   {
    "content": [
     {
      "type": "output_text",
-     "text": "{\n  \"posts\": [\n    {\n      \"url\": \"https://x.com/example_web/status/2102450622092239171\",\n      \"posted_at\": \"2026-09-22T17:31:04Z\",\n      \"summary\": \"Next.jsのセキュリティアップデートきたー！16.3.6入れて安心しよ♡\",\n      \"tags\": [\"Next.js\", \"security\"]\n    },\n    {\n      \"url\": \"https://x.com/example_log/status/2102220114837795297\",\n      \"posted_at\": \"2026-09-22T02:15:07Z\",\n      \"summary\": \"GitHubのPRページ超リニューアル！検索機能ヤバかわいい♡\",\n      \"tags\": [\"GitHub\", \"feature\"]\n    },\n    {\n      \"url\": \"https://x.com/example_ai/status/2102435517165912464\",\n      \"posted_at\": \"2026-09-22T16:31:03Z\",\n      \"summary\": \"Claude Opus 5.5登場！エージェント超進化でテンション上がるね♪\",\n      \"tags\": [\"Claude\", \"AI\"]\n    },\n    {\n      \"url\": \"https://x.com/example_log/status/2102457938086400425\",\n      \"posted_at\": \"2026-09-22T18:00:08Z\",\n      \"summary\": \"GitHub CopilotにOpus 5.5入ったよー！作業効率爆上げ♡\",\n      \"tags\": [\"GitHub\", \"Copilot\"]\n    }\n  ]\n}",
+     "text": "{\n  \"posts\": [\n    {\n      \"url\": \"https://x.com/example_web/status/2102450622091141123\",\n      \"posted_at\": \"2026-09-22T17:31:04Z\",\n      \"summary\": \"Next.jsのセキュリティアップデートきたー！16.3.6入れて安心しよ♡\",\n      \"tags\": [\"Next.js\", \"security\"]\n    },\n    {\n      \"url\": \"https://x.com/example_log/status/2102220114837020672\",\n      \"posted_at\": \"2026-09-22T02:15:07Z\",\n      \"summary\": \"GitHubのPRページ超リニューアル！検索機能ヤバかわいい♡\",\n      \"tags\": [\"GitHub\", \"feature\"]\n    },\n    {\n      \"url\": \"https://x.com/example_ai/status/2102435517165117441\",\n      \"posted_at\": \"2026-09-22T16:31:03Z\",\n      \"summary\": \"Claude Opus 5.5登場！エージェント超進化でテンション上がるね♪\",\n      \"tags\": [\"Claude\", \"AI\"]\n    },\n    {\n      \"url\": \"https://x.com/example_log/status/2102457938085584900\",\n      \"posted_at\": \"2026-09-22T18:00:08Z\",\n      \"summary\": \"GitHub CopilotにOpus 5.5入ったよー！作業効率爆上げ♡\",\n      \"tags\": [\"GitHub\", \"Copilot\"]\n    }\n  ]\n}",
      "logprobs": [],
      "annotations": [
       {
        "type": "url_citation",
-       "url": "https://x.com/i/status/2102450622092239171",
+       "url": "https://x.com/i/status/2102450622091141123",
        "start_index": 0,
        "end_index": 0,
-       "title": "https://x.com/i/status/2102450622092239171"
+       "title": "https://x.com/i/status/2102450622091141123"
       },
       {
        "type": "url_citation",
-       "url": "https://x.com/i/status/2102471892099866883",
+       "url": "https://x.com/i/status/2102471892098785285",
        "start_index": 0,
        "end_index": 0,
-       "title": "https://x.com/i/status/2102471892099866883"
+       "title": "https://x.com/i/status/2102471892098785285"
       }
      ]
     }
    ],
-   "id": "msg_a22a5c5d-dd4f-9059-b025-824dda2b2bc8",
+   "id": "msg_00000000-0000-4000-8000-000000000001",
    "role": "assistant",
    "type": "message",
    "status": "completed"

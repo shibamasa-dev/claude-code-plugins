@@ -3,6 +3,8 @@
 
 `fixtures/xai_response.json` is a real Responses API reply (x_search over three accounts) with the reasoning
 removed and the handles redacted. `fixtures/language_models.json` is a real model list.
+The shape is from real output; status IDs and response / call IDs are synthetic (status IDs keep the
+real timestamp bits, so the time decoded from them is unchanged).
 Run: python3 tests/test_xai.py
 """
 
@@ -85,10 +87,10 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(
             [p["url"] for p in posts],
             [
-                "https://x.com/example_web/status/2102450622092239171",
-                "https://x.com/example_log/status/2102220114837795297",
-                "https://x.com/example_ai/status/2102435517165912464",
-                "https://x.com/example_log/status/2102457938086400425",
+                "https://x.com/example_web/status/2102450622091141123",
+                "https://x.com/example_log/status/2102220114837020672",
+                "https://x.com/example_ai/status/2102435517165117441",
+                "https://x.com/example_log/status/2102457938085584900",
             ],
         )
 
@@ -173,14 +175,14 @@ class StatusIdTest(unittest.TestCase):
     def test_posted_at_is_recovered_from_the_status_id(self):
         """Matches the posted_at the API returned for the same post (2026-09-22T17:31:04Z)."""
         self.assertEqual(
-            _xai.posted_at_from_id("2102450622092239171").replace(microsecond=0),
+            _xai.posted_at_from_id("2102450622091141123").replace(microsecond=0),
             datetime(2026, 9, 22, 17, 31, 4, tzinfo=timezone.utc),
         )
 
     def test_status_url_accepts_twitter_domain(self):
         self.assertEqual(
-            _xai.parse_status_url("https://twitter.com/example_dev/status/2102442213204430923"),
-            ("example_dev", "2102442213204430923"),
+            _xai.parse_status_url("https://twitter.com/example_dev/status/2102442213203681282"),
+            ("example_dev", "2102442213203681282"),
         )
 
 

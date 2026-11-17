@@ -68,6 +68,14 @@ The plugin doesn't schedule runs. To run daily, call the script from your own sc
 - Two runs at the same time can post the same announcement twice (there is no lock; the channel history is the only state).
 - A post whose URL has no author (`x.com/i/status/<id>`) is dropped, because it can't be confirmed as one of the accounts.
 - The summary is the model's. research-x checks the account and the date, not the content.
+- The skill puts the settings into the command inside single quotes. A setting that contains `'` (likely only `tone` or `topic_filter`) must be escaped as `'\''`; the skill tells Claude to do that, but a value copied verbatim would break the command.
+- Not yet verified against the live services, only against recorded and synthetic responses: posting to a real channel, the metadata round trip (`run_started_at`, `since`, `last` written by `chat.postMessage` and read back by `conversations.history` with `include_all_metadata`), and the English prompt against the current xAI model.
+
+### First run
+
+1. `--dry-run` with `XAI_API_KEY` only: the summaries come back in your language and tone, and only from your accounts.
+2. Add `SLACK_BOT_TOKEN` and `slack_channel`, `--dry-run` again: `history_read: true`. A `not_in_channel` error means the bot hasn't joined the channel.
+3. Post once, then `--dry-run` again: `since_source: slack_history`, and the posts just sent show up under `dropped.already_posted`. If they don't, the metadata didn't round-trip; don't schedule runs until it does.
 
 ## Requirements
 

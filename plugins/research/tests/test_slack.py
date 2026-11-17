@@ -2,7 +2,7 @@
 """Tests of the Slack side: message text, recovering state from history, API calls.
 
 The text and ts in `fixtures/slack_history.json` are four real posts in research-x format (read through a Slack
-connector; handles and the bot ID redacted). The `conversations.history` envelope around them (`bot_id`, the
+connector; handles and the bot ID redacted; status IDs and `ts` values are synthetic, same shape and order). The `conversations.history` envelope around them (`bot_id`, the
 `&gt;` and `<URL>` escaping) was assembled to match the Slack API documentation, so it is synthetic.
 Run: python3 tests/test_slack.py
 """
@@ -45,14 +45,14 @@ class FormatTest(unittest.TestCase):
     def test_message_is_separator_summary_and_quoted_url(self):
         text = _slack.format_message({
             "summary": "GitHub Copilot for JetBrains 1.18.0リリース！",
-            "url": "https://x.com/example_log/status/2102563629866320156",
+            "url": "https://x.com/example_log/status/2102563629865541638",
         })
 
         self.assertEqual(
             text,
             "----------------------------\n\n"
             "GitHub Copilot for JetBrains 1.18.0リリース！\n"
-            ">https://x.com/example_log/status/2102563629866320156\n",
+            ">https://x.com/example_log/status/2102563629865541638\n",
         )
 
     def test_summary_cannot_trigger_a_channel_mention(self):
@@ -68,10 +68,10 @@ class HistoryStateTest(unittest.TestCase):
 
         self.assertEqual(
             state["since"],
-            datetime.fromtimestamp(1790121716.948479, timezone.utc) - timedelta(minutes=15),
+            datetime.fromtimestamp(1790121716.000400, timezone.utc) - timedelta(minutes=15),
         )
         self.assertEqual(state["posted_ids"], {
-            "2102450622092239171", "2102435517165912464", "2102457938086400425", "2102220114837795297",
+            "2102450622091141123", "2102435517165117441", "2102457938085584900", "2102220114837020672",
         })
 
     def test_human_messages_do_not_count_as_posted(self):
@@ -110,10 +110,10 @@ class HistoryStateTest(unittest.TestCase):
         message = dict(HISTORY["messages"][0], text=(
             "----------------------------\n\n"
             "前回の告知 https://x.com/example_web/status/2102000000000000000 の続報だよ〜\n"
-            "&gt;<https://x.com/example_web/status/2102450622092239171|x.com/example_web/status/2102450622092239171>"
+            "&gt;<https://x.com/example_web/status/2102450622091141123|x.com/example_web/status/2102450622091141123>"
         ))
 
-        self.assertEqual(_slack.history_state([message])["posted_ids"], {"2102450622092239171"})
+        self.assertEqual(_slack.history_state([message])["posted_ids"], {"2102450622091141123"})
 
 
 class ApiTest(unittest.TestCase):
