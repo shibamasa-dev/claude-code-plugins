@@ -19,6 +19,7 @@ _SUBST_RE = re.compile(r"\$\(\s*pwd\s*\)|`\s*pwd\s*`|\$\(\s*git\s+rev-parse\s+--
 _PH_RE = re.compile(r"__SHELL_SUBST_(\d+)__")
 _PWD_RE = re.compile(r"\$\{PWD\}|\$PWD(?!\w)|\$\(\s*pwd\s*\)|`\s*pwd\s*`")
 _TOP_RE = re.compile(r"\$\(\s*git\s+rev-parse\s+--show-toplevel\s*\)")
+_UNKNOWN_DIR = "$unknown"  # resolve_dir() reads any $ as unknown
 # Wrappers that can precede a command, and their options that take a value (skipped so we can see the command inside)
 _WRAPPERS = {
     "env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"},
@@ -61,11 +62,26 @@ def unwrap(c):
                 if c[i] == "--":
                     i += 1
                     break
-                if name == "env" and c[i].split("=", 1)[0] in ("-C", "--chdir"):
-                    chdir = c[i].split("=", 1)[1] if "=" in c[i] else (c[i + 1] if i + 1 < len(c) else "")
-                elif name == "env" and c[i].startswith("-C") and len(c[i]) > 2:
-                    chdir = c[i][2:]
-                i += 2 if (c[i] in vopts and "=" not in c[i]) else 1
+                o = c[i]
+                if name == "env":
+                    key = o.split("=", 1)[0]
+                    if key.startswith("--ch") and "--chdir".startswith(key):  # git-style abbreviations: --chd
+                        d = o.split("=", 1)[1] if "=" in o else (c[i + 1] if i + 1 < len(c) else "")
+                        chdir = d if chdir is None else _UNKNOWN_DIR  # a second -C: not followed
+                        i += 1 if "=" in o else 2
+                        continue
+                    if not o.startswith("--") and "C" in o[1:]:
+                        k = o.index("C", 1)
+                        if k == 1 and chdir is None:  # -C dir / -Cdir
+                            chdir = o[2:] or (c[i + 1] if i + 1 < len(c) else "")
+                        else:
+                            chdir = _UNKNOWN_DIR  # -iC dir, or a second -C: not followed
+                        i += 1 if o[k + 1:] else 2
+                        continue
+                    if not o.startswith("--") and len(o) > 2 and o[-1] in "uS":
+                        i += 2  # a cluster ending in an option that takes a value (-iu NAME)
+                        continue
+                i += 2 if (o in vopts and "=" not in o) else 1
             if name == "timeout" and i < len(c) and re.fullmatch(r"[\d.]+[smhd]?", c[i]):
                 i += 1  # the timeout duration
             if name == "nice" and i < len(c) and re.fullmatch(r"-?\d+", c[i]):
