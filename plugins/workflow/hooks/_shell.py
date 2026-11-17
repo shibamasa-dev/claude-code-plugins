@@ -41,8 +41,9 @@ def split_heredocs(command):
 
 
 def unwrap(c):
-    """Strip leading assignments, keywords and wrappers from the tokens of one simple command. Returns (env, rest)."""
-    env, i = {}, 0
+    """Strip leading assignments, keywords and wrappers from the tokens of one simple command.
+    Returns (env, rest, chdir): chdir is the directory `env -C` / `env --chdir` runs the command in (None if none)."""
+    env, i, chdir = {}, 0, None
     while i < len(c):
         t = c[i]
         m = ASSIGN_RE.match(t)
@@ -60,6 +61,10 @@ def unwrap(c):
                 if c[i] == "--":
                     i += 1
                     break
+                if name == "env" and c[i].split("=", 1)[0] in ("-C", "--chdir"):
+                    chdir = c[i].split("=", 1)[1] if "=" in c[i] else (c[i + 1] if i + 1 < len(c) else "")
+                elif name == "env" and c[i].startswith("-C") and len(c[i]) > 2:
+                    chdir = c[i][2:]
                 i += 2 if (c[i] in vopts and "=" not in c[i]) else 1
             if name == "timeout" and i < len(c) and re.fullmatch(r"[\d.]+[smhd]?", c[i]):
                 i += 1  # the timeout duration
@@ -67,7 +72,7 @@ def unwrap(c):
                 i += 1
         else:
             break
-    return env, c[i:]
+    return env, c[i:], chdir
 
 
 def _toplevel(cur):
@@ -237,7 +242,8 @@ def commands(command, exes, cwd=None, _depth=0):
                 if m:
                     exported[m.group(1)] = m.group(2)
             continue
-        env, rest = unwrap(c)
+        env, rest, chdir = unwrap(c)
+        here = cwd if chdir is None else resolve_dir(chdir, cwd)  # env -C <dir> runs it there (unknown: None)
         if not rest:
             exported.update(env)  # a line with only `A=B` sets a shell variable (passed to children if the name was exported)
             continue
@@ -247,7 +253,7 @@ def commands(command, exes, cwd=None, _depth=0):
         if exe in ("sh", "bash", "zsh", "dash") and k and _depth < 3:
             k += 1 if rest[k + 1:k + 2] == ["--"] else 0  # sh -c -- '...'
             if k + 1 < len(rest):
-                for call in commands(rest[k + 1], exes, cwd, _depth + 1):
+                for call in commands(rest[k + 1], exes, here, _depth + 1):
                     call["env"] = {**env, **call["env"]}
                     out.append(call)
             continue
@@ -260,5 +266,5 @@ def commands(command, exes, cwd=None, _depth=0):
                 stdin = int(m.group(1))
             else:
                 args.append(a)
-        out.append({"exe": exe, "args": args, "env": env, "stdin": stdin, "docs": docs, "cwd": cwd})
+        out.append({"exe": exe, "args": args, "env": env, "stdin": stdin, "docs": docs, "cwd": here})
     return out

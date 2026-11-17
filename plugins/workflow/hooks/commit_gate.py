@@ -337,6 +337,15 @@ def on_stop(inp):
 
 
 # ------------------------------------------------------------------ git commit parsing
+# git commit's long options (exact names). git also takes any unambiguous prefix (--mess for --message); such a
+# spelling is not read, and makes the named paths unknown (the staged check then runs on every file)
+_COMMIT_LONG = {
+    "--all", "--patch", "--interactive", "--reuse-message", "--reedit-message", "--fixup", "--squash", "--reset-author",
+    "--short", "--branch", "--porcelain", "--long", "--null", "--file", "--author", "--date", "--message", "--template",
+    "--signoff", "--no-signoff", "--trailer", "--no-verify", "--verify", "--allow-empty", "--allow-empty-message",
+    "--cleanup", "--edit", "--no-edit", "--amend", "--no-post-rewrite", "--include", "--only", "--pathspec-from-file",
+    "--pathspec-file-nul", "--untracked-files", "--verbose", "--quiet", "--dry-run", "--status", "--no-status",
+    "--gpg-sign", "--no-gpg-sign", "--no-amend"}
 _GIT_VALUE_OPTS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env"}
 _COMMIT_SHORT_VALUE = "mFCct"  # short options of git commit that take a value
 _COMMIT_SHORT_FLAGS = set("aqsvenzpio")  # short options that take none (a cluster with anything else is not trusted)
@@ -399,7 +408,7 @@ def commit_message(c, top):
     piped stdin). paths: the pathspecs named on the command line (None when read from a file); include: -i / --include."""
     args, call, cwd = c["args"], c["call"], c["cwd"] or top
     parts, trailers, src, amend, dry, unknown = [], [], None, False, False, False
-    paths, include, redirect, dropped = [], False, False, set()
+    paths, include, redirect, dropped, ambiguous = [], False, False, set(), False  # ambiguous: paths unknown
     i = 0
     while i < len(args):
         a = args[i]
@@ -412,20 +421,23 @@ def commit_message(c, top):
         if a == "--":
             rest = _no_redirects(args[i + 1:])  # no options after --, so every redirection here is one
             dropped |= {j for j in range(i + 1, len(args))}
+            ambiguous |= len(rest) < len(args) - i - 1
             paths = None if paths is None else paths + rest
             break
         if not a.startswith("-") or a == "-":
             # Where a word starts, `2>&1`, `> f` and `>/dev/null` are redirections, not paths. An option's value
             # (-m '> note') is consumed by its option below and never reaches this branch
             if re.fullmatch(r"\d*(>>?|<|&>)", a):
-                redirect = True
+                redirect = ambiguous = True
                 dropped.add(i)
             elif re.match(r"\d*(>>?|<|&>)", a):
+                ambiguous = True
                 dropped.add(i)
             elif paths is not None:
                 paths.append(a)
         elif a.startswith("--"):
             k, eq, v = a.partition("=")
+            ambiguous |= k not in _COMMIT_LONG
             takes = k in ("--message", "--file", "--reuse-message", "--reedit-message", "--trailer", "--template",
                           "--fixup", "--squash", "--author", "--date", "--cleanup", "--pathspec-from-file")
             if takes and not eq:
@@ -489,6 +501,10 @@ def commit_message(c, top):
     else:
         msg = "\n\n".join(parts) + "".join("\n" + t for t in trailers)
     flags = [a for j, a in enumerate(args) if j not in dropped]  # the options, without redirections
+    if ambiguous and paths:
+        # A word read as a redirection may have been a quoted path or option ('>' -i), and an abbreviated option may
+        # have taken a word read as a path: the named paths are unknown, so they do not narrow or skip the check
+        paths = None
     return {"msg": msg, "dry": dry, "paths": paths, "include": include, "args": flags}
 
 
@@ -663,11 +679,19 @@ def on_post_bash(inp):
     if not calls:
         return unseen_commit(inp, cmd)
     hp = heads_path(inp["session_id"])
-    if not calls or not os.path.exists(hp):
+    if not os.path.exists(hp):
         return None  # no checked commit in this session (the gate is off, or PreToolUse did not get that far)
-    top, common = repo_of(calls[0]["cwd"] or inp.get("cwd"))
-    if not top:
-        return None
+    done = set()
+    for c in calls:  # every repo the command commits to (git -C a commit …; git -C b commit …)
+        top, common = repo_of(c["cwd"] or inp.get("cwd"))
+        if top and top not in done:
+            done.add(top)
+            log_commit(inp, cmd, hp, top, common)
+    return None
+
+
+def log_commit(inp, cmd, hp, top, common):
+    """Log the commit made in top by this command, if HEAD moved since the PreToolUse check."""
     with Locked(hp, {}) as h:
         before = h.pop(top, None)
     rc, sha = git(top, "rev-parse", "--verify", "--quiet", "HEAD")
@@ -725,9 +749,13 @@ def staged_differs(top, named=(), cwd=None):
     ["(git diff failed)"] when either side cannot be read, so the check fails closed."""
     rc1, staged = git(top, "diff", "--cached", "--name-only", "--ignore-submodules=dirty", "-z")
     rc2, unstaged = git(top, "diff", "--name-only", "--ignore-submodules=dirty", "-z")
-    if rc1 != 0 or rc2 != 0:
+    rc3, deleted = git(top, "diff", "--cached", "--name-only", "--diff-filter=D", "-z")
+    if rc1 != 0 or rc2 != 0 or rc3 != 0:
         return ["(git diff failed)"]
     both = set(filter(None, staged.split("\0"))) & set(filter(None, unstaged.split("\0")))
+    # `git rm --cached f` leaves f in the working tree (untracked, so plain `git diff` does not list it): the verified
+    # tree has f, the commit drops it
+    both |= {f for f in filter(None, deleted.split("\0")) if os.path.lexists(os.path.join(top, f))}
     base, root = os.path.realpath(cwd or top), os.path.realpath(top)  # toplevel is resolved (/private/var vs /var)
     specs = [os.path.relpath(os.path.join(base, p), root).replace(os.sep, "/") for p in named]
     return sorted(f for f in both if not any(f == p or f.startswith(p.rstrip("/") + "/") or p == "."

@@ -9,7 +9,7 @@ Changes to the workflow plugin. The format follows [Keep a Changelog](https://ke
 - dev-flow step 3: end each commit message with a `Verification:` trailer (#77).
 
 ### Changed
-- The shell parser that dev-flow-gate used for `gh` moved to `hooks/_shell.py`, shared with commit-gate. It now finds commands after `sh -lc` / `bash -ic` (any short-option cluster with `c`) and after `sh -c --`, and treats `#` as a comment only where it starts a word, so `docs/a#b.md` no longer cuts the rest of the line. A `cd` inside `( … )` now ends with the subshell, `pushd` / `popd` keep a stack, and `cd "$PWD"`, `cd "$(pwd)"` and `cd "$(git rev-parse --show-toplevel)"` are followed.
+- The shell parser that dev-flow-gate used for `gh` moved to `hooks/_shell.py`, shared with commit-gate. It now finds commands after `sh -lc` / `bash -ic` (any short-option cluster with `c`) and after `sh -c --`, and treats `#` as a comment only where it starts a word, so `docs/a#b.md` no longer cuts the rest of the line. A `cd` inside `( … )` now ends with the subshell, `pushd` / `popd` keep a stack, `env -C <dir>` is followed, and `cd "$PWD"`, `cd "$(pwd)"` and `cd "$(git rev-parse --show-toplevel)"` are followed.
 
 ## [0.8.0] - 2026-11-17
 

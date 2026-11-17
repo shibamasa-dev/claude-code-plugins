@@ -247,11 +247,18 @@ row 'same, --pathspec-from-file (paths unknown): still blocked' "$(commit s9s9 p
 row "same, -m '>x' (a message, not a redirection): still blocked" "$(commit s9s10 p2 "git commit --trailer '$TR' -m '>x' -m y")" deny
 row 'same, > -a (a file named -a, not the option): still blocked' "$(commit s9s11 p2 "git commit -m x -m '$TR' > -a")" deny
 row 'same, -- >/dev/null (a redirection after --, not a path): still blocked' "$(commit s9s12 p2 "git commit -m x -m '$TR' -- >/dev/null")" deny
+row 'same, --mess x (an abbreviated --message; x is not a path): still blocked' "$(commit s9s13 p2 "git commit --trailer '$TR' --mess x")" deny
+row "same, a quoted '>' before -i <path> (paths unknown): checked in full" "$(commit s9s14 p2 "git commit --trailer '$TR' -m x '>' -i m.py")" deny
 reset; edit f; review s9 p1; stop s9 p1
 git add -A; git commit -qm "x" -m "$TR"
 row '--amend --no-edit keeps HEAD trailer' "$(commit s9 p2 'git commit --amend --no-edit')" allow
 row 'subagent payload (agent_id, same session) is read like the main one' "$(ev pre-bash-subagent s9 p2 "tool_input={\"command\":$(j "git commit -am x")}" | grep -q '"deny"' && echo deny || echo allow)" deny
 
+reset; git rm -q --cached m.py; review s9r p1; stop s9r p1
+row 'git rm --cached <file> with the file still in the working tree (verified with it): blocked' "$(commit s9r p2 "git commit -m x -m '$TR'")" deny
+git reset -q --hard; reset; git rm -q m.py; review s9r2 p1; stop s9r2 p1
+row 'git rm <file> (gone from the working tree too): passes' "$(commit s9r2 p2 "git commit -m x -m '$TR'")" allow
+git reset -q --hard
 S="$T/subsrc"; git init -q -b main "$S"; ( in_dir "$S"; echo s > s; git add s; git commit -qm s )
 reset; git -c protocol.file.allow=always submodule add -q "$S" sub 2>/dev/null; echo dirty >> sub/s
 review s9m p1; stop s9m p1
@@ -291,6 +298,9 @@ row 'pushd <other> && popd && git commit: judged here' "$(CLAUDE_PLUGIN_OPTION_C
 row '(cd <other> && git commit): judged there (ungated)' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14d p1 "(cd '$OT' && git commit -am x)")" allow
 row 'mirror, from the ungated repo: (cd <gated> && true); git commit stays ungated' "$(W0="$W"; W="$OT" CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14e p1 "(cd '$W0' && true); git commit -am x")" allow
 row 'mirror: pushd <gated> && popd && git commit stays ungated' "$(W0="$W"; W="$OT" CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14f p1 "pushd '$W0' >/dev/null && popd >/dev/null && git commit -am x")" allow
+row 'env -C <other> git commit: judged there (ungated)' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14h p1 "env -C '$OT' git commit -am x")" allow
+row 'mirror: env --chdir=<gated> git commit from the ungated repo: judged there' "$(W0="$W"; W="$OT" CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14i p1 "env --chdir='$W0' git commit -am x")" deny
+row 'env -C "$VAR" git commit: unresolved' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14j p1 'env -C "$REPO" git commit -am x')" unresolved
 row 'popd with an empty stack: unresolved' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14g p1 "popd && git commit -am x")" unresolved
 set_repo_cfg -
 
@@ -309,6 +319,10 @@ row 'git commit -q (no summary printed) is still logged' "$(posted 'git commit -
 row 'after a commit with no trailer: stamp missing' "$(lastlog stamp)" missing
 edit h2; n0=$(loglines); commit s13 p2 'git commit -qam z' >/dev/null; posted 'git commit -qam z' '' >/dev/null
 row 'a refused commit (HEAD did not move) is not logged as committed' "$(lastlog decision)" would_block
+H2="$T/second"; git init -q -b main "$H2"; ( in_dir "$H2"; mkdir -p .claude; echo '{"commitGate": "observe"}' > .claude/verification.json; echo a > a; git add -A; git commit -qm a; echo b >> a )
+edit h2b; C2="git -C '$W' commit -qam a5; git -C '$H2' commit -qam b5"
+CLAUDE_PLUGIN_OPTION_COMMIT_GATE=observe commit s13 p2 "$C2" >/dev/null; git -C "$W" commit -qam a5; git -C "$H2" commit -qam b5
+row 'two repos committed in one command: both logged' "$(n0=$(loglines); posted "$C2" '' >/dev/null; c=$(tail -n +$((n0 + 1)) "$LOG" | grep -c '"committed"'); [ "$c" = 2 ] && echo both || echo "only$c")" both
 edit h3; git commit -qam w   # a commit the PreToolUse side never saw (as through make, eval, an alias)
 row 'HEAD moved in a command not read as a commit: logged as committed' "$(n0=$(loglines); posted 'make release' ''; )" committed
 row 'that line is marked unseen by the pre-commit check' "$([ "$(lastlog unseen)" = True ] && echo unseen || echo missing)" unseen
