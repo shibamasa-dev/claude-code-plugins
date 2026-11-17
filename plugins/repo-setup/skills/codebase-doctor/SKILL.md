@@ -37,7 +37,7 @@ digraph doctor {
 
 Use Glob and Read on manifest files. Do NOT ask the user — detect automatically. **One exception: project start** — see 1a-start.
 
-Look for manifests at the repository root and one directory below it (a monorepo's `apps/web/package.json` counts), ignoring `node_modules/`, `.git/` and `vendor/`. Then pick the mode:
+Look for manifests anywhere in the repository (a monorepo's `apps/web/package.json` or `packages/api/go.mod` counts), ignoring `node_modules/`, `.git/`, `vendor/` and build output (`dist/`, `build/`, `target/`). Then pick the mode:
 
 | Repo state | Mode |
 |---|---|
@@ -429,7 +429,7 @@ Whether the project's lint / format / test / CI machinery is wired — not wheth
 - **PASS**: all applicable pieces wired and CI runs them
 - **WARN**: pieces exist but disconnected (linter installed but no CI step; formatter and linter conflict)
 - **FAIL**: none configured
-- **Fix**: when CLAUDE.md has a Decided setup section, propose the linter, formatter, test runner and CI it names, and no others. Otherwise propose tools matching the detected stack. Apply in this order: repo hygiene files, linter, formatter, test runner, CI. Merge into existing config files, never overwrite them, and install no package without approval
+- **Fix**: decide per area (linter, formatter, test runner, CI). Where the Decided setup section still has a line for the area, propose the tool it names and no other. Where it has none (never recorded, or removed once the repo stated it), propose the tool the repo's own files point to, else one matching the detected stack. Apply in this order: repo hygiene files, linter, formatter, test runner, CI. Merge into existing config files, never overwrite them, and install no package without approval
 
 #### 17. Real-app verification path
 Whether the project has its own skill that drives the real app the way users do (the same commands or screens, in order) and keeps evidence. Tests check functions; such a skill lets someone run the app end-to-end without touching production. **Only presence — never judge the contents** (same rule as 6b): `[PASS]` means the files exist, not that the skill isolates the run, keeps credentials out, has a read-only Doctor, observes its evidence or cleans up safely.
