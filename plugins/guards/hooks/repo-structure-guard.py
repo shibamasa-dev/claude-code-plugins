@@ -143,8 +143,16 @@ def base_spec(root: str):
     if not _has_ref(root, ref):
         print(f"repo-structure-guard: cannot read origin/{name}; skipping the repo's rule file", file=sys.stderr)
         return False
-    rc, text = _git(root, "show", f"{ref}:{SPEC_RELPATH.replace(os.sep, '/')}")
-    return (f"origin/{name}:{SPEC_RELPATH}", text) if rc == 0 else None
+    rel = SPEC_RELPATH.replace(os.sep, "/")
+    rc, text = _git(root, "show", f"{ref}:{rel}")
+    if rc == 0:
+        return f"origin/{name}:{SPEC_RELPATH}", text
+    # None only when the tree says the file is absent; a blob that cannot be read (a partial clone offline) is False
+    rc, listed = _git(root, "ls-tree", "--name-only", ref, "--", rel)
+    if rc == 0 and not listed.strip():
+        return None
+    print(f"repo-structure-guard: cannot read {SPEC_RELPATH} on origin/{name}; skipping the repo's rule file", file=sys.stderr)
+    return False
 
 
 def resolve_spec(path: str):

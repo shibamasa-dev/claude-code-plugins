@@ -8,7 +8,7 @@
 # How it decides (the first one found, from the top; the result is not saved):
 #   1. A line in the repo's CLAUDE.md / AGENTS.md / .claude/CLAUDE.md on the default branch (origin/<default>; the working tree only
 #      when there is no origin remote; exit 4 when origin's default branch cannot be told) (`review-heavy:` / `review-light:` / `review-auto:`; `review-heavy: none` means "no tools").
-#      A line added or changed by a PR takes effect once it is merged
+#      A line added or changed by a PR takes effect once it is merged and the local origin/<default> is fetched
 #   2. Environment variables CLAUDE_PLUGIN_OPTION_REVIEW_HEAVY / _LIGHT / _AUTO (userConfig `review_heavy` / `review_light` / `review_auto`)
 #   3. Defaults: light is `claude`, auto is `off`. heavy has no default (exit 4)
 # Does not guess from bots that showed up on past PRs. With automatic review turned off, light PRs leave no bot trace, so the guess would be empty.
@@ -69,7 +69,13 @@ fi
 line=
 for f in CLAUDE.md AGENTS.md .claude/CLAUDE.md; do
   if [ -n "$ref" ]; then
-    text=$(git -C "$root" show "$ref:$f" 2>/dev/null) || continue
+    # 5 s, no prompt: in a partial clone the blob may be fetched on demand
+    if ! text=$(GIT_TERMINAL_PROMPT=0 perl -e 'alarm 5; exec @ARGV' git -C "$root" show "$ref:$f" </dev/null 2>/dev/null); then
+      # Absent on the default branch: try the next file. Present but unreadable: skip the repo's lines (never a later file)
+      listed=$(git -C "$root" ls-tree --name-only "$ref" -- "$f" </dev/null 2>/dev/null) && [ -z "$listed" ] && continue
+      echo "detect-bots: cannot read $f on ${ref#refs/remotes/}; skipping the repo's review-* lines" >&2
+      line=; break
+    fi
   else
     [ -f "$root/$f" ] || continue
     text=$(cat "$root/$f")

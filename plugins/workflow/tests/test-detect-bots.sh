@@ -5,6 +5,8 @@
 # Background: it used to guess from the bots on recent PRs, but with automatic review turned off, light PRs leave no trace,
 #       the guess comes out empty, and some PRs get no review at all. Guessing was dropped; with no line and no setting it exits 4 so the caller asks.
 set -u
+# A caller's repo-selecting git variables (a git hook sets GIT_DIR) must not point the fixtures at the caller's repo
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
 D="$(cd "$(dirname "$0")/.." && pwd)/skills/pr-review-triage/scripts/detect-bots.sh"
 T=$(mktemp -d "${TMPDIR:-/tmp}/detect-bots-test.XXXX")
 trap 'rm -rf "$T"' EXIT
@@ -70,4 +72,11 @@ rot() { w=$(base "$1" 'review-heavy: coderabbit' 'review-heavy: none'); o="$T/$1
 row 'dangling origin/HEAD, origin reachable: asks origin (trunk)' "$(det "$(rot dangleA)")" 'coderabbit/0'
 w=$(rot dangleB); git -C "$w" push -q origin feat:x && git -C "$T/dangleB/origin.git" update-ref refs/heads/main refs/heads/x || exit 1
 row 'dangling origin/HEAD, pushed main: main is not fetched' "$(det "$w")" 'coderabbit/0'
+# partial clone (blob:none) with origin gone: CLAUDE.md's blob cannot be fetched; AGENTS.md (fetched earlier) must not stand in
+w=$(base partial 'review-heavy: coderabbit' 'review-heavy: none'); g() { git -C "$w" -c user.name=t -c user.email=t@t "$@"; }
+g checkout -q main && printf '%s\n' 'review-heavy: none' > "$w/AGENTS.md" && g add AGENTS.md && g commit -qm agents && g push -q origin main || exit 1
+git -C "$T/partial/origin.git" config uploadpack.allowFilter true
+git clone -q --filter=blob:none --no-checkout "file://$T/partial/origin.git" "$T/partial/clone" 2>/dev/null \
+  && git -C "$T/partial/clone" cat-file -p origin/main:AGENTS.md >/dev/null && mv "$T/partial/origin.git" "$T/partial/gone.git" || exit 1
+row 'partial clone offline: an unreadable CLAUDE.md skips the lines' "$(det "$T/partial/clone")" '/4'
 exit $fail

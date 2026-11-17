@@ -118,6 +118,7 @@ reviews:
 - クラウドのセッションと Claude Projects のセッションは、手元のオーケストレータに報告しない（手元のセッションへメッセージを送れないため）
 - 既定ブランチから設定を読むチェック（pr-review-triage の `review-*:` 行）が防ぐのは、ブランチの中身（コミットしたファイル・push したブランチ）で変えられるものまで。手元の git の設定と環境変数は信頼し、既定ブランチは `origin` のものを正とする。fork で作業する場合は `upstream` ではなく fork の既定ブランチになる。
 - origin の既定ブランチが分からないとき（使える手元の `origin/HEAD` が無く、origin にも届かない）、チェックは動かず、その旨を出し、origin に聞き直すのは 1 時間以上あとになる。
+- `origin/<既定>` やその上のファイルを読めないときは、リポの `review-*:` 行を飛ばして stderr にその旨を出し、userConfig、次に既定値を使う（`review-heavy` には既定値が無いので `detect-bots.sh` は終了コード 4 で終わる）。取得済みの `origin/<既定>` は、origin より古くてもそのまま読む。
 - プロジェクトの `.claude/settings.json` はプラグインを無効にでき（`enabledPlugins`）、セッションの環境変数も設定できる（`env`）。このファイルを変える PR は人が差分を見る必要がある。止められるのは managed settings だけ。
 
 ## 前提

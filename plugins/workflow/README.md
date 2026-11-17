@@ -118,6 +118,7 @@ Organization values (GitHub org, default repo, Issue Fields, project board) aren
 - Cloud sessions and Claude Projects sessions do not report to a local orchestrator (they cannot send messages to local sessions)
 - The checks that read their config from the default branch (pr-review-triage's `review-*:` lines) defend against what a branch's content can change (committed files, pushed branches). They trust the local git configuration and environment, and origin's default branch is the authority: in a fork workflow that is the fork, not `upstream`.
 - When origin's default branch cannot be determined (no usable local `origin/HEAD` and origin unreachable), the check does not run, says so, and asks origin again no sooner than an hour later.
+- When `origin/<default>`, or a file on it, cannot be read, the repo's `review-*:` lines are skipped with a note on stderr, and userConfig and then the defaults apply (`review-heavy` has no default, so `detect-bots.sh` exits 4). An `origin/<default>` already fetched is read as it is, even when it is behind origin.
 - A project `.claude/settings.json` can disable a plugin (`enabledPlugins`) and set environment variables for the session (`env`), so a PR that changes that file needs a human look at the diff; only managed settings can prevent it.
 
 ## Requirements

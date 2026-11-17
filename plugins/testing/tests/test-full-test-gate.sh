@@ -3,6 +3,8 @@
 # command that records a pass or drop the gate that blocks its own release. Without an origin remote it reads the working
 # tree and says so on stderr. `run --working-tree` tries the working tree's config and never records.
 set -u
+# A caller's repo-selecting git variables (a git hook sets GIT_DIR) must not point the fixtures at the caller's repo
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
 H="$(cd "$(dirname "$0")/.." && pwd)/hooks/full-test-gate.py"
 T=$(mktemp -d "${TMPDIR:-/tmp}/ftg-test.XXXX") || exit 1
 trap 'rm -rf "$T"' EXIT
@@ -125,4 +127,14 @@ row 'dangling origin/HEAD, pushed main: release still gated'        "$(pre "$w")
 # origin exists but cannot be read: not opted in (the working tree config is not used)
 w=$(repo unreadable "$BASE_CFG"); g "$w" remote set-url origin "$T/missing.git"; g "$w" update-ref -d refs/remotes/origin/main
 row 'origin unreadable: not opted in (status)'                    "$(cd "$w" && python3 "$H" status 2>/dev/null | grep -q 'Not configured' && echo off || echo on)" off
+# GIT_DIR naming another repo does not redirect the test command either (it runs against the repo it gates)
+w=$(repo gdrun '{"command": "git log -1 --format=%s origin/main > ran", "paths": ["src"]}'); git init -q "$T/gdrun/other"
+rm -rf "$FULL_TEST_STATE_DIR"; (cd "$w" && GIT_DIR="$T/gdrun/other/.git" python3 "$H" run >/dev/null 2>&1)
+row 'GIT_DIR naming another repo: the test command reads this repo' "$(ran "$w")" base
+
+# partial clone (blob:none) with origin gone: the config blob cannot be fetched, and stderr says so (not a quiet "not opted in")
+w=$(repo partial "$BASE_CFG"); git -C "$T/partial/origin.git" config uploadpack.allowFilter true
+git clone -q --filter=blob:none --no-checkout "file://$T/partial/origin.git" "$T/partial/clone" 2>/dev/null && mv "$T/partial/origin.git" "$T/partial/gone.git" || exit 1
+err=$(cd "$T/partial/clone" && python3 "$H" status 2>&1 >/dev/null)
+row 'partial clone offline: a note that the config cannot be read'  "$(printf '%s' "$err" | grep -q 'cannot read' && echo note || echo quiet)" note
 exit $fail

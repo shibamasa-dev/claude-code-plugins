@@ -73,7 +73,13 @@ def read_config(top, working_tree=False):
               "ref unavailable; retried after 1 hour): not gating", file=sys.stderr)
         return None
     rc, text = git(top, "show", f"refs/remotes/{base}:{CONFIG}")
-    return text if rc == 0 else None
+    if rc == 0:
+        return text
+    # Absent (= not opted in) only when the tree says so; a blob that cannot be read (a partial clone offline) is reported
+    rc, listed = git(top, "ls-tree", "--name-only", f"refs/remotes/{base}", "--", CONFIG)
+    if rc != 0 or listed:
+        print(f"[full-test-gate] cannot read {CONFIG} on {base}: not gating", file=sys.stderr)
+    return None
 
 
 def load_project(cwd, working_tree=False):
@@ -229,7 +235,7 @@ def cmd_run(cwd, working_tree=False):
         if rc_same > 1:
             print(f"[full-test-gate] Cannot read the comparison base {base} (not available locally). Run git fetch and try again"); return 1
     p = subprocess.Popen(cfg["command"], shell=True, cwd=top, stdout=subprocess.PIPE,
-                         stderr=subprocess.STDOUT, text=True)
+                         stderr=subprocess.STDOUT, text=True, env=GIT_ENV)
     out = []
     for line in p.stdout:
         sys.stdout.write(line); out.append(line)

@@ -3,6 +3,8 @@
 # the layout rule it is judged by. Missing there -> the user's ~/.claude/rules file, never the working tree.
 # Without an origin remote it reads the working tree and says so on stderr.
 set -u
+# A caller's repo-selecting git variables (a git hook sets GIT_DIR) must not point the fixtures at the caller's repo
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
 H="$(cd "$(dirname "$0")/.." && pwd)/hooks/repo-structure-guard.py"
 R=$(mktemp -d "${TMPDIR:-/tmp}/rsg-base.XXXX") || exit 1
 trap 'rm -rf "$R"' EXIT
@@ -76,4 +78,8 @@ row 'dangling origin/HEAD, pushed main: main is not fetched'        "$(probe "$w
 w=$(repo unreadable '' sneaky.md); git -C "$w" remote set-url origin "$R/missing.git"; git -C "$w" update-ref -d refs/remotes/origin/main
 row 'origin unreadable: the working tree rule is not used'         "$(probe "$w/docs/other.md")" silent
 row 'origin unreadable, no user rule: a "check did not run" note'  "$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$w/docs/other.md" | env -u REPO_STRUCTURE_SPEC HOME="$R/home" python3 "$H" 2>/dev/null | grep -q 'NOT RUN' && echo note || echo quiet)" note
+# partial clone (blob:none) with origin gone: the rule blob cannot be fetched, which is not "no rule file"
+w=$(repo partial base.md sneaky.md); git -C "$R/partial/origin.git" config uploadpack.allowFilter true
+git clone -q --filter=blob:none --no-checkout "file://$R/partial/origin.git" "$R/partial/clone" 2>/dev/null && mv "$R/partial/origin.git" "$R/partial/gone.git" || exit 1
+row 'partial clone offline, no user rule: a "check did not run" note' "$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$R/partial/clone/docs/sneaky.md" | env -u REPO_STRUCTURE_SPEC HOME="$R/home" python3 "$H" 2>/dev/null | grep -q 'NOT RUN' && echo note || echo quiet)" note
 exit $FAIL
