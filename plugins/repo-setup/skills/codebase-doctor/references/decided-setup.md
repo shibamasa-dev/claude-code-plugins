@@ -51,14 +51,14 @@ Check each bullet against its evidence:
 | Line value | Stated by | Not stated by |
 |---|---|---|
 | TypeScript on Cloudflare Workers | a `typescript` dependency or `tsconfig.json`, **and** `wrangler.toml` or `@cloudflare/workers-types` | `package.json` with `typescript` alone (that says Node.js) |
-| TypeScript on Node.js | `package.json` with a `typescript` dependency or `tsconfig.json`, and no other runtime's config (`wrangler.toml`, `deno.json`, `bun.lock`) | `tsconfig.json` without `package.json` |
+| TypeScript on Node.js | `package.json` with a `typescript` dependency or `tsconfig.json`, **and** a positive Node.js signal: `engines.node`, `@types/node`, or a script that runs `node` / `tsx` / `ts-node` | a browser-only TypeScript project (Vite or similar, no Node.js signal); `tsconfig.json` without `package.json` |
 | Biome (lint and format) | `biome.json` where neither `linter.enabled` nor `formatter.enabled` is `false` (both default to on) | `biome.json` with `formatter.enabled: false` (states lint only) |
 
 - **Same value stated** → propose removing the line. All removals of one run form **one grouped Step 6 proposal** naming the evidence ("Shrink Decided setup: remove 3 lines now stated by package.json, pnpm-lock.yaml, eslint.config.js"). Never remove a line without approval
 - **A different value stated** (the section says pnpm, the tracked lock file is `package-lock.json`) → keep the line, report `[WARN]` under Check 1 ("Decided setup contradicts the repo: Package manager"), and let Step 6 ask whether to keep or remove it
 - **Only manifests and config files are evidence.** Prose elsewhere in CLAUDE.md removes nothing
 - **Lines the user edited or added inside the markers**: a bullet with a known key is compared using its current value — the edit is the current decision. Any other line (free text, a bullet with an unknown key) is never removed or rewritten, and keeps the section alive
-- **Empty section**: once no bullet and no user line would remain, the proposal removes the skill's own bytes — the block and the one separating blank line that the skill added. If CLAUDE.md would then hold only whitespace or only `@AGENTS.md`, the same proposal offers to delete the file; Check 1 then proposes `/init` as usual
+- **Empty section**: once no bullet and no user line would remain, the proposal removes the skill's own bytes — the block and the one separating blank line that the skill added — and nothing else. The file itself is never deleted, even when what remains is only whitespace or `@AGENTS.md` (the skill cannot tell whether it created that text); Check 1 then rates the file as usual
 - **Broken markers** (an opening marker without a closing one, or more than one section): edit nothing, report `[WARN]` under Check 1, and ask the user to fix the markers
 
 ## States

@@ -49,7 +49,7 @@ Look for manifests anywhere in the repository (a monorepo's `apps/web/package.js
 
 **1a-start. Project start: ask, propose, record.**
 
-**Can this run ask?** Only an interactive session can. When the skill runs as a subagent, headless, or without `AskUserQuestion` and with no user turn to follow, it does not ask and does not wait: it writes nothing, reports `Stack: none yet (project start)` with one line saying the project-start questions were skipped because the run cannot ask, and continues the audit. In an interactive session without `AskUserQuestion`, ask the same questions in one plain-text message and wait.
+**Can this run ask?** Only an interactive session can. When the skill runs as a subagent, headless, or without `AskUserQuestion` and with no user turn to follow, it does not ask and does not wait: it writes no Decided setup section (CLAUDE.md is not created or changed), reports `Stack: none yet (project start)` with one line saying the project-start questions were skipped because the run cannot ask, and continues the audit, including the Step 4 report. In an interactive session without `AskUserQuestion`, ask the same questions — and later the Adopt question — in plain-text messages and wait for each answer.
 
 1. **Ask only what the user's request does not already answer** ("make a CLI in Go" fixes the type and the language, so those questions are skipped). Use one `AskUserQuestion` call with at most these four questions; "Other" gives free text:
 
@@ -76,7 +76,7 @@ Look for manifests anywhere in the repository (a monorepo's `apps/web/package.js
 
    Choose in this order: a hard constraint from question 4; then the default the hosting platform documents first; then the ecosystem's default tool. One tool per job, preferring a combined linter and formatter where the ecosystem has one. Fewest moving parts for "Just me". No version numbers — the manifest will carry them.
 
-3. **Ask once more** with `AskUserQuestion`: Adopt / Change some rows (Other: which) / Don't record. Only "Adopt" (after any changes) writes the Decided setup section. Installing the tools is not part of this step: they come later as Check 16 fixes through Steps 5 and 6.
+3. **Ask once more** with `AskUserQuestion` (or in plain text, as above): Adopt / Change some rows (Other: which) / Don't record. Only "Adopt" (after any changes) writes the Decided setup section. Installing the tools is not part of this step: they come later as Check 16 fixes through Steps 5 and 6.
 
 4. Continue the audit with phase `setup`, using the section as the stack.
 
