@@ -31,7 +31,7 @@ BOTS='coderabbit=coderabbitai\[bot\] codex=chatgpt-codex-connector\[bot\] copilo
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY
 root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 # Read the files from the default branch (origin/<default>), not the working tree, so a PR cannot pick the tools that review it.
-# The name is the local origin/HEAD; without it, origin is asked once (ls-remote, 5 s, no prompt) and a success is cached as the
+# The name is the local origin/HEAD when its ref exists locally; otherwise origin is asked once (ls-remote, 5 s, no prompt) and a success is cached as the
 # local origin/HEAD. A failed network attempt is remembered for an hour (the mtime of detect-bots-origin-miss in the git common
 # dir). origin/main or origin/master is never guessed: when the default branch cannot be told, exit 4 (the caller asks).
 # A missing origin/<name> is fetched once into that ref (explicit, so a single-branch clone gets it too); a stale ref is fine.
@@ -44,6 +44,8 @@ if git -C "$root" remote get-url origin >/dev/null 2>&1; then
   miss="$(git -C "$root" rev-parse --path-format=absolute --git-common-dir)/detect-bots-origin-miss"
   net_ok=1; [ -n "$(find "$miss" -mmin -60 2>/dev/null)" ] && net_ok=0
   name=$(git -C "$root" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null); name=${name#origin/}
+  # A dangling origin/HEAD (its ref was pruned) is not fetched by name: that name may now be any pushed branch
+  [ -n "$name" ] && ! git -C "$root" rev-parse --verify --quiet "refs/remotes/origin/$name" >/dev/null && name=
   if [ -z "$name" ] && [ "$net_ok" = 1 ]; then
     name=$(net ls-remote --symref origin HEAD | sed -n 's|^ref: refs/heads/\([^[:space:]]*\)[[:space:]]*HEAD$|\1|p')
     if [ -n "$name" ]; then

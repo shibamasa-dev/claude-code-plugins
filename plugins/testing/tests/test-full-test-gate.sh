@@ -105,6 +105,23 @@ w=$(repo "日本語 dir/プロジェクト" "$BASE_CFG"); branch_cfg "$w" '{"com
 rm -rf "$FULL_TEST_STATE_DIR"; (cd "$w" && python3 "$H" run >/dev/null 2>&1)
 row 'non-ASCII path with a space: the default branch command runs' "$(ran "$w")" base
 
+# origin's default moved from main to trunk and main was deleted; the clone's origin/HEAD still names the pruned
+# origin/main. State A: origin is asked again (trunk). State B: someone pushed a new main; it must not be fetched by name
+rot() {  # rot <name> <branch config> -> clone whose origin/HEAD dangles (origin default is now trunk)
+  w=$(repo "$1" "$BASE_CFG"); [ -n "$2" ] && branch_cfg "$w" "$2"; o="$T/$1/origin.git"
+  g "$w" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+  git -C "$o" branch trunk main && git -C "$o" symbolic-ref HEAD refs/heads/trunk && git -C "$o" branch -D -q main \
+    && g "$w" fetch -q --prune origin || exit 1
+  echo "$w"; }
+w=$(rot dangleA ''); rm -rf "$FULL_TEST_STATE_DIR"; (cd "$w" && python3 "$H" run >/dev/null 2>&1)
+row 'dangling origin/HEAD, origin reachable: asks origin (trunk)'  "$(ran "$w")" base
+w=$(rot dangleB '{"command": "echo branch > ran", "paths": ["src"], "gate": []}')
+g "$w" push -q origin feat:x && git -C "$T/dangleB/origin.git" update-ref refs/heads/main refs/heads/x || exit 1
+rm -rf "$FULL_TEST_STATE_DIR"; (cd "$w" && python3 "$H" run >/dev/null 2>&1)
+row 'dangling origin/HEAD, pushed main: main is not fetched'        "$(ran "$w")" base
+echo b >> "$w/src/a"
+row 'dangling origin/HEAD, pushed main: release still gated'        "$(pre "$w")" deny
+
 # origin exists but cannot be read: not opted in (the working tree config is not used)
 w=$(repo unreadable "$BASE_CFG"); g "$w" remote set-url origin "$T/missing.git"; g "$w" update-ref -d refs/remotes/origin/main
 row 'origin unreadable: not opted in (status)'                    "$(cd "$w" && python3 "$H" status 2>/dev/null | grep -q 'Not configured' && echo off || echo on)" off

@@ -61,4 +61,13 @@ row 'origin unreachable, pushed main: main is not used (exit 4)' "$(det "$w")" '
 git init -q "$T/gdother"
 row 'GIT_DIR naming another repo: the default branch line wins' "$(det "$(base gitdir 'review-heavy: coderabbit' 'review-heavy: none')" '' "GIT_DIR=$T/gdother/.git")" 'coderabbit/0'
 row 'non-ASCII path with a space: the default branch line wins' "$(det "$(base "日本語 dir/プロジェクト" 'review-heavy: coderabbit' 'review-heavy: none')")" 'coderabbit/0'
+# origin's default moved to trunk, main deleted, the clone's origin/HEAD dangles; then someone pushes a main with `none`
+rot() { w=$(base "$1" 'review-heavy: coderabbit' 'review-heavy: none'); o="$T/$1/origin.git"
+  git -C "$w" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+  git -C "$o" branch trunk main && git -C "$o" symbolic-ref HEAD refs/heads/trunk && git -C "$o" branch -D -q main \
+    && git -C "$w" fetch -q --prune origin || exit 1
+  echo "$w"; }
+row 'dangling origin/HEAD, origin reachable: asks origin (trunk)' "$(det "$(rot dangleA)")" 'coderabbit/0'
+w=$(rot dangleB); git -C "$w" push -q origin feat:x && git -C "$T/dangleB/origin.git" update-ref refs/heads/main refs/heads/x || exit 1
+row 'dangling origin/HEAD, pushed main: main is not fetched' "$(det "$w")" 'coderabbit/0'
 exit $fail

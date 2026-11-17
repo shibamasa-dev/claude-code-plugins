@@ -62,6 +62,17 @@ row 'origin unreachable, pushed main: the user rule applies'       "$(probe "$w/
 rm -rf "$R/home/.claude"
 w=$(repo "日本語 dir/プロジェクト" base.md sneaky.md)
 row 'non-ASCII path with a space: the default branch rule denies'  "$(probe "$w/docs/sneaky.md")" deny
+# origin's default moved to trunk, main deleted, the clone's origin/HEAD dangles; then someone pushes a loosening main
+rot() { w=$(repo "$1" base.md sneaky.md); o="$R/$1/origin.git"
+  git -C "$w" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+  git -C "$o" branch trunk main && git -C "$o" symbolic-ref HEAD refs/heads/trunk && git -C "$o" branch -D -q main \
+    && git -C "$w" fetch -q --prune origin || exit 1
+  echo "$w"; }
+w=$(rot dangleA)
+row 'dangling origin/HEAD, origin reachable: the trunk rule allows' "$(probe "$w/docs/base.md")" silent
+row 'dangling origin/HEAD, origin reachable: the trunk rule denies' "$(probe "$w/docs/sneaky.md")" deny
+w=$(rot dangleB); git -C "$w" push -q origin feat:x && git -C "$R/dangleB/origin.git" update-ref refs/heads/main refs/heads/x || exit 1
+row 'dangling origin/HEAD, pushed main: main is not fetched'        "$(probe "$w/docs/sneaky.md")" deny
 w=$(repo unreadable '' sneaky.md); git -C "$w" remote set-url origin "$R/missing.git"; git -C "$w" update-ref -d refs/remotes/origin/main
 row 'origin unreadable: the working tree rule is not used'         "$(probe "$w/docs/other.md")" silent
 row 'origin unreadable, no user rule: a "check did not run" note'  "$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$w/docs/other.md" | env -u REPO_STRUCTURE_SPEC HOME="$R/home" python3 "$H" 2>/dev/null | grep -q 'NOT RUN' && echo note || echo quiet)" note

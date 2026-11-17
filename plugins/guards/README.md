@@ -47,7 +47,7 @@ guards doesn't gate merges. Merge conditions (reviews done, a `## Result` sectio
 
 guards is a safety net against Claude's mistakes, not a sandbox against malicious commands. Commands built in ways the hooks can't parse may get through.
 
-The checks that read their config from the default branch (repo-structure-guard) defend against what a branch's content can change (committed files, pushed branches). They trust the local git configuration and environment, and origin's default branch is the authority: in a fork workflow that is the fork, not `upstream`.
+The checks that read their config from the default branch (repo-structure-guard) defend against what a branch's content can change (committed files, pushed branches). They trust the local git configuration and environment, and origin's default branch is the authority: in a fork workflow that is the fork, not `upstream`. When origin's default branch cannot be determined (no usable local `origin/HEAD` and origin unreachable), the check does not run, says so, and asks origin again no sooner than an hour later. A project `.claude/settings.json` can disable a plugin (`enabledPlugins`) and set environment variables for the session (`env`), so a PR that changes that file needs a human look at the diff; only managed settings can prevent it.
 
 ## Requirements
 

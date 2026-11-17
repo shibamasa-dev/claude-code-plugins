@@ -134,15 +134,16 @@ _DEFAULT = {}
 
 def default_branch(top):
     """`origin/<name>` for origin's default branch, or None when it cannot be told. One answer serves both the config
-    source and the comparison base. Order: the local origin/HEAD (no network); else ask origin once (ls-remote) and cache
-    a success as the local origin/HEAD; a failure is cached for MISS_TTL. origin/main or origin/master is never guessed,
+    source and the comparison base. Order: the local origin/HEAD when the ref it names exists locally (no network; a stale
+    one is fine); else ask origin once (ls-remote) and cache a success as the local origin/HEAD; a failure is cached for
+    MISS_TTL. A dangling origin/HEAD (its ref was pruned) is not fetched by name, since that name may now be any pushed branch. origin/main or origin/master is never guessed,
     since a pushed branch that is not the default would then supply the config. A missing origin/<name> is fetched once
     into that ref. None without an origin remote."""
     if top in _DEFAULT:
         return _DEFAULT[top]
     name = None
     rc, ref = git(top, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
-    if rc == 0 and ref.startswith("origin/"):
+    if rc == 0 and ref.startswith("origin/") and _has_ref(top, ref[len("origin/"):]):
         name = ref[len("origin/"):]
     elif git(top, "remote", "get-url", "origin")[0] == 0 and _net_allowed(top):
         rc, out = _net(top, "ls-remote", "--symref", "origin", "HEAD")

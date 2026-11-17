@@ -107,11 +107,13 @@ def _net(root: str, *args: str):
 
 
 def default_branch(root: str):
-    """origin's default branch name, or None when it cannot be told. The local origin/HEAD first (no network); else ask
-    origin once (ls-remote) and cache a success as the local origin/HEAD; a failure is cached for MISS_TTL.
+    """origin's default branch name, or None when it cannot be told. The local origin/HEAD when the ref it names exists
+    locally (no network; a stale one is fine); else ask origin once (ls-remote) and cache a success as the local
+    origin/HEAD; a failure is cached for MISS_TTL. A dangling origin/HEAD (its ref was pruned) is not fetched by name,
+    since that name may now be any pushed branch.
     origin/main or origin/master is never guessed, since a pushed branch that is not the default would then supply the rules."""
     rc, ref = _git(root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
-    if rc == 0 and ref.strip().startswith("origin/"):
+    if rc == 0 and ref.strip().startswith("origin/") and _has_ref(root, f"refs/remotes/{ref.strip()}"):
         return ref.strip()[len("origin/"):]
     if not _net_allowed(root):
         return None
