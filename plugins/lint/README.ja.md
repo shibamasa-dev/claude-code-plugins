@@ -2,7 +2,7 @@
 
 [English](README.md) | 日本語
 
-スキルなどの成果物を検査する linter 群。今は skill-lint のみ。
+スキルを作るための道具群。`skill-planner` が作る前に計画し、`skill-lint` が作った後に検査する。流れは計画（`skill-planner`）→ 作成（`skill-creator`）→ 検査（`skill-lint`）。
 
 ## 導入
 
@@ -15,6 +15,7 @@
 
 | スキル | 使いどころ |
 |---|---|
+| `skill-planner` | スキルを作る前の計画。そもそもスキルにすべきかを判断し、必要最小の実装レベル（指示のみ → references → scripts → CLI → ローカル／リモート永続化）を選び、references・scripts・状態の置き場・検証を計画して `skill-creator` に引き継ぐ。状態はスキルのディレクトリ内には置かず、プラグインのスキルなら `${CLAUDE_PLUGIN_DATA}`、単体スキルならユーザーが選ぶパスに置く計画にする。「スキルにすべき？」「スキルの計画を立てて」で使う |
 | `skill-lint` | スキルを不特定多数に配布してよいかを調べる。`/lint:skill-lint <スキルのディレクトリ>` で起動する。観点は「別の会社の人が、別のマシンにこのスキルを入れたら成り立つか。入れた人に何がバレるか」。決定論の `lint.py`（汎用の正規表現だけ）で、メールアドレス、ホームの絶対パスや個人ディレクトリらしいパス、tailnet のホスト、私的な issue 番号、決定の経緯、スキル配下の実行時データを拾う。人名・社名・取引先・私的ボットや私的リポへの依存・環境前提の手順は、エージェントの reviewer が実行環境から集めたヒント（`whoami`・git の user.name / email・gh のログイン名・ホスト名）と lint の結果をもとに判定する。reviewer の指摘は quote が行に逐語で含まれるものだけ残し、カテゴリ別に直し方つきで報告する。直すかどうかは聞いてから |
 
 ## フック
@@ -30,5 +31,6 @@
 ## 前提
 
 - `python3`（標準ライブラリだけ）
+- `skill-creator`（別の marketplace のスキル）は任意。入っていれば `skill-planner` が計画を渡し、無ければ計画をそのまま使って直接作る
 - 任意: `gh`（reviewer が gh のログイン名をヒントにする）、`gitleaks`（secret の検査を任せる。無ければ `skipped` と出る）
 - eval グループ B（`scripts/run_reviewer_eval.py`）は `claude` CLI。eval のスクリプトはメンテナ用で、公開していない手元の `evals/` の eval セットを読む
