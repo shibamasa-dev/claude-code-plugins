@@ -1,4 +1,4 @@
-import type { Engine, Register, SessionRateLimit } from 'claude-code'
+import type { EngineInterface, Register, SessionRateLimit } from 'claude-code'
 
 // Write the usage limits (rate limits) to /tmp/claude-<uid>/rate-limits.json.
 // An external script that watches the remaining weekly quota reads it. Format:
@@ -47,7 +47,7 @@ const toWindows = (limits: readonly SessionRateLimit[], seenAt: number): Snapsho
 // The directory is used only if it is a real directory owned by the user with mode 700. $.fs.stat returns only the
 // type and whether it is a link, not the owner and mode, so find (which does not follow a link at the starting
 // point) checks "directory, owned by the user, 700" in one go.
-async function filePath($: Engine) {
+async function filePath($: EngineInterface) {
   const idRun = await $.process.run(['id', '-u'])
   const uid = idRun.stdout.trim()
   if (idRun.exitCode !== 0 || !/^\d+$/.test(uid)) throw new Error('uid unavailable')
@@ -59,7 +59,7 @@ async function filePath($: Engine) {
   return `${dir}/rate-limits.json`
 }
 
-async function exportLimits($: Engine, limits: readonly SessionRateLimit[]) {
+async function exportLimits($: EngineInterface, limits: readonly SessionRateLimit[]) {
   const seenAt = Math.floor((await $.clock.now()) / 1000)
   const incoming = toWindows(limits, seenAt)
   if (Object.keys(incoming).length === 0) return
