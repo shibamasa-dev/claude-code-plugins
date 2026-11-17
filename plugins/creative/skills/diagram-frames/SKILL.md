@@ -19,7 +19,7 @@ This skill only fixes the meaning of the boxes. Layout, styling and rendering ar
    - actors (people, teams, systems acting)
    - states
 
-   The diagram type and the axis go together: an architecture diagram uses components, a flowchart uses process steps, a swimlane or sequence diagram uses actors, a state diagram uses states. Never mix two axes in one figure.
+   The diagram type and the axis go together: an architecture diagram uses components, a flowchart uses process steps, a sequence diagram uses actors, a state diagram uses states. In a swimlane flowchart the lanes group steps by actor, and the boxes are still process steps. Never mix two axes in one figure.
 2. **Put the declaration in the caption or legend** (`figcaption` in HTML, a title or note in Mermaid). Example: "Boxes are components (software and data stores). For the processing steps, see the flow diagram." It guides the reader and also fixes the standard you check against in the next step.
 3. **Check every box after drawing.** Ask of each box, one at a time: "is this a ___?" (the declared axis). When a box fails, either (a) move it to the diagram where it belongs, or (b) change the axis and redo the check. Never ship a figure with mixed boxes.
 4. **Split instead of cramming.** Wanting to show a processing flow inside an architecture diagram is the sign that a second diagram is needed. Make a pair (architecture + flow) rather than squeezing steps into component boxes.
