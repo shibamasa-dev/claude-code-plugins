@@ -13,7 +13,7 @@ Saved settings: accounts = `${user_config.accounts}`, channel = `${user_config.s
 
 - If accounts is empty, stop and ask the user to set the plugin's `accounts` option (`/plugin` → research → configure). Don't make up a list.
 - If language is empty, use the language the user writes to you in (for example `Japanese`).
-- Credentials are not settings. The script reads `XAI_API_KEY` and `SLACK_BOT_TOKEN` from the environment. Never print, echo or log their values. If one is missing, tell the user which variable to set in their shell profile (see the plugin README) and stop.
+- Credentials are not settings. The script reads `XAI_API_KEY` and `SLACK_BOT_TOKEN` from the environment. Never print, echo or log their values. `XAI_API_KEY` is always required: if it is missing, tell the user to set it in their shell profile (see the plugin README) and stop. Without `SLACK_BOT_TOKEN` a dry run still works but doesn't read the history (`history_read: false`), so it can't be followed by posting.
 
 Every command below starts with the same environment prefix. If a value contains a single quote, write it as `'\''` inside the quotes.
 

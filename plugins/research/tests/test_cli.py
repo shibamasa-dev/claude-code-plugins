@@ -85,6 +85,15 @@ class FakeChannel:
         return ts
 
 
+class FixedNow(datetime):
+    """`datetime` whose now() is 2026-09-23 00:02 UTC, so the first-run window (24 h back) covers REAL_POSTS."""
+
+    @classmethod
+    def now(cls, tz=None):
+        moment = datetime(2026, 9, 23, 0, 2, tzinfo=timezone.utc)
+        return moment.astimezone(tz) if tz else moment.replace(tzinfo=None)
+
+
 def search_replies(posts):
     """The first chunk returns posts; the other two return none."""
     return [response(posts)] + [response([])] * 2
@@ -250,6 +259,7 @@ class SafetyTest(unittest.TestCase):
         failure = research_x._xai.XaiError("HTTP 503: upstream timeout")
         out, err = io.StringIO(), io.StringIO()
         with patch.dict(os.environ, ENV, clear=True), \
+             patch.object(research_x, "datetime", FixedNow), \
              patch.object(research_x._slack, "fetch_history", channel.fetch_history), \
              patch.object(research_x._slack, "post", channel.post), \
              patch.object(research_x._xai, "latest_model", return_value=LATEST), \
