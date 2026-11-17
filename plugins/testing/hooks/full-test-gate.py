@@ -129,15 +129,12 @@ def default_base(top):
 
 
 def _local_default(top):
-    """The default branch name from local refs (origin/HEAD, else origin/main or origin/master). Used to find the config,
-    which is read on every Bash call, so origin is asked over the network (default_base) only when none of those exists
-    locally. A stale ref is fine (the older rules apply)."""
+    """The default branch name for finding the config: the local origin/HEAD, which costs no network on the per-call hook
+    path; without it, default_base (asks origin, then guesses main / master). A branch's mere existence never decides it,
+    since a pushed `main` that is not the default would otherwise supply the config. A stale ref is fine."""
     rc, ref = git(top, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
     if rc == 0 and ref.startswith("origin/"):
         return ref[len("origin/"):]
-    for name in ("main", "master"):
-        if git(top, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{name}")[0] == 0:
-            return name
     return default_base(top)[len("origin/"):]
 
 
@@ -199,9 +196,11 @@ def cmd_run(cwd, working_tree=False):
     if not cfg:
         print(f"Not configured (no {CONFIG} on the default branch)"); return 1
     base, paths = base_of(top, cfg), cfg.get("paths") or ["."]
-    rc_same, _ = git(top, "diff", "--quiet", base, "--", *paths)
-    if rc_same > 1:
-        print(f"[full-test-gate] Cannot read the comparison base {base} (not available locally). Run git fetch and try again"); return 1
+    rc_same = 0
+    if not working_tree:  # --working-tree never records, so it needs no comparison base
+        rc_same, _ = git(top, "diff", "--quiet", base, "--", *paths)
+        if rc_same > 1:
+            print(f"[full-test-gate] Cannot read the comparison base {base} (not available locally). Run git fetch and try again"); return 1
     p = subprocess.Popen(cfg["command"], shell=True, cwd=top, stdout=subprocess.PIPE,
                          stderr=subprocess.STDOUT, text=True)
     out = []

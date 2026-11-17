@@ -40,6 +40,9 @@ import subprocess
 import sys
 
 SPEC_RELPATH = os.path.join(".claude", "rules", "repo-structure.md")
+# Git variables that select a repository are dropped, so `git -C <write target's repo>` really reads that repo
+_REPO_SELECT_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY")
+GIT_ENV = {**{k: v for k, v in os.environ.items() if k not in _REPO_SELECT_VARS}, "GIT_TERMINAL_PROMPT": "0"}
 
 
 def repo_root(path: str):
@@ -58,7 +61,7 @@ def _git(root: str, *args: str):
     """(returncode, stdout) of a git command in root. Never prompts; (1, "") on timeout."""
     try:
         r = subprocess.run(["git", "-C", root, *args], capture_output=True, text=True, stdin=subprocess.DEVNULL,
-                           timeout=5, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+                           timeout=5, env=GIT_ENV)
     except (subprocess.TimeoutExpired, OSError):
         return 1, ""
     return r.returncode, r.stdout
@@ -69,16 +72,18 @@ def _has_ref(root: str, ref: str) -> bool:
 
 
 def default_branch(root: str) -> str:
-    """The default branch name from local refs (origin/HEAD, else origin/main or origin/master). This runs on every new
-    file under docs/ or scripts/, so origin is asked over the network (ls-remote, 5 s) only when none of those exists."""
+    """The default branch name: the local origin/HEAD (no network; this runs on every new file under docs/ or scripts/),
+    else what origin reports (ls-remote, 5 s), else origin/main or origin/master. A branch's mere existence is only the
+    last guess, since a pushed `main` that is not the default would otherwise supply the rules."""
     rc, ref = _git(root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
     if rc == 0 and ref.strip().startswith("origin/"):
         return ref.strip()[len("origin/"):]
-    for name in ("main", "master"):
-        if _has_ref(root, f"refs/remotes/origin/{name}"):
-            return name
     m = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", _git(root, "ls-remote", "--symref", "origin", "HEAD")[1], re.M)
-    return m.group(1) if m else "main"
+    if m:
+        return m.group(1)
+    if not _has_ref(root, "refs/remotes/origin/main") and _has_ref(root, "refs/remotes/origin/master"):
+        return "master"
+    return "main"
 
 
 def base_spec(root: str):
@@ -90,7 +95,7 @@ def base_spec(root: str):
         try:  # fetch it once; a stale origin/<default> is fine (the older rules apply)
             # an explicit destination, so a single-branch clone (whose refspec does not cover name) still gets the ref
             subprocess.run(["git", "-C", root, "fetch", "--quiet", "origin", "--", f"+refs/heads/{name}:{ref}"], capture_output=True,
-                           stdin=subprocess.DEVNULL, timeout=5, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+                           stdin=subprocess.DEVNULL, timeout=5, env=GIT_ENV)
         except (subprocess.TimeoutExpired, OSError):
             pass
         if not _has_ref(root, ref):

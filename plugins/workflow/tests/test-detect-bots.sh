@@ -41,7 +41,9 @@ row 'line only on the branch: userConfig is used' "$(det "$(base new '' 'review-
 row 'line only on the branch, no setting: exit 4' "$(det "$(base new2 '' 'review-heavy: codex')")" '/4'
 note=$(cd "$(repo noorigin 'review-heavy: codex')" && env -u CLAUDE_PLUGIN_OPTION_REVIEW_HEAVY bash "$D" 2>&1 >/dev/null)
 row 'no origin: a one-line note on stderr' "$(printf '%s' "$note" | grep -q 'no origin remote' && echo yes || echo no)" 'yes'
-w=$(B=trunk base trunk 'review-heavy: coderabbit' 'review-heavy: none'); git -C "$w" remote set-head origin -d 2>/dev/null   # as with git < 2.48
+# trunk default, a non-default origin/main carrying the branch's line, no local origin/HEAD (as with git < 2.48)
+w=$(B=trunk base trunk 'review-heavy: coderabbit' 'review-heavy: none')
+git -C "$w" push -q origin feat:main && git -C "$w" fetch -q origin && git -C "$w" remote set-head origin -d 2>/dev/null
 row 'default branch trunk (no local origin/HEAD): its line wins' "$(det "$w")" 'coderabbit/0'
 w=$(base unreadable '' 'review-heavy: codex'); git -C "$w" remote set-url origin "$T/missing.git"; git -C "$w" update-ref -d refs/remotes/origin/main
 row 'origin unreadable: the working tree line is not used' "$(det "$w")" '/4'

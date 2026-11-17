@@ -21,14 +21,16 @@ repo() {
   fi
   g checkout -qb feat; spec "$w/.claude/rules/repo-structure.md" "$3"; g add -A; g commit -qm loosen; echo "$w"
 }
-probe() { printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$1" \
-  | env -u REPO_STRUCTURE_SPEC HOME="$R/home" python3 "$H" 2>/dev/null | grep -q '"deny"' && echo deny || echo silent; }
+probe() { f=$1; shift; printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$f" \
+  | env -u REPO_STRUCTURE_SPEC HOME="$R/home" "$@" python3 "$H" 2>/dev/null | grep -q '"deny"' && echo deny || echo silent; }
 FAIL=0
 row() { printf '  %-60s -> %-6s (expect %s)\n' "$1" "$2" "$3"; [ "$2" = "$3" ] || FAIL=1; }
 
 w=$(repo loosen base.md sneaky.md)
 row 'branch loosens the rule: the default branch rule still denies' "$(probe "$w/docs/sneaky.md")" deny
 row 'name allowed on the default branch'                           "$(probe "$w/docs/base.md")" silent
+lw=$w; o=$(repo other sneaky.md sneaky.md)
+row 'GIT_DIR naming another repo: the write target repo still rules' "$(probe "$lw/docs/sneaky.md" GIT_DIR="$o/.git")" deny
 w=$(repo new '' sneaky.md)
 row 'rule only on the branch, no user rule: no check'              "$(probe "$w/docs/other.md")" silent
 spec "$R/home/.claude/rules/repo-structure.md" user.md
@@ -39,7 +41,9 @@ row 'no origin: the working tree rule applies'                     "$(probe "$w/
 note=$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$w/docs/other.md" \
   | env -u REPO_STRUCTURE_SPEC HOME="$R/home" python3 "$H" 2>&1 >/dev/null)
 row 'no origin: a one-line note on stderr'                         "$(printf '%s' "$note" | grep -q 'no origin remote' && echo note || echo quiet)" note
-w=$(B=trunk repo trunk base.md sneaky.md); git -C "$w" remote set-head origin -d 2>/dev/null   # as with git < 2.48
+# trunk default, a non-default origin/main carrying the loosened rule, no local origin/HEAD (as with git < 2.48)
+w=$(B=trunk repo trunk base.md sneaky.md)
+git -C "$w" push -q origin feat:main && git -C "$w" fetch -q origin && git -C "$w" remote set-head origin -d 2>/dev/null
 row 'default branch trunk (no local origin/HEAD): its rule denies'  "$(probe "$w/docs/sneaky.md")" deny
 w=$(repo single base.md sneaky.md); git -C "$w" push -q origin feat; git clone -q --single-branch -b feat "$R/single/origin.git" "$R/single/clone"
 row 'single-branch clone: the default branch rule is fetched'     "$(probe "$R/single/clone/docs/sneaky.md")" deny

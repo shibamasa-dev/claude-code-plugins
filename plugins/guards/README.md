@@ -34,7 +34,7 @@ You can also pass values at install time: `claude plugin install guards@shibamas
 The hook runs only when a rules file exists. It uses the first one found, in this order, and does nothing if none exists:
 
 1. The environment variable `REPO_STRUCTURE_SPEC`. If set, only this is used; a path that doesn't exist disables the hook
-2. `.claude/rules/repo-structure.md` on the default branch (`origin/<default>`) of the repo being written to. Commit it to share it with your team and cloud sessions; Claude also reads it as a rule. It is read from the default branch, not the working tree, so a new or changed rule takes effect once it is merged; until then the next source applies. A repo without an `origin` remote reads the working tree
+2. `.claude/rules/repo-structure.md` on the default branch (`origin/<default>`) of the repo being written to. Commit it to share it with your team and cloud sessions; Claude also reads it as a rule. It is read from the default branch, not the working tree, so a new or changed rule takes effect once it is merged and your local `origin/<default>` is fetched; until then the next source applies. A repo without an `origin` remote reads the working tree
 3. `~/.claude/rules/repo-structure.md` (all your repos)
 
 Copy [`examples/repo-structure.md`](examples/repo-structure.md) to one of these and edit it. Only `<!-- guard:… -->` blocks are used for decisions.

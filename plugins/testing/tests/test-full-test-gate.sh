@@ -49,8 +49,10 @@ err=$(cd "$w" && python3 "$H" run 2>&1 >/dev/null)
 row 'no origin: the working tree config is run'                  "$(ran "$w")" base
 row 'no origin: a one-line note on stderr'                       "$(printf '%s' "$err" | grep -q 'no origin remote' && echo note || echo quiet)" note
 
-# default branch trunk, no local origin/HEAD (git < 2.48 does not create it on fetch): origin is asked for the name
-w=$(B=trunk repo trunk "$BASE_CFG"); g "$w" remote set-head origin -d 2>/dev/null; branch_cfg "$w" '{"command": "echo branch > ran", "paths": ["src"], "gate": []}'
+# default branch trunk, no local origin/HEAD (git < 2.48 does not create it on fetch), and a non-default origin/main
+# holding the branch's config: origin is asked for the name, so main does not supply the config
+w=$(B=trunk repo trunk "$BASE_CFG"); branch_cfg "$w" '{"command": "echo branch > ran", "paths": ["src"], "gate": []}'
+g "$w" push -q origin feat:main && g "$w" fetch -q origin && g "$w" remote set-head origin -d 2>/dev/null
 rm -rf "$FULL_TEST_STATE_DIR"; (cd "$w" && python3 "$H" run >/dev/null 2>&1)
 row 'default branch trunk: run uses its command'                  "$(ran "$w")" base
 
@@ -58,6 +60,10 @@ row 'default branch trunk: run uses its command'                  "$(ran "$w")" 
 d="$T/single"; g "$T/changed/work" push -q origin feat && git clone -q --single-branch -b feat "$T/changed/origin.git" "$d" || exit 1
 rm -rf "$FULL_TEST_STATE_DIR"; (cd "$d" && python3 "$H" run >/dev/null 2>&1)
 row 'single-branch clone: run uses the default branch command'     "$(ran "$d")" base
+
+# --working-tree needs no comparison base (no origin, no base key)
+w=$(repo wtnobase "$BASE_CFG" none); rm -rf "$FULL_TEST_STATE_DIR"; (cd "$w" && python3 "$H" run --working-tree >/dev/null 2>&1)
+row 'run --working-tree without a comparison base still runs'      "$(ran "$w")" base
 
 # origin exists but cannot be read: not opted in (the working tree config is not used)
 w=$(repo unreadable "$BASE_CFG"); g "$w" remote set-url origin "$T/missing.git"; g "$w" update-ref -d refs/remotes/origin/main
