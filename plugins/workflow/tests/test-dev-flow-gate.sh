@@ -58,6 +58,7 @@ row 'gh: --body lacks markers' "$(pre a Bash "$(bash_in "gh pr create -R O/R -t 
 printf '%s\n' "$OK_BODY" > body-ok.md; printf 'x\n' > body-ng.md
 row 'gh: --body-file has markers' "$(pre a Bash "$(bash_in 'gh pr create -R O/R -t t --body-file body-ok.md')")" allow
 row 'gh: --body-file lacks markers' "$(pre a Bash "$(bash_in 'cd . && gh pr create -R O/R -t t -F body-ng.md')")" deny
+row 'gh: after a command -v gh guard, --body lacks markers' "$(pre a Bash "$(bash_in "command -v gh >/dev/null && gh pr create --title t --body nothing")")" deny
 row 'gh: markers in --body via $(cat <<EOF ...)' "$(pre a Bash "$(bash_in "gh pr create -R O/R -t t --body \"\$(cat <<'EOF'
 $OK_BODY
 EOF

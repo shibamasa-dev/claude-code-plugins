@@ -1,6 +1,6 @@
 {
   "name": "workflow",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Skills and hooks for the development flow from request to merge (including how PR reviews are routed and awaited), issue operations, session handoffs and runbook recording, plus a mod that writes usage limits to a file",
   "author": {
     "name": "shibamasa-dev"
@@ -44,6 +44,20 @@
       "required": false,
       "default": 3,
       "min": 1
+    },
+    "commit_gate": {
+      "type": "string",
+      "title": "Commit gate mode (off / observe / enforce)",
+      "description": "off does nothing. observe never blocks and says what it would have done at git commit. enforce blocks a commit when no review or verification ran on the tree being committed, or the message's Verification: trailer does not match. A repo's .claude/verification.json on the default branch overrides this",
+      "required": false,
+      "default": "off"
+    },
+    "commit_gate_verifiers": {
+      "type": "string",
+      "title": "Skills that count as verification (regex)",
+      "description": "Regex of skill names whose run counts as review or verification for the commit gate. Empty means ^(code-review|(.+:)?verify-.+|coderabbit:code-review)$. A repo's .claude/verification.json \"verifiers\" overrides this",
+      "required": false,
+      "default": ""
     }
   }
 }
