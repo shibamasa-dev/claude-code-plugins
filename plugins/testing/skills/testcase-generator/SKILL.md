@@ -122,7 +122,7 @@ An example case pins one input to one expected value. Where the risk is "some in
 | Idempotency | running twice equals running once | migrations, normalization, retries |
 | Equivalence | optimized code matches a naive, obviously correct version | rewrites, caches |
 
-Libraries: fast-check (JS/TS), Hypothesis (Python), proptest (Rust). Propose them for parsers and serializers, normalization, migrations, and rewrites whose spec has drifted from production behavior. Generated inputs are fine for a property; the rule above still holds for example cases, whose expected values come from real data or an external source of truth, never from the implementation.
+Libraries: fast-check (JS/TS), Hypothesis (Python), proptest (Rust). Propose them for parsers and serializers, normalization, migrations, and rewrites whose spec has drifted from production behavior. Generated inputs are fine for a property; example cases still follow the source-of-truth table above: expected values come from an external source of truth when one exists, and from pinned observed behavior (characterization) when none does.
 
 **Differential tests** fit a migration or rewrite where behavior must stay the same: run old and new on the same inputs and compare. Take inputs from random generation or sample real traffic or real files. Normalize differences that carry no meaning (whitespace, ordering). Keep a list of approved differences where the new system is meant to differ; any other difference is a failure.
 
