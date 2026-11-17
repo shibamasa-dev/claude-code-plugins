@@ -70,7 +70,7 @@ The output looks like `{"five_hour": {"used_percentage": 17, "resets_at": 179155
 | `review_light` | `claude` | What reviews light PRs. `claude` means Claude reviews. Listing tool ids treats light PRs like heavy ones (no label) |
 | `review_auto` | `off` | Whether the tool's auto review is on (`on` / `off`). See "Keeping auto review on" below |
 | `rereview_threshold` | 3 | Request a re-review only when you fixed at least this many severe findings (Critical / P1 or equivalent) |
-| `freshness_targets` | `~/.claude/rules:*.md,~/.claude/reference:*.md,~/.claude/skills:*/SKILL.md` | Directories the knowledge-freshness hook checks: comma-separated `<dir>:<glob>` pairs, `~` expanded. Files whose `review_after` has passed, or that have no `last_reviewed`, are listed at session start. Empty means the default |
+| `freshness_targets` | `~/.claude/rules:*.md,~/.claude/reference:*.md,~/.claude/skills:*/SKILL.md` | Directories the knowledge-freshness hook checks: comma-separated `<dir>:<glob>` pairs, `~` expanded, `**` in the glob is recursive, a directory name cannot contain a comma. Files whose `review_after` has passed, or that have no `last_reviewed`, are listed at session start. Empty means the default |
 | `commit_gate` | `off` | The commit gate's mode: `off`, `observe` or `enforce` (any other value is `off`). A repo's `.claude/verification.json` overrides it |
 | `commit_gate_verifiers` | empty | A regex of skill names that count as verification. Empty means `^(code-review\|(.+:)?verify-.+\|coderabbit:code-review)$` |
 

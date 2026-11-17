@@ -72,6 +72,11 @@ case "$BODY4" in *"rules/old.md"*) r=ng;; *) r=ok;; esac; echo "  default dirs n
 TARGETS="~/.claude/rules:*.md"
 OUT5=$(run)
 case "$OUT5" in *"~/.claude/rules/old.md"*|*"rules/old.md"*) r=ok;; *) r=ng;; esac; echo "  '~' in a target is expanded -> $r"
+mkdir -p "$H/deep/a/b"
+printf -- '---\nlast_reviewed: 2026-01-01\nreview_after: 2026-08-01\n---\n# deep\n' > "$H/deep/a/b/x.md"
+TARGETS="$H/deep:**/*.md"
+OUT8=$(run)
+case "$OUT8" in *"deep/a/b/x.md"*) r=ok;; *) r=ng;; esac; echo "  '**' reaches a file two levels deep -> $r"
 TARGETS=""
 OUT6=$(run)
 case "$OUT6" in *"rules/old.md"*) r=ok;; *) r=ng;; esac; echo "  empty value falls back to the default targets -> $r"

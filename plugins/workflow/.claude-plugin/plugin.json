@@ -48,7 +48,7 @@
     "freshness_targets": {
       "type": "string",
       "title": "Directories the knowledge-freshness hook checks",
-      "description": "Comma-separated <dir>:<glob> pairs; ~ in a dir is expanded. The hook warns at session start about files there whose review_after has passed or that have no last_reviewed. Empty means the default (~/.claude/rules:*.md,~/.claude/reference:*.md,~/.claude/skills:*/SKILL.md)",
+      "description": "Comma-separated <dir>:<glob> pairs; ~ in a dir is expanded; ** in a glob is recursive; a dir cannot contain a comma. The hook warns at session start about files there whose review_after has passed or that have no last_reviewed. Empty means the default (~/.claude/rules:*.md,~/.claude/reference:*.md,~/.claude/skills:*/SKILL.md)",
       "required": false,
       "default": "~/.claude/rules:*.md,~/.claude/reference:*.md,~/.claude/skills:*/SKILL.md"
     },

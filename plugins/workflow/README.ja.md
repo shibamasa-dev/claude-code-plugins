@@ -70,7 +70,7 @@ orchestrator-report は報告を促した PR / issue を `${CLAUDE_PLUGIN_DATA}/
 | `review_light` | `claude` | 軽い PR に使うもの。`claude` なら Claude がレビューする。ツールの id を書けば軽い PR も重い PR と同じ扱い（ラベルを付けない） |
 | `review_auto` | `off` | ツールの自動レビューが ON か（`on` / `off`）。下の「自動レビューを ON のまま使う」 |
 | `rereview_threshold` | 3 | 重い指摘（Critical・P1 相当）をこの件数以上直したときだけ再レビューを頼む |
-| `freshness_targets` | `~/.claude/rules:*.md,~/.claude/reference:*.md,~/.claude/skills:*/SKILL.md` | knowledge-freshness フックが調べる場所。`<dir>:<glob>` をカンマで並べる（`~` は展開）。`review_after` を過ぎたファイルと `last_reviewed` が無いファイルをセッション開始時に挙げる。空なら既定 |
+| `freshness_targets` | `~/.claude/rules:*.md,~/.claude/reference:*.md,~/.claude/skills:*/SKILL.md` | knowledge-freshness フックが調べる場所。`<dir>:<glob>` をカンマで並べる（`~` は展開。glob の `**` は再帰。ディレクトリ名にカンマは使えない）。`review_after` を過ぎたファイルと `last_reviewed` が無いファイルをセッション開始時に挙げる。空なら既定 |
 | `commit_gate` | `off` | コミットゲートのモード。`off`・`observe`・`enforce`（それ以外の値は `off`）。リポの `.claude/verification.json` が優先する |
 | `commit_gate_verifiers` | 空 | 検証として数えるスキル名の正規表現。空なら `^(code-review\|(.+:)?verify-.+\|coderabbit:code-review)$` |
 

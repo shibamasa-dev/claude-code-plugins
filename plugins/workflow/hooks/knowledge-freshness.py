@@ -49,7 +49,7 @@ def targets():
 def iter_files():
     import glob
     for base, pat in targets():
-        for p in sorted(glob.glob(os.path.join(base, pat))):
+        for p in sorted(glob.glob(os.path.join(base, pat), recursive=True)):
             yield p
 
 

@@ -28,6 +28,10 @@ row 'rewrite the same entry A (count stays)' "$(cnt)" two
 got=$(cd "$REPO" && python3 "$H" show | grep -q 's1b' && ! (cd "$REPO" && python3 "$H" show | grep -q 'state: s1$') && echo ok || echo bad)
 row 'A now holds the new values' "$got" ok
 
+msg=$(cd "$REPO" && python3 "$H" write --entry example-org/other#1 --state s --next n 2>&1 >/dev/null)
+case "$msg" in *spinoff*) got=bad;; *"session that starts in a waiting state"*) got=ok;; *) got=bad;; esac
+row 'refusal text has the generic wording, no spinoff' "$got" ok
+
 echo '=== SessionStart injects all entries ==='
 got=$(printf '{"hook_event_name":"SessionStart","source":"startup","cwd":"%s"}' "$REPO" | python3 "$H" \
       | grep -c 'handoff-test#' | awk '{print ($1==2)?"two":"bad"}')

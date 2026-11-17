@@ -33,7 +33,8 @@ A workflow that runs AI reviews with multiple agents, evaluates the results, and
 
 **Actions**:
 1. Read the review results from the output of Phase 1
-2. Assess the findings as `pr-review-triage` does (read that skill: it owns the evaluation rules and the adopt / needs-review / reject classes)
+2. Assess each finding as `pr-review-triage` does (read its "4.5 Evaluate and fix": findings are suggestions, checked against the actual code, validity measured rather than guessed)
+3. Label each finding for the plan below (this command's own labels): ✅ adopted = valid and in line with the project policy; ⚠️ needs review = partly valid, needs adjustment; ❌ rejected = invalid, or against the architecture policy
 
 ---
 
