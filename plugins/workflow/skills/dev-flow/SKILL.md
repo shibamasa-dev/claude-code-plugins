@@ -65,6 +65,7 @@ Things the user decides (whether to make an issue, the GO from architecture revi
 ## 3. Implement and verify
 
 - Run the repo's checks (whatever CONTRIBUTING, the PR template, and the CI config list: tests, lint, validators, version and CHANGELOG checks). If the repo has verification skills (`.claude/skills/verify-*`), run every one of them before committing and keep their evidence for the PR body.
+- End each commit message with a `Verification:` trailer naming the verifiers that ran on the tree you are committing: `Verification: review — code-review` (kinds `review` / `verify`, then the skill names), or `Verification: none — <reason>`. When the workflow plugin's commit gate is on, it checks the line against the verifiers it saw run.
 - **Reread your own diff** (`git diff origin/<base>...HEAD`). Read it as if looking for reasons CI or a reviewer would reject it:
   - Changes nobody asked for, leftover debug output
   - Personal paths, email addresses, specific personal names or internal proper names (especially in a distributed repo)

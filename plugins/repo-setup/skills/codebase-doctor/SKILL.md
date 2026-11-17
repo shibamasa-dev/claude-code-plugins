@@ -1,13 +1,13 @@
 ---
 name: codebase-doctor
-description: Use when auditing a codebase for essential application features, when setting up a newly created repository, when onboarding to an existing codebase, when quality issues arise in vibe-coded projects, or when reviewing project setup at a phase boundary. Checks both implementation quality and agent working environment (CLAUDE.md, permissions, project-scoped skills, hooks). Idempotent — safe to run repeatedly. Triggers on "/codebase-doctor", "check codebase quality", "audit this codebase", "what's missing in this project", 「プロジェクト設定を見直して」「テストフェーズに入るので設定を見直したい」「リポジトリを作ったので初期設定して」「このプロジェクトに必要なスキルを入れたい」.
+description: Use when auditing a codebase for essential application features, when setting up a newly created repository (in an empty one it asks the purpose, proposes a stack and records the decision in CLAUDE.md), when onboarding to an existing codebase, when quality issues arise in vibe-coded projects, or when reviewing project setup at a phase boundary. Checks both implementation quality and agent working environment (CLAUDE.md, permissions, project-scoped skills, hooks). Idempotent — safe to run repeatedly. Triggers on "/codebase-doctor", "check codebase quality", "audit this codebase", "what's missing in this project", 「プロジェクト設定を見直して」「テストフェーズに入るので設定を見直したい」「リポジトリを作ったので初期設定して」「このプロジェクトに必要なスキルを入れたい」.
 last_reviewed: 2026-09-23
 review_after: 2027-03-22
 ---
 
 # Codebase Doctor
 
-Language-agnostic codebase audit. Detect project stack, check essential application features, report findings, and propose fixes with mandatory user review.
+Language-agnostic codebase audit. Detect project stack, check essential application features, report findings, and propose fixes with mandatory user review. In an empty repository it first asks a few questions, proposes a stack with a reason per tool, and records the agreed setup in a small marked section of CLAUDE.md.
 
 ## Workflow
 
@@ -15,6 +15,7 @@ Language-agnostic codebase audit. Detect project stack, check essential applicat
 digraph doctor {
   rankdir=TB;
   detect [label="1. Detect Stack" shape=box];
+  start [label="1a. Project start: ask, propose, record" shape=box];
   select [label="2. Select Checks" shape=box];
   run [label="3. Run Checks" shape=box];
   report [label="4. Report" shape=box];
@@ -22,25 +23,72 @@ digraph doctor {
   review [label="6. User Review" shape=doublecircle];
 
   detect -> select -> run -> report -> propose -> review;
+  detect -> start [label="only docs tracked"];
+  start -> select;
 }
 ```
 
 ### Step 1: Detect Stack, Guidelines & Phase
 
-**1a. Detect stack** from manifest files:
+**1a. Detect stack** from manifest files (the Detection table in `references/check-patterns.md`):
 - Language(s) and framework(s) (package.json, go.mod, Cargo.toml, pyproject.toml, etc.)
 - Project type: CLI, web API, library, desktop app, etc.
 - Components: database, external APIs, message queues, etc.
 
-Use Glob and Read on manifest files. Do NOT ask the user — detect automatically.
+Use Glob and Read on manifest files. Do NOT ask the user — detect automatically. **One exception: project start** — see 1a-start.
 
-**1b. Read AI agent guidelines** (AGENTS.md, CLAUDE.md, or equivalent) if present. This provides project-specific conventions (tech stack, commands, logging rules, coding standards) that inform all subsequent checks. For example, if AGENTS.md specifies "use slog for logging", the Logging check should verify slog usage specifically — not just any logging library.
+Look for manifests anywhere in the repository (a monorepo's `apps/web/package.json` or `packages/api/go.mod` counts), ignoring `node_modules/`, `.git/`, `vendor/` and build output (`dist/`, `build/`, `target/`). Then pick the mode from the repo's tracked files (`git ls-files`):
+
+| Repo state | Mode |
+|---|---|
+| CLAUDE.md has broken `codebase-doctor:decided-setup` markers (an opening marker without a closing one, or more than one section) | Not project start. Edit nothing, report `[WARN]` under Check 1, ask the user to fix the markers. Take the stack from manifests or inference if the repo has anything to infer from; otherwise report `Stack: undetermined (Decided setup markers are broken)` |
+| A manifest exists | Normal audit |
+| No manifest, but something other than docs and repo metadata is tracked (rule in `references/check-patterns.md`, "Detection: Project start") — a script, a Makefile, a Dockerfile, `*.tf`, YAML/TOML config, a non-empty dotfile (zero-byte files and `.gitkeep` placeholders do not count) | Not project start. Ask nothing. A Decided setup section, if present, is the stack; inference from file names and extensions fills only the areas it has no line for, marked `[inferred]` |
+| Only docs and repo metadata, and CLAUDE.md has a Decided setup section | Not project start again. Use the section as the stack and ask nothing |
+| Only docs and repo metadata, no Decided setup section | **Project start** — run 1a-start |
+
+**1a-start. Project start: ask, propose, record.**
+
+**Can this run ask?** Only an interactive session can. When the skill runs as a subagent, headless, or without `AskUserQuestion` and with no user turn to follow, it does not ask and does not wait: it writes no Decided setup section (CLAUDE.md is not created or changed), reports `Stack: none yet (project start)` with one line saying the project-start questions were skipped because the run cannot ask, and continues the audit, including the Step 4 report. In an interactive session without `AskUserQuestion`, ask the same questions — and later the Adopt question — in plain-text messages and wait for each answer.
+
+1. **Ask only what the user's request does not already answer** ("make a CLI in Go" fixes the type and the language, so those questions are skipped). Use one `AskUserQuestion` call with at most these four questions; "Other" gives free text:
+
+   | # | Question | Options | What it changes |
+   |---|---|---|---|
+   | 1 | What is this project? (the answer, plus any text typed under Other, becomes the Purpose line) | Web app with a UI / HTTP API or backend service / CLI or script / Library | Whether a framework, a UI test runner and a deploy target are needed |
+   | 2 | Where will it run? | Serverless or edge platform / Container or VM / The user's own machine / Not decided yet | Language and runtime limits, whether there is a Hosting line |
+   | 3 | Who works on it? | Just me / A small team / A team with required CI gates | CI strictness (lint and test only, or also typecheck and branch protection) |
+   | 4 | Any language or tool you must use or avoid? | No constraints / Yes (type it under Other) | Hard constraints override every default |
+
+   If the user declines or does not answer, write nothing, say so in the report, and continue the audit with `Stack: none yet (project start)`.
+
+2. **Propose a stack** as a table in chat, one row per area, each with one reason tied to an answer above:
+
+   | Area | Choice | Reason |
+   |---|---|---|
+   | Language / runtime | | |
+   | Package manager | | |
+   | Framework (omit when the project type needs none) | | |
+   | Test runner (watch mode off) | | |
+   | Lint / format | | |
+   | CI | | |
+   | Hosting (omit when question 2 was "The user's own machine" or "Not decided yet") | | |
+
+   Choose in this order: a hard constraint from question 4; then the default the hosting platform documents first; then a language the user or the repo's docs already name; then the ecosystem's common default for the project type, saying in its reason that it is a default the user can change in "Change some rows". One tool per job, preferring a combined linter and formatter where the ecosystem has one. Fewest moving parts for "Just me". No version numbers — the manifest will carry them.
+
+3. **Ask once more** with `AskUserQuestion` (or in plain text, as above): Adopt / Change some rows (Other: which) / Don't record. Only "Adopt" (after any changes) writes the Decided setup section. Installing the tools is not part of this step: they come later as Check 16 fixes through Steps 5 and 6.
+
+4. Continue the audit with phase `setup`, using the section as the stack.
+
+**The Decided setup section** — its template, where it goes, how later runs shrink it, and what happens to edits inside it — is defined in `references/decided-setup.md`. Read it before writing the section and on every run where CLAUDE.md has one.
+
+**1b. Read AI agent guidelines** (AGENTS.md, CLAUDE.md, or equivalent) if present. A Decided setup section counts as the stack while no manifest states it. This provides project-specific conventions (tech stack, commands, logging rules, coding standards) that inform all subsequent checks. For example, if AGENTS.md specifies "use slog for logging", the Logging check should verify slog usage specifically — not just any logging library.
 
 **1c. Determine the phase.** The phase decides which checks get weight. Take an explicit statement from the user over inference ("we're entering the test phase" → `test`). With no statement, infer from the repository:
 
 | Phase | Signals | Weighted checks |
 |-------|---------|-----------------|
-| `setup` | few commits, no tests, no CI, no CLAUDE.md | 1, 12, 13, 16 — guidelines, permissions, stack-matched skills, toolchain |
+| `setup` | few commits, no tests, no CI, no CLAUDE.md, or no manifest yet | 1, 12, 13, 16 — guidelines, permissions, stack-matched skills, toolchain |
 | `build` | source growing, tests thin or absent, no deploy config | 2-5, 13, 14, 16, 17 — implementation basics, skills, automation, toolchain, real-app verification |
 | `test` | tests exist or user says testing is starting; CI config present | 6, 6b, 9, 10, 12, 13, 16, 17 — testing, test-design knowledge, validation, test-command permissions, testing skills, CI wiring, real-app verification |
 | `release` | deploy config, tags/releases, production branch | 4, 11, 12, 15 — config, security, permissions, remote execution |
@@ -53,7 +101,7 @@ Based on detected stack, select from the check catalog below. Skip checks that d
 
 **Check execution order**: Run Check 1 (AI Agent Guidelines) first — its findings calibrate subsequent checks. Settle Check 6 (Testing) before finalizing any other rating, because a Testing `[FAIL]` adds the `[*]` suffix to every other check (see Check dependencies below). Other checks can run in any order.
 
-**Idempotency (MANDATORY)**: this skill runs repeatedly over a project's life. Never propose what already exists. Read the current state first — installed skills, existing permission entries, existing hooks — and diff against what the phase needs. Report an already-satisfied item as `[PASS]` and propose nothing for it. Never overwrite a hand-written CLAUDE.md, permission list, or hook; propose additions only.
+**Idempotency (MANDATORY)**: this skill runs repeatedly over a project's life. Never propose what already exists. Read the current state first — installed skills, existing permission entries, existing hooks — and diff against what the phase needs. Report an already-satisfied item as `[PASS]` and propose nothing for it. Never overwrite a hand-written CLAUDE.md, permission list, or hook; propose additions only. One exception: in CLAUDE.md this skill writes and removes only the block it added — its `codebase-doctor:decided-setup` markers, what lies between them, and the one separating blank line it wrote — and never changes any other byte (see `references/decided-setup.md`).
 
 ### Step 3: Run Checks
 
@@ -95,6 +143,8 @@ Phase: test (user-stated)
 
 Score: 4.5/7 (4 PASS, 1 WARN, 2 FAIL, 1 SKIP)
 ```
+
+At project start with nothing recorded, write `Stack: none yet (project start)`.
 
 Scoring: `PASS=1, WARN=0.5, FAIL=0, SKIP=excluded from total`. Score = sum / (total - skipped).
 
@@ -149,10 +199,11 @@ For each `[FAIL]` and `[WARN]` item, propose a concrete fix:
 - **PASS**: guideline file exists with stack, commands, and conventions defined
 - **WARN**: file exists but incomplete (e.g., stack listed but no conventions)
 - **FAIL**: no guideline file found
+- A CLAUDE.md holding only the Decided setup section rates `[WARN]`. Broken markers or a contradiction with the repo (see `references/decided-setup.md`) also rate `[WARN]`
 - **Impact on subsequent checks**:
   - **PASS/WARN**: If guidelines define specific rules (e.g., "use slog"), subsequent checks validate against those rules — not just generic patterns. This tightens the audit.
   - **FAIL**: No project-specific rules available. Subsequent checks fall back to generic ecosystem patterns only. Note this in the report: "No project guidelines found — checks use generic patterns."
-- **Fix**: on `[FAIL]`, propose running `/init` — it authors a CLAUDE.md from the codebase. On `[WARN]`, propose `claude-md-improver` to fill the gaps. This skill detects the absence; it does not write the file itself
+- **Fix**: on `[FAIL]`, propose running `/init` — it authors a CLAUDE.md from the codebase. On `[WARN]`, propose `claude-md-improver` to fill the gaps. Apart from its own Decided setup section, this skill does not write the file
 
 #### 2. Logging
 - Structured logging library in use (not just print/println)
@@ -230,6 +281,11 @@ to report (Step 1c weights checks; Step 5 orders fixes), not whether the check h
 - Lock file tracked in VCS (verify with `git ls-files <lockfile>`, not just .gitignore)
 - **Signals**: lock file in project root, tracked in git
 - Note: `requirements.txt` is a dependency declaration, NOT a lock file. Look for `poetry.lock`, `Pipfile.lock`, `uv.lock` for Python.
+- No manifest at all — decide by where the stack came from:
+  - from the Decided setup section: evaluate against that stack (a manifest is FAIL when its ecosystem uses one), not as `[inferred]`
+  - inferred, and the ecosystem uses a manifest (Python, JS/TS, Go, Rust, …): `[FAIL]`, propose creating one
+  - inferred, and the ecosystem has none (shell scripts, a Makefile, Terraform, a Dockerfile only, MkDocs, workflow-only, dotfiles, plain HTML): `[SKIP]` with that reason
+  - no stack at all (a run that could not ask, broken markers in a docs-only repo): `[SKIP]` with that reason
 
 ### Conditional Checks (when component detected)
 
@@ -318,15 +374,16 @@ Re-run Check 13 through this lens: for each skill this project depends on, confi
 #### 16. Toolchain
 Whether the project's lint / format / test / CI machinery is wired — not whether the code passes it (that is Checks 2-6).
 
-- **Linter** configured for the detected language: `.eslintrc*` / `eslint.config.*`, `ruff.toml` or `[tool.ruff]` in `pyproject.toml`, `.golangci.yml`, `clippy.toml`
+- **Linter** configured for the detected language: `.eslintrc*` / `eslint.config.*`, `ruff.toml` or `[tool.ruff]` in `pyproject.toml`, `.golangci.yml`, `clippy.toml`, `biome.json` (linter and formatter in one)
 - **Formatter** configured **and not fighting the linter** — a formatter with no linter-conflict rules disabled is a `[WARN]`, because the two will churn the same lines
 - **Test runner wired to a command**, not merely test files present (`scripts.test`, `Makefile` target, `pyproject` entry)
+- **Test runner watch mode off by default**, so an agent's run exits instead of waiting for file changes (e.g. Vitest `test: { watch: false }`, or a `test` script running `vitest run`). A runner that watches by default with no override is a `[WARN]`. Whole-suite runs are Check 12's concern, not this one
 - **CI actually runs lint + typecheck + test** — read the steps in `.github/workflows/*.yml`, don't assume from the file's existence
 - **Repo hygiene files**: `.gitignore`, `.gitattributes`, `.editorconfig`
 - **PASS**: all applicable pieces wired and CI runs them
 - **WARN**: pieces exist but disconnected (linter installed but no CI step; formatter and linter conflict)
 - **FAIL**: none configured
-- **Fix**: if the project has `.claude/commands/init/setup.md`, **propose running `/init:setup` rather than proposing individual tool installs** — that command is interactive, reads the project's own metadata, and merges instead of overwriting. Only when no such command exists, propose the tools directly
+- **Fix**: decide per area (linter, formatter, test runner, CI). Where the Decided setup section still has a line for the area, propose the tool it names and no other. Where it has none (never recorded, or removed once the repo stated it), propose the tool the repo's own files point to, else one matching the detected stack. Apply in this order: repo hygiene files, linter, formatter, test runner, CI. Merge into existing config files, never overwrite them, and install no package without approval
 
 #### 17. Real-app verification path
 Whether the project has its own skill that drives the real app the way users do (the same commands or screens, in order) and keeps evidence. Tests check functions; such a skill lets someone run the app end-to-end without touching production. **Only presence — never judge the contents** (same rule as 6b): `[PASS]` means the files exist, not that the skill isolates the run, keeps credentials out, has a read-only Doctor, observes its evidence or cleans up safely.
@@ -341,17 +398,19 @@ Whether the project has its own skill that drives the real app the way users do 
 
 ## Boundaries with other skills
 
-This skill **audits and proposes; it does not build**. When a fix needs building, hand it to the skill that owns it. Run this one first when the question is "what is missing", then delegate each fix.
+This skill **audits and proposes; it does not build**. The one thing it writes on its own initiative is the Decided setup section, and only after the user adopts the proposal. When a fix needs building, hand it to the skill that owns it. Run this one first when the question is "what is missing", then delegate each fix.
 
 | To actually do this | Use | Why not this skill |
 |---|---|---|
-| Author a CLAUDE.md from scratch | `/init` | Check 1 detects its absence; it does not write the file |
+| Author a CLAUDE.md from scratch | `/init` | Check 1 detects its absence; this skill writes only its own Decided setup section |
+| Keep always-loaded CLAUDE.md small | `context-diet` (workflow plugin) | this skill writes only a 13–15 line section and shrinks it; it does not trim other content |
 | Rewrite or improve an existing CLAUDE.md | `claude-md-improver` | same — detection only |
 | Add or relocate permission entries | `update-config` | Check 12 reports the gap; that skill edits settings.json |
 | Derive an allowlist from real usage | `fewer-permission-prompts` | it reads transcripts, which this skill does not |
 | Wire a hook | `hookify` | Check 14 spots the candidate only |
 | Scaffold the project's test-design knowledge layer | `testcase-generator` | Check 6b detects absence only; that skill owns the layout |
-| Install lint/format/test/CI interactively | the project's `/init:setup` when it exists | Check 16 defers to it rather than installing tools itself |
+| Decide when a full test run is due | `full-test-gate` hook (testing plugin) | Check 12 keeps the whole-suite deny; that hook decides timing |
+| Enforce where docs and scripts live | `repo-structure-guard` hook (guards plugin) | this skill does not check layout |
 | Set up a cloud execution environment | `remote-setup` | Check 15 is SKIP by default |
 | Build a project's real-app verification skill | `verification-skill-builder` | Check 17 detects absence only |
 | Hunt for vulnerabilities | `security-review` | Check 11 only verifies the basics are configured |

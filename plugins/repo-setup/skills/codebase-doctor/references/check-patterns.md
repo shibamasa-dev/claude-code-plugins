@@ -38,7 +38,7 @@ Agent working environment. All checks are diff-based — read the current state,
 | Project-scoped Skills | `<project>/.claude/skills/` `<project>/skills-lock.json` | What is installed; diff against the capabilities the stack and phase call for. Look capabilities up in the user's skill catalog (if they keep one) before searching with `find-skills` |
 | Hooks | `.claude/hooks/` and `hooks` in `settings.json` | Repeated manual steps or operations that must be blocked are wired |
 | Remote Execution | `.claude/` session-start scaffold, `environment-setup.sh` | Only when the project is meant to run in a cloud environment |
-| Toolchain | `.eslintrc*` `eslint.config.*` `ruff.toml` `pyproject.toml` `.golangci.yml` `clippy.toml` `.prettierrc*` `.editorconfig` `.gitattributes` `.github/workflows/*.yml` | Linter/Formatter configured for the detected language; formatter's linter-conflict rules disabled; test runner bound to a command; CI steps actually invoke lint/typecheck/test |
+| Toolchain | `.eslintrc*` `eslint.config.*` `ruff.toml` `pyproject.toml` `.golangci.yml` `clippy.toml` `biome.json` `.prettierrc*` `.editorconfig` `.gitattributes` `.github/workflows/*.yml` | Linter/Formatter configured for the detected language; formatter's linter-conflict rules disabled; test runner bound to a command; test runner's watch mode off by default; CI steps actually invoke lint/typecheck/test |
 | Real-app verification (Check 17) | `.claude/skills/verify-*/SKILL.md` `.claude/skills/verify-*/features/README.md` | Presence only, never the contents. Skill present with its map → PASS, skill without the map → WARN, no skill → FAIL; SKIP rules are in SKILL.md Check 17 |
 
 ### Phase detection signals
@@ -130,6 +130,21 @@ For languages not listed above (Java, Ruby, Swift, C#, Elixir, etc.), the AI sho
 | `Gemfile` | Ruby |
 | `mix.exs` | Elixir |
 | `Package.swift` | Swift |
+
+## Detection: Project start
+
+Used by Step 1a when no manifest exists. Look at the tracked files (`git ls-files`). The repo is at **project start** only when every tracked file is documentation or repo metadata:
+
+- `README*`, `LICENSE*`, `CHANGELOG*`, `CONTRIBUTING*`, `CODE_OF_CONDUCT*`, `SECURITY*`
+- `*.md`, `*.rst`, `*.adoc`, and prose under `docs/`
+- `*.txt` only under `docs/` or with a README / LICENSE / NOTICE / CHANGELOG / AUTHORS-style name. Any other `.txt` (`CMakeLists.txt`, `requirements.txt`, …) is something else
+- `CLAUDE.md`, `AGENTS.md`
+- `.gitignore`, `.gitattributes`, `.editorconfig`
+- issue and PR templates under `.github/` (`ISSUE_TEMPLATE/`, `PULL_REQUEST_TEMPLATE*`, `CODEOWNERS`, `FUNDING.yml`)
+
+Zero-byte files and `.gitkeep` / `.keep` placeholders are ignored when classifying, so a repo with only `LICENSE` and `src/.gitkeep` is at project start.
+
+Anything else tracked — a script in any language, a `Makefile`, a `Dockerfile`, `*.tf`, YAML or TOML config (`mkdocs.yml`, `k8s/*.yaml`), a workflow under `.github/workflows/`, a non-empty dotfile — means **not** project start: infer what the files show and mark it `[inferred]`.
 
 ## Detection: Components
 

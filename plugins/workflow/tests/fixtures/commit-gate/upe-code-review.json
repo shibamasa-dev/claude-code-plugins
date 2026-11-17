@@ -1,0 +1,1 @@
+{"hook_event_name": "UserPromptExpansion", "expansion_type": "slash_command", "command_name": "code-review", "command_args": "low", "command_source": "bundled", "prompt": "/code-review low"}
