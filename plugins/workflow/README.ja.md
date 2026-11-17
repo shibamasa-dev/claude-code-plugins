@@ -139,7 +139,7 @@ reviews:
 - `origin/<既定>` やその上のファイルを読めないときは、リポの `review-*:` 行を飛ばして stderr にその旨を出し、userConfig、次に既定値を使う（`review-heavy` には既定値が無いので `detect-bots.sh` は終了コード 4 で終わる）。取得済みの `origin/<既定>` は、origin より古くてもそのまま読む。
 - commit-gate は忘れ防止の後押しであって、意図して避ける人への壁ではない。既定の検証スキルの正規表現はどの `verify-*` スキルも受け入れ、コミットするブランチで足したスキルも含む。`Verification: none — <理由>` も常に通る。それ以上を求めるリポは、既定ブランチの `.claude/verification.json` に `verifiers` を書く。ローカルでの証跡の偽造（イベントをフックに流し込む、状態ファイルを書き換える）は守る範囲の外。
 - commit-gate はリポのファイルをローカルの `origin/HEAD` からしか読まないので、呼び出しごとの処理はネットワークに出ない。`origin/HEAD` が無いときは、セッション開始時に origin に一度だけ聞いて保存する（リポは自分のファイルでオンにできるので、userConfig に関係なく行う。リポごとに 1 時間に 1 回まで）。それまではゲートしない（`git remote set-head origin --auto` でも直る）。
-- commit-gate は `cd "$VAR" && git commit`・`git -C "$VAR" commit`・`GIT_DIR=… git commit`・`git --git-dir=… commit` のコミット先を判別できない。これらは確かめず、どちらのモードでも通す。ゲートがオンなら `unresolved` として記録し、リポをそのまま書くよう Claude に伝える。
+- commit-gate は `cd "$VAR" && git commit`・`git -C "$VAR" commit`・`GIT_DIR=… git commit`・`git --git-dir=… commit` のコミット先を判別できない。これらをセッションのディレクトリで判定することはない。`observe` は `unresolved` として記録して Claude に伝え、`enforce` は止めてリポを名前で書くよう求める（`git -C <パス> commit`。2 回止めたら次は通す数え方は同じ）。リポではないディレクトリからは記録するだけ。
 - commit-gate は `eval`・`xargs`・`$(which git)`・引用符で分けた名前（`"g""it"`）・git のエイリアス・`python -c`・`make` などを通したコミットを読まない。Bash の各コマンドの後に HEAD の最新の reflog を 1 回だけローカルで見て、確認で見えなかったコミットがそのコマンドの間にできていれば、`unseen: true` 付きの `committed` として記録する。observe モードでこれがどれくらい起きるかが分かる。
 - commit-gate の証跡は、検証スキルが呼ばれたことを表し、終わったことや通ったことは表さない。長い自律ターンでは、早くに呼んだ検証スキルがそのターンの終わりまで新しい証跡のまま残る。
 - commit-gate はコネクタ経由のコミット（`push_files`・`create_or_update_file`）と、`git merge`・`rebase`・`cherry-pick`・`revert` によるコミットを見ない。

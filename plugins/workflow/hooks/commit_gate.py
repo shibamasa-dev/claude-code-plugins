@@ -537,8 +537,11 @@ def on_pre_bash(inp):
     notes, denial = [], None
     for c in calls:
         if c["unresolved"]:
-            note = unresolved(inp, cmd, c["unresolved"])
-            notes += [note] if note else []
+            res = unresolved(inp, cmd, c["unresolved"])
+            if res and res[0] == "deny":
+                denial = res[1]
+                break
+            notes += [res[1]] if res else []
             continue
         top, common = repo_of(c["cwd"] or inp.get("cwd"))
         if not top:
@@ -577,16 +580,29 @@ def branch_of(top):
 
 
 def unresolved(inp, cmd, why):
-    """A commit whose repo cannot be told statically: not judged against the session cwd. Logged and said when the
-    gate is on for the session's repo (or in userConfig). Allowed in both modes: observe data first."""
-    top, _ = repo_of(inp.get("cwd"))
+    """A commit whose repo cannot be told statically: never judged against the session cwd. With the gate on for
+    the session's repo (or in userConfig), observe logs and says it; enforce blocks and asks for the repo by name,
+    under the same two-blocks count (kept for the session's repo). ("deny", reason) | ("note", text) | None."""
+    top, common = repo_of(inp.get("cwd"))
     mode = settings(top)["mode"] if top else norm_mode(os.environ.get("CLAUDE_PLUGIN_OPTION_COMMIT_GATE"))
     if mode in ("off", "unknown"):
         return None
-    log({"session": inp["session_id"], "repo": top, "mode": mode, "decision": "unresolved", "why": why,
-         "cmd": cmd[:200]})
-    return (f"{TAG} cannot tell which repo this commit goes to ({why}), so it was not checked. "
-            "Name the repo literally (`git -C <path> commit`) to have it checked.")
+    entry = {"session": inp["session_id"], "repo": top, "mode": mode, "why": why, "cmd": cmd[:200]}
+    ask = "Name the repo literally (`git -C <path> commit`, or `cd <path> && git commit`) so it can be checked."
+    if mode == "observe" or not top:
+        log({**entry, "decision": "unresolved"})
+        return "note", f"{TAG} cannot tell which repo this commit goes to ({why}), so it was not checked. {ask}"
+    with Locked(repo_path(repo_key(common)), REPO_DEFAULT) as r:
+        n = r["blocks"].get(inp["session_id"], 0)
+        if n >= RELEASE_AFTER:
+            r["blocks"].pop(inp["session_id"], None)
+        else:
+            r["blocks"][inp["session_id"]] = n + 1
+    if n >= RELEASE_AFTER:
+        log({**entry, "decision": "released"})
+        return "note", f"{TAG} let through after {RELEASE_AFTER} blocks in this session (logged as released): repo unknown ({why})."
+    log({**entry, "decision": "unresolved"})
+    return "deny", (f"{TAG} Commit blocked ({n + 1}/{RELEASE_AFTER}): cannot tell which repo it goes to ({why}). {ask}")
 
 
 def unparsed(inp, cmd):

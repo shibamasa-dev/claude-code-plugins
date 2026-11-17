@@ -200,16 +200,19 @@ EOF")" allow
 row 'trailer through --trailer' "$(commit s9 p2 "git commit -am x --trailer 'Verification: review — code-review'")" allow
 row 'en dash and hyphen separators' "$(commit s9 p2 "git commit -am x -m 'Verification: review - code-review'")" allow
 row 'message in a variable (cannot be read)' "$(commit s9 p2 'git commit -am "$MSG"')" deny
-row 'git -C <dir with space> commit' "$(cd "$T" && commit s9 p2 "git -C '$W' commit -am x -m '$TR'")" allow
+row 'git -C <dir with space> commit' "$(W0="$W"; W="$T" commit s9 p2 "git -C '$W0' commit -am x -m '$TR'")" allow
 row 'a # inside a word does not hide the commit after it' "$(commit s9h p2 "git add docs/a#b.md && git commit -am x")" deny
 row 'a commit inside a shell comment is not a commit' "$(commit s9c p2 'echo ok # then git commit -am x')" allow
 row 'a # right after $(...) is part of the word: the commit after it is seen' "$(commit s9d p2 'echo $(true)# ; git commit -am x')" deny
 row 'git commit -unormal (an option value with an a) is not -a' "$(reset; edit f3; git add m.py; review s9u p1; edit f3-fixed; stop s9u p1; commit s9u p2 "git commit -unormal -m x -m '$TR'")" deny
 row 'bash -lc '"'"'git commit'"'"' (a -c cluster) is seen' "$(commit s9b p2 "bash -lc 'git commit -am x'")" deny
-row 'git -C "$REPO" commit (a variable): logged as unresolved' "$(commit s9v p2 'git -C "$REPO" commit -am x')" unresolved
-row 'cd "$REPO" && git commit: logged as unresolved' "$(commit s9v p2 'cd "$REPO" && git commit -am x')" unresolved
-row 'GIT_DIR=<repo>/.git git commit: logged as unresolved' "$(commit s9v p2 "GIT_DIR='$W/.git' git commit -am x")" unresolved
-row 'git --git-dir --work-tree commit from another dir: logged as unresolved' "$(cd "$T" && commit s9v p2 "git --git-dir='$W/.git' --work-tree='$W' commit -am x")" unresolved
+row 'git -C "$REPO" commit (a variable): blocked, not judged against the cwd' "$(commit s9v1 p2 'git -C "$REPO" commit -am x -m "'"$TR"'"')" deny
+row 'cd "$REPO" && git commit: blocked' "$(commit s9v2 p2 'cd "$REPO" && git commit -am x')" deny
+row 'GIT_DIR=<repo>/.git git commit: blocked' "$(commit s9v3 p2 "GIT_DIR='$W/.git' git commit -am x")" deny
+row 'unresolved, the log says why' "$([ "$(lastlog why)" = "GIT_DIR / GIT_WORK_TREE" ] && echo named || echo missing)" named
+row 'unresolved target, two blocks, then the next commit passes' "$(commit s9v3 p2 'cd "$REPO" && git commit -am x' >/dev/null; commit s9v3 p2 'cd "$REPO" && git commit -am x')" release
+row 'git --git-dir --work-tree from a dir that is not a repo: logged as unresolved, not blocked' "$(W0="$W"; W="$T" commit s9v4 p2 "git --git-dir='$W0/.git' --work-tree='$W0' commit -am x")" unresolved
+row 'observe: cd "$REPO" && git commit is logged as unresolved, not blocked' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=observe commit s9v5 p2 'cd "$REPO" && git commit -am x')" unresolved
 row 'after cd && git commit, no trailer' "$(commit s9 p2 "cd '$W' && git commit -am x")" deny
 row 'not a commit: git commit-tree' "$(commit s9 p2 'git commit-tree HEAD^{tree} -m x')" allow
 row 'not a commit: the words inside echo' "$(commit s9 p2 "echo 'git commit -am x'")" allow
