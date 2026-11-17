@@ -57,23 +57,30 @@ def response(posts):
 class FakeChannel:
     """Stands in for the Slack channel. What is posted is stored as a bot message in the history."""
 
-    def __init__(self, messages=()):
-        self.messages = list(messages)
-        self.clock = None
-        self.channels = set()
-
     def fetch_history(self, tok, oldest, *, channel, **_):
         self.channels.add(channel)
         return [m for m in self.messages if float(m["ts"]) >= oldest.timestamp()]
 
-    def post(self, tok, text, run_started, *, channel, **_):
+    def __init__(self, messages=(), fail_on_post=None):
+        self.messages = list(messages)
+        self.clock = None
+        self.channels = set()
+        self.fail_on_post = fail_on_post  # 1-based number of the post that fails, counted over this channel's life
+        self.attempts = 0
+
+    def post(self, tok, text, run_started, *, since, last, channel, **_):
         self.channels.add(channel)
+        self.attempts += 1
+        if self.attempts == self.fail_on_post:
+            raise research_x._slack.SlackError("chat.postMessage: HTTP 500")
         self.clock += timedelta(seconds=1)
         ts = f"{self.clock.timestamp():.6f}"
+        payload = {"run_started_at": run_started.isoformat(), "since": since.isoformat()}
+        if last:
+            payload["last"] = True
         self.messages.append({
             "type": "message", "bot_id": "B0000000001", "ts": ts, "text": text,
-            "metadata": {"event_type": "research_x_post",
-                         "event_payload": {"run_started_at": run_started.isoformat()}},
+            "metadata": {"event_type": "research_x_post", "event_payload": payload},
         })
         return ts
 
@@ -178,6 +185,19 @@ class StateTest(unittest.TestCase):
 
         self.assertEqual(second["since"], "2026-09-23T09:30:00+09:00")
         self.assertEqual([p["url"] for p in second["posts"]], [NEW_POST["url"]])
+
+    def test_a_run_that_died_while_posting_is_completed_by_a_plain_retry(self):
+        """Slack fails on the second post. The retry, with no options, sends the other three, nothing twice."""
+        channel = FakeChannel(fail_on_post=2)
+        failed = run(channel, datetime(2026, 9, 23, 0, 0, tzinfo=timezone.utc), REAL_POSTS)
+
+        retry = run(channel, datetime(2026, 9, 23, 1, 0, tzinfo=timezone.utc), REAL_POSTS)
+
+        self.assertFalse(failed["ok"])
+        self.assertEqual(len(retry["posts"]), 3)
+        self.assertEqual(retry["dropped"], {"already_posted": 1})
+        quoted = [m["text"].rsplit("/", 1)[1].strip() for m in channel.messages]
+        self.assertEqual(sorted(quoted), sorted(p["url"].rsplit("/", 1)[1] for p in REAL_POSTS))
 
     def test_posts_already_in_the_channel_are_not_posted_again(self):
         """Posts older than the 7-day window are still skipped when --since-hours reaches back that far."""

@@ -67,7 +67,7 @@ class HistoryStateTest(unittest.TestCase):
         state = _slack.history_state(HISTORY["messages"])
 
         self.assertEqual(
-            state["last_run_started_at"],
+            state["since"],
             datetime.fromtimestamp(1790121716.948479, timezone.utc) - timedelta(minutes=15),
         )
         self.assertEqual(state["posted_ids"], {
@@ -79,18 +79,31 @@ class HistoryStateTest(unittest.TestCase):
         human = dict(HISTORY["messages"][0])
         del human["bot_id"]
 
-        self.assertEqual(_slack.history_state([human]), {"last_run_started_at": None, "posted_ids": set()})
+        self.assertEqual(_slack.history_state([human]), {"since": None, "posted_ids": set()})
 
     def test_run_start_comes_from_metadata(self):
         message = dict(HISTORY["messages"][0], metadata={
             "event_type": "research_x_post",
-            "event_payload": {"run_started_at": "2026-09-24T00:00:00+00:00"},
+            "event_payload": {"run_started_at": "2026-09-24T00:00:00+00:00", "last": True},
         })
 
         self.assertEqual(
-            _slack.history_state([message])["last_run_started_at"],
+            _slack.history_state([message])["since"],
             datetime(2026, 9, 24, tzinfo=timezone.utc),
         )
+
+    def test_an_unfinished_run_restarts_from_its_own_window(self):
+        """The latest run has no post marked last: it died midway, so the next search reuses its window."""
+        def sent(status_id, started, since, last=False):
+            payload = {"run_started_at": started, "since": since, **({"last": True} if last else {})}
+            return dict(HISTORY["messages"][0], text=f"{_slack.SEPARATOR}\n\ns\n&gt;<https://x.com/example_web/status/{status_id}>",
+                        metadata={"event_type": "research_x_post", "event_payload": payload})
+
+        finished = sent("1", "2026-09-23T00:00:00+00:00", "2026-09-22T00:00:00+00:00", last=True)
+        died = sent("2", "2026-09-24T00:00:00+00:00", "2026-09-23T00:00:00+00:00")
+
+        self.assertEqual(_slack.history_state([finished])["since"], datetime(2026, 9, 23, tzinfo=timezone.utc))
+        self.assertEqual(_slack.history_state([finished, died])["since"], datetime(2026, 9, 23, tzinfo=timezone.utc))
 
     def test_links_inside_the_summary_are_not_counted_as_posted(self):
         """A summary that mentions another X post has not posted that post."""
@@ -130,14 +143,15 @@ class ApiTest(unittest.TestCase):
         opener = FakeOpener({"ok": True, "ts": "1790200000.000100"})
 
         ts = _slack.post("xoxb-test", "本文", datetime(2026, 9, 24, tzinfo=timezone.utc),
-                         channel=CHANNEL, opener=opener)
+                         since=datetime(2026, 9, 23, tzinfo=timezone.utc), last=True, channel=CHANNEL, opener=opener)
 
         body = json.loads(opener.requests[0].data)
         self.assertEqual(ts, "1790200000.000100")
         self.assertEqual(body, {
             "channel": CHANNEL, "text": "本文", "mrkdwn": True, "link_names": False,
             "metadata": {"event_type": "research_x_post",
-                         "event_payload": {"run_started_at": "2026-09-24T00:00:00+00:00"}},
+                         "event_payload": {"run_started_at": "2026-09-24T00:00:00+00:00",
+                                           "since": "2026-09-23T00:00:00+00:00", "last": True}},
         })
 
     def test_rate_limited_post_waits_for_retry_after(self):
@@ -146,6 +160,7 @@ class ApiTest(unittest.TestCase):
         waited = []
 
         ts = _slack.post("xoxb-test", "本文", datetime(2026, 9, 24, tzinfo=timezone.utc),
+                         since=datetime(2026, 9, 23, tzinfo=timezone.utc), last=False,
                          channel=CHANNEL, opener=opener, sleep=waited.append)
 
         self.assertEqual(ts, "1790200001.000100")

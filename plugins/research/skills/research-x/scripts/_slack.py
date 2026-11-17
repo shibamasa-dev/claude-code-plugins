@@ -2,9 +2,12 @@
 """Post to the Slack channel, and recover "how far the last run got" from that channel's history.
 
 **The channel itself is the state.** Every run reads the history and, from bot posts in research-x format,
-takes the start time of the previous run and the status IDs already posted. The run start time is stored in
-each post's message metadata (`research_x_post`). A post without that metadata (posted by another tool in the
-same format) is dated from its own timestamp minus RUN_OVERLAP, so it still counts.
+takes where the next search should start and the status IDs already posted. Each post's message metadata
+(`research_x_post`) carries the run's start time (`run_started_at`), the start of the window that run searched
+(`since`) and, on the run's last post, `last: true`. If the latest run finished posting, the next search starts
+at its start time. If it died midway, the next search starts at that run's own `since` again, so the posts it
+never sent are found again (the ones it did send are skipped by ID). A post without that metadata (posted by
+another tool in the same format) is dated from its own timestamp minus RUN_OVERLAP and counts as finished.
 """
 
 from __future__ import annotations
@@ -63,21 +66,34 @@ def quoted_status_id(message: dict):
     return ids[-1] if ids else None
 
 
+def _payload(message: dict) -> dict:
+    metadata = message.get("metadata") or {}
+    return (metadata.get("event_payload") or {}) if metadata.get("event_type") == EVENT_TYPE else {}
+
+
 def run_started_at(message: dict) -> datetime:
     """Start time of the run that sent this post. Without metadata, estimated from the post's timestamp."""
-    metadata = message.get("metadata") or {}
-    if metadata.get("event_type") == EVENT_TYPE:
-        started = (metadata.get("event_payload") or {}).get("run_started_at")
-        if started:
-            return datetime.fromisoformat(started)
+    started = _payload(message).get("run_started_at")
+    if started:
+        return datetime.fromisoformat(started)
     return datetime.fromtimestamp(float(message["ts"]), timezone.utc) - RUN_OVERLAP
 
 
+def next_since(posts) -> datetime:
+    """Where the next search starts, from the posts of the latest run."""
+    latest = max(run_started_at(m) for m in posts)
+    run = [m for m in posts if run_started_at(m) == latest]
+    payloads = [_payload(m) for m in run]
+    if any(p.get("last") for p in payloads) or not any(p.get("since") for p in payloads):
+        return latest  # finished (or posted without the batch fields): continue from its start
+    return min(datetime.fromisoformat(p["since"]) for p in payloads if p.get("since"))
+
+
 def history_state(messages) -> dict:
-    """Build {last_run_started_at, posted_ids} from history. The former is None when there are no research-x posts."""
+    """Build {since, posted_ids} from history. `since` is None when there are no research-x posts."""
     posts = [m for m in messages if quoted_status_id(m)]
     return {
-        "last_run_started_at": max((run_started_at(m) for m in posts), default=None),
+        "since": next_since(posts) if posts else None,
         "posted_ids": {quoted_status_id(m) for m in posts},
     }
 
@@ -125,10 +141,14 @@ def fetch_history(tok, oldest: datetime, *, channel: str, opener=None) -> list:
             return messages
 
 
-def post(tok, text: str, run_started: datetime, *, channel: str, opener=None, sleep=time.sleep) -> str:
-    """Post one message and return its ts. The run start time goes into metadata as the next run's cursor."""
+def post(tok, text: str, run_started: datetime, *, since: datetime, last: bool, channel: str,
+         opener=None, sleep=time.sleep) -> str:
+    """Post one message and return its ts. The metadata lets the next run find where to search from."""
+    payload = {"run_started_at": run_started.isoformat(), "since": since.isoformat()}
+    if last:
+        payload["last"] = True
     body = {
         "channel": channel, "text": text, "mrkdwn": True, "link_names": False,
-        "metadata": {"event_type": EVENT_TYPE, "event_payload": {"run_started_at": run_started.isoformat()}},
+        "metadata": {"event_type": EVENT_TYPE, "event_payload": payload},
     }
     return _call("chat.postMessage", tok, body=body, opener=opener, sleep=sleep)["ts"]

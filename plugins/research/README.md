@@ -21,7 +21,7 @@ Then set `accounts` (and `slack_channel` to post) in the plugin's settings, and 
 
 ## How research-x works
 
-1. It reads the last 7 days of the channel's history (longer if `--since-hours` asks for it). From research-x's own bot posts it takes the previous run's start time (stored in each message's metadata as `event_type: research_x_post`, `run_started_at`) and the X status IDs already posted (from the quoted status URL at the end of each post). With no such post, it looks back 24 hours.
+1. It reads the last 7 days of the channel's history (longer if `--since-hours` asks for it). From research-x's own bot posts it takes where to search from and the X status IDs already posted (from the quoted status URL at the end of each post). Each post's metadata (`event_type: research_x_post`) holds the run's start time, the window it searched and, on its last post, `last: true`. After a run that finished posting, the next one starts at that run's start. After a run that died midway, it searches the same window again. With no such post, it looks back 24 hours.
 2. It asks xAI about the accounts, 10 per request, with X search required, low reasoning effort and a strict JSON schema.
 3. It keeps posts by those accounts made since the start point, using the time encoded in each status ID rather than the model's date, and drops IDs already in the channel.
 4. It posts them oldest first, one message each: a separator line, the summary (with Slack control characters escaped, so a summary can't `@here` the channel), and the post URL as a quote.

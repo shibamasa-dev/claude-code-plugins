@@ -2,7 +2,7 @@
 """research-x: summarize update announcements from a list of X accounts and post them to a Slack channel.
 
 Flow:
-  1. Recover the previous run's start time and the status IDs already posted from the channel history
+  1. Recover where to search from and the status IDs already posted from the channel history
      (the channel is the state; nothing is stored on disk)
   2. Ask xAI (x_search) about the accounts, 10 per request
   3. Keep posts made since the previous run (time recovered from the status ID), minus IDs already posted
@@ -116,8 +116,8 @@ def resolve_since(opts, state, now):
     """Return (since, where it came from)."""
     if opts.since_hours is not None:
         return now - timedelta(hours=opts.since_hours), "since_hours"
-    if state["last_run_started_at"] is not None:
-        return state["last_run_started_at"], "slack_history"
+    if state["since"] is not None:
+        return state["since"], "slack_history"
     return now - FIRST_RUN_LOOKBACK, "first_run"
 
 
@@ -167,7 +167,7 @@ def run(opts, now=None) -> dict:
         slack_token = _slack.token(required=not opts.dry_run)
         if not opts.dry_run and not cfg["channel"]:
             raise ConfigError("RESEARCH_X_SLACK_CHANNEL is empty: set the plugin's slack_channel option")
-        state = {"last_run_started_at": None, "posted_ids": set()}
+        state = {"since": None, "posted_ids": set()}
         history_read = bool(slack_token and cfg["channel"])
         if history_read:
             # Look as far back for posted IDs as for posts, so a wide --since-hours doesn't post twice
@@ -199,9 +199,10 @@ def run(opts, now=None) -> dict:
             if not opts.dry_run:
                 if i:
                     time.sleep(POST_INTERVAL_SECONDS)
-                # Store the run start (now): if this run dies midway, the next one searches again from here
-                # and skips what was already posted by ID
-                record["ts"] = _slack.post(slack_token, text, now, channel=cfg["channel"])
+                # Store the run start and this run's window; the last post marks the batch as finished.
+                # If the run dies midway, the next one searches this window again and skips what was posted by ID
+                record["ts"] = _slack.post(slack_token, text, now, since=since, last=i == len(picked) - 1,
+                                           channel=cfg["channel"])
             report["posts"].append(record)
     except Exception as err:  # noqa: BLE001 — wherever it fails, report the reason as JSON
         report["ok"] = False
