@@ -118,7 +118,7 @@ The procedure is in pr-review-triage (routing, how to request, how to wait, dete
 - **Waiting differs between cloud and local.** A cloud session ends its turn after subscribing to PR events (`subscribe_pr_activity` if available). The events wake it up across turns. Locally, start a Monitor. A Monitor runs shell commands, so use `gh` inside it (the exception where the CLI remains because connectors cannot be used).
 - **A tool stopped by a rate limit or quota counts as not reviewed**; after the wait, re-request only that tool.
 - **Re-review only when you fixed at least the threshold number (userConfig `rereview_threshold`, default 3) of heavy findings (Critical / P1 level)**, and request it from the tools asked in that round. Otherwise push and wait only for CI. Either way, go back to step 5.
-- Do not reply to threads about findings; write the response in the PR body's response table (finding / severity / verdict / action / evidence).
+- Do not reply to threads about findings; write the response in the PR body's response table (finding / severity / verdict / action / basis).
 
 ## 7. Write `## Result`
 
