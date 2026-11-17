@@ -164,6 +164,9 @@ row 'default-branch verifiers: code-review no longer counts' "$(reset; edit d3; 
 set_repo_cfg '{"commitGate": true}'
 row 'default branch has a non-string commitGate: userConfig enforce still applies' "$(reset; edit d4; CLAUDE_PLUGIN_OPTION_COMMIT_GATE=enforce commit s7f p1 "$BARE")" deny
 row 'no error was logged for it' "$(grep -q '"decision": "error"' "$LOG" 2>/dev/null && echo logged || echo none)" none
+row 'the unreadable repo value is logged as config_invalid' "$(grep -q '"decision": "config_invalid"' "$LOG" 2>/dev/null && echo logged || echo none)" logged
+set_repo_cfg '{"commitGate": "bogus"}'
+row 'default branch has a typo ("bogus"), userConfig unset: off (documented in Limitations)' "$(reset; edit d5; commit s7g p1 "$BARE")" allow
 
 echo '=== E: a branch cannot change the rule in its own working tree ==='
 set_repo_cfg '{"commitGate": "enforce"}'
@@ -206,11 +209,23 @@ row 'a commit inside a shell comment is not a commit' "$(commit s9c p2 'echo ok 
 row 'a # right after $(...) is part of the word: the commit after it is seen' "$(commit s9d p2 'echo $(true)# ; git commit -am x')" deny
 row 'git commit -unormal (an option value with an a) is not -a' "$(reset; edit f3; git add m.py; review s9u p1; edit f3-fixed; stop s9u p1; commit s9u p2 "git commit -unormal -m x -m '$TR'")" deny
 row 'bash -lc '"'"'git commit'"'"' (a -c cluster) is seen' "$(commit s9b p2 "bash -lc 'git commit -am x'")" deny
-row 'git -C "$REPO" commit (a variable): blocked, not judged against the cwd' "$(commit s9v1 p2 'git -C "$REPO" commit -am x -m "'"$TR"'"')" deny
-row 'cd "$REPO" && git commit: blocked' "$(commit s9v2 p2 'cd "$REPO" && git commit -am x')" deny
-row 'GIT_DIR=<repo>/.git git commit: blocked' "$(commit s9v3 p2 "GIT_DIR='$W/.git' git commit -am x")" deny
+row 'git -C "$REPO" commit (a variable): noted and logged as unresolved, never denied' "$(commit s9v1 p2 'git -C "$REPO" commit -am x -m "'"$TR"'"')" unresolved
+row 'cd "$REPO" && git commit: unresolved, not denied' "$(commit s9v2 p2 'cd "$REPO" && git commit -am x')" unresolved
+row 'GIT_DIR=<repo>/.git git commit: unresolved, not denied' "$(commit s9v3 p2 "GIT_DIR='$W/.git' git commit -am x")" unresolved
 row 'unresolved, the log says why' "$([ "$(lastlog why)" = "GIT_DIR / GIT_WORK_TREE" ] && echo named || echo missing)" named
-row 'unresolved target, two blocks, then the next commit passes' "$(commit s9v3 p2 'cd "$REPO" && git commit -am x' >/dev/null; commit s9v3 p2 'cd "$REPO" && git commit -am x')" release
+row 'cd - && git commit: unresolved, not denied (cd - is not followed)' "$(commit s9v6 p2 'cd /tmp && cd - && git commit -am x')" unresolved
+row 'unresolved three times in a row: still never denied' "$(commit s9v3 p2 'cd "$REPO" && git commit -am x' >/dev/null; commit s9v3 p2 'cd "$REPO" && git commit -am x' >/dev/null; commit s9v3 p2 'cd "$REPO" && git commit -am x')" unresolved
+row 'cd "$(git rev-parse --show-toplevel)" && git commit: judged here (no trailer)' "$(commit s9t1 p2 'cd "$(git rev-parse --show-toplevel)" && git commit -am x' >/dev/null; lastlog decision | tr -d _)" wouldblock
+row 'cd "$(git rev-parse --show-toplevel)" && git commit + trailer: passes' "$(commit s9t2 p2 'cd "$(git rev-parse --show-toplevel)" && git commit -am x -m "'"$TR"'"')" allow
+row 'git -C "$(pwd)" commit: judged here (no trailer)' "$(commit s9t3 p2 'git -C "$(pwd)" commit -am x' >/dev/null; lastlog decision | tr -d _)" wouldblock
+row 'git -C $(pwd) commit (unquoted) + trailer: passes' "$(commit s9t4 p2 'git -C $(pwd) commit -am x -m "'"$TR"'"')" allow
+row 'git -C "$PWD" commit: judged here (no trailer)' "$(commit s9t5 p2 'git -C "$PWD" commit -am x' >/dev/null; lastlog decision | tr -d _)" wouldblock
+row 'cd ${PWD} && git commit + trailer: passes' "$(commit s9t6 p2 'cd ${PWD} && git commit -am x -m "'"$TR"'"')" allow
+row 'cd `pwd` && git commit: judged here (no trailer)' "$(commit s9t7 p2 'cd `pwd` && git commit -am x' >/dev/null; lastlog decision | tr -d _)" wouldblock
+row 'sh -c -- '"'"'git commit'"'"' is seen' "$(commit s9b2 p2 "sh -c -- 'git commit -am x'")" deny
+row 'git commit -S<keyid> -am x -m <trailer>: the key does not swallow the options' "$(commit s9k1 p2 "git commit -SDEADBEEFCAFE -am x -m '$TR'")" allow
+row 'git commit -S<email>: same' "$(commit s9k2 p2 "git commit -Sci@example.com -am x -m '$TR'")" allow
+row 'git commit -SABC -a -m <trailer>: passes' "$(commit s9k3 p2 "git commit -SABC -a -m '$TR'")" allow
 row 'git --git-dir --work-tree from a dir that is not a repo: logged as unresolved, not blocked' "$(W0="$W"; W="$T" commit s9v4 p2 "git --git-dir='$W0/.git' --work-tree='$W0' commit -am x")" unresolved
 row 'observe: cd "$REPO" && git commit is logged as unresolved, not blocked' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=observe commit s9v5 p2 'cd "$REPO" && git commit -am x')" unresolved
 row 'after cd && git commit, no trailer' "$(commit s9 p2 "cd '$W' && git commit -am x")" deny
@@ -222,10 +237,20 @@ row '-C <option-looking value> never reaches git log as an option' "$(r=$(commit
 reset; edit f2; git add m.py; review s9s p1; edit f2-fixed; stop s9s p1
 row 'staged version differs from the verified working tree: blocked' "$(commit s9s p2 "git commit -m x -m '$TR'")" deny
 row 'same, with -a (stages the verified version): passes' "$(commit s9s2 p2 "$CM")" allow
+row 'same, naming the path (git commit <path> takes it from the working tree): passes' "$(commit s9s3 p2 "git commit -m x -m '$TR' m.py")" allow
+row 'same, --only -- <path>: passes' "$(commit s9s4 p2 "git commit --only -m x -m '$TR' -- m.py")" allow
+row 'same, -i <path> (stages that path): passes' "$(commit s9s5 p2 "git commit -i -m x -m '$TR' m.py")" allow
+row 'same, -i <another path>: still blocked' "$(commit s9s6 p2 "git commit -i -m x -m '$TR' other.txt")" deny
 reset; edit f; review s9 p1; stop s9 p1
 git add -A; git commit -qm "x" -m "$TR"
 row '--amend --no-edit keeps HEAD trailer' "$(commit s9 p2 'git commit --amend --no-edit')" allow
 row 'subagent payload (agent_id, same session) is read like the main one' "$(ev pre-bash-subagent s9 p2 "tool_input={\"command\":$(j "git commit -am x")}" | grep -q '"deny"' && echo deny || echo allow)" deny
+
+S="$T/subsrc"; git init -q -b main "$S"; ( in_dir "$S"; echo s > s; git add s; git commit -qm s )
+reset; git -c protocol.file.allow=always submodule add -q "$S" sub 2>/dev/null; echo dirty >> sub/s
+review s9m p1; stop s9m p1
+row 'a staged submodule with a dirty worktree does not count as staged-then-edited' "$(commit s9m p2 "git commit -m x -m '$TR'")" allow
+git reset -q --hard; git clean -qffd
 
 echo '=== G: origin default branch unknown, no origin ==='
 reset; edit g
@@ -234,12 +259,31 @@ row 'no local origin/HEAD: does not gate, says so' "$(commit s10 p1 "$BARE")" no
 row 'no local origin/HEAD, userConfig off: silent' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s10 p1 "$BARE")" allow
 set_repo_cfg '{"commitGate": "enforce"}'; git remote set-head origin -d
 row 'opt-in only in the repo file, origin/HEAD missing, before SessionStart: silent (cannot be read)' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s10b p1 "$BARE")" allow
-row 'opt-in only in the repo file, origin/HEAD missing: SessionStart resolves it, then gated' "$(export CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off; ev - s10b p1 'hook_event_name="SessionStart"' >/dev/null; commit s10b p1 "$BARE")" deny
+row 'userConfig off, no repo file at HEAD or in the working tree: SessionStart does not ask origin' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off ev - s10b p1 'hook_event_name="SessionStart"' >/dev/null; git rev-parse -q --verify refs/remotes/origin/HEAD >/dev/null && echo asked || echo skipped)" skipped
+mkdir -p .claude; printf '{"commitGate": "enforce"}\n' > .claude/verification.json
+row 'the repo file in the working tree: SessionStart resolves origin/HEAD, then gated' "$(export CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off; ev - s10b p1 'hook_event_name="SessionStart"' >/dev/null; commit s10b p1 "$BARE")" deny
+rm -f .claude/verification.json
+SSHR="$T/ssh-repo"; git init -q -b main "$SSHR"; ( in_dir "$SSHR"; mkdir -p .claude; echo '{"commitGate": "observe"}' > .claude/verification.json
+  git add .claude; git commit -qm cfg; git remote add origin ssh://nohost.invalid/r.git )
+printf '#!/bin/sh\necho "$@" >> "%s"\nexit 1\n' "$T/ssh.args" > "$T/fakessh"; chmod +x "$T/fakessh"
+row 'repo file at HEAD: SessionStart asks origin, ssh in BatchMode' "$(W="$SSHR" GIT_SSH_COMMAND="$T/fakessh" CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off ev - s10c p1 'hook_event_name="SessionStart"' >/dev/null; grep -q 'BatchMode=yes' "$T/ssh.args" 2>/dev/null && echo batch || { [ -s "$T/ssh.args" ] && echo prompting || echo none; })" batch
 set_repo_cfg -
 git remote set-head origin main
 N="$T/no origin"; git init -q -b main "$N"; ( in_dir "$N"; echo a > a; git add a; git commit -qm a; echo b >> a
   mkdir -p .claude; printf '{"commitGate": "enforce"}\n' > .claude/verification.json )
 row 'no origin remote: the working tree file applies' "$(W="$N" CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s11 p1 "git commit -am x")" deny
+
+echo '=== I: where the commit runs (subshells, pushd / popd) ==='
+OT="$T/other"; git init -q -b main "$OT"; ( in_dir "$OT"; echo o > o; git add o; git commit -qm o; echo p >> o )
+set_repo_cfg '{"commitGate": "enforce"}'; reset; edit i
+row '(cd <other> && true); git commit: the cd stays in the subshell, judged here' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14a p1 "(cd '$OT' && true); git commit -am x")" deny
+row '( cd <other> ) && git commit: judged here' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14b p1 "( cd '$OT' ) && git commit -am x")" deny
+row 'pushd <other> && popd && git commit: judged here' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14c p1 "pushd '$OT' >/dev/null && popd >/dev/null && git commit -am x")" deny
+row '(cd <other> && git commit): judged there (ungated)' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14d p1 "(cd '$OT' && git commit -am x)")" allow
+row 'mirror, from the ungated repo: (cd <gated> && true); git commit stays ungated' "$(W0="$W"; W="$OT" CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14e p1 "(cd '$W0' && true); git commit -am x")" allow
+row 'mirror: pushd <gated> && popd && git commit stays ungated' "$(W0="$W"; W="$OT" CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14f p1 "pushd '$W0' >/dev/null && popd >/dev/null && git commit -am x")" allow
+row 'popd with an empty stack: unresolved' "$(CLAUDE_PLUGIN_OPTION_COMMIT_GATE=off commit s14g p1 "popd && git commit -am x")" unresolved
+set_repo_cfg -
 
 echo '=== H: the log and report ==='
 row 'report lists would-be blocks' "$(python3 "$HOOK" report | grep -q would_block && echo listed || echo missing)" listed
@@ -250,6 +294,7 @@ commit s13 p2 "$CM" >/dev/null; git commit -qam x -m "$TR"
 row 'after the commit: logged as committed' "$(posted "$CM" "[main $(git rev-parse --short HEAD)] x")" committed
 row 'its stamp is backed by the record' "$(lastlog stamp)" backed
 row 'the log line names the branch' "$(lastlog branch)" main
+row 'the next command (a push) does not log the same commit again as unseen' "$(n0=$(loglines); posted 'git push' '' >/dev/null; [ "$(loglines)" = "$n0" ] && echo once || echo twice)" once
 edit h1; commit s13 p2 'git commit -qam y' >/dev/null; git commit -qam y
 row 'git commit -q (no summary printed) is still logged' "$(posted 'git commit -qam y' '')" committed
 row 'after a commit with no trailer: stamp missing' "$(lastlog stamp)" missing
@@ -259,6 +304,8 @@ edit h3; git commit -qam w   # a commit the PreToolUse side never saw (as throug
 row 'HEAD moved in a command not read as a commit: logged as committed' "$(n0=$(loglines); posted 'make release' ''; )" committed
 row 'that line is marked unseen by the pre-commit check' "$([ "$(lastlog unseen)" = True ] && echo unseen || echo missing)" unseen
 row 'a command that did not commit adds no line' "$(n0=$(loglines); posted 'ls -la' '' >/dev/null; [ "$(loglines)" = "$n0" ] && echo none || echo added)" none
+edit h4; git commit -qam v
+row 'a PostToolUse without duration_ms: no unseen line (no default window)' "$(n0=$(loglines); ev - s13 p2 'hook_event_name="PostToolUse"' 'tool_name="Bash"' 'tool_input={"command":"make release"}' 'tool_response={"stdout":"","stderr":""}' >/dev/null; [ "$(loglines)" = "$n0" ] && echo none || echo added)" none
 row 'fingerprint changes on every same-size edit right after a commit (200 rounds, racy-clean index)' "$(in_dir "$W"; printf '\0\1A' > b.bin; git add b.bin; git commit -qm bin; python3 - "$HOOK" <<'PY'
 import os, subprocess, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(sys.argv[1])))

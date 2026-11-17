@@ -18,7 +18,10 @@ Modes (`off` / `observe` / `enforce`): `.claude/verification.json` {"commitGate"
 default branch, else userConfig `commit_gate` / `commit_gate_verifiers`, else off. The repo file is read from
 `refs/remotes/origin/HEAD` (never the working tree, so a branch cannot change the rule it is judged by); without an
 origin remote the working tree is read. When origin's default branch is unknown locally (no origin/HEAD), it does not gate.
-  off      nothing is read or written, nothing is said
+  off      nothing is written and nothing is said. What still runs (all local, no network): PreToolUse returns at once
+           unless the command contains both `git` and `commit`, then reads the repo's config with two to four git
+           calls; PostToolUse on Bash runs one `git log -g -1` per call that reports duration_ms (about 10 ms);
+           UserPromptExpansion and the Skill tool read the config the same way; SessionStart as described below.
   observe  never blocks; says what it would have done and logs it (stale evidence: allowed, marked "(stale)")
   enforce  denies a commit with missing or stale evidence, or a trailer the record does not back.
            After two denials in a session, the next commit is allowed (logged as released) and the count resets.
@@ -29,12 +32,17 @@ clean rebases keep it; any edit, by any tool, changes it. Without a merge-base i
 
 After a successful `git commit` (PostToolUse) it logs the commit and whether its stamp is backed by the record.
 A command that mentions git commit but cannot be lexed is not checked; with the gate on, that is logged and said.
-No network on the per-call path. SessionStart asks origin for its default branch only when the local origin/HEAD is missing
-(at most once an hour per repo), whatever userConfig says, since a repo can opt in through its own file.
+A commit whose repo cannot be told from the command (a `cd` or `-C` to a variable, `cd -`, GIT_DIR, --git-dir) is
+never denied, in any mode: with the gate on it is said and logged as unresolved. `$PWD`, `$(pwd)` and
+`$(git rev-parse --show-toplevel)` are followed; `cd` inside `( ... )` stays there; pushd / popd keep a stack.
+No network on the per-call path. SessionStart asks origin for its default branch only when the local origin/HEAD is
+missing (at most once an hour per repo), and only when userConfig turns the gate on or the repo has its file at HEAD
+or in the working tree; with GIT_TERMINAL_PROMPT=0 and ssh in BatchMode, so it never waits for a password.
 State: state_dir() (see there). Log: state_dir()/log.jsonl. `commit_gate.py report` lists what would have been blocked.
 Whatever happens it never raises and exits 0.
 """
 import fcntl
+import fnmatch
 import hashlib
 import json
 import os
@@ -47,7 +55,7 @@ import time
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _shell import HEREDOC_MARK_RE, commands, lex  # noqa: E402
+from _shell import HEREDOC_MARK_RE, commands, lex, resolve_dir  # noqa: E402
 
 TAG = "[commit-gate]"
 MODES = ("off", "observe", "enforce")
@@ -142,7 +150,8 @@ def settings(top):
         verifiers = re.compile(DEFAULT_VERIFIERS)
     if source == "unknown":
         mode = "off" if user_mode == "off" else "unknown"
-    return {"mode": mode, "verifiers": verifiers, "source": source}
+    invalid = None if repo_mode is None or valid else repo_mode  # present but not a mode (true, "bogus")
+    return {"mode": mode, "verifiers": verifiers, "source": source, "invalid": invalid}
 
 
 def _miss_path(common):
@@ -161,12 +170,14 @@ def warm_default_branch(top, common):
             return
     except OSError:
         pass
-    rc, out = git(top, "ls-remote", "--symref", "origin", "HEAD", timeout=5)
+    net = {**GIT_ENV, "GIT_SSH_COMMAND": (os.environ.get("GIT_SSH_COMMAND") or "ssh") + " -o BatchMode=yes"}
+    rc, out = git(top, "ls-remote", "--symref", "origin", "HEAD", env=net, timeout=5)
     m = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", out, re.M) if rc == 0 else None
     if m:
         name = m.group(1)
         if git(top, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{name}")[0] != 0:
-            git(top, "fetch", "--quiet", "origin", "--", f"+refs/heads/{name}:refs/remotes/origin/{name}", timeout=5)
+            git(top, "fetch", "--quiet", "origin", "--", f"+refs/heads/{name}:refs/remotes/origin/{name}", env=net,
+                timeout=5)
         if git(top, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{name}")[0] == 0:
             git(top, "symbolic-ref", "refs/remotes/origin/HEAD", f"refs/remotes/origin/{name}")
             return
@@ -332,8 +343,7 @@ def git_commits(command, cwd):
     target repo cannot be told from the command (a `cd` or `-C` to a variable, GIT_DIR, --git-dir); None otherwise."""
     out = []
     for call in commands(command, {"git"}, cwd):
-        args, i, here = call["args"], 0, call["cwd"]
-        why = None if here else "cd to a directory that cannot be resolved"
+        args, i, here, why = call["args"], 0, call["cwd"], None
         if any(k in call["env"] for k in ("GIT_DIR", "GIT_WORK_TREE")):
             why = "GIT_DIR / GIT_WORK_TREE"
         while i < len(args) and args[i].startswith("-"):
@@ -341,17 +351,17 @@ def git_commits(command, cwd):
             if a.split("=", 1)[0] in ("--git-dir", "--work-tree"):
                 why = a.split("=", 1)[0]
             if a == "-C" and i + 1 < len(args):
-                d = os.path.expanduser(args[i + 1])
-                if "$" in d or "`" in d:
-                    here, why = None, "-C to a variable"
-                else:
-                    here = d if os.path.isabs(d) else (os.path.join(here, d) if here else None)
+                d = args[i + 1]
+                here = resolve_dir(d, here)  # $PWD, $(pwd) and $(git rev-parse --show-toplevel) are followed
+                if here is None and ("$" in d or "`" in d):
+                    why = why or "-C to a variable"
                 i += 2
             elif a in _GIT_VALUE_OPTS and "=" not in a:
                 i += 2
             else:
                 i += 1
         if i < len(args) and args[i] == "commit":
+            why = why or (None if here else "cd to a directory that cannot be resolved")
             out.append({"cwd": here, "args": args[i + 1:], "call": call, "unresolved": why})
     return out
 
@@ -381,19 +391,25 @@ def _add(parts, text):
 
 
 def commit_message(c, top):
-    """(message or None, dry_run). None when the message cannot be inspected (a variable, the editor, piped stdin)."""
+    """{"msg", "dry", "paths", "include"}. msg is None when the message cannot be inspected (a variable, the editor,
+    piped stdin). paths: the pathspecs named on the command line (None when read from a file); include: -i / --include."""
     args, call, cwd = c["args"], c["call"], c["cwd"] or top
     parts, trailers, src, amend, dry, unknown = [], [], None, False, False, False
+    paths, include = [], False
     i = 0
     while i < len(args):
         a = args[i]
         nxt = args[i + 1] if i + 1 < len(args) else None
         if a == "--":
+            paths = None if paths is None else paths + args[i + 1:]
             break
-        if a.startswith("--"):
+        if not a.startswith("-") or a == "-":
+            if paths is not None:
+                paths.append(a)
+        elif a.startswith("--"):
             k, eq, v = a.partition("=")
             takes = k in ("--message", "--file", "--reuse-message", "--reedit-message", "--trailer", "--template",
-                          "--fixup", "--squash", "--author", "--date", "--cleanup")
+                          "--fixup", "--squash", "--author", "--date", "--cleanup", "--pathspec-from-file")
             if takes and not eq:
                 v, i = (nxt or ""), i + 1
             if k == "--message":
@@ -408,8 +424,16 @@ def commit_message(c, top):
                 amend = True
             elif k == "--dry-run":
                 dry = True
-        elif a.startswith("-") and len(a) > 1:
+            elif k == "--include":
+                include = True
+            elif k == "--pathspec-from-file":
+                paths = None
+        else:
             for j, ch in enumerate(a[1:], 1):
+                if ch == "i":
+                    include = True
+                if ch not in _COMMIT_SHORT_VALUE and ch not in _COMMIT_SHORT_FLAGS:
+                    break  # -S<key>, -u<mode> and unknown letters: the rest of the word is that option's value
                 if ch in _COMMIT_SHORT_VALUE:
                     v = a[j + 1:]
                     if not v:
@@ -443,8 +467,10 @@ def commit_message(c, top):
     trailers = [re.sub(r"^\s*([\w-]+)\s*=\s*", r"\1: ", t) for t in trailers]  # --trailer key=value
     if unknown or not parts:
         # The body cannot be read (or comes from the editor): only --trailer lines are known
-        return ("\n".join(trailers) or None), dry
-    return "\n\n".join(parts) + "".join("\n" + t for t in trailers), dry
+        msg = "\n".join(trailers) or None
+    else:
+        msg = "\n\n".join(parts) + "".join("\n" + t for t in trailers)
+    return {"msg": msg, "dry": dry, "paths": paths, "include": include}
 
 
 def parse_trailer(msg):
@@ -538,9 +564,6 @@ def on_pre_bash(inp):
     for c in calls:
         if c["unresolved"]:
             res = unresolved(inp, cmd, c["unresolved"])
-            if res and res[0] == "deny":
-                denial = res[1]
-                break
             notes += [res[1]] if res else []
             continue
         top, common = repo_of(c["cwd"] or inp.get("cwd"))
@@ -557,10 +580,18 @@ def on_pre_bash(inp):
             continue
         if s["source"] == "working-tree":
             notes.append(f"{TAG} no origin remote: {CONFIG} is read from the working tree.")
-        msg, dry = commit_message(c, top)
-        if dry:
+        if s["invalid"] is not None:
+            log({"session": inp["session_id"], "repo": top, "mode": s["mode"], "decision": "config_invalid",
+                 "value": repr(s["invalid"])[:100], "cmd": cmd[:200]})
+            notes.append(f"{TAG} commitGate in the default branch's {CONFIG} is {s['invalid']!r}, not one of "
+                         f"{', '.join(MODES)}: ignored, using userConfig ({s['mode']}).")
+        m = commit_message(c, top)
+        if m["dry"]:
             continue
-        res = decide(inp, s, top, common, msg, cmd, commits_all(c["args"]))
+        # git commit <paths> (without -i) takes the named paths from the working tree, like -a does for all of them
+        stages = commits_all(c["args"]) or (m["paths"] is None or bool(m["paths"])) and not m["include"]
+        named = (m["paths"] or []) if m["include"] else []
+        res = decide(inp, s, top, common, m["msg"], cmd, stages, named, c["cwd"] or top)
         if res and res[0] == "deny":
             denial = res[1]
             break
@@ -580,29 +611,17 @@ def branch_of(top):
 
 
 def unresolved(inp, cmd, why):
-    """A commit whose repo cannot be told statically: never judged against the session cwd. With the gate on for
-    the session's repo (or in userConfig), observe logs and says it; enforce blocks and asks for the repo by name,
-    under the same two-blocks count (kept for the session's repo). ("deny", reason) | ("note", text) | None."""
-    top, common = repo_of(inp.get("cwd"))
+    """A commit whose repo cannot be told statically: never judged against the session cwd, and never denied in any
+    mode (the target may be a repo that does not gate at all). With the gate on for the session's repo (or in
+    userConfig), it is logged as unresolved and said. ("note", text) | None."""
+    top, _ = repo_of(inp.get("cwd"))
     mode = settings(top)["mode"] if top else norm_mode(os.environ.get("CLAUDE_PLUGIN_OPTION_COMMIT_GATE"))
     if mode in ("off", "unknown"):
         return None
-    entry = {"session": inp["session_id"], "repo": top, "mode": mode, "why": why, "cmd": cmd[:200]}
-    ask = "Name the repo literally (`git -C <path> commit`, or `cd <path> && git commit`) so it can be checked."
-    if mode == "observe" or not top:
-        log({**entry, "decision": "unresolved"})
-        return "note", f"{TAG} cannot tell which repo this commit goes to ({why}), so it was not checked. {ask}"
-    with Locked(repo_path(repo_key(common)), REPO_DEFAULT) as r:
-        n = r["blocks"].get(inp["session_id"], 0)
-        if n >= RELEASE_AFTER:
-            r["blocks"].pop(inp["session_id"], None)
-        else:
-            r["blocks"][inp["session_id"]] = n + 1
-    if n >= RELEASE_AFTER:
-        log({**entry, "decision": "released"})
-        return "note", f"{TAG} let through after {RELEASE_AFTER} blocks in this session (logged as released): repo unknown ({why})."
-    log({**entry, "decision": "unresolved"})
-    return "deny", (f"{TAG} Commit blocked ({n + 1}/{RELEASE_AFTER}): cannot tell which repo it goes to ({why}). {ask}")
+    log({"session": inp["session_id"], "repo": top, "mode": mode, "why": why, "decision": "unresolved",
+         "cmd": cmd[:200]})
+    return "note", (f"{TAG} cannot tell which repo this commit goes to ({why}), so it was not checked. Name the repo "
+                    "literally (`git -C <path> commit`, or `cd <path> && git commit`) so it can be checked.")
 
 
 def unparsed(inp, cmd):
@@ -634,6 +653,10 @@ def on_post_bash(inp):
     rc, sha = git(top, "rev-parse", "--verify", "--quiet", "HEAD")
     if before is None or rc != 0 or sha == before:
         return None  # HEAD did not move: the commit failed or was refused
+    with Locked(hp, {}) as h:
+        if sha in h.get("logged", []):
+            return None
+        h["logged"] = (h.get("logged", []) + [sha])[-50:]  # so the next command does not log it again as unseen
     _, body = git(top, "log", "-1", "--format=%B", sha, "--")
     trailer = parse_trailer(body)
     fresh, _ = evidence_for(repo_key(common), inp["session_id"], inp.get("prompt_id"), fingerprint(top))
@@ -650,38 +673,45 @@ REFLOG_RE = re.compile(r"^([0-9a-f]{40,64})\t\S*@\{(\d+)\}\tcommit")
 def unseen_commit(inp, cmd):
     """Observe-only signal for commits the PreToolUse side did not read as one (make, eval, aliases, python -c ...):
     if HEAD's newest reflog entry is a commit made during this command, log it as committed with unseen=True.
-    One local git call per Bash command; the settings are read only when such a commit is found."""
+    One local git call per Bash command that reports duration_ms (none without it: no default window); the settings
+    are read only when such a commit is found. A sha is logged once per session, seen or unseen."""
+    dur = inp.get("duration_ms")
+    if not isinstance(dur, (int, float)) or isinstance(dur, bool):
+        return None
     cwd = inp.get("cwd") or "."
     rc, out = git(cwd, "log", "-g", "-1", "--date=unix", "--format=%H%x09%gd%x09%gs", "HEAD")
     m = REFLOG_RE.match(out) if rc == 0 else None
     if not m:
         return None
-    window = (inp.get("duration_ms") or 120000) / 1000 + 2
-    if int(m.group(2)) < time.time() - window:
+    if int(m.group(2)) < time.time() - (dur / 1000 + 2):
         return None
     top, common = repo_of(cwd)
     if not top or settings(top)["mode"] in ("off", "unknown"):
         return None
     sha = m.group(1)
     with Locked(heads_path(inp["session_id"]), {}) as h:
-        if h.get("unseen:" + top) == sha:
-            return None  # already logged by an earlier command in the same window
-        h["unseen:" + top] = sha
+        if sha in h.get("logged", []):
+            return None  # already logged, by the commit check or by an earlier command in the same window
+        h["logged"] = (h.get("logged", []) + [sha])[-50:]
     _, body = git(top, "log", "-1", "--format=%B", sha, "--")
     log({"session": inp["session_id"], "repo": top, "branch": branch_of(top), "decision": "committed", "sha": sha,
          "unseen": True, "trailer": (TRAILER_RE.findall(body) or [None])[-1], "cmd": cmd[:200]})
     return None
 
 
-def staged_differs(top):
-    """Paths whose staged content differs both from HEAD and from the working tree (staged, then edited again).
+def staged_differs(top, named=(), cwd=None):
+    """Paths whose staged content differs both from HEAD and from the working tree (staged, then edited again),
+    leaving out the paths `git commit -i <paths>` stages itself and submodules whose only change is a dirty worktree.
     ["(git diff failed)"] when either side cannot be read, so the check fails closed."""
-    rc1, staged = git(top, "diff", "--cached", "--name-only", "-z")
-    rc2, unstaged = git(top, "diff", "--name-only", "-z")
+    rc1, staged = git(top, "diff", "--cached", "--name-only", "--ignore-submodules=dirty", "-z")
+    rc2, unstaged = git(top, "diff", "--name-only", "--ignore-submodules=dirty", "-z")
     if rc1 != 0 or rc2 != 0:
         return ["(git diff failed)"]
     both = set(filter(None, staged.split("\0"))) & set(filter(None, unstaged.split("\0")))
-    return sorted(both)
+    base, root = os.path.realpath(cwd or top), os.path.realpath(top)  # toplevel is resolved (/private/var vs /var)
+    specs = [os.path.relpath(os.path.join(base, p), root).replace(os.sep, "/") for p in named]
+    return sorted(f for f in both if not any(f == p or f.startswith(p.rstrip("/") + "/") or p == "."
+                                             or fnmatch.fnmatchcase(f, p) for p in specs))
 
 
 def commits_all(args):
@@ -713,7 +743,7 @@ def remember_head(sid, top):
         h[top] = head
 
 
-def decide(inp, s, top, common, msg, cmd, stages_all=False):
+def decide(inp, s, top, common, msg, cmd, stages_all=False, named=(), cwd=None):
     """("deny", reason) | ("note", text) | None."""
     sid, mode, key = inp["session_id"], s["mode"], repo_key(common)
     fp = fingerprint(top)
@@ -728,7 +758,7 @@ def decide(inp, s, top, common, msg, cmd, stages_all=False):
     entry["verifiers"] = sorted(fresh)
     remember_head(sid, top)
     if verdict == "allow" and not stages_all:
-        split = staged_differs(top)
+        split = staged_differs(top, named, cwd or top)
         if split:
             verdict, problem = "would_block", (
                 f"the staged version of {', '.join(split[:5])} differs from the working tree, which is what was verified; "
@@ -799,10 +829,13 @@ def main():
         elif ev == "Stop":
             out = on_stop(inp)
         elif ev == "SessionStart":
-            # Regardless of userConfig: a repo can opt in through its file, which needs origin/HEAD to be read.
-            # Asks origin only when origin/HEAD is missing (at most once an hour); never on the per-call path
+            # Only where the gate may apply: userConfig turns it on, or the repo carries its file (at HEAD or in the
+            # working tree), which needs origin/HEAD to be read. Asks origin only when origin/HEAD is missing
+            # (at most once an hour); never on the per-call path
             top, common = repo_of(inp.get("cwd"))
-            if top:
+            if top and (norm_mode(os.environ.get("CLAUDE_PLUGIN_OPTION_COMMIT_GATE")) != "off"
+                        or os.path.exists(os.path.join(top, CONFIG))
+                        or git(top, "cat-file", "-e", f"HEAD:{CONFIG}")[0] == 0):
                 warm_default_branch(top, common)
             if os.path.isdir(state_dir()):
                 gc()

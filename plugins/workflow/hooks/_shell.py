@@ -6,12 +6,18 @@ commands() finds the calls to given executables in a Bash command, looking throu
 import os
 import re
 import shlex
+import subprocess
 
 # Heredoc: the rest of the <<[-]['"]DELIM['"] line (group 4), the body (group 5), the closing DELIM line
 HEREDOC_RE = re.compile(r"(?<!<)<<(?!<)(-?)[ \t]*(['\"]?)(\w+)\2([^\n]*)\n(.*?)\n[ \t]*\3[ \t]*(?=\n|$)", re.S)
 HEREDOC_MARK_RE = re.compile(r"<<__HEREDOC_(\d+)__")
 SHELL_C_RE = re.compile(r"-[A-Za-z]*c[A-Za-z]*")  # sh -c, bash -lc, zsh -ic, ...
 ASSIGN_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", re.S)
+# Spellings of "the current directory" (and its repo's top level) that can be followed statically
+_SUBST_RE = re.compile(r"\$\(\s*pwd\s*\)|`\s*pwd\s*`|\$\(\s*git\s+rev-parse\s+--show-toplevel\s*\)")
+_PH_RE = re.compile(r"__SHELL_SUBST_(\d+)__")
+_PWD_RE = re.compile(r"\$\{PWD\}|\$PWD(?!\w)|\$\(\s*pwd\s*\)|`\s*pwd\s*`")
+_TOP_RE = re.compile(r"\$\(\s*git\s+rev-parse\s+--show-toplevel\s*\)")
 # Wrappers that can precede a command, and their options that take a value (skipped so we can see the command inside)
 _WRAPPERS = {
     "env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"},
@@ -63,18 +69,55 @@ def unwrap(c):
     return env, c[i:]
 
 
-def resolve_cd(args, cur):
-    """Where `cd` goes. None when unknown (a variable, `cd -`, or a relative path from an unknown place)."""
-    dests = [a for a in args if not (a.startswith("-") and a != "-")]
-    if not dests:
-        return os.path.expanduser("~")
-    d = dests[0]
-    if d == "-" or "$" in d or "`" in d:
+def _toplevel(cur):
+    env = {k: v for k, v in os.environ.items() if k not in ("GIT_DIR", "GIT_WORK_TREE")}
+    try:
+        r = subprocess.run(["git", "-C", cur, "rev-parse", "--show-toplevel"], capture_output=True, text=True,
+                           timeout=5, env=env, stdin=subprocess.DEVNULL)
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    return r.stdout.strip() if r.returncode == 0 and r.stdout.strip() else None
+
+
+def resolve_dir(d, cur):
+    """A directory argument as a path, or None when unknown. `$PWD`, `${PWD}`, `$(pwd)`, `` `pwd` `` and
+    `$(git rev-parse --show-toplevel)` are followed from cur; any other variable or substitution is unknown."""
+    if cur:
+        d = _PWD_RE.sub(lambda m: cur, d)
+        if _TOP_RE.search(d):
+            top = _toplevel(cur)
+            if not top:
+                return None
+            d = _TOP_RE.sub(lambda m: top, d)
+    if "$" in d or "`" in d:
         return None
     d = os.path.expanduser(d)
     if os.path.isabs(d):
         return os.path.normpath(d)
     return os.path.normpath(os.path.join(cur, d)) if cur else None
+
+
+def _no_redirects(args):
+    """args without redirections (`>/dev/null`, `2> f`)."""
+    out, skip = [], False
+    for a in args:
+        if skip:
+            skip = False
+        elif re.fullmatch(r"\d*(>>?|<|&>)", a):
+            skip = True  # the target is the next word
+        elif not re.match(r"\d*(>>?|<|&>)", a):
+            out.append(a)
+    return out
+
+
+def resolve_cd(args, cur):
+    """Where `cd` goes. None when unknown (a variable, `cd -`, or a relative path from an unknown place)."""
+    dests = [a for a in args if not (a.startswith("-") and a != "-")]
+    if not dests:
+        return os.path.expanduser("~")
+    if dests[0] == "-":
+        return None
+    return resolve_dir(dests[0], cur)
 
 
 def strip_comments(command):
@@ -127,13 +170,16 @@ def lex(command):
     """(tokens, heredoc bodies), or None when shlex cannot read the command (an unbalanced quote, say)."""
     command, docs = split_heredocs(command)
     command = command.replace("\\\n", " ")  # a trailing \ continues the line
+    # Keep $(pwd) and the like one word (unquoted, shlex would split it at the parentheses); put back after lexing
+    subs = []
+    command = _SUBST_RE.sub(lambda m: subs.append(m.group(0)) or f"__SHELL_SUBST_{len(subs) - 1}__", command)
     try:
         # A newline also separates commands (newlines inside quotes are kept)
         lx = shlex.shlex(strip_comments(command), posix=True, punctuation_chars=";&|()\n")
         lx.commenters = ""  # comments were removed above, only where they start a word
         lx.whitespace = " \t\r"
         lx.whitespace_split = True
-        return list(lx), docs
+        return [_PH_RE.sub(lambda m: subs[int(m.group(1))], t) for t in lx], docs
     except ValueError:
         return None
 
@@ -155,13 +201,34 @@ def commands(command, exes, cwd=None, _depth=0):
         if t and set(t) <= set(";&|()\n"):
             cmds.append(cur)
             cur = []
+            cmds += [p for p in t if p in "()"]  # a subshell opens and closes here
         else:
             cur.append(t)
     cmds.append(cur)
     out, exported = [], {}
+    dirs, saved = [], []  # the pushd stack; (cwd, stack) saved at each "(" and restored at its ")"
     for c in cmds:
-        if c and c[0] in ("cd", "pushd"):
-            cwd = resolve_cd(c[1:], cwd)
+        if c == "(":
+            saved.append((cwd, list(dirs)))
+            continue
+        if c == ")":
+            if saved:  # an unmatched ) (a case pattern) changes nothing
+                cwd, dirs = saved.pop()
+            continue
+        if c and c[0] == "cd":
+            cwd = resolve_cd(_no_redirects(c[1:]), cwd)
+            continue
+        if c and c[0] == "pushd":
+            a = _no_redirects(c[1:])
+            plain = [x for x in a if not x.startswith(("-", "+"))]
+            if plain and len(plain) == len(a):
+                dirs.append(cwd)
+                cwd = resolve_dir(plain[0], cwd)
+            else:
+                cwd = None  # pushd with no directory swaps the stack; +N rotates it: not followed
+            continue
+        if c and c[0] == "popd":
+            cwd = dirs.pop() if dirs and not _no_redirects(c[1:]) else None
             continue
         if c and c[0] == "export":
             for t in c[1:]:
@@ -177,6 +244,7 @@ def commands(command, exes, cwd=None, _depth=0):
         exe = os.path.basename(rest[0])
         k = next((j for j, a in enumerate(rest[1:], 1) if SHELL_C_RE.fullmatch(a)), None)
         if exe in ("sh", "bash", "zsh", "dash") and k and _depth < 3:
+            k += 1 if rest[k + 1:k + 2] == ["--"] else 0  # sh -c -- '...'
             if k + 1 < len(rest):
                 for call in commands(rest[k + 1], exes, cwd, _depth + 1):
                     call["env"] = {**env, **call["env"]}
