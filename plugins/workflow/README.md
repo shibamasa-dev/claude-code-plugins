@@ -63,7 +63,7 @@ The output looks like `{"five_hour": {"used_percentage": 17, "resets_at": 179155
 
 Available tool ids are the file names in `skills/pr-review-triage/references/tools/` (`codex`, `coderabbit`, `copilot`, `gemini`, `cursor-bugbot`).
 
-To override per repo, add lines to the repo's CLAUDE.md (or AGENTS.md). Lines take precedence over userConfig. `review-notes:` is free text describing what reviewers should focus on; it goes into the request and into Claude's review (it isn't used for routing):
+To override per repo, add lines to the repo's CLAUDE.md (or AGENTS.md). Lines take precedence over userConfig. They are read from the default branch (`origin/<default>`), not the working tree, so a line added or changed in a PR takes effect once that PR is merged (a repo without an `origin` remote reads the working tree). `review-notes:` is free text describing what reviewers should focus on; it goes into the request and into Claude's review (it isn't used for routing):
 
 ```
 review-heavy: coderabbit, codex

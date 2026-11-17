@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """full-test-gate: nudge for the full test suite by "how much changed since last time", and gate releases on it.
 
-Applies only to projects that put .claude/full-test.json at the repository root (does nothing otherwise).
+Applies only to projects whose default branch has .claude/full-test.json at the repository root (does nothing otherwise).
+The file is read from origin/<default branch>, not from the working tree, so a branch cannot change the rule it is judged by:
+a new or changed config takes effect once it is merged. Without an origin remote the working tree is read (with a note on stderr).
 
   {
     "command": "cd etl/database/stored_procedures && python -m pytest tests/ -q",  # full test suite (run from the repository root)
@@ -16,6 +18,8 @@ Applies only to projects that put .claude/full-test.json at the repository root 
 Usage (python3 "<plugin root>/hooks/full-test-gate.py" <subcommand>; the hook messages print the full path):
   full-test-gate.py run      Run the full test suite and record it if it passes. It records only when
                              "the target paths have the same content as base" (results from a work branch are not recorded).
+  full-test-gate.py run --working-tree
+                             Run the working tree's config (to try a new one before merging it). Never records
   full-test-gate.py status   Show the last record and how much has changed since
 As a hook (branches on hook_event_name from stdin):
   SessionStart         Print a one-line notice when a threshold is exceeded (does not block)
@@ -35,14 +39,38 @@ def git(cwd, *args):
     return r.returncode, r.stdout.strip()
 
 
-def load_project(cwd):
+CONFIG = ".claude/full-test.json"
+
+
+def read_config(top, working_tree=False):
+    """The config text, read from the default branch (origin/<default>) so a branch cannot change the command that records
+    a pass or drop the gate that blocks its own release. None when the file is not there (= not opted in; never falls back
+    to the working tree). Without an origin remote no PR can exist, so the working tree is read and stderr says so.
+    working_tree=True (`run --working-tree`) reads the working tree on purpose."""
+    if not working_tree and git(top, "remote", "get-url", "origin")[0] != 0:
+        print(f"[full-test-gate] no origin remote: reading {CONFIG} from the working tree", file=sys.stderr)
+        working_tree = True
+    if working_tree:
+        try:
+            with open(os.path.join(top, CONFIG)) as f:
+                return f.read()
+        except OSError:
+            return None
+    name = _local_default(top)
+    if not _has_remote_ref(top, name):
+        print(f"[full-test-gate] cannot read origin/{name} (not available locally and fetch failed): not gating", file=sys.stderr)
+        return None
+    rc, text = git(top, "show", f"refs/remotes/origin/{name}:{CONFIG}")
+    return text if rc == 0 else None
+
+
+def load_project(cwd, working_tree=False):
     """(config, toplevel, state_path). (None, None, None) when the project is not opted in."""
     rc, top = git(cwd, "rev-parse", "--show-toplevel")
     if rc != 0:
         return None, None, None
     try:
-        with open(os.path.join(top, ".claude", "full-test.json")) as f:
-            cfg = json.load(f)
+        cfg = json.loads(read_config(top, working_tree))
     except Exception:
         return None, None, None
     _, common = git(cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")
@@ -97,6 +125,18 @@ def default_base(top):
     return _DEFAULT_BASE[top]
 
 
+def _local_default(top):
+    """The default branch name from local refs only (origin/HEAD, else origin/main or origin/master). Used to find the config,
+    which is read on every Bash call, so it does not ask origin over the network. A stale ref is fine (the older rules apply)."""
+    rc, ref = git(top, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+    if rc == 0 and ref.startswith("origin/"):
+        return ref[len("origin/"):]
+    if git(top, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/main")[0] != 0 \
+            and git(top, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/master")[0] == 0:
+        return "master"
+    return "main"
+
+
 def base_of(top, cfg):
     return cfg.get("base") or default_base(top)
 
@@ -137,7 +177,7 @@ def describe(state, m):
 def cmd_status(cwd):
     cfg, top, sp = load_project(cwd)
     if not cfg:
-        print("Not configured (no .claude/full-test.json)"); return 0
+        print(f"Not configured (no {CONFIG} on the default branch)"); return 0
     state = load_state(sp)
     if not state:
         print(f"No full test run recorded. Run: {SELF} run"); return 0
@@ -150,10 +190,10 @@ def cmd_status(cwd):
     return 0
 
 
-def cmd_run(cwd):
-    cfg, top, sp = load_project(cwd)
+def cmd_run(cwd, working_tree=False):
+    cfg, top, sp = load_project(cwd, working_tree)
     if not cfg:
-        print("Not configured (no .claude/full-test.json)"); return 1
+        print(f"Not configured (no {CONFIG} on the default branch)"); return 1
     base, paths = base_of(top, cfg), cfg.get("paths") or ["."]
     rc_same, _ = git(top, "diff", "--quiet", base, "--", *paths)
     if rc_same > 1:
@@ -165,6 +205,10 @@ def cmd_run(cwd):
         sys.stdout.write(line); out.append(line)
     if p.wait() != 0:
         print(f"[full-test-gate] Failed (exit {p.returncode}). Not recorded"); return p.returncode
+    if working_tree:
+        print(f"[full-test-gate] Passed with the working tree's {CONFIG}. Not recorded (--working-tree never records; "
+              "the config takes effect once it is merged to the default branch)")
+        return 0
     skipped = None
     if cfg.get("skipped_regex"):
         found = re.findall(cfg["skipped_regex"], "".join(out))
@@ -229,6 +273,8 @@ def hook_pre_bash(cwd, command):
 
 def main():
     if len(sys.argv) > 1:
+        if sys.argv[1:] == ["run", "--working-tree"]:
+            return cmd_run(os.getcwd(), working_tree=True)
         return {"run": cmd_run, "status": cmd_status}[sys.argv[1]](os.getcwd())
     try:
         data = json.load(sys.stdin)

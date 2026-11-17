@@ -5,7 +5,9 @@
 subfolder set, script extensions, exemptions). It reads the `<!-- guard:… -->` blocks of a
 rule file at run time. It uses the first rule file found, in this order, and does nothing if none exists:
   1. The environment variable `REPO_STRUCTURE_SPEC` (if set, only this is used; if it points nowhere, do nothing)
-  2. `.claude/rules/repo-structure.md` in the repo being written to (per-repo rules; commit it to share with the team)
+  2. `.claude/rules/repo-structure.md` on the default branch (origin/<default>) of the repo being written to (per-repo
+     rules). Read from the default branch, not the working tree, so a branch cannot loosen the rule it is judged by:
+     a change takes effect once it is merged. Without an origin remote the working tree is read (with a note on stderr)
   3. `~/.claude/rules/repo-structure.md` (the user's rules)
 A sample lives in the plugin's `examples/repo-structure.md` (never read as rules; copy and edit it to use it).
 
@@ -34,6 +36,7 @@ Design promises:
 import json
 import os
 import re
+import subprocess
 import sys
 
 SPEC_RELPATH = os.path.join(".claude", "rules", "repo-structure.md")
@@ -51,19 +54,69 @@ def repo_root(path: str):
         d = up
 
 
+def _git(root: str, *args: str):
+    """(returncode, stdout) of a git command in root. Never prompts; (1, "") on timeout."""
+    try:
+        r = subprocess.run(["git", "-C", root, *args], capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                           timeout=5, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+    except (subprocess.TimeoutExpired, OSError):
+        return 1, ""
+    return r.returncode, r.stdout
+
+
+def _has_ref(root: str, ref: str) -> bool:
+    return _git(root, "rev-parse", "--verify", "--quiet", ref)[0] == 0
+
+
+def default_branch(root: str) -> str:
+    """The default branch name from local refs only (origin/HEAD, else origin/main or origin/master).
+    This runs on every new file under docs/ or scripts/, so it does not ask origin over the network."""
+    rc, ref = _git(root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+    if rc == 0 and ref.strip().startswith("origin/"):
+        return ref.strip()[len("origin/"):]
+    if not _has_ref(root, "refs/remotes/origin/main") and _has_ref(root, "refs/remotes/origin/master"):
+        return "master"
+    return "main"
+
+
+def base_spec(root: str):
+    """The repo's rule file as (label, text) from the default branch. None when it is not there.
+    Read from origin/<default branch>, not the working tree, so a branch cannot loosen the rule it is judged by."""
+    name = default_branch(root)
+    ref = f"refs/remotes/origin/{name}"
+    if not _has_ref(root, ref):
+        try:  # fetch it once; a stale origin/<default> is fine (the older rules apply)
+            subprocess.run(["git", "-C", root, "fetch", "--quiet", "origin", "--", name], capture_output=True,
+                           stdin=subprocess.DEVNULL, timeout=5, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+        if not _has_ref(root, ref):
+            print(f"repo-structure-guard: cannot read origin/{name}; skipping the repo's rule file", file=sys.stderr)
+            return None
+    rc, text = _git(root, "show", f"{ref}:{SPEC_RELPATH.replace(os.sep, '/')}")
+    return (f"origin/{name}:{SPEC_RELPATH}", text) if rc == 0 else None
+
+
 def resolve_spec(path: str):
-    """The rule file that applies to the write target path. None if there is none (do nothing)."""
+    """The rules that apply to the write target path, as (label, text). text None means "read the file at label".
+    None if there are none (do nothing)."""
     env = os.environ.get("REPO_STRUCTURE_SPEC")
     if env:
-        return os.path.expanduser(env)
+        return os.path.expanduser(env), None
     root = repo_root(path)
     if root:
-        repo = os.path.join(root, SPEC_RELPATH)
-        if os.path.exists(repo):
-            return repo
+        if _git(root, "remote", "get-url", "origin")[0] == 0:
+            spec = base_spec(root)
+            if spec:
+                return spec
+        else:  # no origin, so no PR can exist: the working tree is all there is
+            repo = os.path.join(root, SPEC_RELPATH)
+            if os.path.exists(repo):
+                print(f"repo-structure-guard: no origin remote: reading {SPEC_RELPATH} from the working tree", file=sys.stderr)
+                return repo, None
     user = os.path.join(os.path.expanduser("~"), SPEC_RELPATH)
     if os.path.exists(user):
-        return user
+        return user, None
     return None
 
 
@@ -134,19 +187,21 @@ def main() -> None:
     if parent not in ("docs", "scripts"):
         sys.exit(0)
 
-    SPEC = resolve_spec(norm)
-    if SPEC is None:
+    spec = resolve_spec(norm)
+    if spec is None:
         sys.exit(0)  # no rule file = this repo / this user does not use repo layout rules
-    try:
-        spec_text = open(SPEC, encoding="utf-8", errors="replace").read()
-    except FileNotFoundError:
-        sys.exit(0)  # the env var points to a missing path = explicitly turned off
-    except OSError as e:
-        allow_with_notice(
-            f"[repo-structure guard NOT RUN] {fp}\n"
-            f"Could not read the rules ({type(e).__name__}): {SPEC}\n"
-            f"The layout rules were not checked. **Do not treat this write as layout-checked.**"
-        )
+    SPEC, spec_text = spec
+    if spec_text is None:
+        try:
+            spec_text = open(SPEC, encoding="utf-8", errors="replace").read()
+        except FileNotFoundError:
+            sys.exit(0)  # the env var points to a missing path = explicitly turned off
+        except OSError as e:
+            allow_with_notice(
+                f"[repo-structure guard NOT RUN] {fp}\n"
+                f"Could not read the rules ({type(e).__name__}): {SPEC}\n"
+                f"The layout rules were not checked. **Do not treat this write as layout-checked.**"
+            )
 
     allow_names = read_block(spec_text, "docs-allow-filenames")
     subfolders = split_kv(read_block(spec_text, "docs-subfolders"))

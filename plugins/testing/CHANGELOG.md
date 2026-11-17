@@ -2,6 +2,15 @@
 
 Change history of the testing plugin. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
 
+## [0.4.0] - 2026-11-17
+
+### Changed
+- full-test-gate reads `.claude/full-test.json` from the default branch (`origin/<default>`), not the working tree, so a branch can no longer change the `command` that records a pass or drop a `gate` regex that blocks its own release. A repo whose default branch has no config is not opted in. Without an `origin` remote the working tree is read (with a note on stderr). If `origin/<default>` is missing locally it is fetched once (5 s, no prompt) (#77).
+
+### Added
+- `full-test-gate.py run --working-tree` runs the working tree's config, to try a new one before merging it. It never records a pass.
+- `tests/` with a regression test for full-test-gate (run by CI through `tests/run-all.sh`).
+
 ## [0.3.1] - 2026-10-13
 
 ### Removed

@@ -24,7 +24,7 @@ Skills and hooks for designing and running tests.
 | testcase-lint | After Edit or Write | Checks that test-case artifacts follow the style guide |
 | full-test-gate | Session start, before Bash | Reports how much has changed since the last full test run, and blocks release-like commands while unverified changes exist |
 
-- **full-test-gate** runs only in projects that have `.claude/full-test.json`. The format is described at the top of [`hooks/full-test-gate.py`](hooks/full-test-gate.py). `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/full-test-gate.py" run` runs the full test suite and records it if it passes; `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/full-test-gate.py" status` shows the changes since the last run. The hook messages print the command with the full path
+- **full-test-gate** runs only in projects whose default branch has `.claude/full-test.json`. The file is read from `origin/<default>`, not the working tree, so a branch cannot change the command or the gate it is judged by: a new or changed config takes effect once it is merged to the default branch (a repo without an `origin` remote reads the working tree). The format is described at the top of [`hooks/full-test-gate.py`](hooks/full-test-gate.py). `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/full-test-gate.py" run` runs the full test suite and records it if it passes; `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/full-test-gate.py" run --working-tree` runs the working tree's config to try it before merging and never records; `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/full-test-gate.py" status` shows the changes since the last run. The hook messages print the command with the full path
 
 ## Requirements
 

@@ -31,7 +31,7 @@ bash $D --auto   # the tools' automatic review (on / off)
 
 Run it inside the repo's working tree. For each key, the first one found from the top wins (the result is not saved):
 
-1. A line in the repo's CLAUDE.md (or AGENTS.md)
+1. A line in the repo's CLAUDE.md (or AGENTS.md) on the default branch (`origin/<default>`; the working tree only when the repo has no `origin` remote). A line a PR adds or changes takes effect once that PR is merged, so a PR cannot pick the tools that review it
 2. userConfig
 
 | Line | userConfig | Example | Meaning |
@@ -43,7 +43,7 @@ Run it inside the repo's working tree. For each key, the first one found from th
 
 - **Ids are printed**: the tools to ask this round. An id is a file name in `references/tools/<id>.md`
 - **Nothing printed, exit 0** (`review-heavy: none`): a repo without tools. Even heavy PRs are reviewed by Claude per step 3 (`review-light: none` also uses step 3)
-- **exit 4** (no `review-heavy:` line and no setting): ask the user which tools to use, and propose a PR that adds a `review-heavy:` line to the repo's CLAUDE.md
+- **exit 4** (no `review-heavy:` line and no setting): ask the user which tools to use, and propose a PR that adds a `review-heavy:` line to the repo's CLAUDE.md (until that PR is merged, use the user's answer for the PRs at hand)
 - **exit 5** (a line or setting exists but cannot be read: a typo with no known id, or `review-auto:` other than `on` / `off`): do not treat it as "no tools" or "off". Show stderr to the user and ask what they meant (this prevents a mistyped `none` from producing PRs that nobody reviews)
 
 **`review-notes:`** is not used for sorting (2). It goes to two places:

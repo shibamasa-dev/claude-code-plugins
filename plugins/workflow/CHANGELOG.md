@@ -2,6 +2,11 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.8.0] - 2026-11-17
+
+### Changed
+- pr-review-triage: `detect-bots.sh` reads the `review-*:` lines from CLAUDE.md / AGENTS.md / .claude/CLAUDE.md on the default branch (`origin/<default>`), not the working tree, so a PR cannot pick the tools that review it. A line a PR adds or changes takes effect once it is merged. When no file on the default branch has the line, userConfig and then the default apply; the working tree is read only when the repo has no `origin` remote (with a note on stderr). If `origin/<default>` is missing locally it is fetched once (5 s, no prompt) (#77).
+
 ## [0.7.2] - 2026-10-30
 
 ### Added

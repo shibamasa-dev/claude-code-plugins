@@ -63,7 +63,7 @@ orchestrator-report は報告を促した PR / issue を `${CLAUDE_PLUGIN_DATA}/
 
 使えるツールの id は `skills/pr-review-triage/references/tools/` のファイル名（`codex`・`coderabbit`・`copilot`・`gemini`・`cursor-bugbot`）。
 
-リポごとに変えるなら、リポの CLAUDE.md（または AGENTS.md）に行で書く。行が userConfig より優先する。`review-notes:` は重点的に見てほしいことを自然言語で書く行で、依頼文と Claude のレビューに渡す（振り分けの判定には使わない）:
+リポごとに変えるなら、リポの CLAUDE.md（または AGENTS.md）に行で書く。行が userConfig より優先する。行は作業ツリーではなく既定ブランチ（`origin/<既定>`）から読むので、PR で足したり変えたりした行はその PR をマージしてから効く（`origin` リモートが無いリポは作業ツリーを読む）。`review-notes:` は重点的に見てほしいことを自然言語で書く行で、依頼文と Claude のレビューに渡す（振り分けの判定には使わない）:
 
 ```
 review-heavy: coderabbit, codex

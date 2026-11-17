@@ -6,7 +6,9 @@
 #   --auto:  whether the tools' automatic review is ON. `on` / `off` (default off)
 #   --regex: instead of ids, print one line with a regex of author logins (full match) to pass to jq's test() (for the Monitor filter)
 # How it decides (the first one found, from the top; the result is not saved):
-#   1. A line in the repo's CLAUDE.md / AGENTS.md / .claude/CLAUDE.md (`review-heavy:` / `review-light:` / `review-auto:`; `review-heavy: none` means "no tools")
+#   1. A line in the repo's CLAUDE.md / AGENTS.md / .claude/CLAUDE.md on the default branch (origin/<default>; the working tree only
+#      when there is no origin remote) (`review-heavy:` / `review-light:` / `review-auto:`; `review-heavy: none` means "no tools").
+#      A line added or changed by a PR takes effect once it is merged
 #   2. Environment variables CLAUDE_PLUGIN_OPTION_REVIEW_HEAVY / _LIGHT / _AUTO (userConfig `review_heavy` / `review_light` / `review_auto`)
 #   3. Defaults: light is `claude`, auto is `off`. heavy has no default (exit 4)
 # Does not guess from bots that showed up on past PRs. With automatic review turned off, light PRs leave no bot trace, so the guess would be empty.
@@ -26,10 +28,34 @@ done
 BOTS='coderabbit=coderabbitai\[bot\] codex=chatgpt-codex-connector\[bot\] copilot=Copilot|copilot-pull-request-reviewer\[bot\] gemini=gemini-code-assist\[bot\] cursor-bugbot=cursor\[bot\]'
 
 root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+# Read the files from the default branch (origin/<default>), not the working tree, so a PR cannot pick the tools that review it.
+# The name comes from local refs (origin/HEAD, else origin/main or origin/master); a stale ref is fine (the older line applies).
+# If the ref is missing, fetch it once (5 s, no prompt). Without an origin remote no PR exists, so the working tree is read.
+ref=
+if git -C "$root" remote get-url origin >/dev/null 2>&1; then
+  name=$(git -C "$root" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null); name=${name#origin/}
+  if [ -z "$name" ]; then
+    name=main
+    git -C "$root" rev-parse --verify --quiet refs/remotes/origin/main >/dev/null \
+      || ! git -C "$root" rev-parse --verify --quiet refs/remotes/origin/master >/dev/null || name=master
+  fi
+  ref=refs/remotes/origin/$name
+  git -C "$root" rev-parse --verify --quiet "$ref" >/dev/null \
+    || GIT_TERMINAL_PROMPT=0 perl -e 'alarm 5; exec @ARGV' git -C "$root" fetch --quiet origin -- "$name" </dev/null >/dev/null 2>&1
+  git -C "$root" rev-parse --verify --quiet "$ref" >/dev/null \
+    || echo "detect-bots: cannot read origin/$name; skipping the repo's review-* lines" >&2
+else
+  echo "detect-bots: no origin remote: reading the review-* lines from the working tree" >&2
+fi
 line=
 for f in CLAUDE.md AGENTS.md .claude/CLAUDE.md; do
-  [ -f "$root/$f" ] || continue
-  line=$(grep -i -m1 -E "^[-* ]*review-$KEY:" "$root/$f" || true)
+  if [ -n "$ref" ]; then
+    text=$(git -C "$root" show "$ref:$f" 2>/dev/null) || continue
+  else
+    [ -f "$root/$f" ] || continue
+    text=$(cat "$root/$f")
+  fi
+  line=$(printf '%s\n' "$text" | grep -i -m1 -E "^[-* ]*review-$KEY:" || true)
   [ -n "$line" ] && break
 done
 

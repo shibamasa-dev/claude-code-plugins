@@ -30,4 +30,15 @@ row 'review-light: claude plus a tool prints both' "$(det "$(repo light2 'review
 row 'no review-auto: line: off' "$(det "$(repo auto0 'review-heavy: codex')" --auto)" 'off/0'
 row 'reads review-auto: on' "$(det "$(repo auto1 '- review-auto: ON')" --auto)" 'on/0'
 row 'review-auto: other than on / off: exit 5' "$(det "$(repo auto2 'review-auto: yes')" --auto)" '/5'
+# The review-* lines are read from the default branch (origin/<default>), so a PR cannot pick the tools that review it.
+# base <name> <CLAUDE.md on the default branch, or empty> <CLAUDE.md on the branch> -> a clone on branch feat with an origin
+base() { d="$T/$1"; w="$d/work"; mkdir -p "$w" || exit 1; g() { git -C "$w" -c user.name=t -c user.email=t@t "$@"; }
+         g init -q -b main; printf '%s\n' "${2:-# no line}" > "$w/CLAUDE.md"; g add CLAUDE.md; g commit -qm base
+         git init -q --bare -b main "$d/origin.git" && g remote add origin "$d/origin.git" && g push -q origin main && g fetch -q origin || exit 1
+         g checkout -qb feat; printf '%s\n' "$3" > "$w/CLAUDE.md"; g commit -qam branch; echo "$w"; }
+row 'branch edits review-heavy: the default branch line wins' "$(det "$(base edit 'review-heavy: coderabbit' 'review-heavy: none')")" 'coderabbit/0'
+row 'line only on the branch: userConfig is used' "$(det "$(base new '' 'review-heavy: codex')" '' CLAUDE_PLUGIN_OPTION_REVIEW_HEAVY=gemini)" 'gemini/0'
+row 'line only on the branch, no setting: exit 4' "$(det "$(base new2 '' 'review-heavy: codex')")" '/4'
+note=$(cd "$(repo noorigin 'review-heavy: codex')" && env -u CLAUDE_PLUGIN_OPTION_REVIEW_HEAVY bash "$D" 2>&1 >/dev/null)
+row 'no origin: a one-line note on stderr' "$(printf '%s' "$note" | grep -q 'no origin remote' && echo yes || echo no)" 'yes'
 exit $fail
