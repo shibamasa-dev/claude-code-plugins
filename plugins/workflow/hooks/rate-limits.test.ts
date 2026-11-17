@@ -32,8 +32,8 @@ const world = (on: On, files: Record<string, string> = {}, dir: 'ok' | 'missing'
   on('process.run', (_$, e) => {
     const [cmd, a, b, c] = e.argv
     state.ran.push([...e.argv])
-    const ok = { exitCode: 0, stdout: '', stderr: '' }
-    const fail = { exitCode: 1, stdout: '', stderr: 'failed' }
+    const ok = { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
+    const fail = { exitCode: 1, stdout: '', stderr: 'failed', isStdoutTruncated: false, isStderrTruncated: false }
     if (cmd === 'id') return { value: { ...ok, stdout: '501\n' } }
     if (cmd === 'mkdir') {
       if (state.dir !== 'missing') return { value: fail }
