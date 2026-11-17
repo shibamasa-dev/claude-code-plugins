@@ -15,7 +15,7 @@
 
 | スキル | 使いどころ |
 |---|---|
-| `codebase-doctor` | リポに必要な基本（テスト・CI・lint・セキュリティの初期設定など）がそろっているかの点検 |
+| `codebase-doctor` | リポに必要な基本（テスト・CI・lint・セキュリティの初期設定など）がそろっているかの点検。空のリポでは目的を聞いて技術スタックを提案し、決めた内容を CLAUDE.md に記録する |
 | `remote-setup` | claude.ai/code や Cowork のクラウド環境用のセットアップ scaffold を作る |
 | `verification-skill-builder` | 実アプリを隔離した環境で台本の順に叩き、観測した証拠を残すプロジェクト専用の `verify-<app>` スキルと、機能ごとの「操作 → コマンド → 結果」の地図を作る |
 
