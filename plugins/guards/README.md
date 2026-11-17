@@ -47,6 +47,8 @@ guards doesn't gate merges. Merge conditions (reviews done, a `## Result` sectio
 
 guards is a safety net against Claude's mistakes, not a sandbox against malicious commands. Commands built in ways the hooks can't parse may get through.
 
+The checks that read their config from the default branch (repo-structure-guard) defend against what a branch's content can change (committed files, pushed branches). They trust the local git configuration and environment, and origin's default branch is the authority: in a fork workflow that is the fork, not `upstream`.
+
 ## Requirements
 
 macOS or Linux, `python3`, `git`, `gh`

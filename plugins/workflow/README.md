@@ -116,6 +116,7 @@ Organization values (GitHub org, default repo, Issue Fields, project board) aren
 
 - orchestrator-report finds the orchestrator with `claude agents --json`, which lists only sessions whose process is running. While the orchestrator's process is not running (e.g. after the app restarts, before the session is opened again), no report is requested
 - Cloud sessions and Claude Projects sessions do not report to a local orchestrator (they cannot send messages to local sessions)
+- The checks that read their config from the default branch (pr-review-triage's `review-*:` lines) defend against what a branch's content can change (committed files, pushed branches). They trust the local git configuration and environment, and origin's default branch is the authority: in a fork workflow that is the fork, not `upstream`.
 
 ## Requirements
 

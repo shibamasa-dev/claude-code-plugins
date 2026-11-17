@@ -24,8 +24,13 @@ repo() {
 branch_cfg() { printf '%s\n' "$2" > "$1/.claude/full-test.json"; g "$1" add .claude; g "$1" commit -qm cfg; }
 ran() { cat "$1/ran" 2>/dev/null || echo none; }
 recorded() { ls "$FULL_TEST_STATE_DIR" 2>/dev/null | grep -q . && echo recorded || echo norecord; }
-pre() { printf '{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"%s","tool_input":{"command":"./build-release.sh"}}' "$1" \
-        | python3 "$H" | grep -q '"deny"' && echo deny || echo silent; }
+# pre <dir> [VAR=value ...] [command] -> deny / silent for a PreToolUse Bash call (default command ./build-release.sh)
+pre() { dir=$1; shift; envs=(); while [ $# -gt 0 ] && [[ $1 == *=* ]]; do envs+=("$1"); shift; done
+        printf '{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"%s","tool_input":{"command":"%s"}}' "$dir" "${1:-./build-release.sh}" \
+        | env "${envs[@]+"${envs[@]}"}" python3 "$H" 2>/dev/null | grep -q '"deny"' && echo deny || echo silent; }
+# net: whether the ssh transport ran (GIT_SSH_COMMAND touches $T/net)
+NET_ENV="GIT_SSH_COMMAND=touch $T/net; false"
+net() { [ -f "$T/net" ] && echo network || echo cached; rm -f "$T/net"; }
 fail=0
 row() { printf '  %-60s -> %s (expect %s)\n' "$1" "$2" "$3"; [ "$2" = "$3" ] || fail=1; }
 
@@ -64,6 +69,41 @@ row 'single-branch clone: run uses the default branch command'     "$(ran "$d")"
 # --working-tree needs no comparison base (no origin, no base key)
 w=$(repo wtnobase "$BASE_CFG" none); rm -rf "$FULL_TEST_STATE_DIR"; (cd "$w" && python3 "$H" run --working-tree >/dev/null 2>&1)
 row 'run --working-tree without a comparison base still runs'      "$(ran "$w")" base
+
+# The default branch is resolved at most once per hour of failures, and a success is kept as the local origin/HEAD,
+# so a PreToolUse on every Bash call does not touch the network again
+w=$(repo netmiss "$BASE_CFG"); g "$w" remote set-head origin -d 2>/dev/null; g "$w" remote set-url origin ssh://nohost.invalid/x.git
+pre "$w" "$NET_ENV" ls >/dev/null
+row 'origin unreachable: the first call tries origin once'        "$(net)" network
+pre "$w" "$NET_ENV" ls >/dev/null
+row 'origin unreachable: a second call makes no network call'     "$(net)" cached
+w=$(repo netok "$BASE_CFG"); g "$w" remote set-head origin -d 2>/dev/null
+pre "$w" ls >/dev/null; g "$w" remote set-url origin ssh://nohost.invalid/x.git
+pre "$w" "$NET_ENV" ls >/dev/null
+row 'origin answered once: later calls make no network call'      "$(net)" cached
+
+# trunk default, a pushed non-default main with the branch's config, no origin/HEAD, origin unreachable: never main
+w=$(B=trunk repo unreach "$BASE_CFG"); branch_cfg "$w" '{"command": "echo branch > ran", "paths": ["src"], "gate": []}'
+g "$w" push -q origin feat:main && g "$w" fetch -q origin && g "$w" remote set-head origin -d 2>/dev/null; mv "$T/unreach/origin.git" "$T/unreach/moved.git"
+rm -rf "$FULL_TEST_STATE_DIR"; (cd "$w" && python3 "$H" run >/dev/null 2>&1)
+row 'origin unreachable, pushed main: main is not used (no run)'  "$(ran "$w")" none
+row 'origin unreachable, pushed main: nothing recorded'           "$(recorded)" norecord
+
+# GIT_DIR naming another repo (no origin) does not redirect the hook
+w=$(repo gitdir "$BASE_CFG"); branch_cfg "$w" '{"command": "true", "paths": ["src"], "gate": []}'; git init -q "$T/gitdir/other"; echo b >> "$w/src/a"
+row 'GIT_DIR naming another repo: the default branch still gates'  "$(pre "$w" "GIT_DIR=$T/gitdir/other/.git")" deny
+
+# The config source and the comparison base are the same branch (local origin/HEAD says main, origin says trunk)
+w=$(B=trunk repo stale "$BASE_CFG"); g "$w" checkout -qb m && printf '%s\n' '{"command": "echo main > ran", "paths": ["src"]}' > "$w/.claude/full-test.json" \
+  && g "$w" commit -qam main && g "$w" push -q origin m:main && g "$w" fetch -q origin && g "$w" checkout -q feat || exit 1
+g "$w" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main; rm -rf "$FULL_TEST_STATE_DIR"
+out=$(cd "$w" && python3 "$H" run 2>/dev/null | sed -n 's/.*Recorded: \([^ ]*\).*/\1/p')
+row 'config source and comparison base agree (both main)'          "$([ "$(ran "$w")" = main ] && [ "$out" = origin/main ] && echo same || echo "differ")" same
+
+# a path with non-ASCII characters and a space
+w=$(repo "日本語 dir/プロジェクト" "$BASE_CFG"); branch_cfg "$w" '{"command": "echo branch > ran", "paths": ["src"], "gate": []}'
+rm -rf "$FULL_TEST_STATE_DIR"; (cd "$w" && python3 "$H" run >/dev/null 2>&1)
+row 'non-ASCII path with a space: the default branch command runs' "$(ran "$w")" base
 
 # origin exists but cannot be read: not opted in (the working tree config is not used)
 w=$(repo unreadable "$BASE_CFG"); g "$w" remote set-url origin "$T/missing.git"; g "$w" update-ref -d refs/remotes/origin/main

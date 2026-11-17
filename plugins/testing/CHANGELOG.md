@@ -5,7 +5,7 @@ Change history of the testing plugin. Format follows [Keep a Changelog](https://
 ## [0.4.0] - 2026-11-17
 
 ### Changed
-- full-test-gate reads `.claude/full-test.json` from the default branch (`origin/<default>`), not the working tree, so a branch can no longer change the `command` that records a pass or drop a `gate` regex that blocks its own release. A repo whose default branch has no config is not opted in. Without an `origin` remote the working tree is read (with a note on stderr). If `origin/<default>` is missing locally it is fetched once (5 s, no prompt) (#77).
+- full-test-gate reads `.claude/full-test.json` from the default branch (`origin/<default>`), not the working tree, so a branch can no longer change the `command` that records a pass or drop a `gate` regex that blocks its own release. A repo whose default branch has no config is not opted in. Without an `origin` remote the working tree is read (with a note on stderr). The default branch is the local `origin/HEAD`; without it, origin is asked once (5 s, no prompt) and a success is kept as the local `origin/HEAD`, while a failure is kept for an hour so the hook does not wait on every call. `origin/main` / `origin/master` is never guessed. Git variables that select a repository (`GIT_DIR` and the like) are ignored; when the default branch cannot be told, the hook neither gates nor records (stderr says so). The config source and the comparison base use the same default branch. A missing `origin/<default>` is fetched once into that ref (#77).
 
 ### Added
 - `full-test-gate.py run --working-tree` runs the working tree's config, to try a new one before merging it. It never records a pass.

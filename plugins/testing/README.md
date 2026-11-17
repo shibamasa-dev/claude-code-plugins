@@ -26,6 +26,10 @@ Skills and hooks for designing and running tests.
 
 - **full-test-gate** runs only in projects whose default branch has `.claude/full-test.json`. The file is read from `origin/<default>`, not the working tree, so a branch cannot change the command or the gate it is judged by: a new or changed config takes effect once it is merged to the default branch and your local `origin/<default>` is fetched (a repo without an `origin` remote reads the working tree). The format is described at the top of [`hooks/full-test-gate.py`](hooks/full-test-gate.py). `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/full-test-gate.py" run` runs the full test suite and records it if it passes; `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/full-test-gate.py" run --working-tree` runs the working tree's config to try it before merging and never records; `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/full-test-gate.py" status` shows the changes since the last run. The hook messages print the command with the full path
 
+## Limitations
+
+The checks that read their config from the default branch (full-test-gate) defend against what a branch's content can change (committed files, pushed branches). They trust the local git configuration and environment, and origin's default branch is the authority: in a fork workflow that is the fork, not `upstream`.
+
 ## Requirements
 
 macOS or Linux, `python3`, `git`

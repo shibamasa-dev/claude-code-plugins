@@ -49,4 +49,16 @@ w=$(base unreadable '' 'review-heavy: codex'); git -C "$w" remote set-url origin
 row 'origin unreadable: the working tree line is not used' "$(det "$w")" '/4'
 w=$(base single 'review-heavy: coderabbit' 'review-heavy: none'); git -C "$w" push -q origin feat; git clone -q --single-branch -b feat "$T/single/origin.git" "$T/single/clone"
 row 'single-branch clone: the default branch line is fetched' "$(det "$T/single/clone")" 'coderabbit/0'
+# origin unreachable and no origin/HEAD: exit 4, and a second run makes no network call (the failure is kept for an hour)
+w=$(base netmiss 'review-heavy: coderabbit' 'review-heavy: none'); git -C "$w" remote set-head origin -d 2>/dev/null; git -C "$w" remote set-url origin ssh://nohost.invalid/x.git
+row 'origin unreachable, no origin/HEAD: exit 4' "$(det "$w" '' "GIT_SSH_COMMAND=touch $T/net; false")" '/4'
+rm -f "$T/net"; det "$w" '' "GIT_SSH_COMMAND=touch $T/net; false" >/dev/null
+row 'origin unreachable: a second run makes no network call' "$([ -f "$T/net" ] && echo network || echo cached)" 'cached'
+# trunk default, pushed non-default main with the branch's line, no origin/HEAD, origin unreachable: main is never used
+w=$(B=trunk base unreach 'review-heavy: coderabbit' 'review-heavy: none')
+git -C "$w" push -q origin feat:main && git -C "$w" fetch -q origin && git -C "$w" remote set-head origin -d 2>/dev/null; mv "$T/unreach/origin.git" "$T/unreach/moved.git"
+row 'origin unreachable, pushed main: main is not used (exit 4)' "$(det "$w")" '/4'
+git init -q "$T/gdother"
+row 'GIT_DIR naming another repo: the default branch line wins' "$(det "$(base gitdir 'review-heavy: coderabbit' 'review-heavy: none')" '' "GIT_DIR=$T/gdother/.git")" 'coderabbit/0'
+row 'non-ASCII path with a space: the default branch line wins' "$(det "$(base "日本語 dir/プロジェクト" 'review-heavy: coderabbit' 'review-heavy: none')")" 'coderabbit/0'
 exit $fail

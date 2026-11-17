@@ -47,6 +47,21 @@ git -C "$w" push -q origin feat:main && git -C "$w" fetch -q origin && git -C "$
 row 'default branch trunk (no local origin/HEAD): its rule denies'  "$(probe "$w/docs/sneaky.md")" deny
 w=$(repo single base.md sneaky.md); git -C "$w" push -q origin feat; git clone -q --single-branch -b feat "$R/single/origin.git" "$R/single/clone"
 row 'single-branch clone: the default branch rule is fetched'     "$(probe "$R/single/clone/docs/sneaky.md")" deny
+# origin unreachable and no origin/HEAD: a second Write makes no network call (the failure is kept for an hour)
+w=$(repo netmiss base.md sneaky.md); git -C "$w" remote set-head origin -d 2>/dev/null; git -C "$w" remote set-url origin ssh://nohost.invalid/x.git
+probe "$w/docs/a.md" "GIT_SSH_COMMAND=touch $R/net; false" >/dev/null
+row 'origin unreachable: the first Write tries origin once'        "$([ -f "$R/net" ] && echo network || echo cached)" network
+rm -f "$R/net"; probe "$w/docs/b.md" "GIT_SSH_COMMAND=touch $R/net; false" >/dev/null
+row 'origin unreachable: a second Write makes no network call'     "$([ -f "$R/net" ] && echo network || echo cached)" cached
+rm -f "$R/net"
+# trunk default, pushed non-default main with the loosened rule, no origin/HEAD, origin unreachable: main is never used
+w=$(B=trunk repo unreach base.md sneaky.md)
+git -C "$w" push -q origin feat:main && git -C "$w" fetch -q origin && git -C "$w" remote set-head origin -d 2>/dev/null; mv "$R/unreach/origin.git" "$R/unreach/moved.git"
+spec "$R/home/.claude/rules/repo-structure.md" user.md
+row 'origin unreachable, pushed main: the user rule applies'       "$(probe "$w/docs/sneaky.md")" deny
+rm -rf "$R/home/.claude"
+w=$(repo "日本語 dir/プロジェクト" base.md sneaky.md)
+row 'non-ASCII path with a space: the default branch rule denies'  "$(probe "$w/docs/sneaky.md")" deny
 w=$(repo unreadable '' sneaky.md); git -C "$w" remote set-url origin "$R/missing.git"; git -C "$w" update-ref -d refs/remotes/origin/main
 row 'origin unreadable: the working tree rule is not used'         "$(probe "$w/docs/other.md")" silent
 exit $FAIL

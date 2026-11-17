@@ -8,6 +8,7 @@ rule file at run time. It uses the first rule file found, in this order, and doe
   2. `.claude/rules/repo-structure.md` on the default branch (origin/<default>) of the repo being written to (per-repo
      rules). Read from the default branch, not the working tree, so a branch cannot loosen the rule it is judged by:
      a change takes effect once it is merged. Without an origin remote the working tree is read (with a note on stderr)
+     When origin's default branch cannot be told (no local origin/HEAD and origin does not answer), this step is skipped
   3. `~/.claude/rules/repo-structure.md` (the user's rules)
 A sample lives in the plugin's `examples/repo-structure.md` (never read as rules; copy and edit it to use it).
 
@@ -38,6 +39,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 SPEC_RELPATH = os.path.join(".claude", "rules", "repo-structure.md")
 # Git variables that select a repository are dropped, so `git -C <write target's repo>` really reads that repo
@@ -67,40 +69,78 @@ def _git(root: str, *args: str):
     return r.returncode, r.stdout
 
 
+MISS_FILE = "repo-structure-guard-origin-miss"  # in the git common dir; its mtime is the last failed network attempt
+MISS_TTL = 3600                                  # seconds before origin is tried again after a failure
+
+
 def _has_ref(root: str, ref: str) -> bool:
     return _git(root, "rev-parse", "--verify", "--quiet", ref)[0] == 0
 
 
-def default_branch(root: str) -> str:
-    """The default branch name: the local origin/HEAD (no network; this runs on every new file under docs/ or scripts/),
-    else what origin reports (ls-remote, 5 s), else origin/main or origin/master. A branch's mere existence is only the
-    last guess, since a pushed `main` that is not the default would otherwise supply the rules."""
+def _miss_path(root: str) -> str:
+    return os.path.join(_git(root, "rev-parse", "--path-format=absolute", "--git-common-dir")[1].strip(), MISS_FILE)
+
+
+def _net_allowed(root: str) -> bool:
+    """False within MISS_TTL of a failed network attempt (this runs on every new file under docs/ or scripts/)."""
+    try:
+        return time.time() - os.path.getmtime(_miss_path(root)) >= MISS_TTL
+    except OSError:
+        return True
+
+
+def _mark_miss(root: str) -> None:
+    try:
+        with open(_miss_path(root), "a"):
+            pass
+        os.utime(_miss_path(root))
+    except OSError:
+        pass
+
+
+def _net(root: str, *args: str):
+    """A network git command (5 s, no prompt); a failure is remembered for MISS_TTL."""
+    rc, out = _git(root, *args)
+    if rc != 0:
+        _mark_miss(root)
+    return rc, out
+
+
+def default_branch(root: str):
+    """origin's default branch name, or None when it cannot be told. The local origin/HEAD first (no network); else ask
+    origin once (ls-remote) and cache a success as the local origin/HEAD; a failure is cached for MISS_TTL.
+    origin/main or origin/master is never guessed, since a pushed branch that is not the default would then supply the rules."""
     rc, ref = _git(root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
     if rc == 0 and ref.strip().startswith("origin/"):
         return ref.strip()[len("origin/"):]
-    m = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", _git(root, "ls-remote", "--symref", "origin", "HEAD")[1], re.M)
-    if m:
-        return m.group(1)
-    if not _has_ref(root, "refs/remotes/origin/main") and _has_ref(root, "refs/remotes/origin/master"):
-        return "master"
-    return "main"
+    if not _net_allowed(root):
+        return None
+    rc, out = _net(root, "ls-remote", "--symref", "origin", "HEAD")
+    m = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", out, re.M) if rc == 0 else None
+    if not m:
+        if rc == 0:
+            _mark_miss(root)  # answered without a HEAD symref: unknown for MISS_TTL too
+        return None
+    _git(root, "symbolic-ref", "refs/remotes/origin/HEAD", f"refs/remotes/origin/{m.group(1)}")
+    return m.group(1)
 
 
 def base_spec(root: str):
-    """The repo's rule file as (label, text) from the default branch. None when it is not there.
-    Read from origin/<default branch>, not the working tree, so a branch cannot loosen the rule it is judged by."""
+    """The repo's rule file as (label, text) from the default branch. None when it is not there or the default branch
+    cannot be told. Read from origin/<default branch>, not the working tree, so a branch cannot loosen the rule it is judged by."""
     name = default_branch(root)
+    if name is None:
+        print("repo-structure-guard: cannot tell origin's default branch (no local origin/HEAD, origin unreachable; "
+              "retried after 1 hour); skipping the repo's rule file", file=sys.stderr)
+        return None
     ref = f"refs/remotes/origin/{name}"
+    if not _has_ref(root, ref) and _net_allowed(root):
+        # fetch it once into the ref, so a single-branch clone (whose refspec does not cover name) gets it too;
+        # a stale origin/<default> is fine (the older rules apply)
+        _net(root, "fetch", "--quiet", "origin", "--", f"+refs/heads/{name}:{ref}")
     if not _has_ref(root, ref):
-        try:  # fetch it once; a stale origin/<default> is fine (the older rules apply)
-            # an explicit destination, so a single-branch clone (whose refspec does not cover name) still gets the ref
-            subprocess.run(["git", "-C", root, "fetch", "--quiet", "origin", "--", f"+refs/heads/{name}:{ref}"], capture_output=True,
-                           stdin=subprocess.DEVNULL, timeout=5, env=GIT_ENV)
-        except (subprocess.TimeoutExpired, OSError):
-            pass
-        if not _has_ref(root, ref):
-            print(f"repo-structure-guard: cannot read origin/{name}; skipping the repo's rule file", file=sys.stderr)
-            return None
+        print(f"repo-structure-guard: cannot read origin/{name}; skipping the repo's rule file", file=sys.stderr)
+        return None
     rc, text = _git(root, "show", f"{ref}:{SPEC_RELPATH.replace(os.sep, '/')}")
     return (f"origin/{name}:{SPEC_RELPATH}", text) if rc == 0 else None
 

@@ -4,11 +4,12 @@
 Applies only to projects whose default branch has .claude/full-test.json at the repository root (does nothing otherwise).
 The file is read from origin/<default branch>, not from the working tree, so a branch cannot change the rule it is judged by:
 a new or changed config takes effect once it is merged. Without an origin remote the working tree is read (with a note on stderr).
+When origin's default branch cannot be told (no local origin/HEAD and origin does not answer), it neither gates nor records.
 
   {
     "command": "cd etl/database/stored_procedures && python -m pytest tests/ -q",  # full test suite (run from the repository root)
     "paths": ["etl/database"],            # paths whose changes are counted
-    "base": "origin/main",                # defaults to the repo's default branch (asks origin; if unreachable, origin/HEAD; if missing, origin/main)
+    "base": "origin/main",                # defaults to origin's default branch (see default_branch)
     "thresholds": {"lines": 500, "commits": 10, "days": 14},   # notify when any of these is exceeded
     "skipped_regex": "(\\d+) skipped",   # picks the skip count out of the output (optional)
     "max_skipped": 20,                    # do not record if the skip count exceeds this (optional)
@@ -34,8 +35,17 @@ DEFAULT_THRESHOLDS = {"lines": 500, "commits": 10, "days": 14}
 SELF = f'python3 "{os.path.abspath(__file__)}"'  # how messages tell Claude to run this script
 
 
+# Git variables that select a repository are dropped, so `git -C <repo>` reads that repo and not one named by the environment
+_REPO_SELECT_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY")
+GIT_ENV = {**{k: v for k, v in os.environ.items() if k not in _REPO_SELECT_VARS}, "GIT_TERMINAL_PROMPT": "0"}
+MISS_FILE = "full-test-gate-origin-miss"  # in the git common dir; its mtime is the last failed network attempt
+NO_BASE = "no comparison base (origin's default branch is unknown and the config has no \"base\")"
+MISS_TTL = 3600                           # seconds before origin is tried again after a failure
+
+
 def git(cwd, *args):
-    r = subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, timeout=20)
+    r = subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, timeout=20, env=GIT_ENV,
+                       stdin=subprocess.DEVNULL)
     return r.returncode, r.stdout.strip()
 
 
@@ -57,11 +67,12 @@ def read_config(top, working_tree=False):
         if no_origin:
             print(f"[full-test-gate] no origin remote: reading {CONFIG} from the working tree", file=sys.stderr)
         return text
-    name = _local_default(top)
-    if not _has_remote_ref(top, name):
-        print(f"[full-test-gate] cannot read origin/{name} (not available locally and fetch failed): not gating", file=sys.stderr)
+    base = default_branch(top)
+    if base is None:
+        print("[full-test-gate] cannot tell origin's default branch (no local origin/HEAD, origin unreachable or its "
+              "ref unavailable; retried after 1 hour): not gating", file=sys.stderr)
         return None
-    rc, text = git(top, "show", f"refs/remotes/origin/{name}:{CONFIG}")
+    rc, text = git(top, "show", f"refs/remotes/{base}:{CONFIG}")
     return text if rc == 0 else None
 
 
@@ -79,67 +90,78 @@ def load_project(cwd, working_tree=False):
     return cfg, top, os.path.join(STATE_DIR, key + ".json")
 
 
-def _remote_default(top):
-    """The default branch origin reports right now (ls-remote, read only). Asked first because the local origin/HEAD
-    is not updated by fetch. None when unreachable or authentication is needed (never makes the user wait)."""
+def _miss_path(top):
+    _, common = git(top, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    return os.path.join(common, MISS_FILE)
+
+
+def _net_allowed(top):
+    """False within MISS_TTL of a failed network attempt, so a hook that runs on every Bash call does not wait each time."""
     try:
-        r = subprocess.run(["git", "ls-remote", "--symref", "origin", "HEAD"], cwd=top, capture_output=True, stdin=subprocess.DEVNULL,
-                           text=True, timeout=5, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
-    except (subprocess.TimeoutExpired, OSError):
-        return None
-    m = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", r.stdout, re.M) if r.returncode == 0 else None
-    return m.group(1) if m else None
-
-
-_DEFAULT_BASE = {}
-
-
-def _has_remote_ref(top, name):
-    """Whether origin/<name> exists locally. If not, fetch it once (False if that fails)."""
-    if git(top, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{name}")[0] == 0:
+        return time.time() - os.path.getmtime(_miss_path(top)) >= MISS_TTL
+    except OSError:
         return True
+
+
+def _mark_miss(top):
     try:
-        # An explicit destination, so a single-branch clone (whose refspec does not cover name) still gets origin/<name>
-        subprocess.run(["git", "-C", top, "fetch", "--quiet", "origin", "--", f"+refs/heads/{name}:refs/remotes/origin/{name}"],
-                       capture_output=True, stdin=subprocess.DEVNULL,
-                       timeout=5, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+        with open(_miss_path(top), "a"):
+            pass
+        os.utime(_miss_path(top))
+    except OSError:
+        pass
+
+
+def _net(top, *args):
+    """A network git command (5 s, no prompt). (returncode, stdout); a failure is remembered for MISS_TTL."""
+    try:
+        r = subprocess.run(["git", "-C", top, *args], capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                           timeout=5, env=GIT_ENV)
+        rc, out = r.returncode, r.stdout
     except (subprocess.TimeoutExpired, OSError):
-        return False
+        rc, out = 1, ""
+    if rc != 0:
+        _mark_miss(top)
+    return rc, out
+
+
+def _has_ref(top, name):
     return git(top, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{name}")[0] == 0
 
 
-def default_base(top):
-    """The comparison base when the config has no base. Ask origin; if unreachable, the local origin/HEAD; if that is missing too,
-    origin/main (or origin/master when origin/main is missing and origin/master exists).
-    Within one hook run, reuse the first result (origin is asked only once)."""
-    if top not in _DEFAULT_BASE:
-        name = _remote_default(top)
-        if name and _has_remote_ref(top, name):
-            _DEFAULT_BASE[top] = f"origin/{name}"
-        else:
-            rc, ref = git(top, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
-            if rc == 0 and ref.startswith("origin/"):
-                _DEFAULT_BASE[top] = ref
-            elif git(top, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/main")[0] != 0 \
-                    and git(top, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/master")[0] == 0:
-                _DEFAULT_BASE[top] = "origin/master"
-            else:
-                _DEFAULT_BASE[top] = "origin/main"
-    return _DEFAULT_BASE[top]
+_DEFAULT = {}
 
 
-def _local_default(top):
-    """The default branch name for finding the config: the local origin/HEAD, which costs no network on the per-call hook
-    path; without it, default_base (asks origin, then guesses main / master). A branch's mere existence never decides it,
-    since a pushed `main` that is not the default would otherwise supply the config. A stale ref is fine."""
+def default_branch(top):
+    """`origin/<name>` for origin's default branch, or None when it cannot be told. One answer serves both the config
+    source and the comparison base. Order: the local origin/HEAD (no network); else ask origin once (ls-remote) and cache
+    a success as the local origin/HEAD; a failure is cached for MISS_TTL. origin/main or origin/master is never guessed,
+    since a pushed branch that is not the default would then supply the config. A missing origin/<name> is fetched once
+    into that ref. None without an origin remote."""
+    if top in _DEFAULT:
+        return _DEFAULT[top]
+    name = None
     rc, ref = git(top, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
     if rc == 0 and ref.startswith("origin/"):
-        return ref[len("origin/"):]
-    return default_base(top)[len("origin/"):]
+        name = ref[len("origin/"):]
+    elif git(top, "remote", "get-url", "origin")[0] == 0 and _net_allowed(top):
+        rc, out = _net(top, "ls-remote", "--symref", "origin", "HEAD")
+        m = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", out, re.M) if rc == 0 else None
+        if m:
+            name = m.group(1)
+            git(top, "symbolic-ref", "refs/remotes/origin/HEAD", f"refs/remotes/origin/{name}")
+        elif rc == 0:
+            _mark_miss(top)  # answered without a HEAD symref: treat as unknown for MISS_TTL too
+    if name and not _has_ref(top, name) and _net_allowed(top):
+        # An explicit destination, so a single-branch clone (whose refspec does not cover name) still gets origin/<name>
+        _net(top, "fetch", "--quiet", "origin", "--", f"+refs/heads/{name}:refs/remotes/origin/{name}")
+    _DEFAULT[top] = f"origin/{name}" if name and _has_ref(top, name) else None
+    return _DEFAULT[top]
 
 
 def base_of(top, cfg):
-    return cfg.get("base") or default_base(top)
+    """The comparison base: the config's base, else origin's default branch. None when neither is known."""
+    return cfg.get("base") or default_branch(top)
 
 
 def load_state(path):
@@ -182,6 +204,8 @@ def cmd_status(cwd):
     state = load_state(sp)
     if not state:
         print(f"No full test run recorded. Run: {SELF} run"); return 0
+    if base_of(top, cfg) is None:
+        print(f"Cannot compare: {NO_BASE}"); return 1
     m = measure(top, cfg, state["sha"], base_of(top, cfg))
     if m is None:
         print(f"Cannot compare ({base_of(top, cfg)} or the recorded {state['sha'][:8]} is not available locally). Run git fetch and try again")
@@ -197,6 +221,8 @@ def cmd_run(cwd, working_tree=False):
         print(f"Not configured (no {CONFIG} on the default branch)"); return 1
     base, paths = base_of(top, cfg), cfg.get("paths") or ["."]
     rc_same = 0
+    if not working_tree and base is None:
+        print(f"[full-test-gate] {NO_BASE}. Not run, not recorded"); return 1
     if not working_tree:  # --working-tree never records, so it needs no comparison base
         rc_same, _ = git(top, "diff", "--quiet", base, "--", *paths)
         if rc_same > 1:
@@ -234,6 +260,8 @@ def hook_session_start(cwd):
     cfg, top, sp = load_project(cwd)
     if not cfg:
         return
+    if base_of(top, cfg) is None:
+        return  # nothing to compare with (no origin and no "base" in the config)
     state = load_state(sp)
     if not state:
         print(f"[full-test] No full test run is recorded. Run `{SELF} run` once while in the same state as "
@@ -267,7 +295,7 @@ def hook_pre_bash(cwd, command):
                   f"{m['files']} files in the target paths since {state['sha'][:8]}).")
     else:
         reason = "No full test run is recorded."
-    reason += f" First pass `{SELF} run` while in the same state as {base_of(top, cfg)}."
+    reason += f" First pass `{SELF} run` while in the same state as {base_of(top, cfg) or 'the comparison base'}."
     print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                              "permissionDecision": "deny",
                                              "permissionDecisionReason": "[full-test] " + reason}},
