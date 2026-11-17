@@ -80,8 +80,10 @@ def strip_comments(command):
     """Drop `# ...` to the end of the line where `#` starts a word outside quotes, as the shell does.
     A `#` inside a word (`docs/a#b.md`) or inside quotes stays (shlex would cut the word and the rest of the line)."""
     out, i, quote, n = [], 0, None, len(command)
+    subst, boundary = 0, True  # open $( ... ) count; whether the next character starts a word
     while i < n:
         ch = command[i]
+        was, boundary = boundary, False
         if quote:
             out.append(ch)
             if ch == "\\" and quote == '"' and i + 1 < n:
@@ -95,12 +97,25 @@ def strip_comments(command):
         elif ch in "'\"":
             quote = ch
             out.append(ch)
-        elif ch == "#" and (i == 0 or command[i - 1] in " \t\n;&|()"):
+        elif ch == "#" and was:
             while i < n and command[i] != "\n":
                 i += 1
+            boundary = True
             continue
+        elif ch == "$" and command[i + 1:i + 2] == "(":
+            subst += 1
+            out.append("$(")
+            i += 1
+        elif ch == "(" and subst:
+            subst += 1  # a subshell inside $( ... ): its ) is not the one that ends the substitution
+            out.append(ch)
+            boundary = True
+        elif ch == ")" and subst:
+            subst -= 1  # closes a $( ... ): the word goes on, so a # right after it is not a comment
+            out.append(ch)
         else:
             out.append(ch)
+            boundary = ch in " \t\n;&|()"
         i += 1
     return "".join(out)
 

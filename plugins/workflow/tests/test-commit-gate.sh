@@ -196,6 +196,8 @@ row 'message in a variable (cannot be read)' "$(commit s9 p2 'git commit -am "$M
 row 'git -C <dir with space> commit' "$(cd "$T" && commit s9 p2 "git -C '$W' commit -am x -m '$TR'")" allow
 row 'a # inside a word does not hide the commit after it' "$(commit s9h p2 "git add docs/a#b.md && git commit -am x")" deny
 row 'a commit inside a shell comment is not a commit' "$(commit s9c p2 'echo ok # then git commit -am x')" allow
+row 'a # right after $(...) is part of the word: the commit after it is seen' "$(commit s9d p2 'echo $(true)# ; git commit -am x')" deny
+row 'git commit -unormal (an option value with an a) is not -a' "$(reset; edit f3; git add m.py; review s9u p1; edit f3-fixed; stop s9u p1; commit s9u p2 "git commit -unormal -m x -m '$TR'")" deny
 row 'git -C "$REPO" commit (a variable): checked in the hook cwd' "$(commit s9v p2 'git -C "$REPO" commit -am x')" deny
 row 'after cd && git commit, no trailer' "$(commit s9 p2 "cd '$W' && git commit -am x")" deny
 row 'not a commit: git commit-tree' "$(commit s9 p2 'git commit-tree HEAD^{tree} -m x')" allow

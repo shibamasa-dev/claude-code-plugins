@@ -321,6 +321,7 @@ def on_stop(inp):
 # ------------------------------------------------------------------ git commit parsing
 _GIT_VALUE_OPTS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env"}
 _COMMIT_SHORT_VALUE = "mFCct"  # short options of git commit that take a value
+_COMMIT_SHORT_FLAGS = set("aqsvenzpio")  # short options that take none (a cluster with anything else is not trusted)
 
 
 def git_commits(command, cwd):
@@ -601,9 +602,12 @@ def on_post_bash(inp):
 
 
 def staged_differs(top):
-    """Paths whose staged content differs both from HEAD and from the working tree (staged, then edited again)."""
-    _, staged = git(top, "diff", "--cached", "--name-only", "-z")
-    _, unstaged = git(top, "diff", "--name-only", "-z")
+    """Paths whose staged content differs both from HEAD and from the working tree (staged, then edited again).
+    ["(git diff failed)"] when either side cannot be read, so the check fails closed."""
+    rc1, staged = git(top, "diff", "--cached", "--name-only", "-z")
+    rc2, unstaged = git(top, "diff", "--name-only", "-z")
+    if rc1 != 0 or rc2 != 0:
+        return ["(git diff failed)"]
     both = set(filter(None, staged.split("\0"))) & set(filter(None, unstaged.split("\0")))
     return sorted(both)
 
@@ -619,6 +623,8 @@ def commits_all(args):
             for ch in a[1:]:
                 if ch in _COMMIT_SHORT_VALUE:
                     break  # the rest is that option's value (as in -mall)
+                if ch not in _COMMIT_SHORT_FLAGS:
+                    break  # -u<mode>, -S<key> and unknown letters: the rest may be a value (as in -unormal)
                 if ch == "a":
                     return True
     return False
