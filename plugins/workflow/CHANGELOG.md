@@ -2,6 +2,13 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.7.4] - 2026-11-17
+
+### Added
+- dev-flow step 3: run the repo's verification skill (`.claude/skills/verify-*`) before committing and keep its evidence for the PR body; stop and bring in the user if the check still fails after a third fix round once the assumption has been checked; flaky tests are not skipped, slept around or retried, and are deleted with the reason in the PR body when the root cause can't be found.
+- pr-review-triage: the response table gets a severity column (Important / Nit / Pre-existing); a Pre-existing finding is not fixed in the PR and gets a disposition under `## Out-of-scope notes`.
+- pr-review-triage step 6: below the re-review threshold, reread the fix commits' diff (`git diff <reviewed sha>..HEAD`) before the merge decision and record the checked head commit and result in one line in the PR body (no extra bot request). When a re-review is requested, the previous round's response table goes to tools that accept prompt text (Codex takes only a one-line English summary).
+
 ## [0.7.3] - 2026-11-17
 
 ### Fixed
