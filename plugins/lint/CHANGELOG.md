@@ -2,6 +2,16 @@
 
 Change history of the lint plugin. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
 
+## [0.4.0] - 2026-11-18
+
+### Added
+- `design-lint` hook (moved from the `creative` plugin): after Edit or Write on a `DESIGN.md`, runs `npx @google/design.md@latest lint` and returns the findings; says lint was not run when `npx` fails.
+
+## [0.3.0] - 2026-11-17
+
+### Added
+- `skill-planner` skill: plans a skill before it is built (should it be a skill, smallest implementation level, contents, state location, validation) and hands off to `skill-creator`, then `skill-lint`. Plans state under `${CLAUDE_PLUGIN_DATA}`, never in the skill directory.
+
 ## [0.2.2] - 2026-10-13
 
 ### Removed

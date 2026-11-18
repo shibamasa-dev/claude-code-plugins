@@ -34,7 +34,7 @@ If you used the former `review` plugin, uninstall it and move its settings to th
 | runbook | After browser or computer-use actions, on stop, at session start | Records browser and screen-operation steps; on the first one, says to start a GIF recording (Chrome) or note key steps (tools that cannot record); stops if you forgot to write the runbook |
 | orchestrator-report | After creating or updating a PR, or writing to an issue (connector or `gh`) | If exactly one running session in the repository written to (its folder's `origin`; worktrees included) has a title starting with `🎯` and it is not this session, tells Claude to send it a one-line report with SendMessage. Once per PR / issue per session; skipped in cloud and Claude Projects sessions |
 | knowledge-freshness | Session start | Reports knowledge files past their review date in one line |
-| artifact-ledger | After Artifact | Records published Artifacts in the project's `.artifacts/` |
+| artifact-ledger | After Artifact | Records published Artifacts in the project's `.artifacts/` (see [Artifact ledger](#artifact-ledger)) |
 | dev-flow-gate | Before creating a PR | Blocks if the body lacks `Closes #N` / `Refs #N` (`Refs: none (verbal request)` for requests without an issue) or the `Arch-Review:` field |
 | | After creating a PR | Tells Claude the next stage (wait for reviews and CI) |
 | | Before ending a turn | Blocks once per PR if waiting (a PR event subscription or a Monitor) has not started for a PR created in this session |
@@ -70,6 +70,7 @@ The output looks like `{"five_hour": {"used_percentage": 17, "resets_at": 179155
 | `review_light` | `claude` | What reviews light PRs. `claude` means Claude reviews. Listing tool ids treats light PRs like heavy ones (no label) |
 | `review_auto` | `off` | Whether the tool's auto review is on (`on` / `off`). See "Keeping auto review on" below |
 | `rereview_threshold` | 3 | Request a re-review only when you fixed at least this many severe findings (Critical / P1 or equivalent) |
+| `freshness_targets` | `~/.claude/rules:*.md,~/.claude/reference:*.md,~/.claude/skills:*/SKILL.md` | Directories the knowledge-freshness hook checks: comma-separated `<dir>:<glob>` pairs, `~` expanded, `**` in the glob is recursive, a directory name cannot contain a comma. Files whose `review_after` has passed, or that have no `last_reviewed`, are listed at session start. Empty means the default |
 | `commit_gate` | `off` | The commit gate's mode: `off`, `observe` or `enforce` (any other value is `off`). A repo's `.claude/verification.json` overrides it |
 | `commit_gate_verifiers` | empty | A regex of skill names that count as verification. Empty means `^(code-review\|(.+:)?verify-.+\|coderabbit:code-review)$` |
 
@@ -129,6 +130,17 @@ Organization values (GitHub org, default repo, Issue Fields, project board) aren
 |---|---|---|
 | `HANDOFF_STATE_DIR` | `~/.claude/state/handoff` | handoff entry points |
 | `RUNBOOK_ROOT` | `~/.claude/runbooks` | runbook raw logs and written runbooks |
+
+### Artifact ledger
+
+The artifact-ledger hook keeps two files in `.artifacts/` at the project root:
+
+- `ledger.jsonl` is the source of truth and is tracked by git. Each publish appends one line (artifact id, URL, title, description, version, repo-relative source path, session id); lines are only appended, never rewritten.
+- `index.html` is generated from the ledger (a table of titles, first publish and last update). It is not meant to be tracked: the hook does not edit `.gitignore`, so add `.artifacts/index.html` there. It is rebuilt after each append, and rebuilt from the ledger when it is missing.
+- In a worktree the ledger lives under the parent repository's root, so deleting the worktree does not delete it.
+- A `list` call never adds artifacts: it appends the response's `updatedAt` only for ids already in the ledger, because the list mixes every project.
+
+The hook prints nothing and always exits 0.
 
 ## Limitations
 

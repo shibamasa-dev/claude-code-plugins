@@ -5,13 +5,7 @@ argument-hint: Optional review scope description
 
 # Review and Fix Workflow
 
-A workflow that runs AI reviews with multiple agents, evaluates the results, and makes the appropriate fixes.
-
-## Core Principles
-
-- **Always check the codebase**: reviews can raise narrowly scoped points or points that go against the architecture strategy, so always check the related code before deciding
-- **Follow CLAUDE.md**: the project's architecture policy and coding conventions come first
-- **Choose sensibly**: don't take every finding at face value; judge its validity in the project's context
+A workflow that runs AI reviews with multiple agents, evaluates the results, and makes the appropriate fixes. How findings are assessed is defined by `pr-review-triage`, not here; the project's CLAUDE.md comes first.
 
 ---
 
@@ -35,19 +29,12 @@ A workflow that runs AI reviews with multiple agents, evaluates the results, and
 
 ## Phase 2: Evaluate Review Results
 
-**Goal**: Read the review results and evaluate the validity of each finding
+**Goal**: Decide which findings to act on
 
 **Actions**:
-1. Analyze the review results from the stdout output obtained in Phase 1
-2. For each finding, check:
-   - **Always read the related source code**
-   - Consistency with the architecture policy in CLAUDE.md
-   - Project-specific circumstances (code kept for future use, intentional design, etc.)
-   - The technical validity of the finding
-3. Classify the findings:
-   - ✅ **Adopt**: a valid finding in line with the project policy
-   - ⚠️ **Needs review**: partly valid but needs adjustment
-   - ❌ **Reject**: goes against the architecture strategy, or ignores the context
+1. Read the review results from the output of Phase 1
+2. Assess each finding as `pr-review-triage` does (read its "4.5 Evaluate and fix": findings are suggestions, checked against the actual code, validity measured rather than guessed)
+3. Label each finding for the plan below (this command's own labels): ✅ adopted = valid and in line with the project policy; ⚠️ needs review = partly valid, needs adjustment; ❌ rejected = invalid, or against the architecture policy; a valid problem that existed before this change is not fixed here, only recorded as `pr-review-triage` 4.5 says
 
 ---
 
