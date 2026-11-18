@@ -1,7 +1,7 @@
 {
   "name": "guards",
-  "version": "0.7.0",
-  "description": "Hooks that stop destructive Bash operations, deletion of unmerged worktrees and pushes from a branch behind the default branch, and bring the local merge-target branch up to date after a merge. Repo layout rules apply only when you add a rule file",
+  "version": "0.8.0",
+  "description": "Hooks that stop destructive Bash operations, deletion of unmerged worktrees and pushes from a branch behind the default branch, `gh issue view --comments` without `--json` (gh-comments-guard) and `pip freeze` (pip-freeze-guard), and bring the local merge-target branch up to date after a merge. Repo layout rules apply only when you add a rule file",
   "author": {
     "name": "shibamasa-dev"
   },
