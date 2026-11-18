@@ -2,6 +2,20 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.10.0] - 2026-11-18
+
+### Added
+- userConfig `freshness_targets`: the directories the knowledge-freshness hook checks, as comma-separated `<dir>:<glob>` pairs (`~` expanded), read from `CLAUDE_PLUGIN_OPTION_FRESHNESS_TARGETS`. The default is the three targets it always had, and an empty value falls back to it (#93).
+- weekly-orchestrator-base: `last_reviewed` / `review_after` frontmatter (#93).
+- README: the artifact-ledger section describes the ledger, the generated index, worktrees and `list` sync (#93).
+
+### Changed
+- handoff: the refusal for another repo's entry no longer names a local-only skill; it says to propose a session that starts in a waiting state with whatever mechanism the environment has (#93).
+- review-and-fix: the evaluation phase points at `pr-review-triage` instead of repeating its rules (#93).
+
+### Removed
+- `commands/dev-process/codex-chat.sh`, which nothing referenced (#93).
+
 ## [0.9.0] - 2026-11-17
 
 ### Added

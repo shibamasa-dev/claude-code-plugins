@@ -29,29 +29,43 @@ import re
 import sys
 
 ROOT = os.path.expanduser("~/.claude")
-TARGETS = [
-    ("rules", os.path.join(ROOT, "rules"), "*.md"),
-    ("reference", os.path.join(ROOT, "reference"), "*.md"),
-    ("skills", os.path.join(ROOT, "skills"), "*/SKILL.md"),
-]
+# userConfig freshness_targets arrives as CLAUDE_PLUGIN_OPTION_FRESHNESS_TARGETS: comma-separated <dir>:<glob> pairs.
+# Empty means the default below (the same value as the key's default in plugin.json).
+DEFAULT_TARGETS = "~/.claude/rules:*.md,~/.claude/reference:*.md,~/.claude/skills:*/SKILL.md"
 FM_RE = re.compile(r"\A---\n(.*?\n)---\n", re.S)
 DATE_RE = re.compile(r"^review_after:\s*(20\d\d-\d\d-\d\d)\s*$", re.M)
 HAS_REVIEWED = re.compile(r"^last_reviewed:\s*20\d\d-\d\d-\d\d\s*$", re.M)
 MAX_LIST = 12
 
 
+def targets():
+    raw = os.environ.get("CLAUDE_PLUGIN_OPTION_FRESHNESS_TARGETS", "").strip() or DEFAULT_TARGETS
+    for pair in raw.split(","):
+        base, sep, pat = pair.strip().rpartition(":")  # rpartition: a dir may hold ":" (C:\\...), a glob never does
+        if sep and base and pat:
+            yield os.path.expanduser(base), pat
+
+
 def iter_files():
     import glob
-    for label, base, pat in TARGETS:
-        for p in sorted(glob.glob(os.path.join(base, pat))):
-            yield label, p
+    for base, pat in targets():
+        for p in sorted(glob.glob(os.path.join(glob.escape(base), pat), recursive=True)):
+            yield p
+
+
+def display(path):
+    home = os.path.expanduser("~")
+    for root, prefix in ((ROOT, ""), (home, "~/")):
+        if path.startswith(root + os.sep):
+            return prefix + os.path.relpath(path, root)
+    return path
 
 
 def main() -> None:
     today = datetime.date.today()
     expired, unset = [], []
 
-    for label, path in iter_files():
+    for path in iter_files():
         try:
             with open(path, encoding="utf-8", errors="replace") as f:
                 head = f.read(4096)
@@ -59,7 +73,7 @@ def main() -> None:
             continue
         m = FM_RE.match(head)
         fm = m.group(1) if m else ""
-        rel = os.path.relpath(path, ROOT)
+        rel = display(path)
 
         if not HAS_REVIEWED.search(fm):
             unset.append(rel)
