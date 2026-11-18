@@ -67,20 +67,26 @@ printf -- '---\nlast_reviewed: 2026-01-01\nreview_after: 2026-08-01\n---\n# stal
 TARGETS="$H/custom:*/SKILL.md"
 OUT4=$(run); CODE4=${OUT4##*|}; BODY4=${OUT4%|*}
 [ "$CODE4" = exit=0 ] && r=ok || r=ng; echo "  $CODE4 -> $r (expect ok: exit=0)"
-case "$BODY4" in *"custom/sub/SKILL.md"*) r=ok;; *) r=ng;; esac; echo "  warns about the custom file -> $r"
-case "$BODY4" in *"rules/old.md"*) r=ng;; *) r=ok;; esac; echo "  default dirs not scanned when overridden -> $r"
+case "$BODY4" in *"custom/sub/SKILL.md"*) r=ok;; *) r=ng;; esac; echo "  warns about the custom file -> $r (expect ok)"
+case "$BODY4" in *"rules/old.md"*) r=ng;; *) r=ok;; esac; echo "  default dirs not scanned when overridden -> $r (expect ok)"
 TARGETS="~/.claude/rules:*.md"
 OUT5=$(run)
-case "$OUT5" in *"~/.claude/rules/old.md"*|*"rules/old.md"*) r=ok;; *) r=ng;; esac; echo "  '~' in a target is expanded -> $r"
+case "$OUT5" in *"~/.claude/rules/old.md"*|*"rules/old.md"*) r=ok;; *) r=ng;; esac; echo "  '~' in a target is expanded -> $r (expect ok)"
 mkdir -p "$H/deep/a/b"
 printf -- '---\nlast_reviewed: 2026-01-01\nreview_after: 2026-08-01\n---\n# deep\n' > "$H/deep/a/b/x.md"
 TARGETS="$H/deep:**/*.md"
 OUT8=$(run)
-case "$OUT8" in *"deep/a/b/x.md"*) r=ok;; *) r=ng;; esac; echo "  '**' reaches a file two levels deep -> $r"
+case "$OUT8" in *"deep/a/b/x.md"*) r=ok;; *) r=ng;; esac; echo "  '**' reaches a file two levels deep -> $r (expect ok)"
 TARGETS=""
 OUT6=$(run)
-case "$OUT6" in *"rules/old.md"*) r=ok;; *) r=ng;; esac; echo "  empty value falls back to the default targets -> $r"
+case "$OUT6" in *"rules/old.md"*) r=ok;; *) r=ng;; esac; echo "  empty value falls back to the default targets -> $r (expect ok)"
 TARGETS="garbage-without-colon"
-OUT7=$(run); [ "${OUT7##*|}" = exit=0 ] && r=ok || r=ng; echo "  malformed value still exits 0 -> $r"
+OUT7=$(run); [ "${OUT7##*|}" = exit=0 ] && r=ok || r=ng; echo "  malformed value still exits 0 -> $r (expect ok)"
+
+mkdir -p "$H/notes[work]"
+printf -- '---\nlast_reviewed: 2026-01-01\nreview_after: 2026-08-01\n---\n# bracket dir\n' > "$H/notes[work]/old.md"
+TARGETS="$H/notes[work]:*.md"
+OUT9=$(run)
+case "$OUT9" in *"notes[work]/old.md"*) r=ok;; *) r=ng;; esac; echo "  glob characters in a dir name are literal -> $r (expect ok)"
 
 rm -rf "$H"
