@@ -2,7 +2,7 @@
 
 [English](README.md) | 日本語
 
-画像・動画・デザインを作るときのスキルとフック。
+画像・動画を作るときのスキル。
 
 ## 導入
 
@@ -19,13 +19,8 @@
 | `diagram-frames` | 構成図・フロー図・シーケンス図・状態遷移図を Mermaid・SVG・HTML などで描く前に読む。枠が何を表すかを1種類に決め、全部の枠をそれに照らして確かめる |
 | `motion-video` | 商品の画像・スクショ・ロゴ・実写クリップを載せたモーショングラフィックス動画を、コードで描いて書き出す |
 
-## フック
-
-| フック | いつ | 何をするか |
-|---|---|---|
-| design-lint | Edit・Write の後 | `DESIGN.md` を編集したら `npx @google/design.md lint` を走らせ、指摘を返す。ほかのファイルでは何もしない |
+`DESIGN.md` の lint は `lint` プラグインに移った。使い続けるなら `/plugin install lint@shibamasa-plugins` を実行する。
 
 ## 前提
 
 - `motion-video` は Node.js・Chrome・ffmpeg
-- `design-lint` は `npx`（ネット接続が要る）

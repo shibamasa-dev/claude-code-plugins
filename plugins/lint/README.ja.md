@@ -23,6 +23,7 @@
 | フック | いつ | 何をするか |
 |---|---|---|
 | skill-creator-chain | Skill の後 | 呼ばれたのが skill-creator（名前空間付きも含む）なら、「スキルの作成・更新が終わったら、そのスキルのディレクトリに skill-lint を走らせる。プロジェクトスコープ（リポ内の `.claude/skills`）は対象外」を伝える。ほかのスキルでは何もしない |
+| design-lint | Edit・Write の後 | `DESIGN.md` を編集したら `npx -y @google/design.md@latest lint <パス>` を走らせ、指摘を返す。lint を走らせられない（ネット接続なし・`npx` の失敗）ときは黙って通さず、未検証だと伝える。ほかのファイルでは何もしない |
 
 ## 固有名の扱い
 
@@ -31,6 +32,7 @@
 ## 前提
 
 - `python3`（標準ライブラリだけ）
+- `design-lint` は `npx`（ネット接続が要る）
 - `skill-creator`（別の marketplace のスキル）は任意。入っていれば `skill-planner` が計画を渡し、無ければ計画をそのまま使って直接作る
 - 任意: `gh`（reviewer が gh のログイン名をヒントにする）、`gitleaks`（secret の検査を任せる。無ければ `skipped` と出る）
 - eval グループ B（`scripts/run_reviewer_eval.py`）は `claude` CLI。eval のスクリプトはメンテナ用で、公開していない手元の `evals/` の eval セットを読む
