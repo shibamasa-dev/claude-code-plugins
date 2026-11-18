@@ -23,7 +23,7 @@ Tools for making skills well: `skill-planner` plans a skill before it is built, 
 | Hook | When | What it does |
 |---|---|---|
 | skill-creator-chain | After Skill | When the skill that ran is skill-creator (including namespaced names), tells Claude to run skill-lint on the skill's directory once the skill is created or updated. Project-scoped skills (`.claude/skills` inside a repo) are excluded. Does nothing for other skills |
-| design-lint | After Edit or Write | When `DESIGN.md` is edited, runs `npx @google/design.md lint` and returns the findings. If lint cannot run (no network, `npx` fails), says it is unverified instead of passing silently. Does nothing for other files |
+| design-lint | After Edit or Write | When `DESIGN.md` is edited, runs `npx -y @google/design.md@latest lint <path>` and returns the findings. If lint cannot run (no network, `npx` fails), says it is unverified instead of passing silently. Does nothing for other files |
 
 ## Proper names
 

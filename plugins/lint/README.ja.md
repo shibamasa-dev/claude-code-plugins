@@ -23,7 +23,7 @@
 | フック | いつ | 何をするか |
 |---|---|---|
 | skill-creator-chain | Skill の後 | 呼ばれたのが skill-creator（名前空間付きも含む）なら、「スキルの作成・更新が終わったら、そのスキルのディレクトリに skill-lint を走らせる。プロジェクトスコープ（リポ内の `.claude/skills`）は対象外」を伝える。ほかのスキルでは何もしない |
-| design-lint | Edit・Write の後 | `DESIGN.md` を編集したら `npx @google/design.md lint` を走らせ、指摘を返す。lint を走らせられない（ネット接続なし・`npx` の失敗）ときは黙って通さず、未検証だと伝える。ほかのファイルでは何もしない |
+| design-lint | Edit・Write の後 | `DESIGN.md` を編集したら `npx -y @google/design.md@latest lint <パス>` を走らせ、指摘を返す。lint を走らせられない（ネット接続なし・`npx` の失敗）ときは黙って通さず、未検証だと伝える。ほかのファイルでは何もしない |
 
 ## 固有名の扱い
 
