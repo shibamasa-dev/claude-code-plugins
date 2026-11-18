@@ -35,9 +35,10 @@ Current rules:
                    behind itself, so there is no need to trust a claim of "merged it in".
                    With the marker, Claude could pass with zero verification just by adding a string.
   3. gh-comments-guard : denies `gh issue view --comments` without `--json` (it prints nothing on an issue
-                   with zero comments).
+                   with zero comments). Only a command whose first word is `gh` is checked;
+                   wrappers such as `env gh` pass.
   4. pip-freeze-guard : denies `pip freeze` / `pip3 freeze` (silently empty in uv-made venvs, which have no pip).
-                   Use `uv pip freeze`, or prefix the command with `PIP_FREEZE_OK=1`.
+                   Use `uv pip freeze` (add `--python <path>` to target another environment), or prefix the command with `PIP_FREEZE_OK=1`.
 """
 import fnmatch
 import glob
