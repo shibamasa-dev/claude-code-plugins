@@ -23,6 +23,7 @@ Tools for making skills well: `skill-planner` plans a skill before it is built, 
 | Hook | When | What it does |
 |---|---|---|
 | skill-creator-chain | After Skill | When the skill that ran is skill-creator (including namespaced names), tells Claude to run skill-lint on the skill's directory once the skill is created or updated. Project-scoped skills (`.claude/skills` inside a repo) are excluded. Does nothing for other skills |
+| design-lint | After Edit or Write | When `DESIGN.md` is edited, runs `npx -y @google/design.md@latest lint <path>` and returns the findings. If lint cannot run (no network, `npx` fails), says it is unverified instead of passing silently. Does nothing for other files |
 
 ## Proper names
 
@@ -31,6 +32,7 @@ There is no denylist of names. A file that collects names would itself be a leak
 ## Requirements
 
 - `python3` (standard library only)
+- `design-lint`: `npx` (needs network access)
 - `skill-creator` (from another marketplace) is optional: `skill-planner` hands its plan to it when installed, and otherwise the plan is built directly
 - Optional: `gh` (the reviewer uses your gh login as a hint), `gitleaks` (handles secret scanning; reported as `skipped` if missing)
 - Eval group B (`scripts/run_reviewer_eval.py`) needs the `claude` CLI. The eval scripts are for the maintainers: they read the eval set under `evals/`, which is kept locally and not published

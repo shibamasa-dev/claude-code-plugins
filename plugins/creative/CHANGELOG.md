@@ -2,6 +2,17 @@
 
 Changelog of the creative plugin (named docs up to 0.1.4). Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow `version` in plugin.json.
 
+## [0.5.0] - 2026-11-18
+
+### Removed
+- The `design-lint` hook moved to the `lint` plugin. If you relied on it, install `lint` (`/plugin install lint@shibamasa-plugins`). The plugin no longer has hooks.
+
+## [0.4.0] - 2026-11-17
+
+### Added
+- `diagram-frames` skill: read before drawing an architecture, flow, sequence or state diagram as markup or code. It declares in one line what a box stands for (components, process steps, actors or states), puts that in the caption or legend, checks every box against it, and splits the figure in two instead of mixing kinds.
+- motion-video: `last_reviewed` / `review_after` frontmatter, the same review dates the plugin's other skills carry.
+
 ## [0.3.3] - 2026-10-13
 
 ### Removed
