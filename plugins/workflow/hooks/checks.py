@@ -34,6 +34,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 
@@ -192,7 +193,7 @@ def pr_gate(inp, where, repo, head, body):
                 c.pop(key, None)
         log({**entry, "decision": "allow" if had else "explained"})
         return ("note", "\n".join(notes)) if notes else None
-    runner = f"python3 {os.path.abspath(__file__)} run"
+    runner = f"python3 {shlex.quote(os.path.abspath(__file__))} run"  # the plugin may live under a path with spaces
     # The whole command is shown (never a prefix that could hide its tail): `run` executes it through the shell
     shown = s["command"] if len(s["command"]) <= 400 else (
         f"{len(s['command'])} characters: read prChecks in {cg.CONFIG} on the default branch before running it")

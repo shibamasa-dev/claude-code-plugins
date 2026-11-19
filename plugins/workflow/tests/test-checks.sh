@@ -130,7 +130,11 @@ row 'no recorded pass: gh pr create' "$(create c1)" deny
 row 'no recorded pass: connector' "$(conn c2 O R feat)" deny
 create c3 >/dev/null
 row 'the denial names the runner to start' "$(said 'checks.py run')" yes
-row 'checks.py run: the command passes' "$(run_checks)" zero
+# The command the denial names must run as written, also when the plugin lives under a path with a space
+mkdir -p "$T/plug in"; cp "$(dirname "$HOOK")"/*.py "$T/plug in/"
+( HOOK="$T/plug in/dev_flow_gate.py"; create c3b >/dev/null )
+RUNNER=$(python3 -c 'import json,re,sys; r=json.load(open(sys.argv[1]))["hookSpecificOutput"]["permissionDecisionReason"]; print(re.search(r"Run `(python3 .*? run)`", r).group(1))' "$T/last_out")
+row 'the runner in the denial runs as written from a plugin path with a space' "$( (cd "$W" && sh -c "$RUNNER" >/dev/null 2>&1; word $?) )" zero
 row 'recorded pass: gh pr create' "$(create c4)" pass
 row 'recorded pass: connector' "$(conn c5 O R feat)" pass
 row 'recorded pass: gh pr create --body-file - with a heredoc' "$(create c6 "gh pr create --title t --body-file - <<'EOF'
