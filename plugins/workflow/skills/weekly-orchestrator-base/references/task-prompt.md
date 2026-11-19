@@ -18,7 +18,7 @@ In {repo name} ({repo path}), please carry out the following batch.
 ## What to do
 {The batch's contents in order. If there are dependencies, state the order explicitly}
 
-This batch ends in {one PR | one stack of N PRs}; list every issue it covers in the PR body with `Closes` / `Refs`.
+This batch ends in {one PR | one stack of N PRs | N independent PRs (the plan says why)}; list every issue it covers in the PR body with `Closes` / `Refs`.
 
 ## Locations
 {Input and output paths. Give exact paths for anything under gitignore}

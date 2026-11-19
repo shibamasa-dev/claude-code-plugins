@@ -62,4 +62,4 @@ Skills and hooks here run in many repos. Check these before proposing a change.
 2. Default vs. override: keep the default. A repo-specific need becomes a line in that repo's CLAUDE.md or a `userConfig` option. An option that loosens a check is off by default and affects only the repo that sets it.
 3. Tool or usage: before changing code, check whether the cause is how the tool is used (how many, how often, in what order).
 4. What is already configured: before proposing a new mechanism, check existing settings (`userConfig`, repo settings, a service's web console). Ask the owner about settings you cannot see.
-5. Size the effect: bring the result of replaying the proposal on recent real data (how many cases change).
+5. Size the effect: bring the result of replaying the proposal on recent real data (how many cases change). When the case has no real data yet, say so and show what you checked instead.

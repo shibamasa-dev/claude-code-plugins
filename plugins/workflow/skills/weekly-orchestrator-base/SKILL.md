@@ -67,7 +67,7 @@ How to gather the situation (which issues, PRs, and records of the previous cycl
    - **Do not fill unknown premises (milestone scope, what is needed and how far, how to read a deadline) with guesses; ask the user**
 4. **Adjust the sub-steps**: if an item on the minimum bar has no child issue, create one. Split, merge, or close child issues whose granularity does not fit. Record each adjustment as one line under "Sub-step adjustments" in the plan section
 5. **Bundle into batches** (step 2), and fill in the "PRs" column (expected PRs per batch, normally 1)
-6. **Add up the PRs the cycle will open per day and check the total against the review tools' hourly limit** before showing the plan; if it is over, merge batches
+6. **Check the PRs the cycle will open in any one hour against the review tools' hourly limit** before showing the plan; if a window is over, spread batches across hours first and merge batches only when they share files or resources
 7. **Show the whole plan to the user at once and get an OK.** Only after the OK, write it into the plan section and start the batches.
    This OK also counts as the instruction to start the batches listed in the plan. To add a batch that is not in the plan, get an OK each time
 
