@@ -36,8 +36,8 @@ Claude Code の作業を、取り返しがつかなくなる前に止めるフ�
 - コマンド: `gh issue create|edit|comment`、`gh pr create|edit|comment|review`、`--comment` 付きの `gh issue|pr close|reopen`、書き込みメソッドの `gh api`（`-X POST|PATCH|PUT`、または `-f` / `-F` / `--input` があるもの）で `repos/<owner>/<repo>/` の下の issue・コメント・プルリクエスト・レビュー・レビューコメントのエンドポイントを叩くもの、`gh api graphql`（すべてのフィールド値）
 - 文面: `--title` / `-t`、`--body` / `-b`、`--body-file` / `-F` のファイル、`gh api` の `title` / `body` フィールド（`comments[][body]` のような入れ子、`-F body=@file`、`--input <file>` の JSON に含まれるすべての文字列（デコードしたもの）を含む）、同じコマンドの中のヒアドキュメントの中身すべて、`$(cat <file>)` や `$(< file)` で読むファイル。ファイルのパスそのものは見ない
 - コネクタのツール（サーバー名に関係なく、ツール名の末尾で判定）: `issue_write`、`add_issue_comment`、`update_issue_comment`、`create_pull_request`、`update_pull_request`、`pull_request_review_write`、`add_comment_to_pending_review`、`add_reply_to_pull_request_comment` の `title` と `body`、加えて `labels` と issue フィールドの値
-- 宛先のリポ（一致したときだけ調べる）: 引数に渡した issue / PR の URL、`-R` / `--repo`、`gh api` の `repos/<owner>/<repo>/`、`GH_REPO`、コマンドを実行するフォルダの `gh-resolved` が付いた remote、無ければそのフォルダにただ 1 つある GitHub の remote、の順。公開範囲は `gh api repos/<owner>/<repo>`（5 秒）で聞き、プラグインのデータフォルダに覚えておく（`public` は 7 日、それ以外は 1 時間）。非公開として覚えたあとに公開されたリポは、最長 1 時間守られない
-- 同じコマンドの中で書く本文ファイルは、ディスク上の中身では判定しない（それはコマンドを実行する前のもの）。書く文面がコマンドに書いてあれば（ヒアドキュメント、`echo` や `printf` の引数）それをチェックする。そうでなければ注記を付けて通し、ファイルを前のコマンドで書くよう伝える
+- 宛先のリポ（一致したときだけ調べる）: 引数に渡した issue / PR の URL、`-R` / `--repo`、`gh api` の `repos/<owner>/<repo>/`、`GH_REPO`、コマンドを実行するフォルダの `gh-resolved` が付いた remote、無ければそのフォルダにただ 1 つある GitHub の remote、の順。公開範囲は `gh api --hostname github.com repos/<owner>/<repo>`（5 秒）で聞き、プラグインのデータフォルダに覚えておく（`public` は 7 日、それ以外は 1 時間）。非公開として覚えたあとに公開されたリポは、最長 1 時間守られない
+- 同じコマンドの中で `gh` より前に書く本文ファイルは、ディスク上の中身では判定しない（それはコマンドを実行する前のもの。`>>` はそこへ足す）。書く文面がコマンドに書いてあれば（ヒアドキュメント、`echo` や `printf` の引数）それをチェックする。そうでなければ注記を付けて通し、ファイルを前のコマンドで書くよう伝える
 
 ### リポ構成のルール（repo-structure-guard）
 

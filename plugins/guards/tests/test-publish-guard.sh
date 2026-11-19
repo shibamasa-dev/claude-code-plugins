@@ -15,7 +15,8 @@ export PATH="$W/bin:$PATH"
 python3 - <<'PY'
 import json, os, time
 now = int(time.time())
-json.dump({"acme/widgets": {"visibility": "public", "at": now}, "acme/vault": {"visibility": "private", "at": now}},
+json.dump({"github.com/acme/widgets": {"visibility": "public", "at": now},
+           "github.com/acme/vault": {"visibility": "private", "at": now}},
           open(os.path.join(os.environ["CLAUDE_PLUGIN_DATA"], "repo-visibility.json"), "w"))
 PY
 # Body files (line 3 of body.md is Japanese text around the blocked name)
@@ -72,7 +73,7 @@ CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='body=@note.md' \
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS='["/srv/acme-build"]' PARTS='heredoc' \
   row $'gh pr create -R acme/widgets -t "Add" --body "$(cat <<\'EOF\'\nSummary\nbuilt in /srv/acme-build/out\nEOF\n)"' 'heredoc inside $(cat <<EOF)' 'deny'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS='["acme-build"]' \
-  row "gh issue create -R acme/widgets -t \"Add\" --body-file $W/acme-build-tmp/body.md" 'path matches, file text is clean' 'allow'
+  row "gh issue create -R acme/widgets -t \"Add\" --body-file \"$W/acme-build-tmp/body.md\"" 'path matches, file text is clean' 'allow'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='heredoc' \
   row $'cat > later.md <<\'EOF\'\nsee acme-internal\nEOF\ngh issue create -R acme/widgets -t "Fix" --body-file later.md' 'body file written by a heredoc in the same command' 'deny'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='heredoc|public repo acme/widgets' \
@@ -114,6 +115,22 @@ CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='$(< body.md)' \
   row 'gh issue comment 12 -R acme/widgets --body "$(< body.md)"' 'body read with $(< file)' 'deny'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='heredoc|separate command' \
   row $'gh issue comment 12 -R acme/widgets -b "ok" && cat > notes.md <<\'EOF\'\nacme-internal\nEOF' 'heredoc that does not feed gh: deny says to split the command' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='--body-file' \
+  row 'echo "more" >> stale.md && gh issue comment 12 -R acme/widgets --body-file stale.md' 'append keeps the text already in the file' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 \
+  row 'gh issue comment 12 -R acme/widgets --body-file fresh.md && echo "see acme-internal" > fresh.md' 'file written after gh has run: the copy on disk is what gh reads' 'allow'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='$(cat fresh.md)' \
+  row 'echo "see acme-internal" > fresh.md && gh issue comment 12 -R acme/widgets -b "$(cat fresh.md)"' '$(cat file) of a file the command wrote: the written text' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 \
+  row 'printf "clean text\n" > stale.md && gh issue comment 12 -R acme/widgets -b "$(cat stale.md)"' '$(cat file): stale copy has the hit, printf writes clean text' 'allow'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='heredoc' \
+  row $'gh issue comment 12 -R acme/widgets --body-file - <<EOF\nfirst\n EOF\nsee acme-internal\nEOF' 'heredoc: an indented look-alike line does not end the body' 'deny'
+printf 'built by acme-build\n' > "$PROBE_CWD/acme-build-notes.md"
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS='["acme-build"]' PARTS='line 1' \
+  row 'gh issue comment 12 -R acme/widgets --body-file acme-build-notes.md' 'file name matches a pattern: the message does not repeat it' 'deny'
+mkfifo "$PROBE_CWD/pipe.md"
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='could not be read' \
+  row 'gh issue comment 12 -R acme/widgets --body-file pipe.md' 'body file is a named pipe: not opened' 'note'
 
 echo
 echo '=== B3: other spellings that publish text ==='
@@ -156,6 +173,8 @@ CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 FORBID='' \
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='labels' \
   mrow '{"tool_name":"mcp__gh__issue_write","tool_input":{"method":"update","owner":"acme","repo":"widgets","issue_number":12,"labels":["acme-internal"]}}' 'MCP issue_write: labels are read' 'deny'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='issue_fields' \
+  mrow '{"tool_name":"mcp__gh__issue_write","tool_input":{"method":"update","owner":"acme","repo":"widgets","issue_number":12,"issue_fields":[{"field_name":"Team","field_option_name":"acme-internal"}]}}' 'MCP issue_write: issue field option names are read' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='issue_fields' \
   mrow '{"tool_name":"mcp__gh__issue_write","tool_input":{"method":"update","owner":"acme","repo":"widgets","issue_number":12,"issue_fields":[{"field_name":"Note","value":"acme-internal"}]}}' 'MCP issue_write: issue field values are read' 'deny'
 : > "$GH_LOG"
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='visibility unknown|names no owner / repo' \
@@ -172,24 +191,40 @@ PROBE_CWD="$W/onerepo" CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='public r
 git -C "$W/onerepo" remote add upstream git@github.com:acme/vault.git
 PROBE_CWD="$W/onerepo" CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='visibility unknown|several GitHub remotes' \
   row 'gh issue create -t "Fix" -b "acme-internal"' 'two GitHub remotes, none marked gh-resolved' 'note'
+git -C "$W/onerepo" config remote.upstream.gh-resolved base
+PROBE_CWD="$W/onerepo" CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 \
+  row 'gh issue create -t "Fix" -b "acme-internal"' 'gh-resolved = base: that remote (private)' 'allow'
+git -C "$W/onerepo" config remote.upstream.gh-resolved acme/widgets
+PROBE_CWD="$W/onerepo" CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='public repo acme/widgets' \
+  row 'gh issue create -t "Fix" -b "acme-internal"' 'gh-resolved names another repo: that repo' 'deny'
 PROBE_CWD="$W/onerepo" CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='visibility unknown|GraphQL' \
   row 'gh api graphql -f query="mutation { addComment(input: {body: \"acme-internal\"}) { clientMutationId } }"' 'gh api graphql: target not readable' 'note'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='visibility unknown|acme/offline' \
   row 'gh issue create -R acme/offline -t "Fix" -b "acme-internal"' 'visibility lookup fails' 'note'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 FAKE_VISIBILITY=public PARTS='public repo acme/fresh' \
   row 'gh issue create -R acme/fresh -t "Fix" -b "acme-internal"' 'cache miss: asked once, public' 'deny'
+printf '  %s -> %s (expect %s)\n' 'the lookup names github.com whatever GH_HOST says' "$(grep -q -- '--hostname github.com repos/acme/fresh' "$GH_LOG" && echo pinned || echo unpinned)" 'pinned'
 printf '  %s -> %s (expect %s)\n' 'cache miss made one lookup' "$(grep -c 'repos/acme/fresh' "$GH_LOG" | sed 's/^1$/one/')" 'one'
 python3 - <<'PY'
 import json, os
 p = os.path.join(os.environ["CLAUDE_PLUGIN_DATA"], "repo-visibility.json")
-d = json.load(open(p)); d["acme/damaged"] = {"visibility": "private", "at": "yesterday"}; json.dump(d, open(p, "w"))
+d = json.load(open(p)); d["github.com/acme/damaged"] = {"visibility": "private", "at": "yesterday"}
+d["github.com/acme/listed"] = {"visibility": ["private"], "at": 0}; json.dump(d, open(p, "w"))
 PY
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 FAKE_VISIBILITY=public PARTS='public repo acme/damaged' \
   row 'gh issue create -R acme/damaged -t "Fix" -b "acme-internal"' 'damaged cache entry: treated as a miss' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 FAKE_VISIBILITY=public PARTS='public repo acme/listed' \
+  row 'gh issue create -R acme/listed -t "Fix" -b "acme-internal"' 'cache entry whose visibility is not a string: a miss' 'deny'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS='[]' FORBID='' \
   row 'gh issue create -R acme/widgets -t "Fix" --body-file missing.md' 'empty array: off and silent' 'allow'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS='["acme-internal(?i)", "acme-internal"]' PARTS='pattern #1 is not a valid regex|pattern #2 of 2' \
   row 'gh issue create -R acme/widgets -t "Fix" -b "acme-internal"' 'flag not at the start of a pattern: skipped, nothing on stderr' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS='["a{99999999999999999999}", "acme-internal"]' PARTS='pattern #1 is not a valid regex|pattern #2 of 2' \
+  row 'gh issue create -R acme/widgets -t "Fix" -b "acme-internal"' 'pattern with a repeat count too large to compile: skipped' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='could not be read|visibility unknown' \
+  row 'gh issue create -R acme/widgets -t "Fix" --body-file missing.md; gh issue create -t "Fix" -b "acme-internal"' 'two gh calls, a note each: both are said' 'note'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='visibility unknown|mixes a placeholder' \
+  row 'gh api "repos/{owner}/widgets/issues/1/comments" -f body="acme-internal"' 'API path with one placeholder: repo unknown' 'note'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS='acme-internal' PARTS='not a JSON array' \
   row 'gh issue create -R acme/widgets -t "Fix" -b "acme-internal"' 'setting is not a JSON array' 'note'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS='["acme-(", "acme-internal"]' PARTS='pattern #1 is not a valid regex|pattern #2 of 2' \

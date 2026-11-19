@@ -1446,7 +1446,7 @@ def _publish_patterns():
             with warnings.catch_warnings():
                 warnings.simplefilter("error")
                 pats.append((n, re.compile(p)))
-        except (re.error, TypeError, Warning):
+        except Exception:  # noqa: BLE001  (re.error, OverflowError, RecursionError, a non-string, a warning)
             notes.append(f"publish-guard: pattern #{n} is not a valid regex; skipped")
     return len(items), pats, notes
 
@@ -1478,19 +1478,25 @@ def _gh_flags(args: list, valued: dict):
     return pairs, pos
 
 
+_HEREDOC_OPEN_RE = re.compile(r"(?<!<)<<(?!<)(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
+
+
 def _heredoc_bodies(command: str) -> list:
-    """The heredoc bodies in command (the text _strip_heredocs drops)."""
+    """The heredoc bodies in command (the text _strip_heredocs drops). A body ends where bash ends it: at a
+    line that is exactly the delimiter (`<<-` ignores leading tabs), so text after a look-alike line such as
+    " EOF" is still read."""
     out, pending, cur = [], [], []
     for line in command.split("\n"):
         if pending:
-            if line.strip() == pending[0]:
+            dash, word = pending[0]
+            if (line.lstrip("\t") if dash else line) == word:
                 pending.pop(0)
                 out.append("\n".join(cur))
                 cur = []
             else:
                 cur.append(line)
             continue
-        pending.extend(m.group(2) for m in HEREDOC_RE.finditer(line))
+        pending.extend((m.group(1), m.group(3)) for m in _HEREDOC_OPEN_RE.finditer(line))
     if cur:
         out.append("\n".join(cur))   # unterminated: still text that would be sent
     return out
@@ -1505,45 +1511,44 @@ def _abs(path: str, cwd):
     return os.path.normpath(p)
 
 
-_REDIRECT_RE = re.compile(r"^\d*>>?\|?(.*)$", re.S)
+_REDIRECT_RE = re.compile(r"^\d*(>>?)\|?(.*)$", re.S)
 
 
-def _written_files(command: str) -> dict:
-    """Files this command itself writes (`> f`, `>> f`, `tee f`), as {absolute path: text}. The copy on disk
-    is from before the command, so it must not be judged: the text is what the command writes when that
-    is literal (echo / printf arguments), "" when a heredoc writes it (heredoc bodies are matched on their
-    own), and None when it can't be read from the command."""
-    out = {}
-    for cmd in _commands(command):
-        t = cmd.tokens
-        if not t:
-            continue
-        targets, args, i = [], [], 1
-        while i < len(t):
-            m = _REDIRECT_RE.match(t[i])
-            if m:
-                target = m.group(1)
-                if not target and i + 1 < len(t):
-                    i += 1
-                    target = t[i]
-                if target and not target.startswith("&"):
-                    targets.append(target)
-            else:
-                args.append(t[i])
-            i += 1
-        name = os.path.basename(t[0])
-        if name == "tee":
-            targets += [a for a in args if not a.startswith(("-", "<"))]
-        if any(a.startswith("<<") for a in t):
-            text = ""
-        elif name in ("echo", "printf") and targets:
-            text = "\n".join(_resolve(a, cmd.assigns) for a in args)
+def _cmd_writes(cmd) -> list:
+    """Files one command writes (`> f`, `>> f`, `tee f`), as [(absolute path, text, append)]. text is what
+    the command writes when that is literal (echo / printf arguments), "" when a heredoc writes it (heredoc
+    bodies are matched on their own), and None when it can't be read from the command."""
+    t = cmd.tokens
+    if not t:
+        return []
+    targets, args, i = [], [], 1
+    while i < len(t):
+        m = _REDIRECT_RE.match(t[i])
+        if m:
+            target = m.group(2)
+            if not target and i + 1 < len(t):
+                i += 1
+                target = t[i]
+            if target and not target.startswith("&"):
+                targets.append((target, m.group(1) == ">>"))
         else:
-            text = None
-        for target in targets:
-            p = _abs(_resolve(target, cmd.assigns), cmd.cwd)
-            if p:
-                out[p] = text
+            args.append(t[i])
+        i += 1
+    name = os.path.basename(t[0])
+    if name == "tee":
+        append = any(a in ("-a", "--append") for a in args)
+        targets += [(a, append) for a in args if not a.startswith(("-", "<"))]
+    if any(a.startswith("<<") for a in t):
+        text = ""
+    elif name in ("echo", "printf") and targets:
+        text = "\n".join(_resolve(a, cmd.assigns) for a in args)
+    else:
+        text = None
+    out = []
+    for target, append in targets:
+        p = _abs(_resolve(target, cmd.assigns), cmd.cwd)
+        if p:
+            out.append((p, text, append))
     return out
 
 
@@ -1555,6 +1560,8 @@ def _read_text(path: str, cwd):
             return None
         p = os.path.join(cwd, p)
     try:
+        if not os.path.isfile(p):   # never open a named pipe or a device: the hook would wait for its writer
+            return None
         with open(p, encoding="utf-8", errors="replace") as f:
             return f.read(_PUBLISH_READ_LIMIT)
     except (OSError, ValueError):
@@ -1586,13 +1593,38 @@ def _gh_text_calls(command: str):
     """The gh commands in command that publish issue / PR text.
     returns [dict(label, texts [(place, text)], repo hints, cwd, env, notes)]."""
     calls = []
-    written = _written_files(command)
+    # Walked in the order the shell runs the commands: `written` is what this Bash call has put into each
+    # file so far (its copy on disk is from before the call), `shared` the text of $(cat f) / $(< f)
+    written, shared, shared_notes = {}, [], []
+    nested = {seg["text"].strip() for seg in _parse_segments(command) if seg["depth"] > 0}
     for cmd in _commands(command):
         t = cmd.tokens
+        if cmd.raw in nested:
+            if t[:1] == ["cat"]:
+                files = [("cat", a) for a in t[1:] if not a.startswith(("-", "<"))]
+            elif cmd.raw.startswith("<") and not cmd.raw.startswith("<<"):   # $(< file)
+                files = [("<", cmd.raw[1:].strip().strip("'\""))]
+            else:
+                files = []
+            for how, a in files:
+                a = _resolve(a, cmd.assigns)
+                place = f"$({how} {os.path.basename(a)})"
+                p = _abs(a, cmd.cwd)
+                text = written[p] if p in written else _read_text(a, cmd.cwd)
+                if p in written and text is None:
+                    shared_notes.append(f"publish-guard: the {place} file is written in the same command, so its"
+                                        " text was not checked; write the file in an earlier command")
+                elif text:
+                    shared.append((place, text))
+        for p, text, append in _cmd_writes(cmd):
+            if append:   # what was there stays: the copy on disk, or what this call wrote before
+                before = written[p] if p in written else (_read_text(p, None) if os.path.exists(p) else "")
+                text = None if text is None or before is None else before + "\n" + text
+            written[p] = text
         if len(t) < 3 or os.path.basename(t[0]) != "gh":
             continue
         texts, notes, hints = [], [], {"flag": None, "path": None, "host": None, "graphql": False, "stdin": False,
-                                       "urls": False}
+                                       "urls": False, "unknown": ""}
 
         def value(v):
             return _resolve(v, cmd.assigns)
@@ -1655,8 +1687,14 @@ def _gh_text_calls(command: str):
             m = _GH_API_TEXT_PATH_RE.match(endpoint)
             if not graphql and not m:
                 continue
-            if m and not any(c in m.group(1) + m.group(2) for c in "{}:$"):
-                hints["path"] = f"{m.group(1)}/{m.group(2)}"
+            if m:
+                # {owner}/{repo} (both placeholders): gh fills them from GH_REPO or the directory, as below.
+                # One placeholder next to a fixed name is a repo that can't be read here
+                holes = [any(c in g for c in "{}:$") for g in (m.group(1), m.group(2))]
+                if not any(holes):
+                    hints["path"] = f"{m.group(1)}/{m.group(2)}"
+                elif not all(holes):
+                    hints["unknown"] = "the API path mixes a placeholder with a fixed name"
             hints["host"] = next((v for n, v in pairs if n == "host"), None)
             for n, v in sends:
                 if n == "input":
@@ -1680,26 +1718,12 @@ def _gh_text_calls(command: str):
     if calls:
         # Text that reaches gh through the shell: heredocs (`--body "$(cat <<'EOF' … EOF)"`, `--body-file - <<EOF`,
         # and a body file written by a heredoc earlier in the same command) and `$(cat <file>)`
-        shared = [("heredoc", b) for b in _heredoc_bodies(command)]
-        shared += [("heredoc", x) for _, b in list(shared) for x in _json_texts(b)]   # a JSON body for --input -
-        nested = {seg["text"].strip() for seg in _parse_segments(command) if seg["depth"] > 0}
-        for cmd in _commands(command):
-            if cmd.raw not in nested:
-                continue
-            if cmd.tokens[:1] == ["cat"]:
-                files = [("cat ", a) for a in cmd.tokens[1:] if not a.startswith(("-", "<"))]
-            elif cmd.raw.startswith("<") and not cmd.raw.startswith("<<"):   # $(< file)
-                files = [("< ", cmd.raw[1:].strip().strip("'\""))]
-            else:
-                continue
-            for how, a in files:
-                a = _resolve(a, cmd.assigns)
-                text = None if _abs(a, cmd.cwd) in written else _read_text(a, cmd.cwd)
-                if text is not None:
-                    shared.append((f"$({how}{os.path.basename(a)})", text))
+        heredocs = [("heredoc", b) for b in _heredoc_bodies(command)]
+        heredocs += [("heredoc", x) for _, b in list(heredocs) for x in _json_texts(b)]   # a JSON body for --input -
         for call in calls:   # which gh call receives the shared text isn't decided here, so each is judged with it
-            call["texts"] = call["texts"] + shared
-            if call["hints"]["stdin"] and not any(place == "heredoc" for place, _ in shared):
+            call["texts"] = call["texts"] + heredocs + shared
+            call["notes"] += shared_notes
+            if call["hints"]["stdin"] and not heredocs:
                 call["notes"].append("publish-guard: the text read from stdin (`-`) comes from another command;"
                                      " it was not checked")
     return calls
@@ -1709,6 +1733,8 @@ def _publish_hits(texts: list, pats: list, total: int) -> list:
     """["pattern #2 of 5 matches the --body text (line 14)"], first match per pattern and place."""
     hits = []
     for place, text in texts:
+        if any(rx.search(place) for _, rx in pats):
+            place = "file"   # a file name that matches is itself the private value: don't repeat it
         for n, rx in pats:
             line = next((i for i, ln in enumerate((text or "").splitlines(), 1) if rx.search(ln)), None)
             if line:
@@ -1742,6 +1768,8 @@ def _repo_from_spec(spec: str):
 def _publish_repo(call: dict):
     """The repo gh would write to, as far as it can be read locally. returns (slug or None, why not)."""
     hints = call["hints"]
+    if hints["unknown"]:
+        return None, hints["unknown"]
     if hints["host"] and hints["host"].lower() != "github.com":
         return None, "the host is not github.com"
     if hints["graphql"]:
@@ -1762,7 +1790,7 @@ def _publish_repo(call: dict):
     # copied here, so more than one distinct repo means "unknown"
     try:
         r = _git(["config", "--get-regexp", r"^remote\..*\.gh-resolved$"], cwd, timeout=5)
-        marked = re.match(r"^remote\.(.+)\.gh-resolved\s", r.stdout) if r.returncode == 0 else None
+        marked = re.match(r"^remote\.(.+)\.gh-resolved\s+(\S+)", r.stdout) if r.returncode == 0 else None
         remotes = _git(["remote", "-v"], cwd, timeout=5)
     except (subprocess.TimeoutExpired, OSError):
         return None, "git could not be asked for the remote"
@@ -1773,6 +1801,8 @@ def _publish_repo(call: dict):
         if m and _slug(m.group(1), m.group(2)):
             slugs[parts[0]] = _slug(m.group(1), m.group(2))
     if marked:
+        if marked.group(2) != "base":   # gh stores either "base" (the remote itself) or the repo it resolved to
+            return _repo_from_spec(marked.group(2))
         return slugs.get(marked.group(1)), "the gh-resolved remote is not a github.com repo"
     found = set(slugs.values())
     if len(found) == 1:
@@ -1797,14 +1827,15 @@ def _repo_visibility(slug: str) -> str:
             cache = {}
     if not isinstance(cache, dict):
         cache = {}
-    hit = cache.get(slug)
-    at = hit.get("at") if isinstance(hit, dict) else None
+    key = f"github.com/{slug}"   # the lookup below is pinned to github.com, whatever GH_HOST says
+    hit = cache.get(key)
+    at, vis = (hit.get("at"), hit.get("visibility")) if isinstance(hit, dict) else (None, None)
     # anything unreadable in the entry (a hand-edited or damaged file) is a miss, and gets rewritten below
-    if isinstance(at, (int, float)) and not isinstance(at, bool) and hit.get("visibility") in _VISIBILITY_TTL \
-            and 0 <= time.time() - at < _VISIBILITY_TTL[hit["visibility"]]:
-        return hit["visibility"]
+    if isinstance(at, (int, float)) and not isinstance(at, bool) and isinstance(vis, str) \
+            and vis in _VISIBILITY_TTL and 0 <= time.time() - at < _VISIBILITY_TTL[vis]:
+        return vis
     try:
-        r = subprocess.run(["gh", "api", f"repos/{slug}", "--jq", ".visibility"], capture_output=True, text=True,
+        r = subprocess.run(["gh", "api", "--hostname", "github.com", f"repos/{slug}", "--jq", ".visibility"], capture_output=True, text=True,
                            timeout=5, stdin=subprocess.DEVNULL, env={**os.environ, "GH_PROMPT_DISABLED": "1"})
         vis = r.stdout.strip() if r.returncode == 0 else ""
     except (subprocess.TimeoutExpired, OSError):
@@ -1812,7 +1843,7 @@ def _repo_visibility(slug: str) -> str:
     if vis not in ("public", "private", "internal"):
         vis = "unknown"
     if path:
-        cache[slug] = {"visibility": vis, "at": int(time.time())}
+        cache[key] = {"visibility": vis, "at": int(time.time())}
         try:
             os.makedirs(data_dir, exist_ok=True)
             tmp = f"{path}.{os.getpid()}.tmp"
@@ -1853,15 +1884,16 @@ def _publish_guard_bash(command: str):
     calls = _gh_text_calls(command)
     if not calls:
         return None
-    result = None
+    said = []
     for call in calls:
         hits = _publish_hits(call["texts"], pats, total)
         repo, why = _publish_repo(call) if hits else (None, "")
         r = _publish_decide(call["label"], hits, repo, why, notes + call["notes"])
         if r and r["hookSpecificOutput"].get("permissionDecision") == "deny":
             return r
-        result = result or r
-    return result
+        if r:   # a later call's note must not be lost behind an earlier one
+            said += [ln for ln in r["hookSpecificOutput"]["additionalContext"].split("\n") if ln not in said]
+    return note("\n".join(said)) if said else None
 
 
 def _guarded(fn, *args):
@@ -1887,8 +1919,8 @@ def _publish_guard_mcp(tool: str, tool_input: dict):
     texts = [(k, tool_input[k]) for k in ("title", "body") if isinstance(tool_input.get(k), str)]
     labels, fields = tool_input.get("labels"), tool_input.get("issue_fields")
     texts += [("labels", x) for x in (labels if isinstance(labels, list) else []) if isinstance(x, str)]
-    texts += [("issue_fields", f["value"]) for f in (fields if isinstance(fields, list) else [])
-              if isinstance(f, dict) and isinstance(f.get("value"), str)]
+    texts += [("issue_fields", f[k]) for f in (fields if isinstance(fields, list) else []) if isinstance(f, dict)
+              for k in ("value", "field_option_name") if isinstance(f.get(k), str)]
     if not texts:
         return None
     hits = _publish_hits(texts, pats, total)
