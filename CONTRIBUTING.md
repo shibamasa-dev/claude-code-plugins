@@ -25,6 +25,16 @@ python3 .github/scripts/check-repo.py
 for t in plugins/*/tests/run-all.sh; do bash "$t"; done   # tests assume macOS
 ```
 
+## Issue and PR text
+
+`text-scan.yml` checks the text of issues and PRs (titles, bodies, comments, reviews) with the same patterns as the file check, on every text event and in a daily sweep. A match adds the `private-value` label and fails the run; the summary names the item and field only. To clear it: edit the text, delete the old revision from the comment's edit history, then remove the label by hand (the workflow never removes it). Run it locally, read-only, with `GITHUB_REPOSITORY=<owner>/<repo> GITHUB_TOKEN=$(gh auth token) python3 .github/scripts/leak/scan-text.py --issue <n> --dry-run`, and its tests with `python3 -m unittest discover -s .github/scripts/leak/tests`.
+
+Limits to know about:
+
+- The label and the run result are public, so an outside author can post a candidate name and see whether it matched, one guess per comment. The output hides which pattern matched, where and how many times, which slows probing down but does not prevent it
+- The built-in patterns cover two classes only: a home directory path and an e-mail address. Account names, private repository names and similar values are caught only when the `BLOCKED_PATTERNS` secret lists them
+- In issue and PR text the home-path pattern skips example paths (placeholder names such as `user` or `alice`) and paths that do not start at a boundary; the file check does not
+
 ## Language and READMEs
 
 - Write everything in English: skills, hook messages, comments, tests, manifests and CHANGELOG entries

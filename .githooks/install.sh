@@ -36,6 +36,7 @@ git fetch -q origin main
 tmp=$(mktemp -d)
 git show origin/main:.githooks/pre-commit > "$tmp/pre-commit"
 git show origin/main:.github/scripts/check-repo.py > "$tmp/check-repo.py"
+git show origin/main:.github/scripts/leak/leak_patterns.py > "$tmp/leak_patterns.py"  # check-repo.py imports it
 
 # Move another pre-commit in .git/hooks aside and call it afterwards (our own previous one can be overwritten)
 if [ -e "$dest/pre-commit" ] && ! grep -q "$MARK" "$dest/pre-commit"; then
@@ -47,6 +48,7 @@ if [ -e "$dest/pre-commit" ] && ! grep -q "$MARK" "$dest/pre-commit"; then
 fi
 install -m 755 "$tmp/pre-commit" "$dest/pre-commit"
 install -m 644 "$tmp/check-repo.py" "$dest/check-repo.py"
+install -m 644 "$tmp/leak_patterns.py" "$dest/leak_patterns.py"
 rm -r "$tmp"
 
 if [ -n "$prior" ]; then
