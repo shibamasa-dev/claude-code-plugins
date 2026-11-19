@@ -173,19 +173,26 @@ def main():
 
         for n in numbers:
             # One thread that errors or runs over its budget must not stop the threads after it (the sweep)
+            human, bots, unfinished, labelled = [], [], "", False
             try:
                 labelled, fields = thread(n)
+            except ApiError as e:
+                unfinished = str(e)
+            else:
                 deadline = time.monotonic() + THREAD_BUDGET
-                human = [what for what, text, bot in fields if not bot and matches(text, patterns, deadline)]
-                bots = [what for what, text, bot in fields if bot and matches(text, patterns, deadline)]
-            except (ApiError, OverBudget) as e:
-                why = str(e) if isinstance(e, ApiError) else f"matching took longer than {THREAD_BUDGET:g} s"
-                out.append(f"#{n}: the scan did not finish ({why}).")
+                try:
+                    for what, text, bot in fields:
+                        if matches(text, patterns, deadline):
+                            (bots if bot else human).append(what)
+                except OverBudget:
+                    # What was found before the budget ran out still counts (label, report) below
+                    unfinished = f"matching took longer than {THREAD_BUDGET:g} s"
+            if unfinished:
+                out.append(f"#{n}: the scan did not finish ({unfinished}).")
                 print(f"::error::text-scan: the scan of #{n} did not finish")
                 failed = True
-                continue
             if not human and not bots:
-                if labelled:
+                if labelled and not unfinished:
                     out.append(f"#{n}: current text clean; delete the old revision from the edit history,"
                                f" then remove the `{LABEL}` label.")
                 continue

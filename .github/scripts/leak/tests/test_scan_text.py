@@ -229,7 +229,7 @@ class ScanTextTest(unittest.TestCase):
                                        extra_env={"TEXT_SCAN_THREAD_BUDGET": "-1"})
         self.assertEqual(rc, 1)
         self.assertIn("#12: the scan did not finish", text)
-        self.assertEqual(fake.posts, [])
+        self.assertNotIn("current text clean", text)
 
     def test_bot_hit_fails_when_the_label_cannot_be_written(self):
         rc, text, fake = self.run_scan("issue_comment", {"issue": {"number": 12}}, routes_for(
@@ -332,7 +332,8 @@ class TextBuiltinsTest(unittest.TestCase):
 
     def test_real_home_paths_match(self):
         for line in (f"logs are in {self.users}builder/work", f"see `{self.home}deploy/app`", f"cd {self.root}src",
-                     f"C:{self.users}Builder/AppData", f"path={self.home}ci-bot/x"):
+                     f"C:{self.users}Builder/AppData", f"path={self.home}ci-bot/x", f"file://{self.users}builder/x",
+                     f"/mnt/c{self.users}Builder/x", f"/System/Volumes/Data{self.users}builder/x"):
             self.assertTrue(self.hit(line), line)
 
     def test_path_needs_a_boundary_before_it(self):

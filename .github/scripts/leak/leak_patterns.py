@@ -27,9 +27,12 @@ BUILTINS = [
 # - Prose and review comments are full of paths that are no one's home directory: "root/home/ page" in a
 #   sentence, or example paths under a "user" directory. So a path must start at a boundary (not after a word
 #   character, "/", "." or "-") and the directory name must not be a well-known placeholder
+# ...except after a mount or scheme prefix, where the home path is still a real one: file:///..., a WSL
+# drive (/mnt/c), a macOS data volume (.../Data)
+_BOUNDARY = r"(?:(?<![\w/.-])|(?<=://)|(?<=/mnt/[a-z])|(?<=/Data))"
 _PLACEHOLDER = r"(?!(?i:user|username|you|yourname|name|u|alice|bob|shared|runner)(?![A-Za-z0-9._-]))"
 TEXT_BUILTINS = [
-    (re.compile(r"(?<![\w/.-])(?:/Users/" + _PLACEHOLDER + r"[A-Za-z]|/home/" + _PLACEHOLDER + r"[a-z]|/ro[o]t/)"),
+    (re.compile(_BOUNDARY + r"(?:/Users/" + _PLACEHOLDER + r"[A-Za-z]|/home/" + _PLACEHOLDER + r"[a-z]|/ro[o]t/)"),
      "absolute home directory path"),
     (re.compile(r"[A-Za-z0-9._%+-]{1,64}@(?!users\.noreply\.github\.com|noreply\.|anthropic\.com|github\.com\b|example\.)"
                 r"[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"), "email address"),
