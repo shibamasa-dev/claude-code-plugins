@@ -231,7 +231,7 @@ def pr_gate(inp, where, repo, head, body, body_file=None):
     del _log_failed[:]
     try:
         res = _gate(inp, where, repo, head, body, body_file)
-    except Exception as e:  # before the mode is known (reading the repo or its config failed): said and logged
+    except Exception as e:  # could not decide (also before the mode is known): said and logged, never silent or a denial
         try:
             _, common = cg.repo_of(where or inp.get("cwd"))
         except Exception:
@@ -260,12 +260,7 @@ def _gate(inp, where, repo, head, body, body_file):
     s = settings(top)
     if s["mode"] == "off":
         return None
-    try:
-        return _judge(inp, sid, top, common, s, where, repo, head, body, body_file)
-    except Exception as e:  # the gate is on and could not decide: said (and logged when possible), never silent
-        log(common, {"session": sid, "repo": top, "mode": s["mode"], "decision": "error",
-                     "error": f"{type(e).__name__}: {e}"[:200]})
-        return "note", f"{TAG} could not look up local checks ({type(e).__name__}): this PR was not checked."
+    return _judge(inp, sid, top, common, s, where, repo, head, body, body_file)
 
 
 def _judge(inp, sid, top, common, s, where, repo, head, body, body_file):
