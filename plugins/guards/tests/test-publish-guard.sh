@@ -136,6 +136,21 @@ CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='heredoc' \
 printf 'built by acme-build\n' > "$PROBE_CWD/acme-build-notes.md"
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS='["acme-build"]' PARTS='line 1' \
   row 'gh issue comment 12 -R acme/widgets --body-file acme-build-notes.md' 'file name matches a pattern: the message does not repeat it' 'deny'
+printf 'clean\n' > "$PROBE_CWD/s1.md"; printf 'clean\n' > "$PROBE_CWD/c.md"; mkdir -p "$PROBE_CWD/out"; printf 'clean\n' > "$PROBE_CWD/out/note.md"
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='written in the same command|earlier command' \
+  row 'cp note.md s1.md && gh issue create -R acme/widgets -t T --body-file s1.md' 'body file written by cp: not checked, said so' 'note'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='written in the same command|earlier command' \
+  row 'mv note.md s1.md && gh issue create -R acme/widgets -t T --body-file s1.md' 'body file written by mv' 'note'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='written in the same command|earlier command' FORBID='' \
+  row "sed -i '' 's/clean/acme-internal/' s1.md && gh issue create -R acme/widgets -t T --body-file s1.md" 'body file rewritten by sed -i' 'note'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='written in the same command|earlier command' \
+  row 'install -m 644 note.md s1.md && gh issue create -R acme/widgets -t T --body-file s1.md' 'body file written by install' 'note'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='written in the same command|earlier command' \
+  row 'dd if=note.md of=s1.md && gh issue create -R acme/widgets -t T --body-file s1.md' 'body file written by dd of=' 'note'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='written in the same command|earlier command' \
+  row 'cp note.md out && gh issue create -R acme/widgets -t T --body-file out/note.md' 'body file written by cp into its directory' 'note'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 \
+  row 'cp note.md s1.md && gh issue create -R acme/widgets -t T --body-file c.md' 'cp of an unrelated file: the clean body file stays silent' 'allow'
 mkfifo "$PROBE_CWD/pipe.md"
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='could not be read' \
   row 'gh issue comment 12 -R acme/widgets --body-file pipe.md' 'body file is a named pipe: not opened' 'note'
@@ -233,6 +248,10 @@ CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='could not be read|visibility un
   row 'gh issue create -R acme/widgets -t "Fix" --body-file missing.md; gh issue create -t "Fix" -b "acme-internal"' 'two gh calls, a note each: both are said' 'note'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='visibility unknown|mixes a placeholder' \
   row 'gh api "repos/{owner}/widgets/issues/1/comments" -f body="acme-internal"' 'API path with one placeholder: repo unknown' 'note'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS='[""]' PARTS='pattern #1 matches the empty string' \
+  row 'gh pr comment 1 -R acme/widgets --body "hello world"' 'pattern that matches the empty string: skipped, nothing denied' 'note'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS='["acme-internal|", "acme-build"]' PARTS='pattern #1 matches the empty string|pattern #2 of 2' FORBID='acme-internal|acme-build|' \
+  row 'gh pr comment 1 -R acme/widgets --body "from acme-build"' 'pattern with a stray |: skipped, the rest apply' 'deny'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS='acme-internal' PARTS='not a JSON array' \
   row 'gh issue create -R acme/widgets -t "Fix" -b "acme-internal"' 'setting is not a JSON array' 'note'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS='["acme-(", "acme-internal"]' PARTS='pattern #1 is not a valid regex|pattern #2 of 2' \

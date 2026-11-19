@@ -1445,7 +1445,11 @@ def _publish_patterns():
             # to stderr; newer Pythons reject the same pattern, so it is rejected everywhere
             with warnings.catch_warnings():
                 warnings.simplefilter("error")
-                pats.append((n, re.compile(p)))
+                rx = re.compile(p)
+            if rx.search(""):   # would match every text (an empty entry, a stray `|`)
+                notes.append(f"publish-guard: pattern #{n} matches the empty string; skipped")
+            else:
+                pats.append((n, rx))
         except Exception:  # noqa: BLE001  (re.error, OverflowError, RecursionError, a non-string, a warning)
             notes.append(f"publish-guard: pattern #{n} is not a valid regex; skipped")
     return len(items), pats, notes
@@ -1538,6 +1542,19 @@ def _cmd_writes(cmd) -> list:
     if name == "tee":
         append = any(a in ("-a", "--append") for a in args)
         targets += [(a, append) for a in args if not a.startswith(("-", "<"))]
+    # Other writers named by their arguments. What they write isn't read here (text None: a note at the gh call)
+    plain = [a for a in args if a and not a.startswith("-")]
+    opaque = []
+    if name in ("cp", "mv", "install") and len(plain) >= 2:
+        dest = _abs(_resolve(plain[-1], cmd.assigns), cmd.cwd)
+        if dest and os.path.isdir(dest):   # copied into a directory: one file per source
+            opaque = [os.path.join(plain[-1], os.path.basename(a.rstrip("/"))) for a in plain[:-1]]
+        else:
+            opaque = [plain[-1]]
+    elif name == "sed" and any(re.match(r"-[a-zA-Z]*i|--in-place", a) for a in args):
+        opaque = plain   # the script is among them; as a path it names no body file
+    elif name == "dd":
+        opaque = [a[3:] for a in args if a.startswith("of=")]
     if name in ("echo", "printf") and targets:
         # Tokens have lost their quotes, so a quoted argument such as "> quoted line" looks like a redirection.
         # Where the command has quotes or escapes, every token counts as text (a target's name included)
@@ -1552,6 +1569,10 @@ def _cmd_writes(cmd) -> list:
         p = _abs(_resolve(target, cmd.assigns), cmd.cwd)
         if p:
             out.append((p, text, append))
+    for target in opaque:
+        p = _abs(_resolve(target, cmd.assigns), cmd.cwd)
+        if p:
+            out.append((p, None, False))
     return out
 
 
