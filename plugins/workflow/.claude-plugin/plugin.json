@@ -1,6 +1,6 @@
 {
   "name": "workflow",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Skills and hooks for the development flow from request to merge (including how PR reviews are routed and awaited), issue operations, session handoffs and runbook recording, plus a mod that writes usage limits to a file",
   "author": {
     "name": "shibamasa-dev"
@@ -65,6 +65,13 @@
       "description": "Regex of skill names whose run counts as review or verification for the commit gate. Empty means ^(code-review|(.+:)?verify-.+|coderabbit:code-review)$. A repo's .claude/verification.json \"verifiers\" overrides this",
       "required": false,
       "default": ""
+    },
+    "pr_checks_gate": {
+      "type": "string",
+      "title": "Local checks before a PR (off / observe / enforce)",
+      "description": "off does nothing. observe never blocks and logs, at PR creation, whether the repo's check command (prChecks in .claude/verification.json on the default branch) passed locally on the tree being proposed. enforce blocks a PR creation with no recorded pass. A repo's .claude/verification.json prChecksGate on the default branch overrides this",
+      "required": false,
+      "default": "off"
     }
   }
 }

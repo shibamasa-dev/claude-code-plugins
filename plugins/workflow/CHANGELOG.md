@@ -2,6 +2,12 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.11.0] - 2026-11-19
+
+### Added
+- Local checks before the PR (`hooks/checks.py`), off by default (userConfig `pr_checks_gate`: `off` / `observe` / `enforce`; `prChecksGate` in a repo's `.claude/verification.json` on the default branch overrides it). `checks.py run` runs the repo's `prChecks` command, read from the default branch, and records a pass for the tree's fingerprint (the one commit-gate uses) when the command exits 0 and the tree is the same before and after; `run --working-tree` tries the working tree's command and never records; `report` lists PR creations that had no pass. At PR creation, after its own body check passed, dev-flow-gate asks whether the tree has a recorded pass: `observe` logs one line (`pr_head`, `fingerprint`, `had_pass`) and says so, `enforce` denies unless the body has `Local-Checks: none — <reason>`, and lets the next creation through after two denials in a session. It denies only when the PR's repo and head are certainly the directory's origin and checked-out branch; an unknown directory, another repo or head, an unknown default branch, a missing `prChecks` command and an unavailable fingerprint are said and logged, never denied. Passes are kept in the git common dir (`workflow-pr-checks.json`), because `checks.py run` is started from Bash, where `CLAUDE_PLUGIN_DATA` is not this plugin's. In `off` it reads the repo's config with two to four local git calls per PR creation and does nothing else (#77).
+- dev-flow step 3: record the local run with `checks.py run` where the repo sets `prChecks` (#77).
+
 ## [0.10.0] - 2026-11-18
 
 ### Added
