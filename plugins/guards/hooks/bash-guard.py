@@ -39,6 +39,13 @@ Current rules:
                    wrappers such as `env gh` pass.
   4. pip-freeze-guard : denies `pip freeze` / `pip3 freeze` (silently empty in uv-made venvs, which have no pip).
                    Use `uv pip freeze` (add `--python <path>` to target another environment), or prefix the command with `PIP_FREEZE_OK=1`.
+  5. publish-guard : off unless the setting publish_patterns (a JSON array of regexes) is set. Checks the issue / PR
+                   text a `gh issue|pr create|edit|comment|review` or a writing `gh api` call is about to publish
+                   (title, body, body files, heredocs), and the title / body of the GitHub MCP write tools (a second
+                   hooks.json matcher sends those here; they see this rule only). A match is denied only when the
+                   target repo is known to be public; a private repo passes silently, and an unknown one passes
+                   with a note. Messages name the pattern number and the place, never the matched text.
+                   Unlike the other rules, anything this one cannot determine is allowed, with a note.
 """
 import fnmatch
 import glob
@@ -1374,6 +1381,600 @@ def rule_pip_freeze_guard(command: str):
     return None
 
 
+# -------------------------------------------------------------- publish-guard
+# Before text is published to a GitHub repo (issue / PR titles, bodies, comments, reviews), check it
+# against the user's own list of private-value patterns (setting publish_patterns, a JSON array of
+# regexes). A match is denied only when the target repo is known to be public; "cannot determine" never
+# blocks (the opposite of the other rules), it only leaves a note. Messages name the pattern's number and
+# the place, never the matched text: the value must not enter the transcript a second time.
+PUBLISH_ENV = "CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS"
+_MCP_PUBLISH_RE = re.compile(
+    r"^mcp__.+__(issue_write|add_issue_comment|update_issue_comment|create_pull_request|update_pull_request"
+    r"|pull_request_review_write|add_comment_to_pending_review|add_reply_to_pull_request_comment)$")
+_GH_TEXT_VERBS = {"issue": {"create", "edit", "comment", "close", "reopen"},
+                  "pr": {"create", "edit", "comment", "review", "close", "reopen"}}
+# `close` / `reopen` can leave a comment (`--comment` / `-c`); `-r` is --reason there
+_GH_CLOSE_FLAGS = {"--comment": "comment", "-c": "comment", "--repo": "repo", "-R": "repo", "--reason": "", "-r": ""}
+_GH_TEXT_FLAGS = {"--title": "title", "-t": "title", "--body": "body", "-b": "body",
+                  "--body-file": "body-file", "-F": "body-file", "--repo": "repo", "-R": "repo"}
+# Other flags of `create` / `edit` that take a value, so the value is not read as the issue / PR selector.
+# Not for `comment` / `review`: there -a, -r and -c are switches (`gh pr review -a -b "text"`)
+_GH_EDIT_VALUED = {f: "" for f in ("--label", "-l", "--add-label", "--remove-label", "--assignee", "-a",
+                                   "--add-assignee", "--remove-assignee", "--milestone", "-m", "--project", "-p",
+                                   "--add-project", "--remove-project", "--reviewer", "-r", "--add-reviewer",
+                                   "--remove-reviewer", "--base", "-B", "--head", "-H", "--template", "-T",
+                                   "--recover")}
+_GH_API_FLAGS = {"--method": "method", "-X": "method", "--raw-field": "raw", "-f": "raw", "--field": "field",
+                 "-F": "field", "--input": "input", "--header": "", "-H": "", "--jq": "", "-q": "",
+                 "--template": "", "-t": "", "--hostname": "host", "--preview": "", "-p": "", "--cache": ""}
+_GH_API_TEXT_PATH_RE = re.compile(
+    r"^/?repos/([^/]+)/([^/]+)/(?:issues(?:/\d+(?:/comments)?)?|issues/comments/\d+"
+    r"|pulls(?:/\d+(?:/(?:comments(?:/\d+/replies)?|reviews(?:/\d+(?:/events)?)?))?)?|pulls/comments/\d+)/?$")
+_GH_ITEM_URL_RE = re.compile(r"(?i)^https?://(?:www\.)?github\.com/([^/\s]+)/([^/\s]+)/(?:issues|pull)/\d+")
+_GH_TEXT_KEY_RE = re.compile(r"(?:^|\[)(?:title|body)\]?$")   # body, comments[][body], ...
+_REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+$")
+_GITHUB_URL_RE = re.compile(r"^(?:https?://github\.com/|(?:ssh://)?git@github\.com[:/])([^/\s]+)/([^/\s]+?)(?:\.git)?/?$")
+_VISIBILITY_TTL = {"public": 7 * 86400, "private": 3600, "internal": 3600, "unknown": 3600}
+_PUBLISH_READ_LIMIT = 2_000_000
+
+
+def note(text: str) -> dict:
+    """Allow (no permissionDecision) and tell Claude something next to the tool result."""
+    return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": text}}
+
+
+def _publish_patterns():
+    """returns (configured count, [(number, regex)], notes), or None when the guard is off (setting empty).
+    Compiled here on demand, never at import: a bad regex must not take the other rules down with it."""
+    raw = os.environ.get(PUBLISH_ENV, "").strip()
+    if not raw:
+        return None
+    try:
+        items = json.loads(raw)
+    except ValueError:
+        items = None
+    if not isinstance(items, list):
+        return 0, [], ["publish-guard: publish_patterns is not a JSON array; not checked"]
+    if not items:
+        return None   # an empty list is "off" too
+    import warnings
+    pats, notes = [], []
+    for n, p in enumerate(items, 1):
+        try:
+            # A warning (older Pythons, for a flag that is not at the start) would print the pattern itself
+            # to stderr; newer Pythons reject the same pattern, so it is rejected everywhere
+            with warnings.catch_warnings():
+                warnings.simplefilter("error")
+                rx = re.compile(p)
+            if rx.search(""):   # would match every text (an empty entry, a stray `|`)
+                notes.append(f"publish-guard: pattern #{n} matches the empty string; skipped")
+            else:
+                pats.append((n, rx))
+        except Exception:  # noqa: BLE001  (re.error, OverflowError, RecursionError, a non-string, a warning)
+            notes.append(f"publish-guard: pattern #{n} is not a valid regex; skipped")
+    return len(items), pats, notes
+
+
+def _gh_flags(args: list, valued: dict):
+    """Read gh arguments. returns ([(name, value)] for the flags in valued, positionals).
+    Accepts `--flag v`, `--flag=v`, `-f v` and `-fv`; other flags are treated as taking no value."""
+    pairs, pos, i = [], [], 0
+    while i < len(args):
+        a = args[i]
+        i += 1
+        if a.startswith("--") and len(a) > 2:
+            name, eq, v = a.partition("=")
+        elif a.startswith("-") and len(a) > 1:
+            name, v = a[:2], a[2:]
+            eq = bool(v)
+            v = v[1:] if v.startswith("=") else v
+        else:
+            pos.append(a)
+            continue
+        if name not in valued:
+            continue
+        if not eq:
+            if i >= len(args):
+                continue
+            v = args[i]
+            i += 1
+        pairs.append((valued[name], v))
+    return pairs, pos
+
+
+_HEREDOC_OPEN_RE = re.compile(r"(?<!<)<<(?!<)(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
+
+
+def _heredoc_bodies(command: str) -> list:
+    """The heredoc bodies in command (the text _strip_heredocs drops). A body ends where bash ends it: at a
+    line that is exactly the delimiter (`<<-` ignores leading tabs), so text after a look-alike line such as
+    " EOF" is still read."""
+    out, pending, cur = [], [], []
+    for line in command.split("\n"):
+        if pending:
+            dash, word = pending[0]
+            if (line.lstrip("\t") if dash else line) == word:
+                pending.pop(0)
+                out.append("\n".join(cur))
+                cur = []
+            else:
+                cur.append(line)
+            continue
+        pending.extend((m.group(1), m.group(3)) for m in _HEREDOC_OPEN_RE.finditer(line))
+    if cur:
+        out.append("\n".join(cur))   # unterminated: still text that would be sent
+    return out
+
+
+def _abs(path: str, cwd):
+    p = os.path.expanduser(path)
+    if not os.path.isabs(p):
+        if cwd is None:
+            return None
+        p = os.path.join(cwd, p)
+    return os.path.normpath(p)
+
+
+_REDIRECT_RE = re.compile(r"^\d*(>>?)\|?(.*)$", re.S)
+
+
+def _cmd_writes(cmd) -> list:
+    """Files one command writes (`> f`, `>> f`, `tee f`), as [(absolute path, text, append)]. text is what
+    the command writes when that is literal (echo / printf arguments), "" when a heredoc writes it (heredoc
+    bodies are matched on their own), and None when it can't be read from the command."""
+    t = cmd.tokens
+    if not t:
+        return []
+    targets, args, i = [], [], 1
+    while i < len(t):
+        m = _REDIRECT_RE.match(t[i])
+        if m:
+            target = m.group(2)
+            if not target and i + 1 < len(t):
+                i += 1
+                target = t[i]
+            if target and not target.startswith("&"):
+                targets.append((target, m.group(1) == ">>"))
+        else:
+            args.append(t[i])
+        i += 1
+    name = os.path.basename(t[0])
+    if name == "tee":
+        append = any(a in ("-a", "--append") for a in args)
+        targets += [(a, append) for a in args if not a.startswith(("-", "<"))]
+    # Other writers named by their arguments. What they write isn't read here (text None: a note at the gh call)
+    plain = [a for a in args if a and not a.startswith("-")]
+    opaque = []
+    if name in ("cp", "mv", "install") and len(plain) >= 2:
+        dest = _abs(_resolve(plain[-1], cmd.assigns), cmd.cwd)
+        if dest and os.path.isdir(dest):   # copied into a directory: one file per source
+            opaque = [os.path.join(plain[-1], os.path.basename(a.rstrip("/"))) for a in plain[:-1]]
+        else:
+            opaque = [plain[-1]]
+    elif name == "sed" and any(re.match(r"-[a-zA-Z]*i|--in-place", a) for a in args):
+        opaque = plain   # the script is among them; as a path it names no body file
+    elif name == "dd":
+        opaque = [a[3:] for a in args if a.startswith("of=")]
+    if name in ("echo", "printf") and targets:
+        # Tokens have lost their quotes, so a quoted argument such as "> quoted line" looks like a redirection.
+        # Where the command has quotes or escapes, every token counts as text (a target's name included)
+        exact = not any(c in cmd.raw for c in "'\"\\")
+        text = "\n".join(_resolve(a, cmd.assigns) for a in (args if exact else t[1:]))
+    elif any(re.fullmatch(r"<<-?\w+", a) for a in t):
+        text = ""
+    else:
+        text = None
+    out = []
+    for target, append in targets:
+        p = _abs(_resolve(target, cmd.assigns), cmd.cwd)
+        if p:
+            out.append((p, text, append))
+    for target in opaque:
+        p = _abs(_resolve(target, cmd.assigns), cmd.cwd)
+        if p:
+            out.append((p, None, False))
+    return out
+
+
+def _read_text(path: str, cwd):
+    """The text of a body file, or None if it can't be read now (missing, or written later in the command)."""
+    p = os.path.expanduser(path)
+    if not os.path.isabs(p):
+        if cwd is None:
+            return None
+        p = os.path.join(cwd, p)
+    try:
+        if not os.path.isfile(p):   # never open a named pipe or a device: the hook would wait for its writer
+            return None
+        with open(p, encoding="utf-8", errors="replace") as f:
+            return f.read(_PUBLISH_READ_LIMIT)
+    except (OSError, ValueError):
+        return None
+
+
+def _json_texts(raw: str) -> list:
+    """Every string value inside a JSON request body, decoded ([] if it is not JSON or nests too deep; the
+    caller matches the raw text as well)."""
+    out = []
+
+    def walk(v):
+        if isinstance(v, dict):
+            for x in v.values():
+                walk(x)
+        elif isinstance(v, list):
+            for x in v:
+                walk(x)
+        elif isinstance(v, str):
+            out.append(v)
+    try:
+        walk(json.loads(raw))
+    except (ValueError, RecursionError):
+        return []
+    return out
+
+
+def _gh_text_calls(command: str):
+    """The gh commands in command that publish issue / PR text.
+    returns [dict(label, texts [(place, text)], repo hints, cwd, env, notes)]."""
+    calls = []
+    # Walked in the order the shell runs the commands: `written` is what this Bash call has put into each
+    # file so far (its copy on disk is from before the call), `shared` the text of $(cat f) / $(< f)
+    written, shared, shared_notes = {}, [], []
+    nested = {seg["text"].strip() for seg in _parse_segments(command) if seg["depth"] > 0}
+    cmds = _commands(command)
+    all_writes = [(j, p, text) for j, c in enumerate(cmds) for p, text, _ in _cmd_writes(c)]
+
+    def later(i, p, place, texts, notes):
+        """A file that is also written further on in the command (a loop body, a background job) may hold
+        that text by the time gh reads it: those texts are checked as well."""
+        for x in [x for j, q, x in all_writes if q == p and j > i]:
+            if x is None:
+                notes.append(f"publish-guard: the {place} file is written in the same command, so its text"
+                             " was not checked; write the file in an earlier command")
+            elif x:
+                texts.append((place, x))
+
+    for i, cmd in enumerate(cmds):
+        t = cmd.tokens
+        if cmd.raw in nested:
+            if t[:1] == ["cat"]:
+                files = [("cat", a) for a in t[1:] if not a.startswith(("-", "<"))]
+            elif cmd.raw.startswith("<") and not cmd.raw.startswith("<<"):   # $(< file)
+                files = [("<", cmd.raw[1:].strip().strip("'\""))]
+            else:
+                files = []
+            for how, a in files:
+                a = _resolve(a, cmd.assigns)
+                place = f"$({how} {os.path.basename(a)})"
+                p = _abs(a, cmd.cwd)
+                text = written[p] if p in written else _read_text(a, cmd.cwd)
+                if p in written and text is None:
+                    shared_notes.append(f"publish-guard: the {place} file is written in the same command, so its"
+                                        " text was not checked; write the file in an earlier command")
+                elif text:
+                    shared.append((place, text))
+                later(i, p, place, shared, shared_notes)
+        for p, text, append in _cmd_writes(cmd):
+            if append:   # what was there stays: the copy on disk, or what this call wrote before
+                before = written[p] if p in written else (_read_text(p, None) if os.path.exists(p) else "")
+                text = None if text is None or before is None else before + "\n" + text
+            written[p] = text
+        if len(t) < 3 or os.path.basename(t[0]) != "gh":
+            continue
+        texts, notes, hints = [], [], {"flag": None, "path": None, "host": None, "graphql": False, "stdin": False,
+                                       "urls": False, "unknown": ""}
+
+        def value(v):
+            return _resolve(v, cmd.assigns)
+
+        def add_file(place, path):
+            if path == "-":
+                hints["stdin"] = True   # a heredoc is scanned below; a pipe from another program can't be seen
+                return
+            p = _abs(value(path), cmd.cwd)
+            later(i, p, place, texts, notes)
+            if p in written:
+                if written[p] is None:
+                    notes.append(f"publish-guard: the {place} file is written in the same command, so its text"
+                                 " was not checked; write the file in an earlier command")
+                elif written[p]:
+                    texts.append((place, written[p]))
+                return
+            text = _read_text(value(path), cmd.cwd)
+            if text is None:
+                notes.append(f"publish-guard: the {place} file could not be read; its text was not checked")
+            else:
+                texts.append((place, text))
+
+        if t[1] in _GH_TEXT_VERBS:
+            # The verb is the first positional: a flag may sit before it (`gh issue -R o/r comment …`)
+            verb = (_gh_flags(t[2:], _GH_TEXT_FLAGS)[1] or [""])[0]
+            if verb not in _GH_TEXT_VERBS[t[1]]:
+                continue
+            label = f"gh {t[1]} {verb}"
+            valued = ({**_GH_EDIT_VALUED, **_GH_TEXT_FLAGS} if verb in ("create", "edit")
+                      else _GH_CLOSE_FLAGS if verb in ("close", "reopen") else _GH_TEXT_FLAGS)
+            pairs, pos = _gh_flags(t[2:], valued)
+            if verb in pos:
+                pos.remove(verb)
+            # An issue / PR given by URL names the repo itself, whatever -R, GH_REPO or the directory say
+            # (`create` takes no selector). URLs of different repos, or one that can't be read: unknown
+            urls = [a for a in pos if "://" in a] if verb != "create" else []
+            if urls:
+                found = {_slug(m.group(1), m.group(2)) if m else None for m in map(_GH_ITEM_URL_RE.match, urls)}
+                hints["path"], hints["urls"] = (found.pop() if len(found) == 1 else None), True
+            for name, v in pairs:
+                if not name:
+                    continue
+                if name == "repo":
+                    hints["flag"] = value(v)
+                elif name == "body-file":
+                    add_file("--body-file", v)
+                else:
+                    texts.append((f"--{name}", value(v)))
+        elif t[1] == "api":
+            label = "gh api"
+            pairs, pos = _gh_flags(t[2:], _GH_API_FLAGS)
+            endpoint = pos[0] if pos else ""
+            method = next((v.upper() for n, v in pairs if n == "method"), None)
+            sends = [(n, v) for n, v in pairs if n in ("raw", "field", "input")]
+            if (method or ("POST" if sends else "GET")) not in ("POST", "PATCH", "PUT"):
+                continue
+            # gh also takes a full URL, and a query string is not part of the path
+            endpoint = re.sub(r"^https://api\.github\.com/", "", endpoint).split("?")[0].split("#")[0]
+            graphql = hints["graphql"] = endpoint.strip("/") == "graphql"
+            m = _GH_API_TEXT_PATH_RE.match(endpoint)
+            if not graphql and not m:
+                continue
+            if m:
+                # {owner}/{repo} (both placeholders): gh fills them from GH_REPO or the directory, as below.
+                # One placeholder next to a fixed name is a repo that can't be read here
+                holes = [any(c in g for c in "{}:$") for g in (m.group(1), m.group(2))]
+                if not any(holes):
+                    hints["path"] = f"{m.group(1)}/{m.group(2)}"
+                elif not all(holes):
+                    hints["unknown"] = "the API path mixes a placeholder with a fixed name"
+            hints["host"] = next((v for n, v in pairs if n == "host"), None)
+            for n, v in sends:
+                if n == "input":
+                    before = len(texts)
+                    add_file("--input", v)
+                    if len(texts) > before:
+                        # What gets published is the decoded JSON, not its escaped spelling: match both
+                        texts += [("--input", x) for x in _json_texts(texts[before][1])]
+                    continue
+                key, eq, val = v.partition("=")
+                if not eq or not (graphql or _GH_TEXT_KEY_RE.search(key)):
+                    continue   # REST: only the fields that carry text; GraphQL: every field (the query too)
+                if n == "field" and val.startswith("@"):
+                    add_file(f"{key}=@{os.path.basename(val[1:])}", val[1:])
+                else:
+                    texts.append((key, value(val)))
+        else:
+            continue
+        calls.append({"label": label, "texts": texts, "hints": hints, "cwd": cmd.cwd, "env": cmd.env,
+                      "notes": notes})
+    if calls:
+        # Text that reaches gh through the shell: heredocs (`--body "$(cat <<'EOF' … EOF)"`, `--body-file - <<EOF`,
+        # and a body file written by a heredoc earlier in the same command) and `$(cat <file>)`
+        heredocs = [("heredoc", b) for b in _heredoc_bodies(command)]
+        heredocs += [("heredoc", x) for _, b in list(heredocs) for x in _json_texts(b)]   # a JSON body for --input -
+        for call in calls:   # which gh call receives the shared text isn't decided here, so each is judged with it
+            call["texts"] = call["texts"] + heredocs + shared
+            call["notes"] += shared_notes
+            if call["hints"]["stdin"] and not heredocs:
+                call["notes"].append("publish-guard: the text read from stdin (`-`) comes from another command;"
+                                     " it was not checked")
+    return calls
+
+
+def _publish_hits(texts: list, pats: list, total: int) -> list:
+    """["pattern #2 of 5 matches the --body text (line 14)"], first match per pattern and place."""
+    hits = []
+    for place, text in texts:
+        if any(rx.search(place) for _, rx in pats):
+            place = "file"   # a file name that matches is itself the private value: don't repeat it
+        for n, rx in pats:
+            line = next((i for i, ln in enumerate((text or "").splitlines(), 1) if rx.search(ln)), None)
+            if line:
+                hits.append(f"pattern #{n} of {total} matches the {place} text (line {line})")
+    return hits
+
+
+def _slug(owner, repo):
+    if not (isinstance(owner, str) and isinstance(repo, str)):
+        return None
+    s = f"{owner}/{repo}"
+    return s.lower() if _REPO_SLUG_RE.match(s) else None
+
+
+def _repo_from_spec(spec: str):
+    """`[HOST/]OWNER/REPO` or a URL, as -R / GH_REPO take it. returns (slug or None, why not)."""
+    spec = (spec or "").strip()
+    m = _GITHUB_URL_RE.match(spec)
+    if m:
+        return _slug(m.group(1), m.group(2)), "the repo name could not be read"
+    parts = spec.split("/")
+    if len(parts) == 3 and parts[0].lower() != "github.com" or "://" in spec:
+        return None, "the host is not github.com"
+    if len(parts) == 3:
+        parts = parts[1:]
+    if len(parts) == 2 and _slug(*parts):
+        return _slug(*parts), ""
+    return None, "the repo name could not be read"
+
+
+def _publish_repo(call: dict):
+    """The repo gh would write to, as far as it can be read locally. returns (slug or None, why not)."""
+    hints = call["hints"]
+    if hints["unknown"]:
+        return None, hints["unknown"]
+    if hints["host"] and hints["host"].lower() != "github.com":
+        return None, "the host is not github.com"
+    if hints["graphql"]:
+        return None, "a GraphQL call names its target by node id, not by repo"
+    if hints["urls"]:
+        return hints["path"], "the issue / PR URLs do not name one github.com repo"
+    if hints["flag"]:
+        return _repo_from_spec(hints["flag"])
+    if hints["path"]:
+        return _slug(*hints["path"].split("/")), "the repo name could not be read"
+    spec = call["env"].get("GH_REPO") or os.environ.get("GH_REPO")
+    if spec:
+        return _repo_from_spec(spec)
+    cwd = call["cwd"]
+    if cwd is None:
+        return None, "the command's directory could not be determined"
+    # gh uses the remote marked gh-resolved; without one its choice among several GitHub remotes is not
+    # copied here, so more than one distinct repo means "unknown"
+    try:
+        r = _git(["config", "--get-regexp", r"^remote\..*\.gh-resolved$"], cwd, timeout=5)
+        marked = re.match(r"^remote\.(.+)\.gh-resolved\s+(\S+)", r.stdout) if r.returncode == 0 else None
+        remotes = _git(["remote", "-v"], cwd, timeout=5)
+    except (subprocess.TimeoutExpired, OSError):
+        return None, "git could not be asked for the remote"
+    slugs = {}
+    for line in remotes.stdout.splitlines() if remotes.returncode == 0 else []:
+        parts = line.split()
+        m = _GITHUB_URL_RE.match(parts[1]) if len(parts) >= 2 else None
+        if m and _slug(m.group(1), m.group(2)):
+            slugs[parts[0]] = _slug(m.group(1), m.group(2))
+    if marked:
+        if marked.group(2) != "base":   # gh stores either "base" (the remote itself) or the repo it resolved to
+            return _repo_from_spec(marked.group(2))
+        return slugs.get(marked.group(1)), "the gh-resolved remote is not a github.com repo"
+    found = set(slugs.values())
+    if len(found) == 1:
+        return found.pop(), ""
+    if not found:
+        return None, "no github.com remote was found in the command's directory"
+    return None, "the directory has several GitHub remotes and none is marked gh-resolved"
+
+
+def _repo_visibility(slug: str) -> str:
+    """'public' | 'private' | 'internal' | 'unknown'. Asked through gh (5 s, no prompt) and cached under
+    ${CLAUDE_PLUGIN_DATA}: public for 7 days, the rest for an hour (a stale "private" is the dangerous side)."""
+    import time
+    data_dir = os.environ.get("CLAUDE_PLUGIN_DATA")
+    path = os.path.join(data_dir, "repo-visibility.json") if data_dir else None
+    cache = {}
+    if path:
+        try:
+            with open(path, encoding="utf-8") as f:
+                cache = json.load(f)
+        except (OSError, ValueError):
+            cache = {}
+    if not isinstance(cache, dict):
+        cache = {}
+    key = f"github.com/{slug}"   # the lookup below is pinned to github.com, whatever GH_HOST says
+    hit = cache.get(key)
+    at, vis = (hit.get("at"), hit.get("visibility")) if isinstance(hit, dict) else (None, None)
+    # anything unreadable in the entry (a hand-edited or damaged file) is a miss, and gets rewritten below
+    if isinstance(at, (int, float)) and not isinstance(at, bool) and isinstance(vis, str) \
+            and vis in _VISIBILITY_TTL and 0 <= time.time() - at < _VISIBILITY_TTL[vis]:
+        return vis
+    try:
+        r = subprocess.run(["gh", "api", "--hostname", "github.com", f"repos/{slug}", "--jq", ".visibility"], capture_output=True, text=True,
+                           timeout=5, stdin=subprocess.DEVNULL, env={**os.environ, "GH_PROMPT_DISABLED": "1"})
+        vis = r.stdout.strip() if r.returncode == 0 else ""
+    except (subprocess.TimeoutExpired, OSError):
+        vis = ""
+    if vis not in ("public", "private", "internal"):
+        vis = "unknown"
+    if path:
+        cache[key] = {"visibility": vis, "at": int(time.time())}
+        try:
+            os.makedirs(data_dir, exist_ok=True)
+            tmp = f"{path}.{os.getpid()}.tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(cache, f)
+            os.replace(tmp, path)
+        except OSError:
+            pass
+    return vis
+
+
+def _publish_decide(label: str, hits: list, repo, why: str, notes: list):
+    """Scan first, look the repo up only on a hit: clean text (nearly every command) costs no network call."""
+    if hits:
+        vis = _repo_visibility(repo) if repo else "unknown"
+        found = "; ".join(hits[:3]) + (" (more matches not listed)" if len(hits) > 3 else "")
+        if vis == "public":
+            split = (" Every heredoc and $(cat file) in a command is checked as text gh may publish: if that one"
+                     " is not, run it in a separate command." if "the heredoc text" in found or "the $(" in found
+                     else "")
+            return deny(f"🛑 publish-guard: {found} of '{label}' to public repo {repo}. Remove the private value"
+                        " and run again; the matched text is not shown." + split + "".join("\n" + n for n in notes))
+        if vis == "unknown":
+            why = why if not repo else f"the visibility of {repo} could not be looked up"
+            notes = notes + [f"publish-guard: {found} of '{label}'; target repo visibility unknown"
+                             f" ({why}), so the call is allowed. If the repo is public, remove the private value first;"
+                             " the matched text is not shown."]
+    return note("\n".join(notes)) if notes else None
+
+
+def _publish_guard_bash(command: str):
+    if "gh" not in command:
+        return None  # fast pass-through
+    conf = _publish_patterns()
+    if conf is None:
+        return None
+    total, pats, notes = conf
+    calls = _gh_text_calls(command)
+    if not calls:
+        return None
+    said = []
+    for call in calls:
+        hits = _publish_hits(call["texts"], pats, total)
+        repo, why = _publish_repo(call) if hits else (None, "")
+        r = _publish_decide(call["label"], hits, repo, why, notes + call["notes"])
+        if r and r["hookSpecificOutput"].get("permissionDecision") == "deny":
+            return r
+        if r:   # a later call's note must not be lost behind an earlier one
+            said += [ln for ln in r["hookSpecificOutput"]["additionalContext"].split("\n") if ln not in said]
+    return note("\n".join(said)) if said else None
+
+
+def _guarded(fn, *args):
+    """This guard's own errors never block: allow, with a note naming the exception type only (a message
+    could quote the text being checked)."""
+    try:
+        return fn(*args)
+    except Exception as e:  # noqa: BLE001
+        return note(f"publish-guard: internal error ({type(e).__name__}); this call was not checked")
+
+
+def rule_publish_guard(command: str):
+    if not os.environ.get(PUBLISH_ENV, "").strip():
+        return None  # guard off (the default): no parsing, no output
+    return _guarded(_publish_guard_bash, command)
+
+
+def _publish_guard_mcp(tool: str, tool_input: dict):
+    conf = _publish_patterns()
+    if conf is None:
+        return None
+    total, pats, notes = conf
+    texts = [(k, tool_input[k]) for k in ("title", "body") if isinstance(tool_input.get(k), str)]
+    labels, fields = tool_input.get("labels"), tool_input.get("issue_fields")
+    texts += [("labels", x) for x in (labels if isinstance(labels, list) else []) if isinstance(x, str)]
+    texts += [("issue_fields", f[k]) for f in (fields if isinstance(fields, list) else []) if isinstance(f, dict)
+              for k in ("value", "field_option_name") if isinstance(f.get(k), str)]
+    if not texts:
+        return None
+    hits = _publish_hits(texts, pats, total)
+    repo = _slug(tool_input.get("owner"), tool_input.get("repo"))
+    return _publish_decide(_MCP_PUBLISH_RE.match(tool).group(1), hits, repo,
+                           "the tool input names no owner / repo", notes)
+
+
+def publish_guard_mcp(tool: str, tool_input: dict):
+    """GitHub MCP tools that write issue / PR text (the hooks.json matcher sends them here)."""
+    if not os.environ.get(PUBLISH_ENV, "").strip() or not _MCP_PUBLISH_RE.match(tool):
+        return None
+    return _guarded(_publish_guard_mcp, tool, tool_input)
+
+
 RULES = [
     rule_worktree_guard,      # before rm-guard (SAFE_PREFIXES lets paths under worktree_dirs through)
     rule_rm_guard,
@@ -1381,6 +1982,7 @@ RULES = [
     rule_main_commit_freshness,
     rule_gh_comments_guard,
     rule_pip_freeze_guard,
+    rule_publish_guard,       # last: its notes ride along with whatever the rules above decided
 ]
 
 
@@ -1392,15 +1994,22 @@ def main() -> None:
         data = json.load(sys.stdin)
     except Exception:
         sys.exit(0)
-    if data.get("tool_name") != "Bash":
-        sys.exit(0)
+    tool = data.get("tool_name") or ""
     global _CWD, _PERMISSION_MODE
     _CWD = data.get("cwd") or os.getcwd()
     _PERMISSION_MODE = data.get("permission_mode") or ""
+    if tool != "Bash":
+        # MCP tools reach this script only through the publish-guard matcher in hooks.json; no other rule sees them
+        tool_input = data.get("tool_input")
+        result = publish_guard_mcp(tool, tool_input if isinstance(tool_input, dict) else {})
+        if result:
+            print(json.dumps(result, ensure_ascii=False))
+        sys.exit(0)
     command = (data.get("tool_input") or {}).get("command", "")
     # deny beats ask. Even after a rule returns ask, evaluate the remaining rules and return deny
     # if any denies (don't let an ask-worthy operation chained with a dangerous one through as ask).
     pending_ask = None
+    notes = []   # additionalContext from rules that allow (publish-guard)
     for rule in RULES:
         try:
             result = rule(command)
@@ -1411,14 +2020,21 @@ def main() -> None:
             result = deny(msg) if _PERMISSION_MODE == "bypassPermissions" else ask(msg)
         if not result:
             continue
-        decision = result.get("hookSpecificOutput", {}).get("permissionDecision")
+        out = result.get("hookSpecificOutput", {})
+        decision = out.get("permissionDecision")
+        if decision is None:
+            notes.append(out.get("additionalContext") or "")
+            continue
         if decision == "ask":
             pending_ask = pending_ask or result
             continue
         print(json.dumps(result, ensure_ascii=False))
         sys.exit(0)
-    if pending_ask:
-        print(json.dumps(pending_ask, ensure_ascii=False))
+    result = pending_ask or (note("\n".join(notes)) if notes else None)
+    if result:
+        if pending_ask and notes:
+            result["hookSpecificOutput"]["additionalContext"] = "\n".join(notes)
+        print(json.dumps(result, ensure_ascii=False))
     sys.exit(0)
 
 

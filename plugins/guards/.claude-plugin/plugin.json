@@ -1,7 +1,7 @@
 {
   "name": "guards",
-  "version": "0.8.0",
-  "description": "Hooks that stop destructive Bash operations, deletion of unmerged worktrees and pushes from a branch behind the default branch, `gh issue view --comments` without `--json` (gh-comments-guard) and `pip freeze` (pip-freeze-guard), and bring the local merge-target branch up to date after a merge. Repo layout rules apply only when you add a rule file",
+  "version": "0.9.0",
+  "description": "Hooks that stop destructive Bash operations, deletion of unmerged worktrees and pushes from a branch behind the default branch, `gh issue view --comments` without `--json` (gh-comments-guard) and `pip freeze` (pip-freeze-guard), and bring the local merge-target branch up to date after a merge. Optional publish-guard: checks issue / PR text against your own list of private-value patterns before it is published to a public repo. Repo layout rules apply only when you add a rule file",
   "author": {
     "name": "shibamasa-dev"
   },
@@ -19,6 +19,14 @@
       "type": "string",
       "title": "Folders where you keep worktrees",
       "description": "Comma-separated (e.g. ~/.worktrees). Recursive deletes under these are allowed, and paths that can't be confirmed as merged are blocked. If empty, no folder gets special treatment (deleting an unmerged worktree is blocked anywhere)",
+      "required": false,
+      "default": ""
+    },
+    "publish_patterns": {
+      "type": "string",
+      "title": "Private-value patterns for publish-guard",
+      "description": "JSON array of regexes, e.g. [\"acme-internal\", \"(?i)acme-[a-z]+-private\"]. Issue / PR text that matches one is blocked before it is published to a public GitHub repo. Empty turns the check off",
+      "sensitive": true,
       "required": false,
       "default": ""
     }
