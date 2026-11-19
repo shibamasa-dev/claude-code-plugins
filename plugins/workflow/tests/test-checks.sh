@@ -17,7 +17,8 @@ case "$T" in ""|/) echo "mktemp failed" >&2; exit 1 ;; esac
 [ -d "$T" ] || { echo "no temp dir" >&2; exit 1; }
 export CLAUDE_PLUGIN_DATA="$T/data" HOME="$T" GIT_CONFIG_NOSYSTEM=1
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.com GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.com
-unset CLAUDE_PLUGIN_OPTION_PR_CHECKS_GATE CLAUDE_PLUGIN_OPTION_COMMIT_GATE GH_REPO GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+unset CLAUDE_PLUGIN_OPTION_PR_CHECKS_GATE CLAUDE_PLUGIN_OPTION_COMMIT_GATE GH_REPO
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
 O="$T/origin.git"; SEED="$T/seed"; W="$T/作業 リポ"; WT="$T/wt 二"
 
 # A git that counts its calls (for the off row) and can be told to fail `add -A` (the fingerprint then is unavailable)
@@ -181,6 +182,12 @@ row 'checks.py run ignores the working tree command' "$(run_checks)" one
 row 'the working tree cannot switch the gate off' "$(create d3)" deny
 row 'checks.py run --working-tree runs the working tree command' "$(run_checks --working-tree)" zero
 row '--working-tree records nothing' "$(create d4)" deny
+reset; set_repo_cfg '{"prChecksGate":"enforce","prChecks":"test -z \"$GIT_DIR\""}'
+row 'the command does not inherit GIT_DIR from the caller' "$(GIT_DIR="$(git -C "$W" rev-parse --absolute-git-dir)" run_checks)" zero
+reset; set_repo_cfg '{"prChecksGate":"enforce","prChecks":"test -f m.py"}'
+edit one; printf 'not json' > "$W/.git/workflow-pr-checks.json"
+row 'the pass file cannot be read: logged as error, not denied' "$(create d4x)" error
+rm -f "$W/.git/workflow-pr-checks.json"
 reset; set_repo_cfg '{"prChecksGate":"enforce","prChecks":"test -f m.py"}'
 edit one; run_checks >/dev/null
 set_repo_cfg '{"prChecksGate":"enforce","prChecks":"test -f m.py && true"}'

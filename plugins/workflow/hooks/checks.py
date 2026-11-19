@@ -107,24 +107,26 @@ def pass_path(common):
     return os.path.join(common, PASS_FILE)
 
 
-def has_pass(common, fp, command):
-    """Whether this tree passed this command (a pass under an older command does not count)."""
+def _passes(common):
+    """The recorded passes; none when the file is not there. A file that is there and cannot be read raises: the
+    gate then cannot decide, which is not the same as "no pass"."""
     try:
         with open(pass_path(common), encoding="utf-8") as f:
-            ent = (json.load(f).get("passes") or {}).get(fp)
-    except Exception:
-        return False
+            return json.load(f).get("passes") or {}
+    except FileNotFoundError:
+        return {}
+
+
+def has_pass(common, fp, command):
+    """Whether this tree passed this command (a pass under an older command does not count)."""
+    ent = _passes(common).get(fp)
     return isinstance(ent, dict) and ent.get("command") == command_key(command)
 
 
 def pass_without(common, rels, fp, command):
     """Whether a pass was recorded on a tree that, with one of the files in rels left out, was this one (the PR body
     file was there when the checks ran and may have been edited since)."""
-    try:
-        with open(pass_path(common), encoding="utf-8") as f:
-            passes = json.load(f).get("passes") or {}
-    except Exception:
-        return False
+    passes = _passes(common)
     key = command_key(command)
     return any(isinstance(e, dict) and e.get("command") == key and isinstance(e.get("without"), dict)
                and any(e["without"].get(r) == fp for r in rels) for e in passes.values())
@@ -370,7 +372,9 @@ def run(argv):
         return 2
     before = None if working else cg.fingerprint(top)
     print(f"{TAG} running (from {where}): {command}", flush=True)
-    rc = subprocess.run(command, shell=True, cwd=top).returncode
+    # Without the variables that point git at another repo: the command must look at the tree that is fingerprinted
+    env = {k: v for k, v in os.environ.items() if k not in cg._REPO_SELECT_VARS}
+    rc = subprocess.run(command, shell=True, cwd=top, env=env).returncode
     if rc != 0:
         print(f"{TAG} failed (exit {rc}): nothing recorded.", file=sys.stderr)
         return rc if 0 < rc < 126 else 1
@@ -389,6 +393,10 @@ def run(argv):
     without = {}
     if len(others) <= MAX_WITHOUT:  # so the PR body file, if it is one of them, can be edited without losing the pass
         without = {p: f for p in others for f in [cg.fingerprint(top, exclude=[p])] if f}
+        if without and cg.fingerprint(top) != after:  # an edit while those were computed: they are of another tree
+            print(f"{TAG} passed, but the tree changed right after the run: nothing recorded. Run it again once "
+                  "the tree is stable.", file=sys.stderr)
+            return 3
     try:
         record_pass(common, after, command, without)
     except OSError as e:
