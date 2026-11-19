@@ -174,8 +174,12 @@ def main():
                 try:
                     api("POST", f"/issues/{n}/labels", {"labels": [LABEL]})
                 except ApiError as e:
-                    # A review event from a fork runs with a read-only token; the sweep adds the label
                     out.append(f"#{n}: the `{LABEL}` label could not be added ({e}).")
+                    if not from_fork:
+                        # Only a review event from a fork is expected to fail here (read-only token; the sweep
+                        # adds the label). Anywhere else a missing label must not look like a finished scan
+                        failed = True
+                        print(f"::error::text-scan: the `{LABEL}` label could not be added to #{n}")
             if human and not from_fork:
                 failed = True
                 print(f"::error::text-scan: text on #{n} matches a private-value pattern (see the job summary)")

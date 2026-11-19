@@ -190,6 +190,13 @@ class ScanTextTest(unittest.TestCase):
         self.assert_labelled(fake, 12)
         self.assert_no_detail(text)
 
+    def test_bot_hit_fails_when_the_label_cannot_be_written(self):
+        rc, text, fake = self.run_scan("issue_comment", {"issue": {"number": 12}}, routes_for(
+            issue(12), [{"id": 1004, "body": f"Found a reference to {BLOCKED_NAME}", "user": BOT}]), read_only=True)
+        self.assertEqual(rc, 1)
+        self.assertIn("label could not be added", text)
+        self.assert_no_detail(text)
+
     def test_clean_text_keeps_the_label(self):
         rc, text, fake = self.run_scan("issues", {"issue": {"number": 12}},
                                        routes_for(issue(12, labels=["private-value", "bug"])))
