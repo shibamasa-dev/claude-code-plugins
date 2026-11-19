@@ -11,6 +11,14 @@
 #   from the default branch, and the only write is a constant label name
 # - Review events from a fork get no secret and a read-only token: the built-ins still run, the job says
 #   BLOCKED_PATTERNS was unavailable, and the daily sweep scans that thread with all patterns
+#
+# Known limits:
+# - Probing: the label and the job result are public, so an outside author can post a candidate name and
+#   see whether it matched, one guess per comment. The output hides which pattern, where and how many,
+#   which slows this down but does not prevent it
+# - The built-ins only know two classes (a home directory path, an e-mail address). Account names, private
+#   repository names and the like are caught only if BLOCKED_PATTERNS lists them
+# - The old text stays in the edit history; the workflow reads the current text only
 name: text-scan
 
 on:
@@ -38,9 +46,11 @@ permissions:
   issues: write
   pull-requests: write
 
-# Two edits in a row must not race on the label
+# Two edits in a row must not race on the label. A queued run replaces the pending one of its group, so
+# review events from a fork (no secret, built-ins only) get a group of their own: they must never displace
+# a pending run that has the secret
 concurrency:
-  group: text-scan-${{ github.event.issue.number || github.event.pull_request.number || 'sweep' }}
+  group: text-scan-${{ github.event.issue.number || github.event.pull_request.number || 'sweep' }}${{ startsWith(github.event_name, 'pull_request_review') && github.event.pull_request.head.repo.full_name != github.repository && '-fork-review' || '' }}
 
 jobs:
   scan:

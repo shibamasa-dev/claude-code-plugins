@@ -20,6 +20,22 @@ BUILTINS = [
 ]
 
 
+# The same two classes for issue / PR text (scan-text.py). Text differs from repo files in two ways:
+# - Anyone can post it, so matching has to stay linear in the line length. The file pattern's unbounded
+#   local part retries from every character of a long run (quadratic); bounding it to 64 characters, the
+#   longest local part an address can have, matches the same addresses in linear time
+# - Prose and review comments are full of paths that are no one's home directory: "root/home/ page" in a
+#   sentence, or example paths under a "user" directory. So a path must start at a boundary (not after a word
+#   character, "/", "." or "-") and the directory name must not be a well-known placeholder
+_PLACEHOLDER = r"(?!(?i:user|username|you|yourname|name|u|alice|bob|shared|runner)(?![A-Za-z0-9._-]))"
+TEXT_BUILTINS = [
+    (re.compile(r"(?<![\w/.-])(?:/Users/" + _PLACEHOLDER + r"[A-Za-z]|/home/" + _PLACEHOLDER + r"[a-z]|/ro[o]t/)"),
+     "absolute home directory path"),
+    (re.compile(r"[A-Za-z0-9._%+-]{1,64}@(?!users\.noreply\.github\.com|noreply\.|anthropic\.com|github\.com\b|example\.)"
+                r"[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"), "email address"),
+]
+
+
 class InvalidPattern(ValueError):
     """A BLOCKED_PATTERNS entry that is not a regex. The message carries the entry's number (counted
     over the non-blank lines, from 1) and never the entry itself: the log may be public."""
@@ -42,6 +58,7 @@ def blocked(source=None):
     return out
 
 
-def leaks(source=None):
-    """[(regex, what it is)]: the built-ins, then every BLOCKED_PATTERNS entry."""
-    return BUILTINS + [(rx, "BLOCKED_PATTERNS") for rx in blocked(source)]
+def leaks(source=None, text=False):
+    """[(regex, what it is)]: the built-ins (text=True: the ones for issue / PR text), then every
+    BLOCKED_PATTERNS entry."""
+    return (TEXT_BUILTINS if text else BUILTINS) + [(rx, "BLOCKED_PATTERNS") for rx in blocked(source)]

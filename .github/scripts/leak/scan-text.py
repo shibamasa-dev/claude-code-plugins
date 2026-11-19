@@ -22,6 +22,7 @@ import datetime
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -34,10 +35,17 @@ REPO = os.environ.get("GITHUB_REPOSITORY", "")
 TOKEN = os.environ.get("GITHUB_TOKEN", "")
 PR_EVENTS = ("pull_request_target", "pull_request_review", "pull_request_review_comment")
 SWEEP_HOURS = 26  # a daily run plus slack for a late start
+# Seconds one thread may take to match (the env var is for tests). The built-ins are linear in the text,
+# but a BLOCKED_PATTERNS entry may not be, and one slow thread must not keep the sweep from the others
+THREAD_BUDGET = float(os.environ.get("TEXT_SCAN_THREAD_BUDGET") or 60)
 
 
 class ApiError(Exception):
     """A failed API call. Carries the method, the path and the status only, never a response body."""
+
+
+class OverBudget(Exception):
+    """Matching one thread took longer than THREAD_BUDGET."""
 
 
 def api(method, url, body=None):
@@ -95,9 +103,14 @@ def thread(n):
     return labelled, fields
 
 
-def matches(text, patterns):
+def matches(text, patterns, deadline):
     # Line by line, as check-repo.py reads files, so one pattern means the same thing in both scans
-    return any(rx.search(line) for line in (text or "").splitlines() for rx, _ in patterns)
+    for line in (text or "").splitlines():
+        if time.monotonic() > deadline:
+            raise OverBudget
+        if any(rx.search(line) for rx, _ in patterns):
+            return True
+    return False
 
 
 def sweep_numbers(everything):
@@ -128,7 +141,7 @@ def main():
     failed = False
 
     try:
-        patterns = leak_patterns.leaks()
+        patterns = leak_patterns.leaks(text=True)
     except leak_patterns.InvalidPattern as e:
         print(f"::error::{e}")
         return 1
@@ -159,9 +172,18 @@ def main():
             return 1
 
         for n in numbers:
-            labelled, fields = thread(n)
-            human = [what for what, text, bot in fields if not bot and matches(text, patterns)]
-            bots = [what for what, text, bot in fields if bot and matches(text, patterns)]
+            # One thread that errors or runs over its budget must not stop the threads after it (the sweep)
+            try:
+                labelled, fields = thread(n)
+                deadline = time.monotonic() + THREAD_BUDGET
+                human = [what for what, text, bot in fields if not bot and matches(text, patterns, deadline)]
+                bots = [what for what, text, bot in fields if bot and matches(text, patterns, deadline)]
+            except (ApiError, OverBudget) as e:
+                why = str(e) if isinstance(e, ApiError) else f"matching took longer than {THREAD_BUDGET:g} s"
+                out.append(f"#{n}: the scan did not finish ({why}).")
+                print(f"::error::text-scan: the scan of #{n} did not finish")
+                failed = True
+                continue
             if not human and not bots:
                 if labelled:
                     out.append(f"#{n}: current text clean; delete the old revision from the edit history,"
@@ -193,7 +215,7 @@ def main():
         print(f"::error::text-scan: unexpected data ({type(e).__name__}); the scan did not finish")
         failed = True
 
-    if not failed and not any(line.startswith("#") for line in out):
+    if not any(line.startswith("#") for line in out):
         out.append("No private values found in the current text.")
     text = "\n".join(["### text-scan", ""] + out) + "\n"
     print(text)

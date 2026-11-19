@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -111,7 +112,7 @@ def routes_for(item, comments=(), reviews=(), review_comments=()):
 
 
 class ScanTextTest(unittest.TestCase):
-    def run_scan(self, event_name, event, routes, patterns=BLOCKED_NAME, **fake_kw):
+    def run_scan(self, event_name, event, routes, patterns=BLOCKED_NAME, extra_env=None, **fake_kw):
         fake = FakeApi(routes, **fake_kw)
         self.addCleanup(fake.close)
         tmp = tempfile.mkdtemp()
@@ -120,7 +121,7 @@ class ScanTextTest(unittest.TestCase):
             json.dump(event, f)
         env = {"PATH": os.environ["PATH"], "GITHUB_EVENT_NAME": event_name, "GITHUB_EVENT_PATH": event_path,
                "GITHUB_REPOSITORY": REPO, "GITHUB_TOKEN": "t", "GITHUB_API_URL": f"http://127.0.0.1:{fake.port}",
-               "GITHUB_STEP_SUMMARY": summary, "BLOCKED_PATTERNS": patterns}
+               "GITHUB_STEP_SUMMARY": summary, "BLOCKED_PATTERNS": patterns, **(extra_env or {})}
         p = subprocess.run([sys.executable, SCRIPT], env=env, capture_output=True, text=True, timeout=60)
         text = p.stdout + p.stderr + (read(summary) if os.path.exists(summary) else "")
         return p.returncode, text, fake
@@ -189,6 +190,46 @@ class ScanTextTest(unittest.TestCase):
         self.assertIn("- comment 1003 on #12 (written by a bot)", text)
         self.assert_labelled(fake, 12)
         self.assert_no_detail(text)
+
+    def test_hit_on_a_later_line_is_found(self):
+        comments = [{"id": 1005, "body": f"first line\nsecond line\nthird mentions {BLOCKED_NAME} here\nfourth\n",
+                     "user": HUMAN}]
+        rc, text, fake = self.run_scan("issue_comment", {"issue": {"number": 12}}, routes_for(issue(12), comments))
+        self.assertEqual(rc, 1)
+        self.assertIn("- comment 1005 on #12", text)
+
+    def test_hit_on_the_last_line_without_a_newline_is_found(self):
+        rc, text, fake = self.run_scan("issues", {"issue": {"number": 12}},
+                                       routes_for(issue(12, body=f"first line\r\nlast line {BLOCKED_NAME}")))
+        self.assertEqual(rc, 1)
+        self.assertIn("- issue #12 body", text)
+
+    def test_long_single_line_comment_scans_in_linear_time(self):
+        # 64 KB of one character on one line: the file pattern for e-mail retries from every character
+        comments = [{"id": 1006, "body": "a" * 65536, "user": HUMAN}]
+        start = time.monotonic()
+        rc, text, fake = self.run_scan("issue_comment", {"issue": {"number": 12}}, routes_for(issue(12), comments),
+                                       patterns="")
+        self.assertEqual(rc, 0)
+        self.assertLess(time.monotonic() - start, 1.0)
+
+    def test_sweep_continues_past_a_thread_that_errors(self):
+        routes = routes_for(issue(8, body=f"see {BLOCKED_NAME}"))
+        routes.update({"/issues": [issue(5), issue(8)], "/issues/5": issue(5), "/issues/comments": [],
+                       "/pulls/comments": []})   # no route for the comments of #5: the API answers 404
+        rc, text, fake = self.run_scan("schedule", {"schedule": "17 3 * * *"}, routes)
+        self.assertEqual(rc, 1)
+        self.assertIn("#5: the scan did not finish", text)
+        self.assertIn("- issue #8 body", text)
+        self.assert_labelled(fake, 8)
+
+    def test_thread_over_its_time_budget_fails_by_name(self):
+        rc, text, fake = self.run_scan("issues", {"issue": {"number": 12}},
+                                       routes_for(issue(12, body=f"see {BLOCKED_NAME}")),
+                                       extra_env={"TEXT_SCAN_THREAD_BUDGET": "-1"})
+        self.assertEqual(rc, 1)
+        self.assertIn("#12: the scan did not finish", text)
+        self.assertEqual(fake.posts, [])
 
     def test_bot_hit_fails_when_the_label_cannot_be_written(self):
         rc, text, fake = self.run_scan("issue_comment", {"issue": {"number": 12}}, routes_for(
@@ -266,7 +307,7 @@ class ScanTextTest(unittest.TestCase):
     def test_api_failure_fails_the_job_without_a_body(self):
         rc, text, fake = self.run_scan("issues", {"issue": {"number": 404}}, {})
         self.assertEqual(rc, 1)
-        self.assertIn("GET /repos/acme/widgets/issues/404 returned 404; the scan did not finish", text)
+        self.assertIn("#404: the scan did not finish (GET /repos/acme/widgets/issues/404 returned 404)", text)
         self.assertNotIn("Not Found", text)
 
 
@@ -280,6 +321,41 @@ class LeakPatternsTest(unittest.TestCase):
     def test_leaks_puts_builtins_before_blocked(self):
         self.assertEqual([what for _, what in leak_patterns.leaks("acme-internal")],
                          ["absolute home directory path", "email address", "BLOCKED_PATTERNS"])
+
+
+class TextBuiltinsTest(unittest.TestCase):
+    """The built-ins for issue / PR text. Paths are assembled here so this file holds no literal home path."""
+    home, users, root = "/ho" + "me/", "/Us" + "ers/", "/ro" + "ot/"
+
+    def hit(self, line):
+        return any(rx.search(line) for rx, _ in leak_patterns.TEXT_BUILTINS)
+
+    def test_real_home_paths_match(self):
+        for line in (f"logs are in {self.users}builder/work", f"see `{self.home}deploy/app`", f"cd {self.root}src",
+                     f"C:{self.users}Builder/AppData", f"path={self.home}ci-bot/x"):
+            self.assertTrue(self.hit(line), line)
+
+    def test_path_needs_a_boundary_before_it(self):
+        for line in (f"the docroot{self.home}page is new", f"./var{self.home}x", f"site-{self.home[1:]}abc",
+                     f"a/b{self.users}Carol"):
+            self.assertFalse(self.hit(line), line)
+
+    def test_placeholder_names_are_skipped(self):
+        for name in ("user", "username", "you", "yourname", "name", "u", "alice", "bob", "runner"):
+            self.assertFalse(self.hit(f"e.g. {self.home}{name}/project"), name)
+        for name in ("alice", "Shared", "you", "USERNAME"):
+            self.assertFalse(self.hit(f"e.g. C:{self.users}{name}/project"), name)
+
+    def test_name_that_only_starts_like_a_placeholder_matches(self):
+        for name in ("username2", "bobby", "u2", "runner-01"):
+            self.assertTrue(self.hit(f"in {self.home}{name}/project"), name)
+
+    def test_email_matches_like_the_file_pattern(self):
+        file_rx = leak_patterns.BUILTINS[1][0]
+        text_rx = leak_patterns.TEXT_BUILTINS[1][0]
+        for line in ("mail carol" + "@" + "corp-mail.test", "x" * 100 + "@" + "corp-mail.test", "ping @octo please",
+                     "git" + "@" + "github.com:acme/widgets.git", "a@b", "bot" + "@" + "users.noreply.github.com"):
+            self.assertEqual(bool(text_rx.search(line)), bool(file_rx.search(line)), line)
 
 
 class WorkflowTest(unittest.TestCase):
