@@ -117,8 +117,16 @@ CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='heredoc|separate command' \
   row $'gh issue comment 12 -R acme/widgets -b "ok" && cat > notes.md <<\'EOF\'\nacme-internal\nEOF' 'heredoc that does not feed gh: deny says to split the command' 'deny'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='--body-file' \
   row 'echo "more" >> stale.md && gh issue comment 12 -R acme/widgets --body-file stale.md' 'append keeps the text already in the file' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='--body-file' \
+  row 'for n in 1 2; do gh issue comment $n -R acme/widgets --body-file fresh.md; echo "see acme-internal" > fresh.md; done' 'file written further on in the command (a loop): that text is checked too' 'deny'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 \
-  row 'gh issue comment 12 -R acme/widgets --body-file fresh.md && echo "see acme-internal" > fresh.md' 'file written after gh has run: the copy on disk is what gh reads' 'allow'
+  row 'gh issue comment 12 -R acme/widgets --body-file fresh.md && echo "all clean" > fresh.md' 'file written further on with clean text' 'allow'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='--body-file' \
+  row 'echo "> see acme-internal" > fresh.md && gh issue comment 12 -R acme/widgets --body-file fresh.md' 'echo argument that starts with > (a quoted line)' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='--body-file' \
+  row 'printf "> quoted acme-internal\n" > fresh.md && gh issue comment 12 -R acme/widgets --body-file fresh.md' 'printf argument that starts with >' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='--body-file' \
+  row 'echo "<< acme-internal" > fresh.md && gh issue comment 12 -R acme/widgets --body-file fresh.md' 'echo argument that starts with <<' 'deny'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='$(cat fresh.md)' \
   row 'echo "see acme-internal" > fresh.md && gh issue comment 12 -R acme/widgets -b "$(cat fresh.md)"' '$(cat file) of a file the command wrote: the written text' 'deny'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 \

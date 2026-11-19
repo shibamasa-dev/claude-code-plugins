@@ -1538,10 +1538,13 @@ def _cmd_writes(cmd) -> list:
     if name == "tee":
         append = any(a in ("-a", "--append") for a in args)
         targets += [(a, append) for a in args if not a.startswith(("-", "<"))]
-    if any(a.startswith("<<") for a in t):
+    if name in ("echo", "printf") and targets:
+        # Tokens have lost their quotes, so a quoted argument such as "> quoted line" looks like a redirection.
+        # Where the command has quotes or escapes, every token counts as text (a target's name included)
+        exact = not any(c in cmd.raw for c in "'\"\\")
+        text = "\n".join(_resolve(a, cmd.assigns) for a in (args if exact else t[1:]))
+    elif any(re.fullmatch(r"<<-?\w+", a) for a in t):
         text = ""
-    elif name in ("echo", "printf") and targets:
-        text = "\n".join(_resolve(a, cmd.assigns) for a in args)
     else:
         text = None
     out = []
@@ -1597,7 +1600,20 @@ def _gh_text_calls(command: str):
     # file so far (its copy on disk is from before the call), `shared` the text of $(cat f) / $(< f)
     written, shared, shared_notes = {}, [], []
     nested = {seg["text"].strip() for seg in _parse_segments(command) if seg["depth"] > 0}
-    for cmd in _commands(command):
+    cmds = _commands(command)
+    all_writes = [(j, p, text) for j, c in enumerate(cmds) for p, text, _ in _cmd_writes(c)]
+
+    def later(i, p, place, texts, notes):
+        """A file that is also written further on in the command (a loop body, a background job) may hold
+        that text by the time gh reads it: those texts are checked as well."""
+        for x in [x for j, q, x in all_writes if q == p and j > i]:
+            if x is None:
+                notes.append(f"publish-guard: the {place} file is written in the same command, so its text"
+                             " was not checked; write the file in an earlier command")
+            elif x:
+                texts.append((place, x))
+
+    for i, cmd in enumerate(cmds):
         t = cmd.tokens
         if cmd.raw in nested:
             if t[:1] == ["cat"]:
@@ -1616,6 +1632,7 @@ def _gh_text_calls(command: str):
                                         " text was not checked; write the file in an earlier command")
                 elif text:
                     shared.append((place, text))
+                later(i, p, place, shared, shared_notes)
         for p, text, append in _cmd_writes(cmd):
             if append:   # what was there stays: the copy on disk, or what this call wrote before
                 before = written[p] if p in written else (_read_text(p, None) if os.path.exists(p) else "")
@@ -1634,6 +1651,7 @@ def _gh_text_calls(command: str):
                 hints["stdin"] = True   # a heredoc is scanned below; a pipe from another program can't be seen
                 return
             p = _abs(value(path), cmd.cwd)
+            later(i, p, place, texts, notes)
             if p in written:
                 if written[p] is None:
                     notes.append(f"publish-guard: the {place} file is written in the same command, so its text"

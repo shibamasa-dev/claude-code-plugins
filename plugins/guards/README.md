@@ -75,6 +75,8 @@ Anything it cannot determine (the repo, its visibility, a file) is allowed with 
 Also worth knowing:
 
 - Every heredoc and `$(cat file)` in a command that also runs a publishing `gh` call counts as text to be published, even when it feeds something else. If that blocks a command, split it in two
+- A write to a body file counts as done wherever it sits in the command: one the shell skips (`false && echo … > f`) hides the copy on disk from the check, and one that comes after the `gh` call is checked as if `gh` could read it. Write body files in an earlier command
+- When an `echo` / `printf` command has quotes, all of its words count as the text it writes, the target file's name included
 - Your patterns run as written, with no time limit. A pattern that backtracks badly can stall the hook, and a hook that times out drops the other bash-guard rules' decisions for that call too. Keep patterns simple (plain names, short alternations)
 - A failed visibility lookup is remembered for an hour; during that hour matches headed for that repo pass with a note
 - The visibility cache (`repo-visibility.json` in the plugin's data directory) holds the names of the repos that had a match, private ones included, in plain text
