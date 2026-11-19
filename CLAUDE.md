@@ -53,3 +53,13 @@ Who installs a plugin decides where its data lives (SQLite, Postgres, Supabase) 
 5. Rules that must hold on every write live in the schema (constraints, generated columns, triggers), so they hold whoever writes the SQL. Only a rule the schema can't express on both databases becomes a small function, such as NFKC normalization (SQLite has no `normalize()`). Don't call such a function from a SQLite generated column: other clients that lack the function (DB Browser and the like) can no longer read the table. Fill the column from a trigger instead.
 6. Schema changes apply automatically and idempotently. Never ask the user to run an `ALTER` by hand. Over a connector, send DDL through the connector's migration tool (Supabase: `apply_migration`).
 7. Extension points: every table has a stable primary key and an `updated_at` that the schema maintains (a default on insert, a trigger on update), because Claude's own `UPDATE` may leave it out. Trigger syntax differs between SQLite and Postgres, so the migrations ship one per database. Optional features such as vector search add no columns to the plugin's schema; whoever wants one adds their own column or table and a hook (for example `PostToolUse` matched to the tools that touch the database) and finds rows to refresh by comparing each row's `updated_at` with the value it recorded for that row when it last processed it. Don't keep a single `updated_at > cursor` watermark: writes that share a timestamp (SQLite's second-resolution `CURRENT_TIMESTAMP`, or every write in one Postgres transaction) slip past it.
+
+## Before changing a shared skill or hook
+
+Skills and hooks here run in many repos. Check these before proposing a change.
+
+1. Who runs it: a rule that comes from this repo's own habits (for example bumping a version file in every PR) does not go into a skill body.
+2. Default vs. override: keep the default. A repo-specific need becomes a line in that repo's CLAUDE.md or a `userConfig` option. An option that loosens a check is off by default and affects only the repo that sets it.
+3. Tool or usage: before changing code, check whether the cause is how the tool is used (how many, how often, in what order).
+4. What is already configured: before proposing a new mechanism, check existing settings (`userConfig`, repo settings, a service's web console). Ask the owner about settings you cannot see.
+5. Size the effect: bring the result of replaying the proposal on recent real data (how many cases change).

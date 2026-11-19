@@ -2,6 +2,11 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.11.1] - 2026-11-19
+
+### Changed
+- weekly-orchestrator-base, session-wrap and issue-ops: one batch produces one pull request (or one `gh-stack` stack), and the PR body lists a `Closes` / `Refs` line per issue. The plan's batch table gets a "PRs" column, planning checks the cycle's PR total against the review tools' hourly limit, the delegation skeleton states how the batch ends, and "one issue = one deliverable" no longer reads as one PR per issue.
+
 ## [0.11.0] - 2026-11-19
 
 ### Added
