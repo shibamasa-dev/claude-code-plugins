@@ -7,6 +7,9 @@ The source is step 5(a) of the session-wrap skill (`${CLAUDE_PLUGIN_ROOT}/skills
 **Do not split too finely. Form batches by task size and dependencies.**
 Making even small doc PRs one per item increases the number of parallel runs and the coordination effort.
 
+**One batch produces one pull request** (or one `gh-stack` stack when its parts depend on each other, or when the PR would exceed the size guideline in `dev-flow`). The PR body lists one `Closes <owner/repo#N>` or `Refs <owner/repo#N>` line per issue it covers. Each PR costs one review-tool run and one merge decision, and review tools have hourly limits.
+A batch may still produce more than one PR when its parts must be versioned and released separately (for example different plugins), or when one part needs a separate decision from the owner. Say so in the plan's "PRs" column before the batch starts.
+
 Signs that items belong in the same batch (**any one** is enough):
 
 - They touch the same set of files

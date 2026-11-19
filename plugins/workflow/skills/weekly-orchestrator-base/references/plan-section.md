@@ -50,8 +50,8 @@ Fill in `{period}` to match the project's cycle.
 - [ ] 
 
 ### Batches (units of execution)
-| # | Batch | Entry issue | Shared resources | Order | Run via | Status |
-|---|---|---|---|---|---|---|
+| # | Batch | Entry issue | Shared resources | Order | PRs | Run via | Status |
+|---|---|---|---|---|---|---|---|
 
 ### Sub-step adjustments
 - (one line per child issue created, merged, or closed, with the reason; "none" if there are none)
@@ -68,6 +68,7 @@ Fill in `{period}` to match the project's cycle.
 - **Target goals**: the subset of Goal progress chosen for this cycle, with the child issues to advance. Its "Deferred child issues" column is per child within a chosen goal; Goal progress's last column is per goal across all of them. Goal progress answers "how far along is each goal"; Target goals and Batches answer "what this cycle does about it"
 - **Plan status**: `Draft` while it is still the template. Once you get the user's OK and write it in, `Confirmed YYYY-MM-DD`. After a `/clear`, the orchestrator uses this to decide whether to "make the plan" or "resume from where it left off"
 - **Minimum bar**: write as checkboxes. Items still `- [ ]` at close-out become candidates for carry-over
+- **PRs column**: the expected number of PRs the batch opens, normally `1`; write the reason when it is more (see `batching.md`)
 - **Run via column**: `subagent <name>` / `start_session <name>` (the name it returns; `start_session <task_id>` for a card not started yet) / `<route> <identifier>` (other separate sessions) / `paste-in`
 - **Status column**: `Not started` / `Running` / `PR #N` (a PR exists but is not merged) / `Done` (merged and acceptance criteria verified) / `Blocked (reason)`
 - **Batch column**: work that was not in the plan but was reported by another session goes in as `Unplanned: <what>`, with Run via `reported by <session name>`

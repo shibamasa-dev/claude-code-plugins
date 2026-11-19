@@ -123,7 +123,7 @@ Scenario Outline: Importing a slip file sets the print-target flag
 | Level | What to write |
 |---|---|
 | **Goal issue (parent)** | Completion criteria, how far it has come, list of children (automatic). **Don't write work content** |
-| **Child issue** | A step, bug, or improvement. One issue = one deliverable (PR, report, research note) |
+| **Child issue** | A step, bug, or improvement. One issue = one deliverable (PR, report, research note); a deliverable may be shared, so one PR can close several small issues (one `Closes` line each, each with its own `## Result` before the merge) |
 
 - **At most 2 levels deep**. Wanting grandchildren is a sign the goal is cut too large
 - Parent/child via `issue_write`'s `parent_issue_number` (at creation) or `sub_issue_write` (afterwards)

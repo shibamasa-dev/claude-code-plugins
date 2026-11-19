@@ -62,12 +62,13 @@ How to gather the situation (which issues, PRs, and records of the previous cycl
 2. **Choose the targets**: from the goal issues and their child issues, choose what to advance this cycle
    - Exclude issues waiting for a design review (when the project marks them with an issue field or label, e.g. `Arch Review: Pending`) and goals whose start condition ("start after ... progresses", etc.) is not met yet. Write each one down **with the reason** (if you drop them silently, neither you after a `/clear` nor the user can trace why): a deferred child issue of a chosen goal goes in Target goals' "Deferred child issues" column; a goal deferred as a whole is left out of Target goals, and its reason goes in that goal's "Goal progress" row (Next move / blocked reason)
 3. **Set the minimum bar**: what must be finished by the end of the cycle
-   - The minimum bar is **a floor, not a ceiling**. Once it is done and there is capacity left, look at "Goal progress" and propose the next child issue of a goal that is not blocked, so every goal advances as far as the cycle allows. Adding it as a batch needs the user's OK (item 6 below)
+   - The minimum bar is **a floor, not a ceiling**. Once it is done and there is capacity left, look at "Goal progress" and propose the next child issue of a goal that is not blocked, so every goal advances as far as the cycle allows. Adding it as a batch needs the user's OK (item 7 below)
    - Do not silently carry over what does not fit in the weekdays. Consult the user on what to push to the next cycle
    - **Do not fill unknown premises (milestone scope, what is needed and how far, how to read a deadline) with guesses; ask the user**
 4. **Adjust the sub-steps**: if an item on the minimum bar has no child issue, create one. Split, merge, or close child issues whose granularity does not fit. Record each adjustment as one line under "Sub-step adjustments" in the plan section
-5. **Bundle into batches** (step 2)
-6. **Show the whole plan to the user at once and get an OK.** Only after the OK, write it into the plan section and start the batches.
+5. **Bundle into batches** (step 2), and fill in the "PRs" column (expected PRs per batch, normally 1)
+6. **Check the PRs the cycle will open in any one hour against the review tools' hourly limit** before showing the plan; if a window is over, spread batches across hours first and merge batches only when they share files or resources
+7. **Show the whole plan to the user at once and get an OK.** Only after the OK, write it into the plan section and start the batches.
    This OK also counts as the instruction to start the batches listed in the plan. To add a batch that is not in the plan, get an OK each time
 
 ### 2. Bundle into batches
@@ -130,7 +131,7 @@ No other session takes over. The user clears this same session with `/clear` whe
 - Delegating without writing it in the plan section (after a `/clear`, nobody knows that batch is running)
 - Letting an issue that is waiting for a design review be executed
 - Starting a batch without the user's OK by a method that runs without confirmation (such as a separate session with bypassPermissions)
-- Chopping work into one batch per item / sending out 3 or more at once
+- Chopping work into one batch per item, or opening one PR per issue for small items / sending out 3 or more at once
 - Rewriting anything outside the plan section (the outside belongs to the project or to auto-creation)
 - Closing the cycle issue before closing out / appending post-cutoff work to the closed issue
 - Letting the user clear while a subagent is running without telling them
