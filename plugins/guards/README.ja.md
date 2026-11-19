@@ -33,11 +33,11 @@ Claude Code の作業を、取り返しがつかなくなる前に止めるフ�
 
 ### publish-guard が読むもの
 
-- コマンド: `gh issue create|edit|comment`、`gh pr create|edit|comment|review`、書き込みメソッドの `gh api`（`-X POST|PATCH|PUT`、または `-f` / `-F` / `--input` があるもの）で `repos/<owner>/<repo>/issues…` と `…/pulls…` を叩くもの、`gh api graphql`（すべてのフィールド値）
-- 文面: `--title` / `-t`、`--body` / `-b`、`--body-file` / `-F` のファイル、`gh api` の `title` / `body` フィールド（`-F body=@file` と `--input <file>` を含む）、同じコマンドの中のヒアドキュメントの中身すべて、`$(cat <file>)` で読むファイル。ファイルのパスそのものは見ない
-- コネクタのツール（サーバー名に関係なく、ツール名の末尾で判定）: `issue_write`、`add_issue_comment`、`update_issue_comment`、`create_pull_request`、`update_pull_request`、`pull_request_review_write`、`add_comment_to_pending_review`、`add_reply_to_pull_request_comment` の `title` と `body`
-- 宛先のリポ（一致したときだけ調べる）: `-R` / `--repo`、`gh api` の `repos/<owner>/<repo>/`、`GH_REPO`、コマンドを実行するフォルダの `gh-resolved` が付いた remote、無ければそのフォルダにただ 1 つある GitHub の remote、の順。公開範囲は `gh api repos/<owner>/<repo>`（5 秒）で聞き、プラグインのデータフォルダに覚えておく（`public` は 7 日、それ以外は 1 時間）。非公開として覚えたあとに公開されたリポは、最長 1 時間守られない
-- まだ読めない本文ファイル（同じコマンドの後ろで書かれるもの）はチェックせず注記を出す。同じコマンドの中でそのファイルを書くヒアドキュメントはチェックする
+- コマンド: `gh issue create|edit|comment`、`gh pr create|edit|comment|review`、`--comment` 付きの `gh issue|pr close|reopen`、書き込みメソッドの `gh api`（`-X POST|PATCH|PUT`、または `-f` / `-F` / `--input` があるもの）で `repos/<owner>/<repo>/` の下の issue・コメント・プルリクエスト・レビュー・レビューコメントのエンドポイントを叩くもの、`gh api graphql`（すべてのフィールド値）
+- 文面: `--title` / `-t`、`--body` / `-b`、`--body-file` / `-F` のファイル、`gh api` の `title` / `body` フィールド（`comments[][body]` のような入れ子、`-F body=@file`、`--input <file>` の JSON に含まれるすべての文字列（デコードしたもの）を含む）、同じコマンドの中のヒアドキュメントの中身すべて、`$(cat <file>)` や `$(< file)` で読むファイル。ファイルのパスそのものは見ない
+- コネクタのツール（サーバー名に関係なく、ツール名の末尾で判定）: `issue_write`、`add_issue_comment`、`update_issue_comment`、`create_pull_request`、`update_pull_request`、`pull_request_review_write`、`add_comment_to_pending_review`、`add_reply_to_pull_request_comment` の `title` と `body`、加えて `labels` と issue フィールドの値
+- 宛先のリポ（一致したときだけ調べる）: 引数に渡した issue / PR の URL、`-R` / `--repo`、`gh api` の `repos/<owner>/<repo>/`、`GH_REPO`、コマンドを実行するフォルダの `gh-resolved` が付いた remote、無ければそのフォルダにただ 1 つある GitHub の remote、の順。公開範囲は `gh api repos/<owner>/<repo>`（5 秒）で聞き、プラグインのデータフォルダに覚えておく（`public` は 7 日、それ以外は 1 時間）。非公開として覚えたあとに公開されたリポは、最長 1 時間守られない
+- 同じコマンドの中で書く本文ファイルは、ディスク上の中身では判定しない（それはコマンドを実行する前のもの）。書く文面がコマンドに書いてあれば（ヒアドキュメント、`echo` や `printf` の引数）それをチェックする。そうでなければ注記を付けて通し、ファイルを前のコマンドで書くよう伝える
 
 ### リポ構成のルール（repo-structure-guard）
 
@@ -66,11 +66,20 @@ publish-guard が捕まえるのは、コマンドの文面に書かれた非公
 - `curl` で API を叩くもの、ほかの公開コマンド（`gh release`、`gh gist`、`gh repo edit --description`、wiki、discussions、コミットメッセージ）、`gh pr create --fill`（コミットの文面）、`--web`
 - ツール名が上の一覧と違うコネクタ
 - 見た目が似た別の文字（全角英字・ホモグリフ）、パターンに `(?i)` が無いときの大文字小文字違い
-- `gh` とサブコマンドの間に書いたフラグ（`gh -R owner/repo issue create`）、ほかと束ねた短いフラグ
+- `gh` とコマンドグループの間に書いたフラグ（`gh -R owner/repo issue create`）、ほかと束ねた短いフラグ、前もって `export GH_REPO=…` で決めたリポ（読むのはコマンド自体に付けた `GH_REPO=… gh …` だけ）
 - ヒアストリング（`<<<`）、ファイルからリダイレクトした本文（`--body-file - < file`）
 - `gh api graphql` の書き込み先（宛先をリポ名ではなく node id で指す）、GitHub の remote が複数あって既定の印が無いフォルダで `gh` が選ぶリポ。ここで一致したときは注記を付けて通す
 
 判定できないもの（宛先のリポ・公開範囲・ファイル）は止めずに、注記を付けて通す。公開された文面を CI で調べる仕組みが後ろの備えになる。
+
+ほかに知っておくこと。
+
+- 公開する `gh` を含むコマンドでは、その中のヒアドキュメントと `$(cat file)` はすべて、別の用途のものでも公開される文面として扱う。それで止まったら、コマンドを 2 つに分ける
+- パターンは書いたとおりに、時間の上限なしで動く。バックトラックが爆発するパターンはフックを止め、フックがタイムアウトすると、その呼び出しでは bash-guard のほかのルールの判定も失われる。パターンは単純に保つ（名前そのもの、短い選択肢）
+- 公開範囲の問い合わせに失敗したことは 1 時間覚えておく。その間、そのリポ宛ての一致は注記を付けて通る
+- 公開範囲のキャッシュ（プラグインのデータフォルダの `repo-visibility.json`）には、一致があったリポの名前が、非公開のものも含めて平文で入る
+- `publish_patterns` が JSON として読めないことは、公開するコマンドを実行したときにだけ伝える
+- ガードが無効でも、GitHub コネクタの書き込みツールの前にはフックが起動する（数十ミリ秒。何もしない）
 
 ## 前提
 

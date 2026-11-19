@@ -99,6 +99,41 @@ CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='--body' \
   row 'B="see acme-internal"; gh issue comment 12 -R acme/widgets -b "$B"' 'variable assigned in the same command' 'deny'
 
 echo
+echo '=== B2: a body file the same command writes (the copy on disk is from before the command) ==='
+printf 'old text with acme-internal\n' > "$PROBE_CWD/stale.md"
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 \
+  row $'cat > stale.md <<\'EOF\'\nclean text\nEOF\ngh issue comment 12 -R acme/widgets --body-file stale.md' 'stale copy has the hit, heredoc writes clean text' 'allow'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 \
+  row 'printf "clean text\n" > stale.md && gh issue comment 12 -R acme/widgets --body-file stale.md' 'stale copy has the hit, printf writes clean text' 'allow'
+printf 'clean\n' > "$PROBE_CWD/fresh.md"
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='--body-file' \
+  row 'echo "see acme-internal" > fresh.md && gh issue comment 12 -R acme/widgets --body-file fresh.md' 'clean copy on disk, echo writes the hit' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='written in the same command|earlier command' \
+  row 'python3 gen.py > fresh.md && gh issue comment 12 -R acme/widgets --body-file fresh.md' 'file written by a program: not checked, said so' 'note'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='$(< body.md)' \
+  row 'gh issue comment 12 -R acme/widgets --body "$(< body.md)"' 'body read with $(< file)' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='heredoc|separate command' \
+  row $'gh issue comment 12 -R acme/widgets -b "ok" && cat > notes.md <<\'EOF\'\nacme-internal\nEOF' 'heredoc that does not feed gh: deny says to split the command' 'deny'
+
+echo
+echo '=== B3: other spellings that publish text ==='
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='--comment|gh issue close' \
+  row 'gh issue close 12 -R acme/widgets --comment "fixed in acme-internal"' 'gh issue close --comment' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='--comment|gh pr close' \
+  row 'gh pr close 7 -R acme/widgets -c "moved to acme-internal"' 'gh pr close -c' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='gh issue comment|public repo acme/widgets' \
+  row 'gh issue -R acme/widgets comment 12 -b "see acme-internal"' 'flag between the group and the verb' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='body' \
+  row 'gh api repos/acme/widgets/pulls/7/comments/55/replies -f body="as in acme-internal"' 'gh api review-comment reply endpoint' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='body' \
+  row 'gh api repos/acme/widgets/pulls/7/reviews/9/events -f event=COMMENT -f body="acme-internal"' 'gh api review submit endpoint' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='public repo acme/widgets' \
+  row 'cd /tmp && gh pr comment https://github.com/acme/widgets/pull/3 --body "acme-internal"' 'PR given by URL names the repo' 'deny'
+
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='visibility unknown|do not name one' \
+  row 'gh issue edit https://github.com/acme/vault/issues/1 https://github.com/acme/widgets/issues/2 --body "acme-internal"' 'issues of two repos by URL: unknown, with a note' 'note'
+
+echo
 echo '=== C: only commands that publish text are read ==='
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 FORBID='' \
   row "gh issue view 12 -R acme/widgets --json body --jq '.body | contains(\"acme-internal\")'" 'gh issue view (a read)' 'allow'
@@ -118,6 +153,15 @@ CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='pattern #1 of 1|body|add_issue_
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 FORBID='' \
   mrow '{"tool_name":"mcp__gh__get_file_contents","tool_input":{"owner":"acme","repo":"widgets","body":"acme-internal"}}' 'MCP tool that is not a text write' 'allow'
 
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='labels' \
+  mrow '{"tool_name":"mcp__gh__issue_write","tool_input":{"method":"update","owner":"acme","repo":"widgets","issue_number":12,"labels":["acme-internal"]}}' 'MCP issue_write: labels are read' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='issue_fields' \
+  mrow '{"tool_name":"mcp__gh__issue_write","tool_input":{"method":"update","owner":"acme","repo":"widgets","issue_number":12,"issue_fields":[{"field_name":"Note","value":"acme-internal"}]}}' 'MCP issue_write: issue field values are read' 'deny'
+: > "$GH_LOG"
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='visibility unknown|names no owner / repo' \
+  mrow '{"tool_name":"mcp__gh__add_issue_comment","tool_input":{"issue_number":12,"body":"acme-internal"}}' 'MCP call without owner / repo' 'note'
+printf '  %s -> %s (expect %s)\n' 'no owner / repo: nothing is looked up' "$([ -s "$GH_LOG" ] && echo asked || echo silent)" 'silent'
+
 echo
 echo '=== E: cannot determine -> allow, with a note ==='
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='visibility unknown|pattern #1' \
@@ -134,6 +178,18 @@ CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='visibility unknown|acme/offline
   row 'gh issue create -R acme/offline -t "Fix" -b "acme-internal"' 'visibility lookup fails' 'note'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 FAKE_VISIBILITY=public PARTS='public repo acme/fresh' \
   row 'gh issue create -R acme/fresh -t "Fix" -b "acme-internal"' 'cache miss: asked once, public' 'deny'
+printf '  %s -> %s (expect %s)\n' 'cache miss made one lookup' "$(grep -c 'repos/acme/fresh' "$GH_LOG" | sed 's/^1$/one/')" 'one'
+python3 - <<'PY'
+import json, os
+p = os.path.join(os.environ["CLAUDE_PLUGIN_DATA"], "repo-visibility.json")
+d = json.load(open(p)); d["acme/damaged"] = {"visibility": "private", "at": "yesterday"}; json.dump(d, open(p, "w"))
+PY
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 FAKE_VISIBILITY=public PARTS='public repo acme/damaged' \
+  row 'gh issue create -R acme/damaged -t "Fix" -b "acme-internal"' 'damaged cache entry: treated as a miss' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS='[]' FORBID='' \
+  row 'gh issue create -R acme/widgets -t "Fix" --body-file missing.md' 'empty array: off and silent' 'allow'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS='["acme-internal(?i)", "acme-internal"]' PARTS='pattern #1 is not a valid regex|pattern #2 of 2' \
+  row 'gh issue create -R acme/widgets -t "Fix" -b "acme-internal"' 'flag not at the start of a pattern: skipped, nothing on stderr' 'deny'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS='acme-internal' PARTS='not a JSON array' \
   row 'gh issue create -R acme/widgets -t "Fix" -b "acme-internal"' 'setting is not a JSON array' 'note'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS='["acme-(", "acme-internal"]' PARTS='pattern #1 is not a valid regex|pattern #2 of 2' \

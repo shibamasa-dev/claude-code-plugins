@@ -1391,7 +1391,10 @@ PUBLISH_ENV = "CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS"
 _MCP_PUBLISH_RE = re.compile(
     r"^mcp__.+__(issue_write|add_issue_comment|update_issue_comment|create_pull_request|update_pull_request"
     r"|pull_request_review_write|add_comment_to_pending_review|add_reply_to_pull_request_comment)$")
-_GH_TEXT_VERBS = {"issue": {"create", "edit", "comment"}, "pr": {"create", "edit", "comment", "review"}}
+_GH_TEXT_VERBS = {"issue": {"create", "edit", "comment", "close", "reopen"},
+                  "pr": {"create", "edit", "comment", "review", "close", "reopen"}}
+# `close` / `reopen` can leave a comment (`--comment` / `-c`); `-r` is --reason there
+_GH_CLOSE_FLAGS = {"--comment": "comment", "-c": "comment", "--repo": "repo", "-R": "repo", "--reason": "", "-r": ""}
 _GH_TEXT_FLAGS = {"--title": "title", "-t": "title", "--body": "body", "-b": "body",
                   "--body-file": "body-file", "-F": "body-file", "--repo": "repo", "-R": "repo"}
 # Other flags of `create` / `edit` that take a value, so the value is not read as the issue / PR selector.
@@ -1406,7 +1409,7 @@ _GH_API_FLAGS = {"--method": "method", "-X": "method", "--raw-field": "raw", "-f
                  "--template": "", "-t": "", "--hostname": "host", "--preview": "", "-p": "", "--cache": ""}
 _GH_API_TEXT_PATH_RE = re.compile(
     r"^/?repos/([^/]+)/([^/]+)/(?:issues(?:/\d+(?:/comments)?)?|issues/comments/\d+"
-    r"|pulls(?:/\d+(?:/(?:comments|reviews(?:/\d+)?))?)?|pulls/comments/\d+)/?$")
+    r"|pulls(?:/\d+(?:/(?:comments(?:/\d+/replies)?|reviews(?:/\d+(?:/events)?)?))?)?|pulls/comments/\d+)/?$")
 _GH_ITEM_URL_RE = re.compile(r"(?i)^https?://(?:www\.)?github\.com/([^/\s]+)/([^/\s]+)/(?:issues|pull)/\d+")
 _GH_TEXT_KEY_RE = re.compile(r"(?:^|\[)(?:title|body)\]?$")   # body, comments[][body], ...
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+$")
@@ -1432,11 +1435,18 @@ def _publish_patterns():
         items = None
     if not isinstance(items, list):
         return 0, [], ["publish-guard: publish_patterns is not a JSON array; not checked"]
+    if not items:
+        return None   # an empty list is "off" too
+    import warnings
     pats, notes = [], []
     for n, p in enumerate(items, 1):
         try:
-            pats.append((n, re.compile(p)))
-        except (re.error, TypeError):
+            # A warning (older Pythons, for a flag that is not at the start) would print the pattern itself
+            # to stderr; newer Pythons reject the same pattern, so it is rejected everywhere
+            with warnings.catch_warnings():
+                warnings.simplefilter("error")
+                pats.append((n, re.compile(p)))
+        except (re.error, TypeError, Warning):
             notes.append(f"publish-guard: pattern #{n} is not a valid regex; skipped")
     return len(items), pats, notes
 
@@ -1486,6 +1496,57 @@ def _heredoc_bodies(command: str) -> list:
     return out
 
 
+def _abs(path: str, cwd):
+    p = os.path.expanduser(path)
+    if not os.path.isabs(p):
+        if cwd is None:
+            return None
+        p = os.path.join(cwd, p)
+    return os.path.normpath(p)
+
+
+_REDIRECT_RE = re.compile(r"^\d*>>?\|?(.*)$", re.S)
+
+
+def _written_files(command: str) -> dict:
+    """Files this command itself writes (`> f`, `>> f`, `tee f`), as {absolute path: text}. The copy on disk
+    is from before the command, so it must not be judged: the text is what the command writes when that
+    is literal (echo / printf arguments), "" when a heredoc writes it (heredoc bodies are matched on their
+    own), and None when it can't be read from the command."""
+    out = {}
+    for cmd in _commands(command):
+        t = cmd.tokens
+        if not t:
+            continue
+        targets, args, i = [], [], 1
+        while i < len(t):
+            m = _REDIRECT_RE.match(t[i])
+            if m:
+                target = m.group(1)
+                if not target and i + 1 < len(t):
+                    i += 1
+                    target = t[i]
+                if target and not target.startswith("&"):
+                    targets.append(target)
+            else:
+                args.append(t[i])
+            i += 1
+        name = os.path.basename(t[0])
+        if name == "tee":
+            targets += [a for a in args if not a.startswith(("-", "<"))]
+        if any(a.startswith("<<") for a in t):
+            text = ""
+        elif name in ("echo", "printf") and targets:
+            text = "\n".join(_resolve(a, cmd.assigns) for a in args)
+        else:
+            text = None
+        for target in targets:
+            p = _abs(_resolve(target, cmd.assigns), cmd.cwd)
+            if p:
+                out[p] = text
+    return out
+
+
 def _read_text(path: str, cwd):
     """The text of a body file, or None if it can't be read now (missing, or written later in the command)."""
     p = os.path.expanduser(path)
@@ -1525,6 +1586,7 @@ def _gh_text_calls(command: str):
     """The gh commands in command that publish issue / PR text.
     returns [dict(label, texts [(place, text)], repo hints, cwd, env, notes)]."""
     calls = []
+    written = _written_files(command)
     for cmd in _commands(command):
         t = cmd.tokens
         if len(t) < 3 or os.path.basename(t[0]) != "gh":
@@ -1539,22 +1601,37 @@ def _gh_text_calls(command: str):
             if path == "-":
                 hints["stdin"] = True   # a heredoc is scanned below; a pipe from another program can't be seen
                 return
+            p = _abs(value(path), cmd.cwd)
+            if p in written:
+                if written[p] is None:
+                    notes.append(f"publish-guard: the {place} file is written in the same command, so its text"
+                                 " was not checked; write the file in an earlier command")
+                elif written[p]:
+                    texts.append((place, written[p]))
+                return
             text = _read_text(value(path), cmd.cwd)
             if text is None:
-                notes.append(f"publish-guard: the {place} file could not be read (missing, or written later"
-                             " in this command); its text was not checked")
+                notes.append(f"publish-guard: the {place} file could not be read; its text was not checked")
             else:
                 texts.append((place, text))
 
-        if t[1] in _GH_TEXT_VERBS and t[2] in _GH_TEXT_VERBS[t[1]]:
-            label = f"gh {t[1]} {t[2]}"
-            valued = {**_GH_EDIT_VALUED, **_GH_TEXT_FLAGS} if t[2] in ("create", "edit") else _GH_TEXT_FLAGS
-            pairs, pos = _gh_flags(t[3:], valued)
+        if t[1] in _GH_TEXT_VERBS:
+            # The verb is the first positional: a flag may sit before it (`gh issue -R o/r comment …`)
+            verb = (_gh_flags(t[2:], _GH_TEXT_FLAGS)[1] or [""])[0]
+            if verb not in _GH_TEXT_VERBS[t[1]]:
+                continue
+            label = f"gh {t[1]} {verb}"
+            valued = ({**_GH_EDIT_VALUED, **_GH_TEXT_FLAGS} if verb in ("create", "edit")
+                      else _GH_CLOSE_FLAGS if verb in ("close", "reopen") else _GH_TEXT_FLAGS)
+            pairs, pos = _gh_flags(t[2:], valued)
+            if verb in pos:
+                pos.remove(verb)
             # An issue / PR given by URL names the repo itself, whatever -R, GH_REPO or the directory say
-            # (`create` takes no selector; only the first positional is one)
-            m = _GH_ITEM_URL_RE.match(pos[0]) if pos and t[2] != "create" else None
-            if m:
-                hints["path"], hints["urls"] = _slug(m.group(1), m.group(2)), True
+            # (`create` takes no selector). URLs of different repos, or one that can't be read: unknown
+            urls = [a for a in pos if "://" in a] if verb != "create" else []
+            if urls:
+                found = {_slug(m.group(1), m.group(2)) if m else None for m in map(_GH_ITEM_URL_RE.match, urls)}
+                hints["path"], hints["urls"] = (found.pop() if len(found) == 1 else None), True
             for name, v in pairs:
                 if not name:
                     continue
@@ -1607,12 +1684,19 @@ def _gh_text_calls(command: str):
         shared += [("heredoc", x) for _, b in list(shared) for x in _json_texts(b)]   # a JSON body for --input -
         nested = {seg["text"].strip() for seg in _parse_segments(command) if seg["depth"] > 0}
         for cmd in _commands(command):
-            if cmd.tokens[:1] == ["cat"] and cmd.raw in nested:
-                for a in cmd.tokens[1:]:
-                    if not a.startswith(("-", "<")):
-                        text = _read_text(_resolve(a, cmd.assigns), cmd.cwd)
-                        if text is not None:
-                            shared.append((f"$(cat {os.path.basename(a)})", text))
+            if cmd.raw not in nested:
+                continue
+            if cmd.tokens[:1] == ["cat"]:
+                files = [("cat ", a) for a in cmd.tokens[1:] if not a.startswith(("-", "<"))]
+            elif cmd.raw.startswith("<") and not cmd.raw.startswith("<<"):   # $(< file)
+                files = [("< ", cmd.raw[1:].strip().strip("'\""))]
+            else:
+                continue
+            for how, a in files:
+                a = _resolve(a, cmd.assigns)
+                text = None if _abs(a, cmd.cwd) in written else _read_text(a, cmd.cwd)
+                if text is not None:
+                    shared.append((f"$({how}{os.path.basename(a)})", text))
         for call in calls:   # which gh call receives the shared text isn't decided here, so each is judged with it
             call["texts"] = call["texts"] + shared
             if call["hints"]["stdin"] and not any(place == "heredoc" for place, _ in shared):
@@ -1633,6 +1717,8 @@ def _publish_hits(texts: list, pats: list, total: int) -> list:
 
 
 def _slug(owner, repo):
+    if not (isinstance(owner, str) and isinstance(repo, str)):
+        return None
     s = f"{owner}/{repo}"
     return s.lower() if _REPO_SLUG_RE.match(s) else None
 
@@ -1661,7 +1747,7 @@ def _publish_repo(call: dict):
     if hints["graphql"]:
         return None, "a GraphQL call names its target by node id, not by repo"
     if hints["urls"]:
-        return hints["path"], "the repo name in the issue / PR URL could not be read"
+        return hints["path"], "the issue / PR URLs do not name one github.com repo"
     if hints["flag"]:
         return _repo_from_spec(hints["flag"])
     if hints["path"]:
@@ -1712,8 +1798,10 @@ def _repo_visibility(slug: str) -> str:
     if not isinstance(cache, dict):
         cache = {}
     hit = cache.get(slug)
-    if isinstance(hit, dict) and hit.get("visibility") in _VISIBILITY_TTL \
-            and 0 <= time.time() - float(hit.get("at") or 0) < _VISIBILITY_TTL[hit["visibility"]]:
+    at = hit.get("at") if isinstance(hit, dict) else None
+    # anything unreadable in the entry (a hand-edited or damaged file) is a miss, and gets rewritten below
+    if isinstance(at, (int, float)) and not isinstance(at, bool) and hit.get("visibility") in _VISIBILITY_TTL \
+            and 0 <= time.time() - at < _VISIBILITY_TTL[hit["visibility"]]:
         return hit["visibility"]
     try:
         r = subprocess.run(["gh", "api", f"repos/{slug}", "--jq", ".visibility"], capture_output=True, text=True,
@@ -1742,8 +1830,11 @@ def _publish_decide(label: str, hits: list, repo, why: str, notes: list):
         vis = _repo_visibility(repo) if repo else "unknown"
         found = "; ".join(hits[:3]) + (" (more matches not listed)" if len(hits) > 3 else "")
         if vis == "public":
+            split = (" Every heredoc and $(cat file) in a command is checked as text gh may publish: if that one"
+                     " is not, run it in a separate command." if "the heredoc text" in found or "the $(" in found
+                     else "")
             return deny(f"🛑 publish-guard: {found} of '{label}' to public repo {repo}. Remove the private value"
-                        " and run again; the matched text is not shown." + "".join("\n" + n for n in notes))
+                        " and run again; the matched text is not shown." + split + "".join("\n" + n for n in notes))
         if vis == "unknown":
             why = why if not repo else f"the visibility of {repo} could not be looked up"
             notes = notes + [f"publish-guard: {found} of '{label}'; target repo visibility unknown"
@@ -1794,6 +1885,10 @@ def _publish_guard_mcp(tool: str, tool_input: dict):
         return None
     total, pats, notes = conf
     texts = [(k, tool_input[k]) for k in ("title", "body") if isinstance(tool_input.get(k), str)]
+    labels, fields = tool_input.get("labels"), tool_input.get("issue_fields")
+    texts += [("labels", x) for x in (labels if isinstance(labels, list) else []) if isinstance(x, str)]
+    texts += [("issue_fields", f["value"]) for f in (fields if isinstance(fields, list) else [])
+              if isinstance(f, dict) and isinstance(f.get("value"), str)]
     if not texts:
         return None
     hits = _publish_hits(texts, pats, total)

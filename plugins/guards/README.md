@@ -33,11 +33,11 @@ You can also pass values at install time: `claude plugin install guards@shibamas
 
 ### What publish-guard reads
 
-- Commands: `gh issue create|edit|comment`, `gh pr create|edit|comment|review`, `gh api` with a writing method (`-X POST|PATCH|PUT`, or implied by `-f` / `-F` / `--input`) on `repos/<owner>/<repo>/issues…` and `…/pulls…` endpoints, and `gh api graphql` (every field value)
-- Text: `--title` / `-t`, `--body` / `-b`, the file of `--body-file` / `-F`, the `title` / `body` fields of `gh api` (including `-F body=@file` and `--input <file>`), every heredoc body in the same command, and files read by `$(cat <file>)`. File paths themselves are not checked
-- Connector tools (matched by the end of the tool name, whatever the server is called): `issue_write`, `add_issue_comment`, `update_issue_comment`, `create_pull_request`, `update_pull_request`, `pull_request_review_write`, `add_comment_to_pending_review`, `add_reply_to_pull_request_comment`; their `title` and `body`
-- Target repo, only looked up after a match: `-R` / `--repo`, the `repos/<owner>/<repo>/` path of `gh api`, `GH_REPO`, then the command directory's `gh-resolved` remote, or its only GitHub remote. Visibility is asked with `gh api repos/<owner>/<repo>` (5 s) and cached in the plugin's data directory: `public` for 7 days, anything else for an hour. A repo made public after it was cached as private is therefore unprotected for up to an hour
-- A body file that can't be read yet (written later in the same command) is not checked and gets a note; a heredoc that writes it in the same command is checked
+- Commands: `gh issue create|edit|comment`, `gh pr create|edit|comment|review`, `gh issue|pr close|reopen` with `--comment`, `gh api` with a writing method (`-X POST|PATCH|PUT`, or implied by `-f` / `-F` / `--input`) on the issue, comment, pull request, review and review-comment endpoints under `repos/<owner>/<repo>/`, and `gh api graphql` (every field value)
+- Text: `--title` / `-t`, `--body` / `-b`, the file of `--body-file` / `-F`, the `title` / `body` fields of `gh api` (also nested ones such as `comments[][body]`, `-F body=@file`, and every string in an `--input <file>` JSON body, decoded), every heredoc body in the same command, and files read by `$(cat <file>)` or `$(< file)`. File paths themselves are not checked
+- Connector tools (matched by the end of the tool name, whatever the server is called): `issue_write`, `add_issue_comment`, `update_issue_comment`, `create_pull_request`, `update_pull_request`, `pull_request_review_write`, `add_comment_to_pending_review`, `add_reply_to_pull_request_comment`; their `title` and `body`, plus `labels` and issue field values
+- Target repo, only looked up after a match: an issue / PR URL given as the argument, `-R` / `--repo`, the `repos/<owner>/<repo>/` path of `gh api`, `GH_REPO`, then the command directory's `gh-resolved` remote, or its only GitHub remote. Visibility is asked with `gh api repos/<owner>/<repo>` (5 s) and cached in the plugin's data directory: `public` for 7 days, anything else for an hour. A repo made public after it was cached as private is therefore unprotected for up to an hour
+- A body file that the same command writes is never judged by its copy on disk (that copy is from before the command). The text is checked when the command spells it out (a heredoc, `echo` or `printf` arguments); otherwise the call passes with a note asking you to write the file in an earlier command
 
 ### Repo layout rules (repo-structure-guard)
 
@@ -66,11 +66,20 @@ publish-guard catches a private value typed into the text of a command, not one 
 - `curl` to the API, and other commands that publish (`gh release`, `gh gist`, `gh repo edit --description`, wikis, discussions, commit messages), `gh pr create --fill` (commit text) and `--web`
 - Connectors whose tool names differ from the list above
 - Look-alike characters (full-width letters, homoglyphs), and a value in a different case when the pattern has no `(?i)`
-- `gh` flags written between `gh` and the subcommand (`gh -R owner/repo issue create`), and short flags bundled with others
+- `gh` flags written between `gh` and the command group (`gh -R owner/repo issue create`), short flags bundled with others, and a repo set earlier with `export GH_REPO=…` (only `GH_REPO=… gh …` on the command itself is read)
 - Here-strings (`<<<`) and a body redirected from a file (`--body-file - < file`)
 - Where a `gh api graphql` call writes (it names its target by node id), and which repo `gh` picks in a directory with several GitHub remotes and none marked as the default: a match there passes with a note
 
 Anything it cannot determine (the repo, its visibility, a file) is allowed with a note, not blocked. A CI scan of the published text is the backstop.
+
+Also worth knowing:
+
+- Every heredoc and `$(cat file)` in a command that also runs a publishing `gh` call counts as text to be published, even when it feeds something else. If that blocks a command, split it in two
+- Your patterns run as written, with no time limit. A pattern that backtracks badly can stall the hook, and a hook that times out drops the other bash-guard rules' decisions for that call too. Keep patterns simple (plain names, short alternations)
+- A failed visibility lookup is remembered for an hour; during that hour matches headed for that repo pass with a note
+- The visibility cache (`repo-visibility.json` in the plugin's data directory) holds the names of the repos that had a match, private ones included, in plain text
+- A `publish_patterns` value that is not valid JSON is reported only when a publishing command runs
+- With the guard off, the hook still starts before each GitHub connector write call (a few tens of milliseconds) and does nothing
 
 ## Requirements
 
