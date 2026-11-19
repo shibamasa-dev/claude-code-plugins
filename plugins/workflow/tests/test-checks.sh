@@ -188,6 +188,18 @@ row 'a pass under the previous command does not count' "$(create d5)" deny
 reset; set_repo_cfg '{"prChecksGate":"enforce","prChecks":"test -f m.py"}'
 edit one; printf '%s\n' "$OK_BODY" > "$W/pr-body.md"; run_checks >/dev/null
 row 'a body file that was already there when the checks ran' "$(create d5b "gh pr create --title t --body-file pr-body.md")" pass
+printf 'Local note added after the run\n' >> "$W/pr-body.md"
+row 'that body file edited after the run' "$(create d5c "gh pr create --title t -F pr-body.md")" pass
+ln -s pr-body.md "$W/link.md"
+row 'a symlink to the body file, added after the run, named as the body' "$(create d5d "gh pr create --title t -F link.md")" pass
+rm -f "$W/link.md"
+if [ -e "$W/PR-BODY.md" ]; then   # only where the filesystem ignores case (the row would be about another file elsewhere)
+  row 'the body file named in another case (case-insensitive filesystem)' "$(create d5e "gh pr create --title t -F PR-BODY.md")" pass
+fi
+edit two
+row 'another file edited after the run still denies' "$(create d5f "gh pr create --title t -F pr-body.md")" deny
+git -C "$W" checkout -q -- m.py; edit one; rm -f "$W/pr-body.md"
+row 'the body file deleted after the run counts as a change' "$(create d5g)" deny
 reset; edit one; git -C "$W" commit -qam change; run_checks >/dev/null
 git -C "$W" worktree add -q -b feat2 "$WT" feat
 row 'another worktree with the same change shares the pass' "$(create d6 "cd '$WT' && gh pr create --title t --body '$OK_BODY'")" pass
@@ -210,10 +222,17 @@ row 'the fingerprint is unavailable' "$(FAIL_ADD=1 create e9)" unchecked
 row 'git switch before gh pr create in the same call' "$(create e9b "git switch other && gh pr create --title t --body '$OK_BODY'")" unresolved
 row 'git commit before gh pr create in the same call' "$(create e9c "git commit -am x && gh pr create --title t --body '$OK_BODY'")" unresolved
 row 'git push before gh pr create in the same call is still judged' "$(create e9d "git push -u origin feat && gh pr create --title t --body '$OK_BODY'")" deny
+row 'gh pr checkout before gh pr create in the same call' "$(create e9j "gh pr checkout 5 && gh pr create --title t --body '$OK_BODY'")" unresolved
+row 'gh repo set-default before gh pr create in the same call' "$(create e9k "gh repo set-default Up/R && gh pr create --title t --body '$OK_BODY'")" unresolved
+row 'gh pr view before gh pr create in the same call is still judged' "$(create e9l "gh pr view 5; gh pr create --title t --body '$OK_BODY'")" deny
+create e9m "gh pr create -R other/repo --title t --body '$OK_BODY'; gh pr create --title t --body '$OK_BODY'" >/dev/null
+row 'two creations in one call: the denial of the second carries the note of the first' "$(said 'not this directory')" yes
 git -C "$W" remote add upstream https://github.com/Up/R.git; git -C "$W" config remote.upstream.gh-resolved base
 row 'gh repo set-default names another remote' "$(create e9e)" unresolved
 git -C "$W" remote remove upstream; git -C "$W" config remote.origin.gh-resolved base
 row 'gh repo set-default names origin' "$(create e9f)" deny
+git -C "$W" config remote.origin.gh-resolved Up/R
+row 'origin is marked gh-resolved with another repo, not base' "$(create e9n)" unresolved
 git -C "$W" config --unset remote.origin.gh-resolved
 # The hook's state directory cannot be created (a file is in the way): the denial counter cannot be written
 rm -rf "$CLAUDE_PLUGIN_DATA"; : > "$CLAUDE_PLUGIN_DATA"
@@ -223,6 +242,15 @@ rm -f "$CLAUDE_PLUGIN_DATA"; mkdir -p "$CLAUDE_PLUGIN_DATA/checks/blocks"
 python3 -c 'import json,sys,hashlib; json.dump({hashlib.sha1(sys.argv[2].encode()).hexdigest()[:16]: "x"}, open(sys.argv[1], "w"))' "$CLAUDE_PLUGIN_DATA/checks/blocks/e9h.json" "$COMMON"
 row 'the denial count holds a non-number: logged as error, not denied' "$(create e9h)" error
 row 'the denial count holds a non-number: said in a note' "$(said additionalContext)" yes
+# Reading the config itself fails (before the mode is known)
+mkdir -p "$T/nocfg"; cp "$(dirname "$HOOK")"/*.py "$T/nocfg/"
+python3 - "$T/nocfg/checks.py" <<'PY2'
+import sys
+p = sys.argv[1]; s = open(p).read(); a = "def settings(top):\n"; assert s.count(a) == 1
+open(p, "w").write(s.replace(a, a + "    raise RuntimeError('config read failed')\n"))
+PY2
+row 'reading the config fails: logged as error, not denied' "$(HOOK="$T/nocfg/dev_flow_gate.py"; create e9o)" error
+row 'reading the config fails: said in a note' "$(said additionalContext)" yes
 # checks.py itself cannot be loaded
 mkdir -p "$T/broken"; cp "$(dirname "$HOOK")"/*.py "$T/broken/"; echo 'raise RuntimeError("broken")' > "$T/broken/checks.py"
 ( HOOK="$T/broken/dev_flow_gate.py"; create e9i >/dev/null )

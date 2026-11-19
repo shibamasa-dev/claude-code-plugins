@@ -19,8 +19,11 @@ derive. Only the per-session denial count, which the hook alone reads and writes
 <CLAUDE_PLUGIN_DATA or ~/.claude/state>/checks/blocks/.
 
 An untracked file that the `gh pr create` call itself names as its body (`--body-file` / `-F`) is left out of the
-fingerprint, so writing the PR body inside the repo after the checks ran does not undo the pass. Any other new
-untracked file that is not ignored counts as a change.
+fingerprint, so writing the PR body inside the repo after the checks ran does not undo the pass. For a body file that
+was already there when the checks ran, `run` also records, for each untracked file (up to 10), the fingerprint with
+that one file left out, so editing the body afterwards does not undo the pass either. Any other new, changed or
+deleted untracked file that is not ignored counts as a change.
+A recorded pass is trusted as it is: the gate looks it up and never runs the checks itself.
 
 The gate itself is pr_gate(), called by dev_flow_gate.py after its own PR-body check passed.
 Modes (`off` / `observe` / `enforce`): `prChecksGate` in the repo file, else userConfig `pr_checks_gate`, else off.
@@ -52,6 +55,7 @@ TAG = "[pr-checks]"
 PASS_FILE = "workflow-pr-checks.json"
 LOG_FILE = "workflow-pr-checks.log.jsonl"
 KEEP = 50
+MAX_WITHOUT = 10   # untracked files for which `run` records a fingerprint with that one file left out
 RELEASE_AFTER = 2
 # Within a line only [ \t], so an empty reason cannot borrow the next line
 EXPLAIN_RE = re.compile(r"^[ \t]*Local-Checks:[ \t]*none[ \t]*[—–-]+[ \t]*\S", re.I | re.M)
@@ -113,10 +117,29 @@ def has_pass(common, fp, command):
     return isinstance(ent, dict) and ent.get("command") == command_key(command)
 
 
-def record_pass(common, fp, command):
+def pass_without(common, rels, fp, command):
+    """Whether a pass was recorded on a tree that, with one of the files in rels left out, was this one (the PR body
+    file was there when the checks ran and may have been edited since)."""
+    try:
+        with open(pass_path(common), encoding="utf-8") as f:
+            passes = json.load(f).get("passes") or {}
+    except Exception:
+        return False
+    key = command_key(command)
+    return any(isinstance(e, dict) and e.get("command") == key and isinstance(e.get("without"), dict)
+               and any(e["without"].get(r) == fp for r in rels) for e in passes.values())
+
+
+def untracked(top):
+    """Untracked files that are not ignored, relative to top, as git spells them."""
+    rc, out = cg.git(top, "ls-files", "--others", "--exclude-standard", "-z")
+    return [p for p in out.split("\0") if p] if rc == 0 else []
+
+
+def record_pass(common, fp, command, without=None):
     with cg.Locked(pass_path(common), {"passes": {}}) as d:
         passes = d.setdefault("passes", {})
-        passes[fp] = {"at": cg.now(), "command": command_key(command)}
+        passes[fp] = {"at": cg.now(), "command": command_key(command), "without": without or {}}
         d["passes"] = dict(sorted(passes.items(), key=lambda kv: kv[1].get("at", ""))[-KEEP:])
 
 
@@ -131,16 +154,23 @@ def origin_repo(top):
 # Bash call may change what the PR proposes after this check has read it)
 _GIT_KEEPS_TREE = {"push", "fetch", "status", "log", "diff", "show", "rev-parse", "remote", "add", "config",
                    "ls-files", "ls-remote", "describe", "branch", "tag", "merge-base", "cat-file", "blame", "shortlog"}
+# gh calls that change neither the checkout nor gh's default repo (`gh pr checkout`, `gh repo set-default` do)
+_GH_KEEPS_TREE = {("pr", "view"), ("pr", "list"), ("pr", "status"), ("pr", "checks"), ("pr", "diff"), ("repo", "view")}
+_GH_KEEPS_TREE_GROUPS = {"issue", "api", "auth", "label", "run", "search", "workflow"}
 
 
 def moved_before_create(command, cwd):
-    """Whether a git call that may change HEAD or the working tree comes before `gh pr create` in this Bash command
-    (`git switch b && gh pr create`): the check would read the tree as it is before the command runs."""
+    """Whether a git or gh call that may change HEAD, the working tree or gh's default repo comes before
+    `gh pr create` in this Bash command (`git switch b && gh pr create`, `gh pr checkout 5 && gh pr create`): the check
+    would read the state as it is before the command runs."""
     for call in cg.commands(command, {"git", "gh"}, cwd):
         args = call["args"]
         if call["exe"] == "gh":
             if "pr" in args and "create" in args:
                 return False
+            pos = [a for a in args if not a.startswith("-")][:2]
+            if not (pos[:1] and pos[0] in _GH_KEEPS_TREE_GROUPS) and tuple(pos) not in _GH_KEEPS_TREE:
+                return True
             continue
         i = 0
         while i < len(args) and args[i].startswith("-"):
@@ -154,12 +184,13 @@ def uncertain(inp, top, where, repo, head):
     """Why the tree at top may not be what the PR proposes; None when it certainly is."""
     if inp.get("tool_name") == "Bash" and moved_before_create((inp.get("tool_input") or {}).get("command", ""),
                                                               inp.get("cwd")):
-        return ("an earlier git command in the same call may change the branch or the tree (run it in its own call, "
-                "then create the PR)")
+        return ("an earlier git or gh command in the same call may change the branch, the tree or gh's default repo "
+                "(run it in its own call, then create the PR)")
     if not repo:
         # gh takes the remote marked by `gh repo set-default` (git config remote.<name>.gh-resolved) before origin
         _, marked = cg.git(top, "config", "--get-regexp", r"^remote\..*\.gh-resolved$")
-        if any(line.split(" ", 1)[0] != "remote.origin.gh-resolved" for line in marked.splitlines() if line.strip()):
+        # origin marked with anything but `base` (an owner/name: a repo other than the remote's own) is not origin either
+        if any(line.split() != ["remote.origin.gh-resolved", "base"] for line in marked.splitlines() if line.strip()):
             return "gh's default repo (`gh repo set-default`) is not this directory's origin"
     origin = origin_repo(top) if repo or (head and ":" in head) else None
     if repo and repo.lower() != (origin or ""):
@@ -176,16 +207,19 @@ def uncertain(inp, top, where, repo, head):
 
 
 def body_exempt(top, body_file):
-    """The untracked file this call names as its PR body, as a path relative to top; None when there is none, it is
-    outside the repo, or it is tracked (a tracked file is part of what the PR proposes)."""
-    if not body_file:
-        return None
-    rel = os.path.relpath(os.path.realpath(body_file), os.path.realpath(top))
-    if rel == "." or rel.startswith(".." + os.sep) or rel == ".." or os.path.isabs(rel):
-        return None
-    if cg.git(top, "--literal-pathspecs", "ls-files", "--error-unmatch", "--", rel)[0] == 0:
-        return None
-    return rel
+    """The untracked files in the repo that are the file this call names as its PR body, as git spells them (the
+    name may differ in case on a case-insensitive filesystem; a symlink and its target are the same file). Empty when
+    there is none, it is outside the repo, or it is tracked (a tracked file is part of what the PR proposes)."""
+    if not body_file or not os.path.exists(body_file):
+        return []
+    out = []
+    for p in untracked(top)[:5000]:
+        try:
+            if os.path.samefile(os.path.join(top, p), body_file):
+                out.append(p)
+        except OSError:
+            pass
+    return out
 
 
 def pr_gate(inp, where, repo, head, body, body_file=None):
@@ -195,7 +229,15 @@ def pr_gate(inp, where, repo, head, body, body_file=None):
     head: the head the call names; None when gh takes the checked-out branch.
     body_file: the file the call reads the PR body from (gh --body-file / -F), as an absolute path; None otherwise."""
     del _log_failed[:]
-    res = _gate(inp, where, repo, head, body, body_file)
+    try:
+        res = _gate(inp, where, repo, head, body, body_file)
+    except Exception as e:  # before the mode is known (reading the repo or its config failed): said and logged
+        try:
+            _, common = cg.repo_of(where or inp.get("cwd"))
+        except Exception:
+            common = None
+        log(common, {"session": inp.get("session_id"), "decision": "error", "error": f"{type(e).__name__}: {e}"[:200]})
+        res = "note", f"{TAG} could not look up local checks ({type(e).__name__}): this PR was not checked."
     if _log_failed:  # only reached with the gate on (off never logs): the log line is lost, the note is not
         lost = f"{TAG} could not write its log ({LOG_FILE} in the git directory): this PR creation is not recorded."
         res = ("note", lost) if res is None else (res[0], res[1] + "\n" + lost)
@@ -253,12 +295,14 @@ def _judge(inp, sid, top, common, s, where, repo, head, body, body_file):
         log(common, {**entry, "decision": "unresolved", "why": why})
         return note(f"{TAG} {why}, so local checks were not looked up.")
     exempt = body_exempt(top, body_file)
-    fp = cg.fingerprint(top, exclude=[exempt] if exempt else ())
+    fp = cg.fingerprint(top, exclude=exempt)
     if fp is None:
         log(common, {**entry, "decision": "unchecked"})
         return note(f"{TAG} could not fingerprint the tree in time: local checks were not looked up.")
-    had = has_pass(common, fp, s["command"])
-    if not had and exempt:  # the body file may already have been there when the checks ran
+    # The body file was written after the checks ran (the tree without it has a pass), or it was already there and may
+    # have been edited since (`run` recorded the tree with that one file left out)
+    had = has_pass(common, fp, s["command"]) or (bool(exempt) and pass_without(common, exempt, fp, s["command"]))
+    if not had and exempt:  # there and untouched, on a run that recorded no per-file fingerprints (over MAX_WITHOUT)
         with_body = cg.fingerprint(top)
         had = with_body is not None and has_pass(common, with_body, s["command"])
     _, pr_head = cg.git(top, "rev-parse", "--verify", "--quiet", "HEAD")
@@ -346,8 +390,12 @@ def run(argv):
         print(f"{TAG} passed, but the tree changed during the run (a formatter, or an output file that is not "
               "ignored): nothing recorded. Run it again once the tree is stable.", file=sys.stderr)
         return 3
+    others = untracked(top)
+    without = {}
+    if len(others) <= MAX_WITHOUT:  # so the PR body file, if it is one of them, can be edited without losing the pass
+        without = {p: f for p in others for f in [cg.fingerprint(top, exclude=[p])] if f}
     try:
-        record_pass(common, after, command)
+        record_pass(common, after, command, without)
     except OSError as e:
         print(f"{TAG} passed, but the pass could not be written ({e}): nothing recorded.", file=sys.stderr)
         return 3

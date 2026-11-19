@@ -487,7 +487,7 @@ def on_pre_tool_use(inp):
                 chk = local_checks(inp, info["cwd"], info["repo_named"], info["head_named"], info["body"],
                                    info["body_file"])
                 if chk and chk[0] == "deny":
-                    return deny(chk[1])
+                    return deny("\n".join(notes + [chk[1]]))  # with what an earlier creation in this call was told
                 notes += [chk[1]] if chk else []
             elif kind == "pr_merge":
                 st = st or read_state(inp["session_id"])
