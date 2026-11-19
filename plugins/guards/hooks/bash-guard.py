@@ -1394,12 +1394,21 @@ _MCP_PUBLISH_RE = re.compile(
 _GH_TEXT_VERBS = {"issue": {"create", "edit", "comment"}, "pr": {"create", "edit", "comment", "review"}}
 _GH_TEXT_FLAGS = {"--title": "title", "-t": "title", "--body": "body", "-b": "body",
                   "--body-file": "body-file", "-F": "body-file", "--repo": "repo", "-R": "repo"}
+# Other flags of `create` / `edit` that take a value, so the value is not read as the issue / PR selector.
+# Not for `comment` / `review`: there -a, -r and -c are switches (`gh pr review -a -b "text"`)
+_GH_EDIT_VALUED = {f: "" for f in ("--label", "-l", "--add-label", "--remove-label", "--assignee", "-a",
+                                   "--add-assignee", "--remove-assignee", "--milestone", "-m", "--project", "-p",
+                                   "--add-project", "--remove-project", "--reviewer", "-r", "--add-reviewer",
+                                   "--remove-reviewer", "--base", "-B", "--head", "-H", "--template", "-T",
+                                   "--recover")}
 _GH_API_FLAGS = {"--method": "method", "-X": "method", "--raw-field": "raw", "-f": "raw", "--field": "field",
                  "-F": "field", "--input": "input", "--header": "", "-H": "", "--jq": "", "-q": "",
                  "--template": "", "-t": "", "--hostname": "host", "--preview": "", "-p": "", "--cache": ""}
 _GH_API_TEXT_PATH_RE = re.compile(
     r"^/?repos/([^/]+)/([^/]+)/(?:issues(?:/\d+(?:/comments)?)?|issues/comments/\d+"
     r"|pulls(?:/\d+(?:/(?:comments|reviews(?:/\d+)?))?)?|pulls/comments/\d+)/?$")
+_GH_ITEM_URL_RE = re.compile(r"(?i)^https?://(?:www\.)?github\.com/([^/\s]+)/([^/\s]+)/(?:issues|pull)/\d+")
+_GH_TEXT_KEY_RE = re.compile(r"(?:^|\[)(?:title|body)\]?$")   # body, comments[][body], ...
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+$")
 _GITHUB_URL_RE = re.compile(r"^(?:https?://github\.com/|(?:ssh://)?git@github\.com[:/])([^/\s]+)/([^/\s]+?)(?:\.git)?/?$")
 _VISIBILITY_TTL = {"public": 7 * 86400, "private": 3600, "internal": 3600, "unknown": 3600}
@@ -1491,6 +1500,27 @@ def _read_text(path: str, cwd):
         return None
 
 
+def _json_texts(raw: str) -> list:
+    """Every string value inside a JSON request body, decoded ([] if it is not JSON or nests too deep; the
+    caller matches the raw text as well)."""
+    out = []
+
+    def walk(v):
+        if isinstance(v, dict):
+            for x in v.values():
+                walk(x)
+        elif isinstance(v, list):
+            for x in v:
+                walk(x)
+        elif isinstance(v, str):
+            out.append(v)
+    try:
+        walk(json.loads(raw))
+    except (ValueError, RecursionError):
+        return []
+    return out
+
+
 def _gh_text_calls(command: str):
     """The gh commands in command that publish issue / PR text.
     returns [dict(label, texts [(place, text)], repo hints, cwd, env, notes)]."""
@@ -1499,7 +1529,8 @@ def _gh_text_calls(command: str):
         t = cmd.tokens
         if len(t) < 3 or os.path.basename(t[0]) != "gh":
             continue
-        texts, notes, hints = [], [], {"flag": None, "path": None, "host": None, "graphql": False, "stdin": False}
+        texts, notes, hints = [], [], {"flag": None, "path": None, "host": None, "graphql": False, "stdin": False,
+                                       "urls": False}
 
         def value(v):
             return _resolve(v, cmd.assigns)
@@ -1517,7 +1548,16 @@ def _gh_text_calls(command: str):
 
         if t[1] in _GH_TEXT_VERBS and t[2] in _GH_TEXT_VERBS[t[1]]:
             label = f"gh {t[1]} {t[2]}"
-            for name, v in _gh_flags(t[3:], _GH_TEXT_FLAGS)[0]:
+            valued = {**_GH_EDIT_VALUED, **_GH_TEXT_FLAGS} if t[2] in ("create", "edit") else _GH_TEXT_FLAGS
+            pairs, pos = _gh_flags(t[3:], valued)
+            # An issue / PR given by URL names the repo itself, whatever -R, GH_REPO or the directory say
+            # (`create` takes no selector; only the first positional is one)
+            m = _GH_ITEM_URL_RE.match(pos[0]) if pos and t[2] != "create" else None
+            if m:
+                hints["path"], hints["urls"] = _slug(m.group(1), m.group(2)), True
+            for name, v in pairs:
+                if not name:
+                    continue
                 if name == "repo":
                     hints["flag"] = value(v)
                 elif name == "body-file":
@@ -1543,10 +1583,14 @@ def _gh_text_calls(command: str):
             hints["host"] = next((v for n, v in pairs if n == "host"), None)
             for n, v in sends:
                 if n == "input":
+                    before = len(texts)
                     add_file("--input", v)
+                    if len(texts) > before:
+                        # What gets published is the decoded JSON, not its escaped spelling: match both
+                        texts += [("--input", x) for x in _json_texts(texts[before][1])]
                     continue
                 key, eq, val = v.partition("=")
-                if not eq or not (graphql or key in ("title", "body")):
+                if not eq or not (graphql or _GH_TEXT_KEY_RE.search(key)):
                     continue   # REST: only the fields that carry text; GraphQL: every field (the query too)
                 if n == "field" and val.startswith("@"):
                     add_file(f"{key}=@{os.path.basename(val[1:])}", val[1:])
@@ -1560,6 +1604,7 @@ def _gh_text_calls(command: str):
         # Text that reaches gh through the shell: heredocs (`--body "$(cat <<'EOF' … EOF)"`, `--body-file - <<EOF`,
         # and a body file written by a heredoc earlier in the same command) and `$(cat <file>)`
         shared = [("heredoc", b) for b in _heredoc_bodies(command)]
+        shared += [("heredoc", x) for _, b in list(shared) for x in _json_texts(b)]   # a JSON body for --input -
         nested = {seg["text"].strip() for seg in _parse_segments(command) if seg["depth"] > 0}
         for cmd in _commands(command):
             if cmd.tokens[:1] == ["cat"] and cmd.raw in nested:
@@ -1615,6 +1660,8 @@ def _publish_repo(call: dict):
         return None, "the host is not github.com"
     if hints["graphql"]:
         return None, "a GraphQL call names its target by node id, not by repo"
+    if hints["urls"]:
+        return hints["path"], "the repo name in the issue / PR URL could not be read"
     if hints["flag"]:
         return _repo_from_spec(hints["flag"])
     if hints["path"]:

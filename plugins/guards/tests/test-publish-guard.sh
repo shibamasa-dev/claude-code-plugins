@@ -22,6 +22,7 @@ PY
 printf 'Steps to reproduce\n\n社内の acme-internal 環境で再現\n' > "$PROBE_CWD/body.md"
 printf 'copied from acme-internal\n' > "$PROBE_CWD/note.md"
 printf 'nothing private here\n' > "$W/acme-build-tmp/body.md"
+printf '{"body": "acme-\\u0069nternal", "event": "COMMENT"}\n' > "$PROBE_CWD/payload.json"
 
 # probe <payload JSON>: prints one word. allow = no output / note = allowed with additionalContext / deny.
 # PARTS (|-separated) must all appear in the hook's message, and FORBID (|-separated) must not appear anywhere
@@ -82,6 +83,16 @@ CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='body' \
   row 'gh api "https://api.github.com/repos/acme/widgets/issues/12/comments?per_page=1" -f body="acme-internal"' 'gh api with a full URL and a query string' 'deny'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='stdin|not checked' FORBID='' \
   row 'echo acme-internal | gh issue comment 12 -R acme/widgets --body-file -' 'body piped from another command' 'note'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='--input' \
+  row 'gh api repos/acme/widgets/pulls/1/reviews --input payload.json' 'gh api --input: JSON is decoded before matching' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='comments[][body]' \
+  row "gh api repos/acme/widgets/pulls/1/reviews -f 'comments[][path]=a.py' -f 'comments[][body]=acme-internal' -f event=COMMENT" 'gh api nested field comments[][body]' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='public repo acme/widgets' \
+  row 'GH_REPO=acme/vault gh issue edit https://github.com/acme/widgets/issues/1 --body acme-internal' 'issue given by URL beats GH_REPO' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='public repo acme/widgets' \
+  row 'GH_REPO=acme/vault gh issue edit --add-label bug https://github.com/acme/widgets/issues/1 --body acme-internal' 'URL selector after a flag that takes a value' 'deny'
+CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='--body' \
+  row 'gh pr review 7 -R acme/widgets -a -b "lgtm, as in acme-internal"' 'gh pr review: -a is a switch, the body is still read' 'deny'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='--title' \
   row 'gh pr edit 7 -R acme/widgets --title="Port acme-internal"' 'title in the --flag=value form' 'deny'
 CLAUDE_PLUGIN_OPTION_PUBLISH_PATTERNS=$P1 PARTS='--body' \
