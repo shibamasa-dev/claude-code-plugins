@@ -8,7 +8,8 @@
 2. No personal environment leaks into the public repo: absolute home directory paths and email
    addresses (noreply and example domains excluded). Extra blocked terms come from the environment
    variable BLOCKED_PATTERNS (newline-separated regexes; CI passes it from a repo secret). Writing the
-   blocked terms in this file would itself leak them into the public repo
+   blocked terms in this file would itself leak them into the public repo. The list is built by
+   leak/leak_patterns.py
 3. README pairs: the root and every plugins/<name>/ with a README.md also have a README.ja.md next to it,
    line 3 of each is the language switcher linking to the other, and README.md has no Hiragana or
    Katakana (Japanese text belongs in README.ja.md; Han alone is allowed for the switcher label)
@@ -24,20 +25,21 @@ import re
 import subprocess
 import sys
 
+# The pattern list (shared with leak/scan-text.py) lives in leak/. The pre-commit copy made by
+# .githooks/install.sh has leak_patterns.py right next to this script instead, which the default path covers
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "leak"))
+import leak_patterns  # noqa: E402
+
 ROOT = subprocess.run(["git", "rev-parse", "--show-toplevel"],
                       capture_output=True, text=True, check=True).stdout.strip()
 FILES = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT,
                        capture_output=True, text=True, check=True).stdout.split("\0")
 
 INDEX = "--index" in sys.argv  # read staged content instead of the working tree (for pre-commit)
-LEAKS = [
-    # The brackets around the second o keep this line from matching itself
-    (re.compile(r"/Users/[A-Za-z]|/home/[a-z]|/ro[o]t/"), "absolute home directory path"),
-    (re.compile(r"[A-Za-z0-9._%+-]+@(?!users\.noreply\.github\.com|noreply\.|anthropic\.com|github\.com\b|example\.)"
-                r"[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"), "email address"),
-]
-LEAKS += [(re.compile(p), "BLOCKED_PATTERNS")
-          for p in os.environ.get("BLOCKED_PATTERNS", "").splitlines() if p.strip()]
+try:
+    LEAKS = leak_patterns.leaks()
+except leak_patterns.InvalidPattern as e:
+    sys.exit(str(e))  # the entry's number only, never the entry
 
 README_EN = re.compile(r"(plugins/[^/]+/)?README\.md")
 README_JA = re.compile(r"(plugins/[^/]+/)?README\.ja\.md")
