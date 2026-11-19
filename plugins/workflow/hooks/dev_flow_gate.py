@@ -283,6 +283,14 @@ def gh_body(opts, cwd, call):
     return read_file(f, cwd)
 
 
+def body_file_of(opts, cwd):
+    """The file gh reads the PR body from (--body-file / -F), as an absolute path; None for stdin or no file."""
+    f = opt(opts, "-F", "--body-file")
+    if opt(opts, "-b", "--body") is not None or not f or f in ("-", "/dev/stdin"):
+        return None
+    return f if os.path.isabs(f) else os.path.join(cwd or ".", f)
+
+
 def gh_calls(command, cwd):
     """[(kind, info)] kind is one of pr_create / pr_merge / issue_edit / issue_view
 
@@ -300,6 +308,7 @@ def gh_calls(command, cwd):
                                       "head": opt(opts, "-H", "--head") or (branch_from_cwd(here) if here else None),
                                       # What the call itself names (None: gh takes origin / the checked-out branch)
                                       "cwd": here, "head_named": opt(opts, "-H", "--head"),
+                                      "body_file": body_file_of(opts, here or cwd),
                                       "repo_named": (opt(opts, "-R", "--repo") or call["env"].get("GH_REPO")
                                                      or os.environ.get("GH_REPO"))}))
         elif pos[0] == "pr" and pos[1] == "merge":
@@ -418,14 +427,14 @@ def pre_create_check(body):
     return None
 
 
-def local_checks(inp, where, repo, head, body):
+def local_checks(inp, where, repo, head, body, body_file=None):
     """The local-checks test of checks.py (off by default), asked only after the body check passed.
-    ("deny", reason) | ("note", text) | None. Any failure in it leaves this hook's own result as it was."""
+    ("deny", reason) | ("note", text) | None. A failure in it never denies and is never silent: it is said in a note."""
     try:
         import checks  # imported here: only a PR creation pays for it
-        return checks.pr_gate(inp, where, repo, head, body)
-    except Exception:
-        return None
+        return checks.pr_gate(inp, where, repo, head, body, body_file)
+    except Exception as e:
+        return "note", f"[pr-checks] could not run ({type(e).__name__}): this PR was not checked for local checks."
 
 
 def note(texts):
@@ -475,7 +484,8 @@ def on_pre_tool_use(inp):
                 res = pre_create_check(info["body"])
                 if res:
                     return res
-                chk = local_checks(inp, info["cwd"], info["repo_named"], info["head_named"], info["body"])
+                chk = local_checks(inp, info["cwd"], info["repo_named"], info["head_named"], info["body"],
+                                   info["body_file"])
                 if chk and chk[0] == "deny":
                     return deny(chk[1])
                 notes += [chk[1]] if chk else []

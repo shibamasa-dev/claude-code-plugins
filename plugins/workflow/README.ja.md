@@ -51,6 +51,7 @@ commit-gate:
 - **スタンプ**: コミットメッセージの末尾に `Verification: <種類> — <名前>`（例 `Verification: review — code-review`。種類は `review` と `verify`）か `Verification: none — <理由>` を書く。名前を書いた検証スキルは、ゲートが自分の記録と突き合わせる。検証なしのコミットは `git log origin/main --grep='^Verification: none'` で引ける。
 - **`git commit` の判定**（`enforce`）: 新しい証跡があり、トレーラーが合っていれば通す。`none — <理由>` は通して explained として記録する。それ以外は止める。証跡なし、古い証跡、記録の無い検証スキルを名乗るトレーラー、トレーラー無し（足す行を示す）、読めないメッセージ（変数・エディタ）、検証した作業ツリーとステージ済みの版が違うファイルがあるときがこれに当たる（コミットがそのファイルを作業ツリーから取るとき、つまり `-a` や、`-i` の有無を問わずパスを名指ししたときは除く。`--pathspec-from-file` で渡したパスは読まないので、すべてのファイルを確かめる。引用符付きや展開で生じたリダイレクトのような語（`'>'`）や、省略した長いオプション（`--mess`）と並んだパスも、語の区別がつかないので同じく全ファイルを確かめる。引用符の無いリダイレクト（`2>&1 | tail -3`・`>/dev/null`）は引数ではないので無視する。`git rm --cached` で外したが作業ツリーに残っているファイルは違うものとして数える。ただし git が無視するファイルは、検証したツリーにも入らないので数えない。作業ツリーが汚れているだけのサブモジュールは数えない）。1 セッションで 2 回止めたら、次のコミットは通して released として記録し、回数を戻す。`observe` は止めずにどうしたかを Claude に伝え、同じ回数も数える。古い証跡は通し、トレーラーに `(stale)` を付けるよう伝える。
 - **記録**: すべての判定を、セッション・リポ・ブランチ・指紋と一緒に `${CLAUDE_PLUGIN_DATA}/commit-gate/log.jsonl` に書く。コミットしたら（HEAD が動いたことで判断するので `git commit -q` も含む）、その sha とスタンプが記録に裏付けられているかを `committed` の行として書く。フック内の予期しないエラーは `error` として記録する（そのコミットは確かめていない）。初めて使うときにゲートがオンなら、そのために状態ディレクトリを作る（`off` では作らない）。`git commit` を含むのに読めないコマンド（引用符の閉じ忘れなど）は確かめず、`unparsed` として記録して Claude に伝える。`python3 "${CLAUDE_PLUGIN_ROOT}/hooks/commit_gate.py" report` で止めるはずだったものを一覧にする（`--all` で全件）。証跡と止めた回数は `${CLAUDE_PLUGIN_DATA}/commit-gate/`（その変数が無ければ `~/.claude/state/commit-gate/`）に置き、30 日より古いものはセッションの開始時に消す。
+- **コスト**: `off` では何も書かず、何も言わず、ネットワークにも出ない。動くのはローカルの git だけ。Bash の各呼び出しの前は、コマンドに `git` と `commit` の両方が無ければすぐ終わり、あればリポとその設定ファイルを探すためにローカルの git を 2〜4 回読む。`duration_ms` を含む Bash 呼び出しの後には `git log -g -1` を 1 回だけ走らせる（約 10 ms、ファイルは書かない）。入力したコマンドや Skill の呼び出しでも同じようにリポのファイルを読む。セッション開始時の動きは「制限」のとおり。オンでは、コミットごとと、検証スキルが動いたターンの終わりに指紋を計算する（12,000 ファイルのリポで約 0.3 秒）。
 
 pr-checks（PR を出す前のローカル検査）:
 
@@ -60,9 +61,10 @@ pr-checks（PR を出す前のローカル検査）:
   - `off`: PR 作成のとき、dev-flow-gate 自身の本文検査を通ったあとで、ローカルの git を 2〜4 回呼んでリポの設定を読み、そこで終わる。何も書かず、何も伝えず、何も止めない。ネットワークには出ない。ほかのツール呼び出しでは何も動かない。
   - `observe`: 止めない。PR 作成 1 回につき 1 行を記録し、通った記録が無いときは Claude に伝える。
   - `enforce`: 通った記録が無い PR 作成を止める。PR 本文に `Local-Checks: none — <理由>` があれば通す（`explained` と記録）。同じセッションで 2 回止めたら、次の作成は通す（`released` と記録）。
-- **確かでないときは止めない**: 止めるのは、PR の宛先リポが PR を作るディレクトリの origin で、head がそこでチェックアウトしているブランチだと確かなときだけ。コマンドからディレクトリが分からない（`cd "$VAR" && gh pr create`）、`-R`・`GH_REPO`・コネクタの `owner` と `repo` が別のリポを指す、`--head` が別のブランチを指す、detached HEAD、既定ブランチが分からない、ゲートがオンなのに `prChecks` コマンドが無い、指紋を計算できない、のどれも、どのモードでも伝えて記録するだけ（`unresolved`・`nogate`・`nocommand`・`unchecked`）。
-- **記録**: `${CLAUDE_PLUGIN_DATA}/checks/log.jsonl`（この変数が無いときは `~/.claude/state/checks/`）。PR 作成 1 回につき 1 行で、セッション・リポ・ブランチ・head のコミット（`pr_head`）・指紋・`had_pass`・未コミットの変更があったか（`dirty`）・判定を書く。`python3 "${CLAUDE_PLUGIN_ROOT}/hooks/checks.py" report` で、通った記録が無かった作成を一覧できる（`--all` で全件）。
-- **コスト**: `off` では何も書かず、何も言わず、ネットワークにも出ない。動くのはローカルの git だけ。Bash の各呼び出しの前は、コマンドに `git` と `commit` の両方が無ければすぐ終わり、あればリポとその設定ファイルを探すためにローカルの git を 2〜4 回読む。`duration_ms` を含む Bash 呼び出しの後には `git log -g -1` を 1 回だけ走らせる（約 10 ms、ファイルは書かない）。入力したコマンドや Skill の呼び出しでも同じようにリポのファイルを読む。セッション開始時の動きは「制限」のとおり。オンでは、コミットごとと、検証スキルが動いたターンの終わりに指紋を計算する（12,000 ファイルのリポで約 0.3 秒）。
+- **確かでないときは止めない**: 止めるのは、PR の宛先リポが PR を作るディレクトリの origin で、head がそこでチェックアウトしているブランチだと確かなときだけ。コマンドからディレクトリが分からない（`cd "$VAR" && gh pr create`）、`-R`・`GH_REPO`・コネクタの `owner` と `repo` が別のリポを指す、`--head` が別のブランチを指す、detached HEAD、既定ブランチが分からない、ゲートがオンなのに `prChecks` コマンドが無い、指紋を計算できない、同じ呼び出しの中でブランチやツリーを動かしうる git コマンドが先にある、`gh repo set-default` が別のリモートを指している、のどれも、`observe` と `enforce` では伝えて記録するだけで、止めない（`unresolved`・`nogate`・`nocommand`・`unchecked`）。`off` では、ほかと同じく何も言わない。
+- **記録**: `<git common dir>/workflow-pr-checks.log.jsonl`。通った記録のファイルの隣で、リポごと（理由も同じで、`report` は Bash から起動され、そこでは `CLAUDE_PLUGIN_DATA` がこのプラグインのものではない）。PR 作成 1 回につき 1 行で、セッション・リポ・ブランチ・head のコミット（`pr_head`）・指紋・`had_pass`・未コミットの変更があったか（`dirty`）・判定を書く。リポの中で `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/checks.py" report` を実行すると、通った記録が無かった作成を一覧できる（`--all` で全件）。記録を書けないとき、判定の途中でフックが失敗したときも、PR は止めず、Claude に伝える。`${CLAUDE_PLUGIN_DATA}/checks/blocks/`（この変数が無いときは `~/.claude/state/checks/blocks/`）に置くのは、セッションごとの拒否回数だけ。
+- **PR 本文のファイル**: `gh pr create` の呼び出し自身が本文として指す未追跡ファイル（`--body-file` / `-F`）は指紋から外す。検査のあとでリポの中に本文を書いても、通った記録は消えない。ほかに外すものは無い。ignore されていない新しい未追跡ファイルは変更として数える（ignore するか、検査をやり直す）。本文をリポの外に置けば、この問題は起きない。
+- **コスト**: `off` では、PR 作成 1 回につきローカルの git の読み取りが 2〜4 回（ある計測で約 40 ms）。ほかのコマンドでは何も動かない。どのモードでもネットワークには出ない。
 
 orchestrator-report は報告を促した PR / issue を `${CLAUDE_PLUGIN_DATA}/orchestrator-report/<session_id>.json` に記録する（30 日より古いファイルは書き込みのときに消す）。
 
@@ -183,11 +185,11 @@ artifact-ledger フックは、プロジェクトのルートの `.artifacts/` �
 - pr-checks が見るのは作業ツリーで、push されたものではない。指紋には未コミット・未 push の変更が入るが、PR に出るのは push 済みの head である。記録の `dirty` は未コミットの変更があった作成を示す。push していないコミットは検出しない。
 - pr-checks が記録するのは、コマンドの終了コードが 0 だったことだけ。テストを飛ばす `prChecks` コマンドでも記録は残り、`Local-Checks: none — <理由>` は常に受け入れる。ローカルでの記録の偽造（git ディレクトリの `workflow-pr-checks.json` の編集、環境変数）は、commit-gate と同じく防ぐ対象の外。
 - pr-checks は、パーサが `gh pr create` と読めないコマンドで作った PR（`eval`・`xargs`・エイリアス・スクリプト・`gh api`・`hub`・Web ページ）を見ない。開いている PR にコミットを push したときに調べ直すこともしない。
+- pr-checks がツリーを読むのは Bash コマンドが動く前である。同じ呼び出しの中で、ブランチやツリーを動かしうる git コマンドが先にあると（`git switch b && gh pr create`・`git commit … && gh pr create`）`unresolved` になる（`git push`・`fetch`・`add`・`status` など読むだけのものはならない）。同じ呼び出しの中でファイルを書き換えるそれ以外のコマンド（`sed -i … && gh pr create`）は検出しない。`gh repo set-default` が `origin` 以外のリモートを指しているとき、`-R` の無い作成は `unresolved` になる。
 - pr-checks は、実行のたびにツリーを変えるコマンド（`.gitignore` に入っていないビルド出力やレポート）では記録を残せない。出力を ignore しないと、ゲートは `would_block` のままになる。`enforce` では、同じセッションの 3 回目の作成が `released` として通る。
 - pr-checks がリポのファイルを読むには、ローカルの `origin/HEAD` が要る。無い `origin/HEAD` を埋めるセッション開始時の問い合わせは commit-gate のもので、commit-gate の条件でしか動かない。`pr_checks_gate` だけがオンで `origin/HEAD` が無いとき、PR は止めず、`git remote set-head origin --auto` を実行するよう Claude に伝える。
-- `checks.py run` は、既定ブランチの `prChecks` に書かれたものを、呼び出した人の権限でそのまま実行する。リポのテストスクリプトを手で実行するのと同じである。`.claude/verification.json` を変える PR をレビューするときは、この行を見ること。
 - pr-checks の記録は、きれいに通った rebase や既定ブランチのマージをまたいで残る。指紋は merge-base に対するブランチの変更なので、同じ変更が新しい土台に乗っても数える。検査が動いたのは古い土台の上である。そこは PR の CI が受け持つ。
-- 信用していないクローンでは、リポのファイル自身が `enforce` をオンにでき、そのとき拒否メッセージは、そのリポの `prChecks` コマンドを実行するよう Claude に求める。許可の確認に出るのは `checks.py run` で、その裏のコマンドではない（拒否メッセージにはコマンドが出る）。テストスクリプトと同じく、実行させる前に既定ブランチの `.claude/verification.json` を読むこと。
+- `checks.py run` は、リポの既定ブランチが宣言したコマンドを、呼び出した人のシェルの権限で実行する。信用していないクローンでは、リポのファイル自身が `enforce` をオンにでき、そのとき拒否メッセージはそのコマンドの実行を Claude に求める。許可の確認に出るのは `checks.py run` で、その裏のコマンドではない。拒否メッセージにはコマンドが出る（400 字を超えるときは長さだけ）。信用していないクローンでは先にそのコマンドをユーザーに見せるよう、Claude に伝える。テストスクリプトと同じく、実行させる前に既定ブランチの `.claude/verification.json` の `prChecks` を読むこと。
 - プロジェクトの `.claude/settings.json` はプラグインを無効にでき（`enabledPlugins`）、セッションの環境変数も設定できる（`env`）。このファイルを変える PR は人が差分を見る必要がある。止められるのは managed settings だけ。
 
 ## 前提

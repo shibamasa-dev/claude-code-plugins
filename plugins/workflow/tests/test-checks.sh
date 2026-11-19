@@ -1,9 +1,10 @@
 #!/bin/bash
 # Live check of the local-checks test at PR creation (hooks/checks.py, asked by dev_flow_gate.py) against a throwaway
 # origin (bare repo) and a clone of it, in a path with a space and non-ASCII characters.
-# The hook's CLAUDE_PLUGIN_DATA and HOME point at the temp directory, so real state is untouched (no network access:
+# The pass file and the log live in the clone's git directory; the hook's CLAUDE_PLUGIN_DATA (denial counts) and HOME
+# point at the temp directory, so real state is untouched (no network access:
 # the clone's origin URL is rewritten to a GitHub-shaped one that is never contacted; fetches name the bare repo).
-# `checks.py run` is started with another CLAUDE_PLUGIN_DATA, as it is from Bash in a real session.
+# `checks.py run` is started with another CLAUDE_PLUGIN_DATA and `report` with none, as from Bash in a real session.
 # DEV_FLOW_GATE_HOOK=<path> runs the rows against another copy of the hooks directory's dev_flow_gate.py
 # (used to show each row fails without its logic).
 set -u
@@ -40,7 +41,7 @@ git clone -q "$O" "$W"; in_dir "$W"
 git remote set-url origin https://github.com/O/R.git   # never contacted; makes the repo "O/R" for the connector rows
 git checkout -q -b feat
 COMMON="$(git rev-parse --path-format=absolute --git-common-dir)"
-PASSES="$COMMON/workflow-pr-checks.json"
+PASSES="$COMMON/workflow-pr-checks.json"; LOG="$COMMON/workflow-pr-checks.log.jsonl"
 
 # set_repo_cfg <json|-> : put .claude/verification.json on origin's main (- removes it), then bring it into the clone
 set_repo_cfg() {
@@ -49,7 +50,7 @@ set_repo_cfg() {
     git commit -qm cfg --allow-empty; git push -q origin main )
   git -C "$W" fetch -q "$O" '+refs/heads/*:refs/remotes/origin/*'
 }
-reset() { rm -rf "$CLAUDE_PLUGIN_DATA" "$PASSES" "$PASSES.lock"; in_dir "$W"; git checkout -q -- . ; git clean -qfd; }
+reset() { rm -rf "$CLAUDE_PLUGIN_DATA" "$PASSES" "$PASSES.lock" "$LOG"; in_dir "$W"; git checkout -q -- . ; git clean -qfd; }
 edit() { printf '# %s\n' "$1" >> "$W/m.py"; }
 # run_checks [args] : `checks.py run` as Bash starts it (another plugin's data directory in the environment)
 # Prints the exit code as a word (run-all.sh reads a verdict as lowercase letters): zero / one / two / three
@@ -57,7 +58,6 @@ word() { case "$1" in 0) echo zero ;; 1) echo one ;; 2) echo two ;; 3) echo thre
 run_checks() { ( cd "$W" && CLAUDE_PLUGIN_DATA="$T/another-plugin" python3 "$CHECKS" run "$@" >/dev/null 2>&1; word $? ); }
 
 j() { python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1"; }
-LOG="$CLAUDE_PLUGIN_DATA/checks/log.jsonl"
 loglines() { [ -f "$LOG" ] && wc -l < "$LOG" | tr -d ' ' || echo 0; }
 lastlog() { tail -1 "$LOG" | python3 -c 'import json,sys; print(str(json.load(sys.stdin).get(sys.argv[1])).lower())' "$1"; }
 # verdict <hook output> <log lines before> -> deny (the hook's JSON) or, from the decision it logged:
@@ -100,7 +100,7 @@ row 'working tree says enforce, default branch has no file: gh pr create' "$(cre
 n=$(wc -l < "$GIT_CALLS" | tr -d ' '); unset GIT_CALLS
 row 'off: the hook prints nothing' "$( [ -s "$T/last_out" ] && echo output || echo empty)" empty
 row 'off: at most 6 local git calls for a PR creation (2 are dev-flow-gate own)' "$( [ "$n" -le 6 ] && echo bounded || echo "many:$n")" bounded
-row 'off: no state, log or pass file is created' "$( [ -e "$CLAUDE_PLUGIN_DATA/checks" ] || [ -e "$PASSES" ] && echo wrote || echo nothing)" nothing
+row 'off: no state, log or pass file is created' "$( [ -e "$CLAUDE_PLUGIN_DATA/checks" ] || [ -e "$PASSES" ] || [ -e "$LOG" ] && echo wrote || echo nothing)" nothing
 row 'off: the body check still denies a body without markers' "$(create a3 "gh pr create --title t --body 'no markers'")" bodydeny
 set_repo_cfg '{"prChecksGate":"off","prChecks":"test -f m.py"}'
 CLAUDE_PLUGIN_OPTION_PR_CHECKS_GATE=enforce; export CLAUDE_PLUGIN_OPTION_PR_CHECKS_GATE
@@ -121,7 +121,10 @@ row 'recorded pass for this tree' "$(create b1)" pass
 row 'the log line has had_pass true' "$(lastlog had_pass)" true
 edit two
 row 'an edit after the pass' "$(create b1)" block
-row 'report lists the would-be blocks' "$(word "$(python3 "$CHECKS" report | grep -c would_block | tr -d ' ')")" two
+row 'report lists the would-be blocks' "$(word "$(cd "$W" && env -u CLAUDE_PLUGIN_DATA python3 "$CHECKS" report | grep -c would_block | tr -d ' ')")" two
+rm -f "$LOG"; mkdir "$LOG"; create b2 >/dev/null   # the log cannot be written (a directory is in the way)
+row 'the log cannot be written: said in a note all the same' "$(said 'could not write its log')" yes
+rmdir "$LOG"
 
 echo '=== C: enforce ==='
 reset; set_repo_cfg '{"prChecksGate":"enforce","prChecks":"test -f m.py"}'
@@ -140,6 +143,14 @@ row 'recorded pass: connector' "$(conn c5 O R feat)" pass
 row 'recorded pass: gh pr create --body-file - with a heredoc' "$(create c6 "gh pr create --title t --body-file - <<'EOF'
 $OK_BODY
 EOF")" pass
+printf '%s\n' "$OK_BODY" > "$W/pr-body.md"
+row 'the body file inside the repo (untracked) does not undo the pass' "$(create c6b "gh pr create --title t --body-file pr-body.md")" pass
+: > "$W/stray.txt"
+row 'another new untracked file does' "$(create c6c "gh pr create --title t --body-file pr-body.md")" deny
+row 'and the denial says that untracked files count' "$(said 'new untracked files count')" yes
+rm -f "$W/stray.txt"; git -C "$W" add -N pr-body.md 2>/dev/null; git -C "$W" add pr-body.md
+row 'a tracked body file is part of the tree' "$(create c6d "gh pr create --title t --body-file pr-body.md")" deny
+git -C "$W" rm -q --cached pr-body.md; rm -f "$W/pr-body.md"
 row 'the body check comes first' "$(create c7 "gh pr create --title t --body 'no markers'")" bodydeny
 edit two
 row 'an edit after the pass' "$(create c8)" deny
@@ -175,7 +186,9 @@ edit one; run_checks >/dev/null
 set_repo_cfg '{"prChecksGate":"enforce","prChecks":"test -f m.py && true"}'
 row 'a pass under the previous command does not count' "$(create d5)" deny
 reset; set_repo_cfg '{"prChecksGate":"enforce","prChecks":"test -f m.py"}'
-edit one; git -C "$W" commit -qam change; run_checks >/dev/null
+edit one; printf '%s\n' "$OK_BODY" > "$W/pr-body.md"; run_checks >/dev/null
+row 'a body file that was already there when the checks ran' "$(create d5b "gh pr create --title t --body-file pr-body.md")" pass
+reset; edit one; git -C "$W" commit -qam change; run_checks >/dev/null
 git -C "$W" worktree add -q -b feat2 "$WT" feat
 row 'another worktree with the same change shares the pass' "$(create d6 "cd '$WT' && gh pr create --title t --body '$OK_BODY'")" pass
 git -C "$W" worktree remove --force "$WT"; git -C "$W" branch -qD feat2; git -C "$W" reset -q --hard origin/main
@@ -194,6 +207,27 @@ row 'connector: another head' "$(conn e7 O R other)" unresolved
 row 'connector: the same branch name in another owner fork' "$(conn e7b O R me:feat)" unresolved
 row 'detached HEAD' "$(git -C "$W" checkout -q --detach; create e8; git -C "$W" checkout -q feat)" unresolved
 row 'the fingerprint is unavailable' "$(FAIL_ADD=1 create e9)" unchecked
+row 'git switch before gh pr create in the same call' "$(create e9b "git switch other && gh pr create --title t --body '$OK_BODY'")" unresolved
+row 'git commit before gh pr create in the same call' "$(create e9c "git commit -am x && gh pr create --title t --body '$OK_BODY'")" unresolved
+row 'git push before gh pr create in the same call is still judged' "$(create e9d "git push -u origin feat && gh pr create --title t --body '$OK_BODY'")" deny
+git -C "$W" remote add upstream https://github.com/Up/R.git; git -C "$W" config remote.upstream.gh-resolved base
+row 'gh repo set-default names another remote' "$(create e9e)" unresolved
+git -C "$W" remote remove upstream; git -C "$W" config remote.origin.gh-resolved base
+row 'gh repo set-default names origin' "$(create e9f)" deny
+git -C "$W" config --unset remote.origin.gh-resolved
+# The hook's state directory cannot be created (a file is in the way): the denial counter cannot be written
+rm -rf "$CLAUDE_PLUGIN_DATA"; : > "$CLAUDE_PLUGIN_DATA"
+row 'the denial count cannot be written: logged as error, not denied' "$(create e9g)" error
+row 'the denial count cannot be written: said in a note' "$(said additionalContext)" yes
+rm -f "$CLAUDE_PLUGIN_DATA"; mkdir -p "$CLAUDE_PLUGIN_DATA/checks/blocks"
+python3 -c 'import json,sys,hashlib; json.dump({hashlib.sha1(sys.argv[2].encode()).hexdigest()[:16]: "x"}, open(sys.argv[1], "w"))' "$CLAUDE_PLUGIN_DATA/checks/blocks/e9h.json" "$COMMON"
+row 'the denial count holds a non-number: logged as error, not denied' "$(create e9h)" error
+row 'the denial count holds a non-number: said in a note' "$(said additionalContext)" yes
+# checks.py itself cannot be loaded
+mkdir -p "$T/broken"; cp "$(dirname "$HOOK")"/*.py "$T/broken/"; echo 'raise RuntimeError("broken")' > "$T/broken/checks.py"
+( HOOK="$T/broken/dev_flow_gate.py"; create e9i >/dev/null )
+row 'checks.py cannot be loaded: said in a note' "$(said additionalContext)" yes
+row 'checks.py cannot be loaded: not denied' "$(said permissionDecision)" no
 git -C "$W" symbolic-ref -d refs/remotes/origin/HEAD
 CLAUDE_PLUGIN_OPTION_PR_CHECKS_GATE=enforce; export CLAUDE_PLUGIN_OPTION_PR_CHECKS_GATE
 row 'origin default branch unknown (userConfig enforce)' "$(create e10)" nogate
@@ -210,6 +244,7 @@ CLAUDE_PLUGIN_OPTION_PR_CHECKS_GATE=enforce; export CLAUDE_PLUGIN_OPTION_PR_CHEC
 row 'config on the default branch is not JSON (userConfig enforce)' "$(create e14)" nocommand
 set_repo_cfg '{"prChecksGate":true,"prChecks":"test -f m.py"}'
 row 'prChecksGate is not a mode: userConfig is used' "$(create e15)" deny
+row 'and the denial carries the note about the invalid value' "$(said 'not one of')" yes
 row 'and the invalid value is logged' "$(word "$(grep -c config_invalid "$LOG" | tr -d ' ')")" one
 unset CLAUDE_PLUGIN_OPTION_PR_CHECKS_GATE
 

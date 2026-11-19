@@ -194,9 +194,10 @@ def warm_default_branch(top, common):
 
 
 # ------------------------------------------------------------------ fingerprint
-def fingerprint(top):
+def fingerprint(top, exclude=()):
     """A hash of the working tree's change against merge-base(HEAD, origin/HEAD), untracked files included.
     Uses a temporary index and object directory (the repo's objects as an alternate), so nothing is written to the repo.
+    exclude: paths (relative to top, literal) left out of the tree (checks.py: the untracked file a PR body is read from).
     None when it cannot be computed in time."""
     tmp = tempfile.mkdtemp(prefix="commit-gate-")
     try:
@@ -210,6 +211,9 @@ def fingerprint(top):
             # written ("racily clean"); a fresh mtime would let a same-size edit pass as unchanged
             shutil.copy2(idx, env["GIT_INDEX_FILE"])  # keeps the stat cache, so `add -A` rehashes only changed files
         if git(top, "add", "-A", env=env, timeout=20)[0] != 0:
+            return None
+        if exclude and git(top, "--literal-pathspecs", "rm", "--cached", "--quiet", "--ignore-unmatch", "--",
+                           *exclude, env=env)[0] != 0:
             return None
         rc, tree = git(top, "write-tree", env=env)
         if rc != 0:

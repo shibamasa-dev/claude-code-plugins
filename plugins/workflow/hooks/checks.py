@@ -12,9 +12,15 @@ merge-base(HEAD, origin/HEAD), untracked files included. `run` fingerprints befo
 only when both are equal, so a command that edits the tree (a formatter, an untracked output) records nothing.
 
 Passes live in the repo: <git common dir>/workflow-pr-checks.json ({fingerprint: {at, command}}, newest 50), shared
-by worktrees and sessions (the same tree gives the same result). They are not under CLAUDE_PLUGIN_DATA because `run`
-is started from Bash, where that variable is not this plugin's; the git common dir is the one place both `run` and
-the hook can derive.
+by worktrees and sessions (the same tree gives the same result); the log is next to it
+(workflow-pr-checks.log.jsonl). They are not under CLAUDE_PLUGIN_DATA because `run` and `report` are started from
+Bash, where that variable is not this plugin's; the git common dir is the one place both the CLI and the hook can
+derive. Only the per-session denial count, which the hook alone reads and writes, is in
+<CLAUDE_PLUGIN_DATA or ~/.claude/state>/checks/blocks/.
+
+An untracked file that the `gh pr create` call itself names as its body (`--body-file` / `-F`) is left out of the
+fingerprint, so writing the PR body inside the repo after the checks ran does not undo the pass. Any other new
+untracked file that is not ignored counts as a change.
 
 The gate itself is pr_gate(), called by dev_flow_gate.py after its own PR-body check passed.
 Modes (`off` / `observe` / `enforce`): `prChecksGate` in the repo file, else userConfig `pr_checks_gate`, else off.
@@ -27,8 +33,9 @@ Modes (`off` / `observe` / `enforce`): `prChecksGate` in the repo file, else use
            through (logged as released).
 It denies only when it is certain which tree the PR proposes: the PR's repo is the origin of the directory it is
 created from and its head is the branch checked out there. Anything else (directory unknown, another repo or head,
-default branch unknown, no `prChecks` command, fingerprint unavailable) is said and logged, never denied.
-Log: <CLAUDE_PLUGIN_DATA or ~/.claude/state>/checks/log.jsonl (written by the hook only).
+default branch unknown, no `prChecks` command, fingerprint unavailable, a git command earlier in the same Bash call
+that may move the branch or the tree, `gh repo set-default` naming another remote, an error while deciding) is said
+and logged, never denied. When the log cannot be written, the note is still given.
 """
 import hashlib
 import json
@@ -43,6 +50,7 @@ import commit_gate as cg  # noqa: E402  (repo, default-branch config, fingerprin
 
 TAG = "[pr-checks]"
 PASS_FILE = "workflow-pr-checks.json"
+LOG_FILE = "workflow-pr-checks.log.jsonl"
 KEEP = 50
 RELEASE_AFTER = 2
 # Within a line only [ \t], so an empty reason cannot borrow the next line
@@ -52,16 +60,20 @@ ORIGIN_RE = re.compile(r"github\.com[:/]([^/]+)/([^/\s]+?)(?:\.git)?$")
 
 
 def state_dir():
+    """Where the per-session denial count lives (read and written by the hook only)."""
     return os.path.join(os.environ.get("CLAUDE_PLUGIN_DATA") or os.path.expanduser("~/.claude/state"), "checks")
 
 
-def log(entry):
+_log_failed = []  # set when a log line could not be written, so pr_gate() can say so
+
+
+def log(common, entry):
+    """One line in <git common dir>/workflow-pr-checks.log.jsonl (common is None when no repo is known)."""
     try:
-        os.makedirs(state_dir(), exist_ok=True)
-        with open(os.path.join(state_dir(), "log.jsonl"), "a", encoding="utf-8") as f:
+        with open(os.path.join(common, LOG_FILE), "a", encoding="utf-8") as f:
             f.write(json.dumps({"ts": cg.now(), **entry}, ensure_ascii=False) + "\n")
-    except OSError:
-        pass
+    except (OSError, TypeError):
+        _log_failed.append(True)
 
 
 def user_mode():
@@ -115,8 +127,40 @@ def origin_repo(top):
     return f"{m.group(1)}/{m.group(2)}".lower() if m else None
 
 
-def uncertain(top, where, repo, head):
+# git subcommands that leave HEAD and the working tree as they are (anything else before `gh pr create` in the same
+# Bash call may change what the PR proposes after this check has read it)
+_GIT_KEEPS_TREE = {"push", "fetch", "status", "log", "diff", "show", "rev-parse", "remote", "add", "config",
+                   "ls-files", "ls-remote", "describe", "branch", "tag", "merge-base", "cat-file", "blame", "shortlog"}
+
+
+def moved_before_create(command, cwd):
+    """Whether a git call that may change HEAD or the working tree comes before `gh pr create` in this Bash command
+    (`git switch b && gh pr create`): the check would read the tree as it is before the command runs."""
+    for call in cg.commands(command, {"git", "gh"}, cwd):
+        args = call["args"]
+        if call["exe"] == "gh":
+            if "pr" in args and "create" in args:
+                return False
+            continue
+        i = 0
+        while i < len(args) and args[i].startswith("-"):
+            i += 2 if args[i] in cg._GIT_VALUE_OPTS else 1
+        if i >= len(args) or args[i] not in _GIT_KEEPS_TREE:
+            return True
+    return False
+
+
+def uncertain(inp, top, where, repo, head):
     """Why the tree at top may not be what the PR proposes; None when it certainly is."""
+    if inp.get("tool_name") == "Bash" and moved_before_create((inp.get("tool_input") or {}).get("command", ""),
+                                                              inp.get("cwd")):
+        return ("an earlier git command in the same call may change the branch or the tree (run it in its own call, "
+                "then create the PR)")
+    if not repo:
+        # gh takes the remote marked by `gh repo set-default` (git config remote.<name>.gh-resolved) before origin
+        _, marked = cg.git(top, "config", "--get-regexp", r"^remote\..*\.gh-resolved$")
+        if any(line.split(" ", 1)[0] != "remote.origin.gh-resolved" for line in marked.splitlines() if line.strip()):
+            return "gh's default repo (`gh repo set-default`) is not this directory's origin"
     origin = origin_repo(top) if repo or (head and ":" in head) else None
     if repo and repo.lower() != (origin or ""):
         return "the PR goes to a repo that is not this directory's origin"
@@ -131,37 +175,69 @@ def uncertain(top, where, repo, head):
     return None
 
 
-def pr_gate(inp, where, repo, head, body):
+def body_exempt(top, body_file):
+    """The untracked file this call names as its PR body, as a path relative to top; None when there is none, it is
+    outside the repo, or it is tracked (a tracked file is part of what the PR proposes)."""
+    if not body_file:
+        return None
+    rel = os.path.relpath(os.path.realpath(body_file), os.path.realpath(top))
+    if rel == "." or rel.startswith(".." + os.sep) or rel == ".." or os.path.isabs(rel):
+        return None
+    if cg.git(top, "--literal-pathspecs", "ls-files", "--error-unmatch", "--", rel)[0] == 0:
+        return None
+    return rel
+
+
+def pr_gate(inp, where, repo, head, body, body_file=None):
     """("deny", reason) | ("note", text) | None.
     where: the directory the PR is created from (None when it cannot be told from the command).
     repo: the owner/name the call names (gh -R, GH_REPO, the connector's owner and repo); None when gh takes origin.
-    head: the head the call names; None when gh takes the checked-out branch."""
+    head: the head the call names; None when gh takes the checked-out branch.
+    body_file: the file the call reads the PR body from (gh --body-file / -F), as an absolute path; None otherwise."""
+    del _log_failed[:]
+    res = _gate(inp, where, repo, head, body, body_file)
+    if _log_failed:  # only reached with the gate on (off never logs): the log line is lost, the note is not
+        lost = f"{TAG} could not write its log ({LOG_FILE} in the git directory): this PR creation is not recorded."
+        res = ("note", lost) if res is None else (res[0], res[1] + "\n" + lost)
+    return res
+
+
+def _gate(inp, where, repo, head, body, body_file):
     sid = inp["session_id"]
     top, common = cg.repo_of(where) if where else (None, None)
     if not top:
         # Not judged against the session's directory. Said only where the gate is on there (or in userConfig)
-        stop, _ = cg.repo_of(inp.get("cwd"))
+        stop, scommon = cg.repo_of(inp.get("cwd"))
         mode = settings(stop)["mode"] if stop else user_mode()
         if mode in ("off", "unknown"):
             return None
-        log({"session": sid, "repo": stop, "mode": mode, "decision": "unresolved",
-             "why": "directory unknown" if not where else "not a git work tree"})
+        log(scommon, {"session": sid, "repo": stop, "mode": mode, "decision": "unresolved",
+                      "why": "directory unknown" if not where else "not a git work tree"})
         return "note", (f"{TAG} cannot tell which repo this PR is created from, so local checks were not looked up. "
                         "Create it from the repo's directory (`cd <path> && gh pr create ...`).")
     s = settings(top)
-    mode = s["mode"]
-    if mode == "off":
+    if s["mode"] == "off":
         return None
+    try:
+        return _judge(inp, sid, top, common, s, where, repo, head, body, body_file)
+    except Exception as e:  # the gate is on and could not decide: said (and logged when possible), never silent
+        log(common, {"session": sid, "repo": top, "mode": s["mode"], "decision": "error",
+                     "error": f"{type(e).__name__}: {e}"[:200]})
+        return "note", f"{TAG} could not look up local checks ({type(e).__name__}): this PR was not checked."
+
+
+def _judge(inp, sid, top, common, s, where, repo, head, body, body_file):
+    mode = s["mode"]
     entry = {"session": sid, "repo": top, "branch": cg.branch_of(top), "mode": mode}
     if mode == "unknown":
-        log({**entry, "decision": "nogate"})
+        log(common, {**entry, "decision": "nogate"})
         return "note", (f"{TAG} cannot tell origin's default branch (no local origin/HEAD), so the repo's {cg.CONFIG} "
                         "cannot be read: not gating. `git remote set-head origin --auto` fixes it.")
     notes = []
     if s["source"] == "working-tree":
         notes.append(f"{TAG} no origin remote: {cg.CONFIG} is read from the working tree.")
     if s["invalid"] is not None:
-        log({**entry, "decision": "config_invalid", "value": repr(s["invalid"])[:100]})
+        log(common, {**entry, "decision": "config_invalid", "value": repr(s["invalid"])[:100]})
         notes.append(f"{TAG} prChecksGate in the default branch's {cg.CONFIG} is {s['invalid']!r}, not one of "
                      f"{', '.join(cg.MODES)}: ignored, using userConfig ({mode}).")
 
@@ -169,18 +245,22 @@ def pr_gate(inp, where, repo, head, body):
         return "note", "\n".join(notes + [text])
 
     if not s["command"]:
-        log({**entry, "decision": "nocommand"})
+        log(common, {**entry, "decision": "nocommand"})
         return note(f"{TAG} the gate is on ({mode}) but the default branch's {cg.CONFIG} has no `prChecks` command: "
                     "nothing to look up.")
-    why = uncertain(top, where, repo, head)
+    why = uncertain(inp, top, where, repo, head)
     if why:
-        log({**entry, "decision": "unresolved", "why": why})
+        log(common, {**entry, "decision": "unresolved", "why": why})
         return note(f"{TAG} {why}, so local checks were not looked up.")
-    fp = cg.fingerprint(top)
+    exempt = body_exempt(top, body_file)
+    fp = cg.fingerprint(top, exclude=[exempt] if exempt else ())
     if fp is None:
-        log({**entry, "decision": "unchecked"})
+        log(common, {**entry, "decision": "unchecked"})
         return note(f"{TAG} could not fingerprint the tree in time: local checks were not looked up.")
     had = has_pass(common, fp, s["command"])
+    if not had and exempt:  # the body file may already have been there when the checks ran
+        with_body = cg.fingerprint(top)
+        had = with_body is not None and has_pass(common, with_body, s["command"])
     _, pr_head = cg.git(top, "rev-parse", "--verify", "--quiet", "HEAD")
     rc, status = cg.git(top, "status", "--porcelain")
     entry.update(pr_head=pr_head, fingerprint=fp, had_pass=had, dirty=bool(status) if rc == 0 else None)
@@ -191,16 +271,20 @@ def pr_gate(inp, where, repo, head, body):
         if os.path.exists(counter):
             with cg.Locked(counter, {}) as c:
                 c.pop(key, None)
-        log({**entry, "decision": "allow" if had else "explained"})
+        log(common, {**entry, "decision": "allow" if had else "explained"})
         return ("note", "\n".join(notes)) if notes else None
     runner = f"python3 {shlex.quote(os.path.abspath(__file__))} run"  # the plugin may live under a path with spaces
     # The whole command is shown (never a prefix that could hide its tail): `run` executes it through the shell
     shown = s["command"] if len(s["command"]) <= 400 else (
         f"{len(s['command'])} characters: read prChecks in {cg.CONFIG} on the default branch before running it")
     problem = (f"no recorded pass of the repo's checks (`{shown}`) for this tree. Run `{runner}` in the "
-               "repo and create the PR again, or add `Local-Checks: none — <reason>` to the PR body")
+               "repo and create the PR again, or add `Local-Checks: none — <reason>` to the PR body. Any edit "
+               "since the last run undoes its pass, and new untracked files count: ignore them or re-run the checks "
+               "(the file a `--body-file` names is left out). `checks.py run` executes the command the repository's "
+               "default branch declares, with your shell's permissions; in a clone you do not trust, show the user "
+               "that command before running it")
     if mode == "observe":
-        log({**entry, "decision": "would_block"})
+        log(common, {**entry, "decision": "would_block"})
         return note(f"{TAG} observe: this PR would be blocked: {problem}.")
     with cg.Locked(counter, {}) as c:
         n = c.get(key, 0)
@@ -210,11 +294,12 @@ def pr_gate(inp, where, repo, head, body):
         else:
             c[key] = n + 1
     if released:
-        log({**entry, "decision": "released"})
+        log(common, {**entry, "decision": "released"})
         return note(f"{TAG} let through after {RELEASE_AFTER} blocks in this session (logged as released): {problem}.")
-    log({**entry, "decision": "would_block"})
-    return "deny", (f"{TAG} PR blocked ({n + 1}/{RELEASE_AFTER}; after {RELEASE_AFTER} blocks in a session the next "
-                    f"one is let through): {problem}.")
+    log(common, {**entry, "decision": "would_block"})
+    return "deny", "\n".join(notes + [
+        f"{TAG} PR blocked ({n + 1}/{RELEASE_AFTER}; after {RELEASE_AFTER} blocks in a session the next "
+        f"one is let through): {problem}."])
 
 
 # ------------------------------------------------------------------ CLI
@@ -271,11 +356,15 @@ def run(argv):
 
 
 def report(all_rows=False):
+    _, common = cg.repo_of(os.getcwd())
+    if not common:
+        print(f"{TAG} not inside a git work tree.", file=sys.stderr)
+        return 2
     try:
-        with open(os.path.join(state_dir(), "log.jsonl"), encoding="utf-8") as f:
+        with open(os.path.join(common, LOG_FILE), encoding="utf-8") as f:
             rows = [json.loads(line) for line in f if line.strip()]
     except OSError:
-        print("No pr-checks log yet.")
+        print("No pr-checks log yet for this repo.")
         return 0
     for r in rows:
         if all_rows or r.get("decision") in ("would_block", "released", "explained"):
