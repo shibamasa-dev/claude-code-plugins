@@ -42,7 +42,7 @@ jobs:
           node-version: 22
       - name: Tag new versions
         run: |
-          npm install -g @anthropic-ai/claude-code
+          npm install -g "@anthropic-ai/claude-code@$(cat .github/claude-code-version)" # same pin as ci.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           for d in plugins/*/; do

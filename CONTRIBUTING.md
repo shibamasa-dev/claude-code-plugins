@@ -23,7 +23,22 @@ claude plugin validate --strict .
 for p in plugins/*/; do claude plugin validate --strict "$p"; done
 python3 .github/scripts/check-repo.py
 for t in plugins/*/tests/run-all.sh; do bash "$t"; done   # tests assume macOS
+claude plugin test plugins/instructions                    # mod tests (*.test.ts)
+claude plugin test plugins/workflow
 ```
+
+CI also runs these. Run them when you touch the parts they cover:
+
+```bash
+# The plugin suites under Python 3.9 (the python3 of a stock macOS); needs uv
+d=$(dirname "$(uv python find 3.9)")
+for t in plugins/*/tests/run-all.sh; do PATH="$d:$PATH" bash "$t"; done
+
+# The inventory tests against Postgres (a throwaway postgres:16 container); needs docker, psql and uv
+bash plugins/inventory/tests/run-postgres.sh
+```
+
+CI installs the Claude Code CLI at the version in `.github/claude-code-version` (`ci.yml` and `release.yml` both read it). To raise it, change that file in a PR; CI on the PR runs the validate and mod-test steps with the new version.
 
 ## Issue and PR text
 

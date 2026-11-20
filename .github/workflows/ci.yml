@@ -22,11 +22,17 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
+      # The CLI version lives in .github/claude-code-version (read by release.yml too)
+      - name: Install Claude Code
+        run: npm install -g "@anthropic-ai/claude-code@$(cat .github/claude-code-version)"
       - name: claude plugin validate --strict (marketplace and each plugin)
         run: |
-          npm install -g @anthropic-ai/claude-code
           claude plugin validate --strict .
           for p in plugins/*/; do claude plugin validate --strict "$p"; done
+      - name: Mod tests (claude plugin test on each plugin that has *.test.ts)
+        run: |
+          claude plugin test plugins/instructions
+          claude plugin test plugins/workflow
       # Internal names (secret BLOCKED_PATTERNS) are checked by leak-scan.yml so the check also covers PRs from forks
       - name: SKILL.md name vs directory, personal environment leaks, README pairs
         run: python3 .github/scripts/check-repo.py
@@ -41,10 +47,27 @@ jobs:
 
   tests:
     # The tests assume macOS date -v / touch -t (3 runbook tests fail on Linux)
+    # Hooks run under the user's python3, which is 3.9 on a stock macOS, so run the suites under 3.9 as well
+    name: tests (python ${{ matrix.python }})
     runs-on: macos-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: [default, '3.9']
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: matrix.python != 'default'
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Show which python3 the tests use
+        run: |
+          command -v python3
+          python3 --version
+          if [ "${{ matrix.python }}" != default ]; then
+            python3 -c 'import sys; v = "%d.%d" % sys.version_info[:2]; sys.exit(0 if v == "${{ matrix.python }}" else "python3 is " + v)'
+          fi
       - name: Hook regression sweep (fails on any mismatch)
         run: |
           git config --global user.name ci
@@ -58,4 +81,29 @@ jobs:
             if [ "$rc" != 0 ]; then echo "::error::$t exited with $rc"; fail=1; fi
             echo "$out" | grep -qE '/ 0 mismatches ====' || { echo "::error::$t reported mismatches"; fail=1; }
           done
+          exit $fail
+
+  postgres:
+    # The inventory tests against a real Postgres: run-postgres.sh as is (a postgres:16 container, the server under uv)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false
+      - name: Tools the script needs
+        run: |
+          docker --version
+          psql --version
+          uv --version
+      - name: Inventory tests on Postgres (fails on any mismatch)
+        run: |
+          rc=0; out=$(bash plugins/inventory/tests/run-postgres.sh 2>&1) || rc=$?
+          echo "$out"
+          fail=0
+          if [ "$rc" != 0 ]; then echo "::error::run-postgres.sh exited with $rc"; fail=1; fi
+          echo "$out" | grep -qE '/ 0 mismatches ====' || { echo "::error::run-postgres.sh reported mismatches"; fail=1; }
+          # pg-file-only.sh runs only on the Postgres route, so its absence means the run fell back to SQLite or stopped early
+          echo "$out" | grep -q '▼ pg-file-only.sh' || { echo "::error::pg-file-only.sh did not run"; fail=1; }
           exit $fail
