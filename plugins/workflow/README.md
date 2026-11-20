@@ -175,7 +175,7 @@ Organization values (GitHub org, default repo, Issue Fields, project board) aren
 
 The artifact-ledger hook keeps two files in `.artifacts/` at the project root:
 
-- `ledger.jsonl` is the source of truth and is tracked by git. Each publish appends one line (artifact id, URL, title, description, version, repo-relative source path, session id); lines are only appended, never rewritten.
+- `ledger.jsonl` is the source of truth and is tracked by git. Each publish appends one line (artifact id, URL, title, description, icon, version, repo-relative source path, session id). Lines are only appended, never rewritten. The icon is the publish's `icon` (or the deprecated `favicon` when only that is passed); it is stored under the key `favicon`, and `index.html` shows it in the first column.
 - `index.html` is generated from the ledger (a table of titles, first publish and last update). It is not meant to be tracked: the hook does not edit `.gitignore`, so add `.artifacts/index.html` there. It is rebuilt after each append, and rebuilt from the ledger when it is missing.
 - In a worktree the ledger lives under the parent repository's root, so deleting the worktree does not delete it.
 - A `list` call never adds artifacts: it appends the response's `updatedAt` only for ids already in the ledger, because the list mixes every project.

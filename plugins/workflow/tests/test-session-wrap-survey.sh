@@ -6,14 +6,17 @@
 # Synthesized: `claude agents --json` answers [] (the session is passed with --session, so survey.py uses the cwd), and
 # `gh pr view` is a fake that answers "no PR" except in the PR case, where it prints an OPEN PR in the shape of
 # `gh pr view --json number,url,state,reviewDecision,isDraft`.
-# Expected flags come from SKILL.md step 3 (DIRTY / UNPUSHED / PR_OPEN / PENDING_ISSUE); that an untracked file alone
+# Expected flags come from SKILL.md step 3 (DIRTY / UNPUSHED / PR_OPEN / PENDING_ISSUE, and UNPUSHED on a branch with no
+# upstream counted against origin's default branch, not raised without origin/HEAD); that an untracked file alone
 # raises DIRTY comes from survey.py's docstring, not the skill.
 set -u
 D="$(cd "$(dirname "$0")/.." && pwd)"
 SV="$D/skills/session-wrap/scripts/survey.py"; IW="$D/hooks/issue-writeback.py"
 T=$(mktemp -d "${TMPDIR:-/tmp}/survey.XXXX") || exit 1
 trap 'rm -rf "$T"' EXIT
-export HOME="$T/home" CLAUDE_PLUGIN_DATA="$T/data/workflow-test"
+# Drop a repository or config inherited from the caller (GIT_DIR from a git hook, XDG or GIT_CONFIG_GLOBAL config)
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_CONFIG_GLOBAL
+export HOME="$T/home" XDG_CONFIG_HOME="$T/home/.config" CLAUDE_PLUGIN_DATA="$T/data/workflow-test"
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
 export GIT_CONFIG_NOSYSTEM=1
 mkdir -p "$HOME" "$T/bin"
@@ -58,6 +61,9 @@ repo clean
 row 'everything committed and pushed, no issue read' "$(is "$(flags s-clean)" none)" ok
 repo clean-feat feat-clean
 row 'same on a pushed working branch with no PR' "$(is "$(flags s-clean-feat)" none)" ok
+repo fresh
+git -C "$R" checkout -q -b local-fresh
+row 'a new local branch with no upstream and no commits of its own' "$(is "$(flags s-fresh)" none)" ok
 repo written
 hook_bash s-written 'gh issue view 12 -R o/r'
 hook_bash s-written 'gh issue comment 12 -R o/r --body done'
@@ -74,6 +80,28 @@ row 'a new untracked file -> DIRTY' "$(is "$(flags s-untracked)" DIRTY)" ok
 repo unpushed feat-unpushed
 (cd "$R" && echo c > c.txt && git add c.txt && git commit -qm local)
 row 'a commit not pushed to the upstream -> UNPUSHED' "$(is "$(flags s-unpushed)" UNPUSHED)" ok
+repo noup
+(cd "$R" && git checkout -q -b local-only && echo d > d.txt && git add d.txt && git commit -qm local)
+row 'a commit on a branch with no upstream -> UNPUSHED' "$(is "$(flags s-noup)" UNPUSHED)" ok
+# A remote whose default branch is trunk and that has no main at all
+git init -q --bare "$T/trunk.git"; git -C "$T/trunk.git" symbolic-ref HEAD refs/heads/trunk
+git clone -q "$T/trunk.git" "$T/trunk-seed" 2>/dev/null
+(cd "$T/trunk-seed" && git checkout -q -b trunk && echo a > a.txt && git add a.txt && git commit -qm init && git push -q -u origin trunk) \
+  || { echo 'setup: could not push the trunk seed'; exit 1; }
+R="$T/trunk"; git clone -q "$T/trunk.git" "$R" 2>/dev/null
+[ "$(git -C "$R" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)" = origin/trunk ] || { echo 'setup: origin/HEAD is not origin/trunk'; exit 1; }
+(cd "$R" && git checkout -q -b local-trunk && echo e > e.txt && git add e.txt && git commit -qm local)
+row '  ...when the default branch is trunk, not main -> UNPUSHED' "$(is "$(flags s-trunk)" UNPUSHED)" ok
+git -C "$R" checkout -q -b local-trunk-fresh trunk
+row '  ...and not raised for a new branch from trunk' "$(is "$(flags s-trunk-fresh)" none)" ok
+repo nohead
+(cd "$R" && git remote set-head origin -d && git checkout -q -b local-nohead && echo f > f.txt && git add f.txt && git commit -qm local)
+row 'no upstream and no origin/HEAD: not raised' "$(is "$(flags s-nohead)" none)" ok
+row '  ...the git line says the default branch is unknown' "$(is "$(cd "$R" && python3 "$SV" --session s-nohead 2>/dev/null | grep -c 'default branch unknown')" 1)" ok
+R="$T/noremote"; git init -q "$R"
+(cd "$R" && git checkout -q -b base && echo a > a.txt && git add a.txt && git commit -qm init && git checkout -q -b local-x && echo g > g.txt && git add g.txt && git commit -qm local)
+row 'a repo with no remote at all: not raised' "$(is "$(flags s-noremote)" none)" ok
+row '  ...the git line says the default branch is unknown' "$(is "$(cd "$R" && python3 "$SV" --session s-noremote 2>/dev/null | grep -c 'default branch unknown')" 1)" ok
 repo pending
 hook_bash s-pending 'gh issue view 12 -R o/r'
 row 'an issue read and not written back -> PENDING_ISSUE' "$(is "$(flags s-pending)" PENDING_ISSUE)" ok

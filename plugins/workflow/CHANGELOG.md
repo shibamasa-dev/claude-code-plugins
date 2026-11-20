@@ -2,6 +2,17 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.12.3] - 2026-11-20
+
+### Fixed
+- artifact-ledger records the icon of a publish again. It read only `tool_input.favicon`, which the Artifact tool now marks deprecated in favour of `icon`, so new rows had no icon and `index.html` showed the default glyph. It now records `icon`, or `favicon` when a payload has only that, under the ledger's existing key `favicon`, so rows already in a ledger render as before (#122).
+- session-wrap's `survey.py` raises `UNPUSHED` for a branch with no upstream that has commits not on origin's default branch (read through the local `origin/HEAD`, as the other hooks do). Before, a never-pushed branch got no flag. With no `origin/HEAD` (no remote, or never set) it is still not raised and the git line says the default branch is unknown; SKILL.md step 3 says what to do then (#123).
+
+### Added
+- `tests/test-artifact-ledger.sh`: rows for a publish with `icon`, with only `favicon`, with both and with neither, a redeploy that omits the icon, an older ledger row with `favicon` rendering after an index rebuild, and the response's `path` taking precedence in `src_path` (inside and outside the project, no absolute path written) (#122).
+- `tests/test-session-wrap-survey.sh`: rows for a branch with no upstream with and without commits of its own, a remote whose default branch is `trunk`, no `origin/HEAD`, and no remote at all (#123).
+- `tests/test-classify.sh`: runs pr-review-triage's `classify.sh` on real diffs from a throwaway clone, one row per rule with inputs just inside and just outside each boundary, plus renames from a real `git mv` judged by the new name (#126).
+
 ## [0.12.2] - 2026-11-20
 
 ### Added

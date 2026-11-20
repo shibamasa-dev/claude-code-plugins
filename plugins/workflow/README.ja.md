@@ -175,7 +175,7 @@ claude plugin uninstall workflow@shibamasa-plugins --keep-data
 
 artifact-ledger フックは、プロジェクトのルートの `.artifacts/` に 2 つのファイルを置く。
 
-- `ledger.jsonl` が正本で、git で追跡する。公開のたびに 1 行（Artifact の id・URL・タイトル・説明・バージョン・リポからの相対パスのソース・セッション id）を追記する。追記だけで、書き換えない。
+- `ledger.jsonl` が正本で、git で追跡する。公開のたびに 1 行（Artifact の id・URL・タイトル・説明・アイコン・バージョン・リポからの相対パスのソース・セッション id）を追記する。追記だけで、書き換えない。アイコンは公開時の `icon`（`icon` が無く、非推奨の `favicon` だけが渡されたときはそれ）で、キー `favicon` に保存し、`index.html` の先頭列に出す。
 - `index.html` は台帳から生成する（タイトル・初回公開・最終更新の表）。追跡しない前提で、フックは `.gitignore` を書き換えないので `.artifacts/index.html` を自分で足す。追記のたびに作り直し、無くなっていれば台帳から作り直す。
 - worktree では親リポのルートに台帳を置くので、worktree を消しても台帳は消えない。
 - `list` を呼んでも Artifact は増えない。台帳にすでにある id についてだけ、応答の `updatedAt` を追記する（一覧には全プロジェクトの分が混ざるため）。
