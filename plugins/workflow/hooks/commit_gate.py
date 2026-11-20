@@ -854,6 +854,7 @@ def report(all_rows=False):
 
 def main():
     if sys.argv[1:2] == ["report"]:
+        _state.warn_fallback(state_dir())
         return report("--all" in sys.argv[2:])
     try:
         inp = json.load(sys.stdin)

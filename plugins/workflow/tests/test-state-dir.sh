@@ -64,6 +64,12 @@ dismiss=$(python3 -c 'import json,sys; r=json.loads(sys.stdin.read())["reason"];
 got=$(python3 -c 'import json,sys; print("yes" if json.load(open(sys.argv[1]))["issues"]["example-org/example-repo#7"].get("dismissed") else "no")' "$DATA/issue-writeback/fx-sess.json")
 row 'issue-writeback dismiss, run from Bash as printed, updates the hook state' "$got" yes
 
+echo '=== a CLI on the fallback says so ==='
+fresh f1; warned() { grep -q 'not where the hooks' <<<"$1" && echo warn || echo quiet; }
+row 'CLI without the prefix: warns on stderr' "$(warned "$(cd "$T" && HOME="$H" python3 "$HO" show 2>&1 >/dev/null)")" warn
+row 'CLI with the prefix: no warning' "$(warned "$(cd "$T" && HOME="$H" CLAUDE_PLUGIN_DATA="$DATA" python3 "$HO" show 2>&1 >/dev/null)")" quiet
+row 'run as a hook without the variable: no warning' "$(warned "$(printf '{"hook_event_name":"SessionStart","source":"startup","cwd":"%s"}' "$T" | HOME="$H" python3 "$HO" 2>&1 >/dev/null)")" quiet
+
 echo '=== handoff ==='
 REPO="$T/repo"; mkdir -p "$REPO"; (cd "$REPO" && git init -q . && git remote add origin git@github.com:example-org/example-repo.git)
 fresh h1

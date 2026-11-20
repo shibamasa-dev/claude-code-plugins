@@ -6,6 +6,7 @@ Change history of the testing plugin. Format follows [Keep a Changelog](https://
 
 ### Changed
 - full-test-gate keeps its records in `${CLAUDE_PLUGIN_DATA}/full-test/` (`FULL_TEST_STATE_DIR` still overrides; without the variable, `~/.claude/state/testing/full-test/`). The first run after the update copies `~/.claude/state/full-test/` there once and leaves it as the backup, and the `run` command the hook prints starts with `CLAUDE_PLUGIN_DATA=...` so a run from Bash records where the hook reads (#83).
+- `full-test-gate.py run|status` run from Bash without this plugin's `CLAUDE_PLUGIN_DATA` say on stderr that they are not using the hook's records (#83).
 - testcase-generator names where the test cases go: next to the repo's existing test-case files, else `docs/testcases/<topic>.md`, or the session scratchpad when they are only to be read (#83).
 
 ## [0.5.0] - 2026-11-17

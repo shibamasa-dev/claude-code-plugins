@@ -10,6 +10,7 @@ Changes to the workflow plugin. The format follows [Keep a Changelog](https://ke
 - Commands the hooks print for Claude to run (`issue-writeback.py dismiss`, `handoff.py consume`) and the ones in session-wrap, issue-ops and weekly-orchestrator-base start with `CLAUDE_PLUGIN_DATA=...`, since Bash does not get the variable (#83).
 - `/workflow:dev-process:review-and-fix` and `agent-review.sh` write reviews, fix plans and the debug log to `.context/workflow/review/`, `plan/` and `logs/` (were `.context/review/`, `.context/plan/` and `logs/` at the repo root), and the script adds `.context/` to `.git/info/exclude` (#83).
 - issue-ops: the body file for `gh issue create|edit|comment` goes in the session scratchpad, not the repository (#83).
+- A CLI run from Bash (`handoff.py`, `issue-writeback.py dismiss|status`, `commit_gate.py report`, session-wrap's `survey.py`) that ends up on the `~/.claude/state/workflow/` fallback says on stderr that it is not where the hooks keep their state (#83).
 
 ## [0.11.1] - 2026-11-19
 

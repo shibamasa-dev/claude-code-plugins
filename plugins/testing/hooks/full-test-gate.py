@@ -349,6 +349,10 @@ def hook_pre_bash(cwd, command):
 
 def main():
     if len(sys.argv) > 1:
+        if not os.environ.get("FULL_TEST_STATE_DIR") and not plugin_data():
+            print(f"[full-test-gate] Using {STATE_DIR}: CLAUDE_PLUGIN_DATA is unset or not this plugin's, so this is not "
+                  "where the hook keeps its records. Run the command as the hook prints it, with its "
+                  "CLAUDE_PLUGIN_DATA=... prefix.", file=sys.stderr)
         if sys.argv[1:] == ["run", "--working-tree"]:
             return cmd_run(os.getcwd(), working_tree=True)
         return {"run": cmd_run, "status": cmd_status}[sys.argv[1]](os.getcwd())

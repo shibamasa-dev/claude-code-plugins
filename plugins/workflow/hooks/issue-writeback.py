@@ -22,10 +22,10 @@ import fcntl, hashlib, json, os, re, sys, time
 from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _state import cli, state_dir  # noqa: E402
+from _state import command_for, state_dir, warn_fallback  # noqa: E402
 
 STATE_DIR = state_dir("issue-writeback", legacy="issue-writeback")
-SELF = cli(__file__)  # how messages tell Claude to run this script
+SELF = command_for(__file__)  # how messages tell Claude to run this script
 K_STOPS = 3          # block after this many Stops since the read (or since the last nag)
 MAX_NAGS = 3         # max blocks per issue (silent after that)
 GC_DAYS = 30         # clean up old state files (not deleted at SessionEnd, since resume brings back the same session_id)
@@ -341,6 +341,8 @@ def cli_status(argv):
     return 0
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] in ("dismiss", "status"):
+        warn_fallback(STATE_DIR)
     if len(sys.argv) > 1 and sys.argv[1] == "dismiss":
         sys.exit(cli_dismiss(sys.argv[2:]))
     if len(sys.argv) > 1 and sys.argv[1] == "status":

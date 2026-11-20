@@ -6,10 +6,10 @@ state_dir(feature) resolves, in order:
   3. ~/.claude/state/workflow/<feature>            (the variable is unset or not this plugin's: a script run from Bash)
 
 CLAUDE_PLUGIN_DATA is exported to hook processes but not to commands Claude runs through Bash, so a command a hook
-prints for Claude to run is built with cli(), which puts the value in front of it. Bash can still carry another
+prints for Claude to run is built with command_for(), which puts the value in front of it. Bash can still carry another
 plugin's value (seen: one plugin's data directory leaking into every Bash call), so the variable is used only when it
 names this plugin's directory: Claude Code names it after the plugin identifier, `<plugin>-<marketplace>` or
-`<plugin>-inline`.
+`<plugin>-inline`. A CLI that ends up on the fallback says so on stderr (warn_fallback()).
 
 legacy=<dir> migrates once: when the resolved directory does not exist yet and <dir> has files, <dir> is copied to a
 temp name next to it and renamed into place. The old directory stays as the backup. "Does not exist" rather than
@@ -20,6 +20,7 @@ place and the next run tries again.
 import os
 import shlex
 import shutil
+import sys
 
 PLUGIN = "workflow"
 LEGACY_ROOT = os.path.join("~", ".claude", "state")
@@ -66,7 +67,18 @@ def migrate(old, new):
         return "none" if os.path.lexists(new) else "failed"
 
 
-def cli(path):
+def warn_fallback(path, override_env=None):
+    """For a script run as a CLI (never as a hook): say on stderr when it is using the fallback directory, which is not
+    where the hooks keep their state (the variable is unset, another plugin's, or a placeholder that was not
+    substituted). Silent when an env override is set: then the user chose the directory."""
+    if (override_env and os.environ.get(override_env)) or plugin_data():
+        return
+    print(f"[{PLUGIN}] Using {path}: CLAUDE_PLUGIN_DATA is unset or not this plugin's, so this is not where the hooks "
+          "keep their state. Run the command as the hook or skill prints it, with its CLAUDE_PLUGIN_DATA=... prefix.",
+          file=sys.stderr)
+
+
+def command_for(path):
     """How a hook message tells Claude to run the script at path, carrying CLAUDE_PLUGIN_DATA into the Bash call."""
     cmd = f'python3 "{os.path.abspath(path)}"'
     data = plugin_data()

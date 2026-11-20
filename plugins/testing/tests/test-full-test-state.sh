@@ -35,3 +35,9 @@ msg=$(printf '{"hook_event_name":"SessionStart","cwd":"%s"}' "$w" | HOME="$H3" C
 cmd=$(grep -o 'CLAUDE_PLUGIN_DATA=[^`]* run' <<<"$msg" | head -1)
 (cd "$w" && HOME="$H3" bash -c "$cmd" >/dev/null 2>&1)
 row '`run` as the hook prints it records where the hook reads' "$(status "$H3" "$D3")" recorded
+
+warned() { grep -q 'not where the hook keeps' <<<"$1" && echo warn || echo quiet; }
+H4="$T/h4"; mkdir -p "$H4"
+row 'CLI without the prefix: warns on stderr' "$(warned "$(cd "$w" && HOME="$H4" python3 "$H" status 2>&1 >/dev/null)")" warn
+row 'CLI with the prefix: no warning' "$(warned "$(cd "$w" && HOME="$H4" CLAUDE_PLUGIN_DATA="$T/h4/data/testing-test" python3 "$H" status 2>&1 >/dev/null)")" quiet
+row 'run as a hook without the variable: no warning' "$(warned "$(printf '{"hook_event_name":"SessionStart","cwd":"%s"}' "$w" | HOME="$H4" python3 "$H" 2>&1 >/dev/null)")" quiet

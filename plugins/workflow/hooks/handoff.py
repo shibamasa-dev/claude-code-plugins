@@ -19,11 +19,11 @@ import hashlib, json, os, re, subprocess, sys, time
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _state import cli, state_dir  # noqa: E402
+from _state import command_for, state_dir, warn_fallback  # noqa: E402
 
 STATE_DIR = state_dir("handoff", override_env="HANDOFF_STATE_DIR", legacy="handoff")
 STALE_DAYS = 14
-SELF = cli(__file__)  # how messages tell Claude to run this script
+SELF = command_for(__file__)  # how messages tell Claude to run this script
 
 def project_root(cwd):
     try:
@@ -136,6 +136,7 @@ def cli(argv):
 
 def main():
     if len(sys.argv) > 1:
+        warn_fallback(STATE_DIR, "HANDOFF_STATE_DIR")
         sys.exit(cli(sys.argv[1:]))
     try:
         inp = json.load(sys.stdin)
