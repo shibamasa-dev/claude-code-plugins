@@ -31,7 +31,7 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 
 | プラグイン | 中身 |
 |---|---|
-| [guards](plugins/guards/README.ja.md) | 作業を止めるフック。破壊的な削除・未マージ worktree の削除・古い既定ブランチからの push。リポ構成のルール（ルールファイルを置いたときだけ）。マージの後のローカルのマージ先ブランチの追従。`--json` なしの `gh issue view --comments`（gh-comments-guard）と `pip freeze`（pip-freeze-guard）も止める。`publish_patterns` を設定すると、公開リポへ出す issue / PR の文面が自分で登録した非公開値のパターンに当たらないかも調べる（publish-guard） |
+| [guards](plugins/guards/README.ja.md) | 作業を止めるフック。破壊的な削除・未マージ worktree の削除・古い既定ブランチからの push。リポ構成のルール（ルールファイルを置いたときだけ）。マージの後のローカルのマージ先ブランチの追従。`--json` なしの `gh issue view --comments`（gh-comments-guard）と `pip freeze`（pip-freeze-guard）も止める。`publish_patterns` を設定すると、`gh` コマンドと GitHub コネクタ経由で公開リポへ出す issue / PR の文面が、自分で登録した非公開値のパターンに当たらないかも調べる（publish-guard。見えない範囲は guards の README に書いてある） |
 | [workflow](plugins/workflow/README.ja.md) | 依頼からマージまでの開発フロー（PR のレビューの振り分けと待ち方を含む）・issue 運用・セッションの引き継ぎ・runbook 記録などのスキルとフック、使用枠をファイルへ書き出す mod |
 | [testing](plugins/testing/README.ja.md) | テストを設計して回す。Gherkin のテストケース作成・成果物の検証・全体テストのゲート |
 | [repo-setup](plugins/repo-setup/README.ja.md) | リポの立ち上げ。基本設定の点検・クラウド環境のセットアップ・プロジェクト専用の実アプリ検証スキルの作成（`verification-skill-builder`） |
