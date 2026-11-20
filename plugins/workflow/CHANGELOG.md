@@ -2,6 +2,11 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.12.2] - 2026-11-20
+
+### Added
+- `tests/test-session-wrap-survey.sh`: runs session-wrap's `survey.py` against throwaway clones with and without leftovers (a tracked edit, an untracked file, an unpushed commit, an issue read through the real issue-writeback hook and not written back, an open PR) and checks the flags it raises (#116).
+
 ## [0.12.1] - 2026-11-20
 
 ### Fixed
