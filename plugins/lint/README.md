@@ -47,3 +47,9 @@ It keeps nothing in its plugin data directory, so uninstalling removes none of t
 - `skill-creator` (from another marketplace) is optional: `skill-planner` hands its plan to it when installed, and otherwise the plan is built directly
 - Optional: `gh` (the reviewer uses your gh login as a hint), `gitleaks` (handles secret scanning; reported as `skipped` if missing)
 - Eval group B (`scripts/run_reviewer_eval.py`) needs the `claude` CLI. The eval scripts are for the maintainers: they read the eval set under `evals/`, which is kept locally and not published
+
+## Tests
+
+```bash
+bash plugins/lint/tests/run-all.sh
+```

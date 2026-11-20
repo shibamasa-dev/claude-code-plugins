@@ -50,3 +50,9 @@ The checks that read their config from the default branch (full-test-gate) defen
 ## Requirements
 
 macOS or Linux, `python3`, `git`
+
+## Tests
+
+```bash
+bash plugins/testing/tests/run-all.sh
+```

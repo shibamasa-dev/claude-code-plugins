@@ -38,6 +38,12 @@ The layout follows Anthropic's plugin repos (anthropics/claude-plugins-official,
 - Describe the current behavior only. Version history and reasons for past changes go in CHANGELOG.md
 - `.github/scripts/check-repo.py` enforces the pair, the switcher links and the absence of kana in `README.md`
 
+## Tests and versions
+
+Run what CI runs (the full list is in [CONTRIBUTING.md](CONTRIBUTING.md#before-opening-a-pr)): `python3 .github/scripts/check-repo.py --base origin/main`, `bash .github/scripts/check-version-bump.sh origin/main`, `claude plugin validate --strict .`, and `bash plugins/<name>/tests/run-all.sh` for each plugin you touched (mod tests: `claude plugin test plugins/<name>`).
+
+Bump a plugin's `version` in `plugin.json` (with a matching CHANGELOG heading) when you change anything under `plugins/<name>/` other than README, CHANGELOG or `tests/`. See [CONTRIBUTING.md](CONTRIBUTING.md#versions-and-changelog).
+
 ## PR reviews
 
 review-heavy: coderabbit, codex

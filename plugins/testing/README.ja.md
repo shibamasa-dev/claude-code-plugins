@@ -50,3 +50,9 @@ claude plugin uninstall testing@shibamasa-plugins --keep-data
 ## 前提
 
 macOS / Linux、`python3`、`git`
+
+## テスト
+
+```bash
+bash plugins/testing/tests/run-all.sh
+```
