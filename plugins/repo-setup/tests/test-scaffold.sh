@@ -4,6 +4,7 @@
 # are kept, the SessionStart hook is merged without duplicates, the generated setup.sh stays silent locally.
 set -u
 SCAFFOLD="$(cd "$(dirname "$0")/.." && pwd)/skills/remote-setup/scripts/scaffold.py"
+TPL="$(dirname "$SCAFFOLD")/../assets/templates"
 TMP=$(mktemp -d) || exit 1; trap 'rm -rf "$TMP"' EXIT
 row() {  # row <description> <got> <want>: the verdict is ok when got equals want (run-all.sh reads lowercase words after ->)
   if [ "$2" = "$3" ]; then printf '  %-62s -> ok (expect ok)\n' "$1"; else printf '  %s [got: %s, want: %s] -> bad (expect ok)\n' "$1" "$2" "$3"; fi
@@ -34,7 +35,7 @@ echo '=== second run: overwrite, keep, no duplicate ==='
 echo '# edited' >> "$D/setup.sh"; echo '# mine' >> "$D/steps.sh"; echo '# mine' >> "$D/environment-setup.sh"
 python3 "$SCAFFOLD" "$R" >/dev/null; rc=$?
 row 'exit status' "$([ $rc = 0 ] && echo ok || echo bad)" 'ok'
-row 'setup.sh is overwritten from the template' "$(yn grep -q '^# edited' "$D/setup.sh")" 'no'
+row 'setup.sh is overwritten from the template' "$(yn cmp -s "$D/setup.sh" "$TPL/setup.sh")" 'yes'
 row 'steps.sh is kept' "$(yn grep -q '^# mine' "$D/steps.sh")" 'yes'
 row 'environment-setup.sh is kept' "$(yn grep -q '^# mine' "$D/environment-setup.sh")" 'yes'
 row 'hook is not added twice' "$(hooks "$R/.claude/settings.json")" '1'
