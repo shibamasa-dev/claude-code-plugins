@@ -39,6 +39,7 @@ ok = (r["event"] == "publish" and r["artifact_id"] == "abc123"
       and r["src_path"] == "page.html")  # repo-relative, never absolute
 print("  row fields -> %s (expect ok: publish / id / url / title / relative src_path)" % ("ok" if ok else "ng"))
 PY
+check "row fields script exit" "$?" 0
 [ -f "$T/.artifacts/index.html" ] && r=ok || r=ng; echo "  index.html -> $r (expect ok)"
 
 echo "=== case 2: payloads the hook does not handle exit 0 and write nothing ==="
