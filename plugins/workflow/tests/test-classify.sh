@@ -38,6 +38,9 @@ for ext in md markdown txt rst adoc; do
 done
 case_ doc-near-skills; echo x > "$R/docs/skills-guide.md"; commit near
 row 'docs/skills-guide.md (skills in a name, not a directory) -> light' "$(is "$(verdict)" light)" ok
+# Derived from classify.sh, not the skill: "skills/ in the path" is read as a whole directory name, so myskills/ is not it
+case_ doc-near-dir; mkdir -p "$R/docs/myskills"; echo x > "$R/docs/myskills/notes.md"; commit near
+row 'docs/myskills/notes.md (a directory ending in skills) -> light' "$(is "$(verdict)" light)" ok
 case_ doc-near-name; echo x > "$R/docs/CLAUDE-notes.md"; commit near
 row 'docs/CLAUDE-notes.md (not exactly CLAUDE.md) -> light' "$(is "$(verdict)" light)" ok
 
