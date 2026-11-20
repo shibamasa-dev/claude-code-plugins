@@ -31,10 +31,10 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 
 | プラグイン | 中身 |
 |---|---|
-| [guards](plugins/guards/README.ja.md) | 作業を止めるフック。破壊的な削除・未マージ worktree の削除・古い既定ブランチからの push。リポ構成のルール（ルールファイルを置いたときだけ）。マージの後のローカルのマージ先ブランチの追従 |
+| [guards](plugins/guards/README.ja.md) | 作業を止めるフック。破壊的な削除・未マージ worktree の削除・古い既定ブランチからの push。リポ構成のルール（ルールファイルを置いたときだけ）。マージの後のローカルのマージ先ブランチの追従。`--json` なしの `gh issue view --comments`（gh-comments-guard）と `pip freeze`（pip-freeze-guard）も止める。`publish_patterns` を設定すると、公開リポへ出す issue / PR の文面が自分で登録した非公開値のパターンに当たらないかも調べる（publish-guard） |
 | [workflow](plugins/workflow/README.ja.md) | 依頼からマージまでの開発フロー（PR のレビューの振り分けと待ち方を含む）・issue 運用・セッションの引き継ぎ・runbook 記録などのスキルとフック、使用枠をファイルへ書き出す mod |
 | [testing](plugins/testing/README.ja.md) | テストを設計して回す。Gherkin のテストケース作成・成果物の検証・全体テストのゲート |
-| [repo-setup](plugins/repo-setup/README.ja.md) | リポの立ち上げ。基本設定の点検・クラウド環境のセットアップ |
+| [repo-setup](plugins/repo-setup/README.ja.md) | リポの立ち上げ。基本設定の点検・クラウド環境のセットアップ・プロジェクト専用の実アプリ検証スキルの作成（`verification-skill-builder`） |
 | [creative](plugins/creative/README.ja.md) | 画像生成プロンプト・図の枠の意味の決め方・コードで描くモーション動画のスキル |
 | [lint](plugins/lint/README.ja.md) | スキルを作るための道具群。skill-planner（作る前の計画）と skill-lint（スキルに作った人・会社・マシンの固有情報が混ざっていないかを調べ、配布してよいかを報告する）。DESIGN.md を編集したら lint するフックも |
 | [inventory](plugins/inventory/README.ja.md) | 手持ちの物の在庫DB。Claude が写真から登録し、読めなかった項目は `needs_review` に残し、NFKC 正規化した検索で引ける。既定は SQLite、Postgres / Supabase にも直結かコネクタ経由で置ける |

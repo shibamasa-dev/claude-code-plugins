@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash plugins/*/tests/run-all.sh)",
+      "Bash(claude plugin test plugins/*)",
+      "Bash(claude plugin validate *)",
+      "Bash(python3 .github/scripts/check-repo.py *)",
+      "Bash(bash .github/scripts/check-version-bump.sh *)"
+    ]
+  }
+}
