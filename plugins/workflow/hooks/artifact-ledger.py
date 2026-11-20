@@ -204,7 +204,9 @@ def main():
             "url": resp["url"],
             "title": resp.get("title"),
             "description": ti.get("description"),
-            "favicon": ti.get("favicon"),
+            # The tool takes `icon` and marks `favicon` deprecated; read `favicon` only when a payload has no `icon`.
+            # Stored under the ledger's existing key `favicon`, so fold(), render() and rows already written need no change.
+            "favicon": ti.get("icon") or ti.get("favicon"),
             "updated": resp.get("updated"),
             "version": resp.get("version"),
             "src_path": rel_src(resp.get("path") or ti.get("file_path"), root),

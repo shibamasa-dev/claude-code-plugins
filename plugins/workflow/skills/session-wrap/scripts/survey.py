@@ -7,6 +7,8 @@
 
 Covers only the invoking session. Collects: cwd / git uncommitted, untracked, unpushed / open PR for the current
 branch / issue-writeback's unreflected issues. No judgment; it only raises flags (DIRTY / UNPUSHED / PR_OPEN / PENDING_ISSUE).
+UNPUSHED counts commits not on the upstream, or, for a branch with no upstream, commits not on origin's default branch
+(the local origin/HEAD); with no origin/HEAD it is not raised.
 """
 import argparse, json, os, subprocess, sys
 
@@ -50,8 +52,15 @@ def git_state(cwd):
     lines = [l for l in st.splitlines() if l.strip()]
     untracked = sum(1 for l in lines if l.startswith("??")); dirty = len(lines) - untracked
     rc_u, ahead = sh(["git", "rev-list", "--count", "@{u}..HEAD"], cwd)
-    unpushed = int(ahead) if rc_u == 0 and ahead.isdigit() else None  # None = no upstream
-    return {"root": top, "branch": branch, "dirty": dirty, "untracked": untracked, "unpushed": unpushed}
+    upstream = rc_u == 0 and ahead.isdigit()
+    if not upstream:
+        # No upstream: count the commits not on origin's default branch, read through the local origin/HEAD as the
+        # plugin's hooks do (no network, never a guessed main/master). No origin/HEAD (no remote, or it was never
+        # set) leaves the count unknown (None).
+        rc_u, ahead = sh(["git", "rev-list", "--count", "refs/remotes/origin/HEAD..HEAD"], cwd)
+    unpushed = int(ahead) if rc_u == 0 and ahead.isdigit() else None
+    return {"root": top, "branch": branch, "dirty": dirty, "untracked": untracked,
+            "upstream": upstream, "unpushed": unpushed}
 
 def open_pr(cwd):
     rc, out = sh(["gh", "pr", "view", "--json", "number,url,state,reviewDecision,isDraft"], cwd, timeout=8)
@@ -83,7 +92,9 @@ def fmt(r):
     lines = [head, f"    cwd: {r['cwd']}"]
     g = r["git"]
     if g:
-        up = "no upstream" if g["unpushed"] is None else f"unpushed {g['unpushed']}"
+        if g["upstream"]: up = f"unpushed {g['unpushed']}"
+        elif g["unpushed"] is None: up = "no upstream, origin's default branch unknown (no origin/HEAD)"
+        else: up = f"no upstream, {g['unpushed']} commits not on origin/HEAD"
         lines.append(f"    git: {g['branch'] or '(detached)'}  changed {g['dirty']} / untracked {g['untracked']} / {up}")
     else:
         lines.append("    git: (not a repository)")
