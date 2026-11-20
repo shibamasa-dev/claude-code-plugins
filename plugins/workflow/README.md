@@ -195,7 +195,7 @@ The hook prints nothing and always exits 0.
 
 ## Requirements
 
-macOS or Linux, `python3`, `git`, `gh`, `jq`
+macOS or Linux, `python3` (3.9 or later; the stock macOS `/usr/bin/python3` is 3.9), `git`, `gh`, `jq`
 
 ## Tests
 

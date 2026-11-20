@@ -7,6 +7,8 @@ Called from PostToolUse (matcher ^Artifact$).
               (list mixes all projects, so it never creates new rows)
 Whatever happens, stdout stays empty and it always exits 0. It never stops the tool.
 """
+from __future__ import annotations  # `str | None` in annotations must not be evaluated on Python 3.9
+
 import json, os, sys, subprocess, pathlib, tempfile, html
 from datetime import datetime
 

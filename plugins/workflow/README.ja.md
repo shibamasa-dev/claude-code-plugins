@@ -195,7 +195,7 @@ artifact-ledger フックは、プロジェクトのルートの `.artifacts/` �
 
 ## 前提
 
-macOS / Linux、`python3`、`git`、`gh`、`jq`
+macOS / Linux、`python3`（3.9 以上。macOS 標準の `/usr/bin/python3` は 3.9）、`git`、`gh`、`jq`
 
 ## テスト
 
