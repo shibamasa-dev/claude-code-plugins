@@ -47,7 +47,7 @@ jobs:
 
   tests:
     # The tests assume macOS date -v / touch -t (3 runbook tests fail on Linux)
-    # Hooks run under the user's python3, which is 3.9 on a stock macOS, so run the suites under 3.9 as well
+    # Hooks run under the user's python3, which is 3.9 on a stock macOS, so run the suites under that python3 as well
     name: tests (python ${{ matrix.python }})
     runs-on: macos-latest
     timeout-minutes: 15
@@ -57,10 +57,14 @@ jobs:
         python: [default, '3.9']
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      # The stock macOS python3 (/usr/bin/python3, from Xcode or the Command Line Tools), not a setup-python build:
+      # setup-python's 3.9.13 links SQLite 3.37.2, while the one users have links the system SQLite
+      - name: Put the stock macOS python3 first on PATH
         if: matrix.python != 'default'
-        with:
-          python-version: ${{ matrix.python }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/stock-python"
+          ln -s /usr/bin/python3 "$RUNNER_TEMP/stock-python/python3"
+          echo "$RUNNER_TEMP/stock-python" >> "$GITHUB_PATH"
       - name: Show which python3 the tests use
         run: |
           command -v python3

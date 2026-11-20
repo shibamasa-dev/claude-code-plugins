@@ -32,7 +32,8 @@ CI also runs these. Run them when you touch the parts they cover:
 ```bash
 # The plugin suites under Python 3.9 (the python3 of a stock macOS); needs uv
 d=$(dirname "$(uv python find 3.9)")
-for t in plugins/*/tests/run-all.sh; do PATH="$d:$PATH" bash "$t"; done
+PATH="$d:$PATH" python3 -c 'import sys; sys.exit(0 if sys.version_info[:2] == (3, 9) else "python3 is %d.%d" % sys.version_info[:2])' &&
+  for t in plugins/*/tests/run-all.sh; do PATH="$d:$PATH" bash "$t"; done
 
 # The inventory tests against Postgres (a throwaway postgres:16 container); needs docker, psql and uv
 bash plugins/inventory/tests/run-postgres.sh
