@@ -2,6 +2,17 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.12.1] - 2026-11-20
+
+### Fixed
+- artifact-ledger hook failed at import on Python 3.9 (`str | None` in an annotation raised `TypeError`), so on a stock macOS `python3` no Artifact was ever recorded. It now loads on 3.9 and appends the ledger line (#114).
+
+### Added
+- `tests/test-artifact-ledger.sh`: feeds the hook an Artifact publish payload and payloads it does not handle, on `/usr/bin/python3` where present (#114).
+
+### Changed
+- README: the minimum Python version is 3.9 (#114).
+
 ## [0.12.0] - 2026-11-20
 
 ### Changed
