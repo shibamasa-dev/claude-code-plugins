@@ -14,6 +14,8 @@ HOOK="$(cd "$(dirname "$0")/.." && pwd)/hooks/artifact-ledger.py"
 if [ -x /usr/bin/python3 ]; then PY=/usr/bin/python3; else PY=python3; fi
 T=$(mktemp -d "${TMPDIR:-/tmp}/ledger-fixture.XXXX") || exit 1
 trap 'rm -rf "$T"' EXIT
+# Drop a repository or config inherited from the caller (GIT_DIR from a git hook, XDG or GIT_CONFIG_GLOBAL config)
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_CONFIG_GLOBAL
 git -C "$T" init -q 2>/dev/null
 LEDGER="$T/.artifacts/ledger.jsonl"
 INDEX="$T/.artifacts/index.html"

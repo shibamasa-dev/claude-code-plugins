@@ -2,7 +2,8 @@
 # Live check of skills/pr-review-triage/scripts/classify.sh: light vs heavy for real diffs.
 # Each case is a branch in a throwaway clone of a local bare remote: real files, real commits, fed to the script the way
 # SKILL.md step 2 does (`git diff --numstat origin/<base>...HEAD | bash classify.sh`). classify.sh calls neither gh nor
-# git, so no fake gh is needed. HOME points at a temp directory so no global git config (renames, quotepath) leaks in;
+# git, so no fake gh is needed. HOME and XDG_CONFIG_HOME point at a temp directory and inherited GIT_DIR-style variables are
+# unset, so no outside repository or global git config (renames, quotepath, ignores) leaks in;
 # no network is used.
 # Expected results come from SKILL.md step 2: heavy for a non-document file (no extension included) or a binary, a
 # document under skills/ hooks/ agents/ commands/ rules/ .github/ or named SKILL.md / CLAUDE.md / AGENTS.md, more than
@@ -12,7 +13,9 @@ set -u
 CL="$(cd "$(dirname "$0")/.." && pwd)/skills/pr-review-triage/scripts/classify.sh"
 T=$(mktemp -d "${TMPDIR:-/tmp}/classify.XXXX") || exit 1
 trap 'rm -rf "$T"' EXIT
-export HOME="$T/home" GIT_CONFIG_NOSYSTEM=1
+# Drop a repository or config inherited from the caller (GIT_DIR from a git hook, XDG or GIT_CONFIG_GLOBAL config)
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_CONFIG_GLOBAL
+export HOME="$T/home" XDG_CONFIG_HOME="$T/home/.config" GIT_CONFIG_NOSYSTEM=1
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
 mkdir -p "$HOME"
 row() { printf '  %-62s -> %-5s (expect %s)\n' "$1" "$2" "$3"; }

@@ -14,7 +14,9 @@ D="$(cd "$(dirname "$0")/.." && pwd)"
 SV="$D/skills/session-wrap/scripts/survey.py"; IW="$D/hooks/issue-writeback.py"
 T=$(mktemp -d "${TMPDIR:-/tmp}/survey.XXXX") || exit 1
 trap 'rm -rf "$T"' EXIT
-export HOME="$T/home" CLAUDE_PLUGIN_DATA="$T/data/workflow-test"
+# Drop a repository or config inherited from the caller (GIT_DIR from a git hook, XDG or GIT_CONFIG_GLOBAL config)
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_CONFIG_GLOBAL
+export HOME="$T/home" XDG_CONFIG_HOME="$T/home/.config" CLAUDE_PLUGIN_DATA="$T/data/workflow-test"
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
 export GIT_CONFIG_NOSYSTEM=1
 mkdir -p "$HOME" "$T/bin"
