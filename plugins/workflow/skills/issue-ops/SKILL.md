@@ -49,7 +49,7 @@ In environments where `issue_write` returns "interactive form has been shown", s
 
 | Operation | Command |
 |---|---|
-| Create | `gh issue create --repo <o>/<r> --title "…" --body-file <file>` (write the body to a file first) |
+| Create | `gh issue create --repo <o>/<r> --title "…" --body-file <file>` (write the body to a file first, in the session scratchpad, never inside the repository; the same `<file>` below) |
 | Update body/title | `gh issue edit <n> --repo <o>/<r> --body-file <file>` |
 | Comment | `gh issue comment <n> --repo <o>/<r> --body-file <file>` |
 | Close | `gh issue close <n> --repo <o>/<r> --reason completed` (after writing `## Result` in the body) |
@@ -168,7 +168,7 @@ Recurrence is for classification and filtering, not an execution trigger. **Real
 
 ### Body vs. comments when updating an issue
 
-**Write at the moment a decision is made. Don't batch it up at the end of the session.** If several turns pass without updating an issue you read, the workflow plugin's `issue-writeback` hook blocks Stop and prompts you to write back (up to 3 times per issue). If there really is no decision (only summarized it, only read it as an implementation spec), run the `dismiss` command given in the hook's message with a reason, then finish. After `/clear`, compaction, or resume, unreflected issues are notified again. For tracking across all sessions, run `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/issue-writeback.py" status --pending` (it matches against `claude agents --json` to show session names and whether they are alive; ended sessions with unreflected issues get a resume command).
+**Write at the moment a decision is made. Don't batch it up at the end of the session.** If several turns pass without updating an issue you read, the workflow plugin's `issue-writeback` hook blocks Stop and prompts you to write back (up to 3 times per issue). If there really is no decision (only summarized it, only read it as an implementation spec), run the `dismiss` command given in the hook's message with a reason, then finish. After `/clear`, compaction, or resume, unreflected issues are notified again. For tracking across all sessions, run `CLAUDE_PLUGIN_DATA='${CLAUDE_PLUGIN_DATA}' python3 "${CLAUDE_PLUGIN_ROOT}/hooks/issue-writeback.py" status --pending` (it matches against `claude agents --json` to show session names and whether they are alive; ended sessions with unreflected issues get a resume command).
 
 **The body is "how things are now"; comments are "why it became so"**.
 

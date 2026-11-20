@@ -21,6 +21,18 @@ Skills for bootstrapping a repo.
 
 The test-design check in `codebase-doctor` (Check 6b) reads where test artifacts belong from the `testcase-generator` skill in [testing](../testing/README.md). Without the testing plugin, that check is SKIPPED (excluded from the score).
 
+## Configuration
+
+### Where files go
+
+| What | Where |
+|---|---|
+| codebase-doctor reports | `.context/repo-setup/doctor/` in the repo; the skill adds `.context/` to `.git/info/exclude` first, so they stay out of git |
+| What the skills set up for you to commit | in the repo: the Decided setup section of `CLAUDE.md`, `.claude/skills/verify-<app>/`, `scripts/remote-setup/` |
+| The log of the generated setup script | `~/.cache/remote-setup/<repo>.log` on the machine that runs it |
+
+It keeps nothing in its plugin data directory, so uninstalling removes none of these files.
+
 ## Requirements
 
 macOS or Linux, `python3`, `git`, `gh`

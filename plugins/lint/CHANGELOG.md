@@ -2,6 +2,11 @@
 
 Change history of the lint plugin. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
 
+## [0.4.1] - 2026-11-20
+
+### Changed
+- skill-lint keeps its working files (`lint.json`, `review.txt`, `review.json`) in the session scratchpad, or in a `mktemp -d` directory it removes after the report (#83).
+
 ## [0.4.0] - 2026-11-18
 
 ### Added

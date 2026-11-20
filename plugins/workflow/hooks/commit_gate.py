@@ -57,6 +57,7 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _shell import HEREDOC_MARK_RE, _no_redirects, commands, lex, resolve_dir  # noqa: E402
+import _state  # noqa: E402
 
 TAG = "[commit-gate]"
 MODES = ("off", "observe", "enforce")
@@ -76,8 +77,8 @@ SEP_RE = re.compile(r"[ \t]+[—–-]+[ \t]+|[ \t]*[—–][ \t]*")
 
 
 def state_dir():
-    """The one place that decides where state lives (#83 will move all hook state to CLAUDE_PLUGIN_DATA only)."""
-    return os.path.join(os.environ.get("CLAUDE_PLUGIN_DATA") or os.path.expanduser("~/.claude/state"), "commit-gate")
+    """Where commit-gate's state lives (_state.py decides it for every hook of this plugin)."""
+    return _state.state_dir("commit-gate")
 
 
 def now():
@@ -853,6 +854,7 @@ def report(all_rows=False):
 
 def main():
     if sys.argv[1:2] == ["report"]:
+        _state.warn_fallback(state_dir())
         return report("--all" in sys.argv[2:])
     try:
         inp = json.load(sys.stdin)

@@ -2,7 +2,7 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
-## [0.11.2] - 2026-11-20
+## [0.12.1] - 2026-11-20
 
 ### Fixed
 - artifact-ledger hook failed at import on Python 3.9 (`str | None` in an annotation raised `TypeError`), so on a stock macOS `python3` no Artifact was ever recorded. It now loads on 3.9 and appends the ledger line (#114).
@@ -12,6 +12,16 @@ Changes to the workflow plugin. The format follows [Keep a Changelog](https://ke
 
 ### Changed
 - README: the minimum Python version is 3.9 (#114).
+
+## [0.12.0] - 2026-11-20
+
+### Changed
+- Hook state moves to `${CLAUDE_PLUGIN_DATA}/<feature>/`: issue-writeback and handoff (`HANDOFF_STATE_DIR` still overrides) leave `~/.claude/state/`, and every hook falls back to `~/.claude/state/workflow/<feature>/` when the variable is unset (was `~/.claude/state/<feature>/` for dev-flow-gate, orchestrator-report, commit-gate and checks). One resolver, `hooks/_state.py`, decides it for all of them and for session-wrap's `survey.py`. The variable is used only when it names this plugin's directory, because a Bash call can carry another plugin's value (#83).
+- On the first run after the update, issue-writeback, handoff and `survey.py` copy `~/.claude/state/issue-writeback/` and `~/.claude/state/handoff/` to the new place once (only when the new directory does not exist yet) and leave the old directories as the backup (#83).
+- Commands the hooks print for Claude to run (`issue-writeback.py dismiss`, `handoff.py consume`) and the ones in session-wrap, issue-ops and weekly-orchestrator-base start with `CLAUDE_PLUGIN_DATA=...`, since Bash does not get the variable (#83).
+- `/workflow:dev-process:review-and-fix` and `agent-review.sh` write reviews, fix plans and the debug log to `.context/workflow/review/`, `plan/` and `logs/` (were `.context/review/`, `.context/plan/` and `logs/` at the repo root), and the script adds `.context/` to `.git/info/exclude` (#83).
+- issue-ops: the body file for `gh issue create|edit|comment` goes in the session scratchpad, not the repository (#83).
+- A CLI run from Bash (`handoff.py`, `issue-writeback.py dismiss|status`, `commit_gate.py report`, session-wrap's `survey.py`) that ends up on the `~/.claude/state/workflow/` fallback says on stderr that it is not where the hooks keep their state (#83).
 
 ## [0.11.1] - 2026-11-19
 

@@ -5,7 +5,7 @@
 set -u
 HOOK="$(cd "$(dirname "$0")/.." && pwd)/hooks/dev_flow_gate.py"
 T=$(mktemp -d "${TMPDIR:-/tmp}/dfg.XXXX")
-export CLAUDE_PLUGIN_DATA="$T/data" HOME="$T"
+export CLAUDE_PLUGIN_DATA="$T/data/workflow-test" HOME="$T"
 unset GH_REPO
 cd "$T" || exit 1
 

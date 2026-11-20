@@ -62,6 +62,10 @@ Claude saves the route with `claude plugin configure inventory@shibamasa-plugins
 
 When the saved route stops working, Claude stops and tells you. It never falls back to another store, so the data doesn't split across two places.
 
+### Where files go
+
+The SQLite file and photos live in the plugin data directory unless `sqlite_path` / `photo_dir` move them; uninstalling deletes that directory unless you pass `--keep-data` (details in Your data). A database behind `database_url` is not touched.
+
 ## Your data
 
 The default SQLite file is inside the plugin data directory (`~/.claude/plugins/data/<plugin id>/`). **Uninstalling the plugin from the last scope it is installed in deletes that directory, and the database and photos in it**, unless you pass `--keep-data`:

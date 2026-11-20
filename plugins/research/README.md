@@ -63,6 +63,10 @@ Set them in your shell profile, or load them from your password manager there, s
 
 The plugin doesn't schedule runs. To run daily, call the script from your own scheduler (cron, launchd, systemd timers, CI) with the variables above set. Don't let a scheduled run and a manual run start within minutes of each other: both can read the same history and post the same announcement.
 
+### Where files go
+
+research-x writes no file and keeps no database: the channel history is its state. Uninstalling removes nothing.
+
 ## Limitations
 
 - Two runs at the same time can post the same announcement twice (there is no lock; the channel history is the only state).

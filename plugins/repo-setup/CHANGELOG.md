@@ -2,6 +2,11 @@
 
 Change history of the repo-setup plugin (named devtools up to 0.2.2). Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
 
+## [0.7.0] - 2026-11-20
+
+### Changed
+- codebase-doctor writes its report to `.context/repo-setup/doctor/` (was `.context/doctor/`) and first adds `.context/` to `.git/info/exclude`, so the report stays out of git (#83).
+
 ## [0.6.0] - 2026-11-17
 
 ### Added

@@ -124,7 +124,11 @@ Rate each check:
 
 Output both:
 1. **Terminal**: Summary table with ratings
-2. **File**: `.context/doctor/YYYYMMDDHHmmss_doctor_report.md` (timestamp at generation time)
+2. **File**: `.context/repo-setup/doctor/YYYYMMDDHHmmss_doctor_report.md` (timestamp at generation time). Later runs read it again, so it lives in the repo but stays out of git: before writing it, add `.context/` to `.git/info/exclude` (not to the tracked `.gitignore`) with
+   ```bash
+   f=$(git rev-parse --git-path info/exclude) && mkdir -p "$(dirname "$f")" && { grep -qxF '.context/' "$f" 2>/dev/null || { [ -s "$f" ] && [ -n "$(tail -c1 "$f")" ] && echo >> "$f"; echo '.context/' >> "$f"; }; }
+   ```
+   Outside a git repository, skip the exclude line and write the report all the same
 
 Terminal format:
 ```
@@ -148,7 +152,7 @@ At project start with nothing recorded, write `Stack: none yet (project start)`.
 
 Scoring: `PASS=1, WARN=0.5, FAIL=0, SKIP=excluded from total`. Score = sum / (total - skipped).
 
-Report file structure (`.context/doctor/YYYYMMDDHHmmss_doctor_report.md`):
+Report file structure (`.context/repo-setup/doctor/YYYYMMDDHHmmss_doctor_report.md`):
 ```markdown
 # Codebase Doctor Report
 **Date**: YYYY-MM-DD HH:mm:ss | **Stack**: ... | **Phase**: ... | **Score**: X/Y
