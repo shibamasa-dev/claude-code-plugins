@@ -13,7 +13,7 @@
 
 It never reads GitHub on its own. It decides only from the tool calls in the session (name, input, result).
 It looks at both the connector (mcp__*__create_pull_request etc.) and gh.
-State lives in <CLAUDE_PLUGIN_DATA or ~/.claude/state>/dev-flow-gate/<session_id>.json.
+State lives in _state.state_dir("dev-flow-gate")/<session_id>.json.
 Whatever happens it never raises and exits 0 (deny and block are the only outputs that stop anything).
 """
 import fcntl
@@ -27,9 +27,9 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _shell import HEREDOC_MARK_RE, commands  # noqa: E402
+from _state import state_dir  # noqa: E402
 
-STATE_DIR = os.path.join(os.environ.get("CLAUDE_PLUGIN_DATA") or os.path.expanduser("~/.claude/state"),
-                         "dev-flow-gate")
+STATE_DIR = state_dir("dev-flow-gate")
 GC_DAYS = 30
 TAG = "[dev-flow-gate]"
 

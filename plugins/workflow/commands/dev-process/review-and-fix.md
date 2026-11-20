@@ -19,7 +19,7 @@ A workflow that runs AI reviews with multiple agents, evaluates the results, and
    ${CLAUDE_PLUGIN_ROOT}/commands/dev-process/agent-review.sh [title]
    ```
    - The title is optional
-   - Output files: `.context/review/{YYYYMMDDHHMMSS}_review[_{title}_by_{agent}].md`
+   - Output files: `.context/workflow/review/{YYYYMMDDHHMMSS}_review[_{title}_by_{agent}].md`; the script's debug log goes to `.context/workflow/logs/`, and the script adds `.context/` to `.git/info/exclude`
    - **Important**: pass these parameters to the Bash tool
      - `run_in_background: true`
      - The codex CLI writes its session state under `~/.codex`, which is outside the sandbox's default write allowlist. Prefer having the user allow only `~/.codex` via `/sandbox`; pass `dangerouslyDisableSandbox: true` only when that limited allowance can't be used
@@ -49,7 +49,7 @@ A workflow that runs AI reviews with multiple agents, evaluates the results, and
    - 🟡 Important: functional issues / performance
    - 🟢 Nice-to-have: code quality / readability improvements
 3. Create a fix plan file:
-   - Path: `.context/plan/YYYYMMDDHHMMSS_fix_{summary_title}.md`
+   - Path: `.context/workflow/plan/YYYYMMDDHHMMSS_fix_{summary_title}.md` (kept out of git by the exclude line the script added)
    - Contents:
      - List of files to fix
      - Details and reasons for each fix
@@ -86,6 +86,6 @@ A workflow that runs AI reviews with multiple agents, evaluates the results, and
 
 ## Notes
 
-- Fix plans are saved in `.context/plan/`
+- Fix plans are saved in `.context/workflow/plan/`
 - Ask the user when unsure
 - Reject findings that go against the architecture policy, stating the reason

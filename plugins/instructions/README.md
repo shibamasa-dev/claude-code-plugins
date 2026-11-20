@@ -25,6 +25,10 @@ A mod that loads instruction files bundled with the plugin the way Claude Code l
 
 The context is built once per conversation and again after `/clear` or a compaction, so an edit to a file takes effect from the next of those. A file already among the instruction files (same path) isn't added twice. If another mod rewrote the CLAUDE.md text, the files behind it are unknown, and this mod adds nothing.
 
+## Configuration
+
+No settings. The mod writes no files, so uninstalling removes nothing.
+
 ## Limitations
 
 - **No effect where Claude Code's built-in guard runs.** On a machine with managed settings, or when you're signed in with a Team or Enterprise plan, Claude Code seats the built-in guard `sec-default@builtin`, which skips this mod's `prompt.context` hook for every plugin you install yourself. Nothing is shown in the conversation; the debug log has `prompt.context bypassed by cc-plugin-sec-default (tier user)`. Only managed settings can change that: a managed `prependPlugins` list that leaves out `sec-default@builtin` keeps the guard from loading, which also drops its other protections against plugins you install (see [Manage mods for your organization](https://code.claude.com/docs/en/plugins/mods/admin)).

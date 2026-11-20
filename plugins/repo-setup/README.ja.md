@@ -21,6 +21,18 @@
 
 `codebase-doctor` のテスト設計の点検（Check 6b）は、[testing](../testing/README.ja.md) の `testcase-generator` が持つ置き場の定義を読む。testing が入っていなければその点検は SKIP（点数から除外）にする。
 
+## 設定
+
+### ファイルの置き場
+
+| 何か | 置き場 |
+|---|---|
+| codebase-doctor のレポート | リポの `.context/repo-setup/doctor/`。先に `.context/` を `.git/info/exclude` に足すので git には入らない |
+| スキルが用意してコミットするもの | リポの中: `CLAUDE.md` の Decided setup の節、`.claude/skills/verify-<app>/`、`scripts/remote-setup/` |
+| 生成したセットアップスクリプトのログ | 動かしたマシンの `~/.cache/remote-setup/<リポ名>.log` |
+
+プラグインのデータディレクトリには何も置かないので、アンインストールしてもこれらのファイルは消えない。
+
 ## 前提
 
 macOS / Linux、`python3`、`git`、`gh`

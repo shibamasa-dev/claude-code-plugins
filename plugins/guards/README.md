@@ -49,6 +49,10 @@ The hook runs only when a rules file exists. It uses the first one found, in thi
 
 Copy [`examples/repo-structure.md`](examples/repo-structure.md) to one of these and edit it. Only `<!-- guard:… -->` blocks are used for decisions.
 
+### Where files go
+
+The only file the plugin writes is publish-guard's visibility cache, `repo-visibility.json` in `${CLAUDE_PLUGIN_DATA}` (`~/.claude/plugins/data/<plugin id>/`). Uninstalling the plugin from the last scope it is installed in deletes it, unless you pass `--keep-data`; nothing is lost either way, since the hook asks GitHub again.
+
 ## Merges
 
 guards doesn't gate merges. Merge conditions (reviews done, a `## Result` section on the issue the PR closes) belong to the workflow plugin's `dev-flow` skill and `dev-flow-gate` hook. With guards alone, merges aren't stopped.

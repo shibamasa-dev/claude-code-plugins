@@ -10,7 +10,9 @@ including the forms with no number or with a branch name.)
   - SessionStart    : re-inject pending issues after compact/resume. After clear, notify once that they were cleared while pending
   - SessionEnd      : only on clear, hand pending issues over to a notice file. The state file is kept (exit -> resume brings
                       back the same session_id). Cleanup is an mtime GC after GC_DAYS
-State is ~/.claude/state/issue-writeback/<session_id>.json (per session; parallel sessions don't mix).
+State is <state dir>/<session_id>.json (per session; parallel sessions don't mix). The state dir is
+${CLAUDE_PLUGIN_DATA}/issue-writeback, or ~/.claude/state/workflow/issue-writeback without the variable (_state.py);
+the first run copies an older ~/.claude/state/issue-writeback there once and leaves it as the backup.
 Whatever happens it never raises and exits 0 (the Stop block is the only output that stops anything).
 
 CLI: issue-writeback.py dismiss OWNER/REPO#N --session <id> [--why "..."]   # run by Claude
@@ -19,8 +21,11 @@ CLI: issue-writeback.py dismiss OWNER/REPO#N --session <id> [--why "..."]   # ru
 import fcntl, hashlib, json, os, re, sys, time
 from datetime import datetime, timedelta
 
-STATE_DIR = os.path.expanduser("~/.claude/state/issue-writeback")
-SELF = f'python3 "{os.path.abspath(__file__)}"'  # how messages tell Claude to run this script
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _state import cli, state_dir  # noqa: E402
+
+STATE_DIR = state_dir("issue-writeback", legacy="issue-writeback")
+SELF = cli(__file__)  # how messages tell Claude to run this script
 K_STOPS = 3          # block after this many Stops since the read (or since the last nag)
 MAX_NAGS = 3         # max blocks per issue (silent after that)
 GC_DAYS = 30         # clean up old state files (not deleted at SessionEnd, since resume brings back the same session_id)

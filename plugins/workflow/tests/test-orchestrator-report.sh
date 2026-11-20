@@ -7,7 +7,7 @@ set -u
 HOOK="$(cd "$(dirname "$0")/.." && pwd)/hooks/orchestrator-report.py"
 T=$(mktemp -d "${TMPDIR:-/tmp}/orr.XXXX")
 T=$(cd "$T" && pwd -P)
-export HOME="$T" CLAUDE_PLUGIN_DATA="$T/data"
+export HOME="$T" CLAUDE_PLUGIN_DATA="$T/data/workflow-test"
 unset GH_REPO CLAUDE_CODE_REMOTE CLAUDE_CODE_PROJECTS_SESSION
 
 mkdir -p "$T/bin"

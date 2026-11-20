@@ -9,11 +9,18 @@ set -e
 # Debug settings
 # ================================
 DEBUG_MODE=true  # true to write debug logs
-LOG_DIR="logs"
+# Reports and logs are read again later, so they go to .context/workflow/ (the repo's "Where plugins write" rule),
+# kept out of git through .git/info/exclude rather than the tracked .gitignore
+OUT_DIR=".context/workflow"
+LOG_DIR="${OUT_DIR}/logs"
 LOG_FILE="${LOG_DIR}/agent-review-$(date +%Y%m%d).log"
 
-# Create the log directory
-mkdir -p "$LOG_DIR"
+# Create the output directories and exclude .context/ (once; skipped outside a git repo)
+mkdir -p "$LOG_DIR" "${OUT_DIR}/review"
+if EXCLUDE=$(git rev-parse --git-path info/exclude 2>/dev/null); then
+  mkdir -p "$(dirname "$EXCLUDE")"
+  grep -qxF '.context/' "$EXCLUDE" 2>/dev/null || echo '.context/' >> "$EXCLUDE"
+fi
 
 # Debug log function
 debug_log() {
@@ -36,8 +43,6 @@ debug_log "Args: $*"
 debug_log "Current directory: $(pwd)"
 debug_log "=========================================="
 
-mkdir -p .context/review
-
 # Timestamp
 TIMESTAMP=$(date +%Y%m%d%H%M%S)
 debug_log "Timestamp: $TIMESTAMP"
@@ -52,8 +57,8 @@ else
   debug_log "No title given"
 fi
 
-CODEX_FILE=".context/review/${TIMESTAMP}_review${SUFFIX}_by_codex.md"
-CODERABBIT_FILE=".context/review/${TIMESTAMP}_review${SUFFIX}_by_coderabbit.md"
+CODEX_FILE="${OUT_DIR}/review/${TIMESTAMP}_review${SUFFIX}_by_codex.md"
+CODERABBIT_FILE="${OUT_DIR}/review/${TIMESTAMP}_review${SUFFIX}_by_coderabbit.md"
 debug_log "Codex output file: $CODEX_FILE"
 debug_log "CodeRabbit output file: $CODERABBIT_FILE"
 

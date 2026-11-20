@@ -130,6 +130,8 @@ Libraries: fast-check (JS/TS), Hypothesis (Python), proptest (Rust). Propose the
 
 ## Output structure
 
+**Where the file goes.** Test cases are a deliverable the team keeps, so they go in the repository: next to the repo's existing test-case files (`*.feature`, or `.md` with `testcase: true`) when there are any, else `docs/testcases/<topic>.md` (`<topic>.feature` for a `.feature` file). When the user only wants to read them and not keep them, write the file to the session scratchpad instead. Either way write it with `Write`, so the checking hook sees it.
+
 **Always include this frontmatter.** Without it the checking hook skips the file, and style-guide violations go unnoticed. If you output a `.feature` file, no frontmatter is needed.
 
 Write the section contents in the user's language. Keep the headings as below.

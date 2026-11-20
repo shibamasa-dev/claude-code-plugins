@@ -1,0 +1,12 @@
+{
+ "issues": {
+  "example-org/example-repo#7": {
+   "read_at": "2026-11-20T10:32:03",
+   "written_at": null,
+   "dismissed": null,
+   "stops_since": 0,
+   "nags": 0
+  }
+ },
+ "cwd": "/"
+}

@@ -19,7 +19,7 @@ The question is: "If someone at another company installs this skill on another m
 
 ## Steps
 
-The target is `$ARGUMENTS` (a skill directory). If missing, ask the user. Keep working files in the session's temporary directory (or `mktemp -d` if there is none). `<tmp>` below means that location.
+The target is `$ARGUMENTS` (a skill directory). If missing, ask the user. Keep working files (`lint.json`, `review.txt`, `review.json`) in the session scratchpad, the directory the system prompt names for temporary files; if the session has none, make one with `mktemp -d` and remove it after the report. `<tmp>` below means that location. Never write them inside the target skill or the repository.
 
 ### 1. Run lint.py
 

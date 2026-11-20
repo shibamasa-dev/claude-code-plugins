@@ -25,6 +25,10 @@
 
 文脈は会話ごとに 1 回、`/clear` や compact の後にもう 1 回作られます。ファイルを書き換えたら、その次の作り直しから効きます。同じパスのファイルがすでに指示ファイルに入っていれば、二重には足しません。別の mod が CLAUDE.md の本文を書き換えていた場合は、元のファイルが分からないので何も足しません。
 
+## 設定
+
+設定は無い。mod はファイルを書かないので、アンインストールで消えるものも無い。
+
 ## 制限
 
 - **Claude Code の組み込みガードが動く環境では効きません。** managed settings がある Mac、または Team / Enterprise のプランでサインインしているときは、Claude Code が組み込みのガード `sec-default@builtin` を入れます。このガードは、自分で入れたプラグインの `prompt.context` フックを飛ばします。会話には何も表示されず、debug ログに `prompt.context bypassed by cc-plugin-sec-default (tier user)` と出ます。これを変えられるのは managed settings だけです。managed settings の `prependPlugins` に `sec-default@builtin` を書かなければガードは入りませんが、自分で入れたプラグインに対するガードのほかの保護も外れます（[Manage mods for your organization](https://code.claude.com/docs/en/plugins/mods/admin) を参照）。

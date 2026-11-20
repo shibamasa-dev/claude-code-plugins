@@ -25,14 +25,47 @@ Usage (python3 "<plugin root>/hooks/full-test-gate.py" <subcommand>; the hook me
 As a hook (branches on hook_event_name from stdin):
   SessionStart         Print a one-line notice when a threshold is exceeded (does not block)
   PreToolUse(Bash)     Deny commands matching gate when there are unverified changes
-State: $FULL_TEST_STATE_DIR (default ~/.claude/state/full-test)/<project-key>.json
+State: state_dir()/<project-key>.json
        project-key = sha1 of the git common dir (shared across worktrees). Shape: {"sha", "at", "skipped"}
 """
-import hashlib, json, os, re, subprocess, sys, time
+import hashlib, json, os, re, shlex, shutil, subprocess, sys, time
 
-STATE_DIR = os.path.expanduser(os.environ.get("FULL_TEST_STATE_DIR", "~/.claude/state/full-test"))
+
+def plugin_data():
+    """$CLAUDE_PLUGIN_DATA when it names this plugin's directory (`testing-<marketplace>` / `testing-inline`), else None:
+    a Bash call can carry another plugin's value."""
+    data = os.environ.get("CLAUDE_PLUGIN_DATA")
+    name = os.path.basename(os.path.normpath(data)) if data else ""
+    return data if name == "testing" or name.startswith("testing-") else None
+
+
+def state_dir():
+    """$FULL_TEST_STATE_DIR, else ${CLAUDE_PLUGIN_DATA}/full-test, else ~/.claude/state/testing/full-test (the variable
+    is set for hooks, not for Bash, so the commands this hook prints carry it: see SELF). Without the override, the
+    first run copies an older ~/.claude/state/full-test there once and leaves it as the backup; "first" means the new
+    directory does not exist yet, so a directory emptied later never pulls the old copy back."""
+    if os.environ.get("FULL_TEST_STATE_DIR"):
+        return os.path.expanduser(os.environ["FULL_TEST_STATE_DIR"])
+    data = plugin_data()
+    new = os.path.join(data, "full-test") if data else os.path.expanduser("~/.claude/state/testing/full-test")
+    old = os.path.expanduser("~/.claude/state/full-test")
+    if not os.path.lexists(new) and os.path.isdir(old):
+        tmp = f"{new}.migrating-{os.getpid()}"
+        try:
+            if os.listdir(old):
+                os.makedirs(os.path.dirname(new), exist_ok=True)
+                shutil.copytree(old, tmp, symlinks=True)
+                os.rename(tmp, new)  # fails when another process got there first; its copy is the same data
+        except OSError:
+            shutil.rmtree(tmp, ignore_errors=True)
+    return new
+
+
+STATE_DIR = state_dir()
 DEFAULT_THRESHOLDS = {"lines": 500, "commits": 10, "days": 14}
 SELF = f'python3 "{os.path.abspath(__file__)}"'  # how messages tell Claude to run this script
+if plugin_data():  # Bash does not get the variable, so the printed command carries it
+    SELF = f'CLAUDE_PLUGIN_DATA={shlex.quote(plugin_data())} {SELF}'
 
 
 # Git variables that select a repository are dropped, so `git -C <repo>` reads that repo and not one named by the environment

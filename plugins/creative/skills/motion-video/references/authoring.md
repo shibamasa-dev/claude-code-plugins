@@ -18,7 +18,7 @@ Contents: 1. Project layout / 2. meta / 3. The render(ctx, t) contract / 4. ctx 
 └── out/              output (storyboard/ stills/ deliver/)
 ```
 
-Put it outside the skill (e.g. `tmp/` of the project you are working in). Do not put videos or images in the skill's repository.
+The project folder goes where the user says; when they name no place, use `motion-video/<slug>/` under the current working directory (`<slug>` is a short name for the video). Never put it inside the skill: do not put videos or images in the skill's repository.
 
 ## 2. meta
 

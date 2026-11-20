@@ -29,7 +29,7 @@ If you used the former `review` plugin, uninstall it and move its settings to th
 
 | Hook | When | What it does |
 |---|---|---|
-| handoff | Session start | Injects the "next entry point" left by the previous session. Write an entry with `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/handoff.py" write --entry <owner>/<repo>#<n> --state "..." --next "..."` and clear one with `... consume --entry <entry>`; the injected text prints the exact command |
+| handoff | Session start | Injects the "next entry point" left by the previous session. Write an entry with `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" python3 "${CLAUDE_PLUGIN_ROOT}/hooks/handoff.py" write --entry <owner>/<repo>#<n> --state "..." --next "..."` and clear one with `... consume --entry <entry>`; the injected text prints the exact command |
 | issue-writeback | Session start, prompt submit, stop, session end, after issue operations | Reminds you if decisions were not written back to an issue you read |
 | runbook | After browser or computer-use actions, on stop, at session start | Records browser and screen-operation steps; on the first one, says to start a GIF recording (Chrome) or note key steps (tools that cannot record); stops if you forgot to write the runbook |
 | orchestrator-report | After creating or updating a PR, or writing to an issue (connector or `gh`) | If exactly one running session in the repository written to (its folder's `origin`; worktrees included) has a title starting with `🎯` and it is not this session, tells Claude to send it a one-line report with SendMessage. Once per PR / issue per session; skipped in cloud and Claude Projects sessions |
@@ -137,6 +137,24 @@ A label starting with `!` is a negative match ([configuration](https://docs.code
 2. Whether this setting can be applied organization-wide (otherwise use a per-repo `.coderabbit.yaml`)
 3. Whether Codex can be excluded from auto review by a label (if not, Codex runs on light PRs too)
 
+### Where files go
+
+| What | Where | Uninstalling the plugin removes it |
+|---|---|---|
+| Hook state: handoff entries, issue-writeback, dev-flow-gate, orchestrator-report, commit-gate, the pr-checks denial count | `${CLAUDE_PLUGIN_DATA}/<feature>/` (`~/.claude/plugins/data/<plugin id>/`); a script run without the variable uses `~/.claude/state/workflow/<feature>/` | Yes, from the last scope it is installed in, unless you pass `--keep-data` |
+| handoff entries with `HANDOFF_STATE_DIR` set | that directory | No |
+| pr-checks passes and their log | `<git common dir>/workflow-pr-checks.json` and `.log.jsonl` | No (they belong to the clone) |
+| Runbooks and their raw logs | `RUNBOOK_ROOT`, default `~/.claude/runbooks/` | No (they are your documents) |
+| Artifact ledger | `.artifacts/` at the project root (see Storage) | No |
+| review-and-fix reviews, fix plans and debug log | `.context/workflow/review/`, `plan/` and `logs/` in the repo; the command adds `.context/` to `.git/info/exclude` | No |
+| Usage limits (rate-limits mod) | `/tmp/claude-<uid>/rate-limits.json` | No (temporary) |
+
+```bash
+claude plugin uninstall workflow@shibamasa-plugins --keep-data
+```
+
+Coming from an older version, the first run copies `~/.claude/state/issue-writeback/` and `~/.claude/state/handoff/` to the new place once and leaves the old directories as a backup; delete them when you no longer need them. Bash does not get `CLAUDE_PLUGIN_DATA`, so the commands the hooks print and the skills give (handoff, issue-writeback, session-wrap's survey) start with `CLAUDE_PLUGIN_DATA=...`; keep that prefix when you run one yourself.
+
 ## Commands
 
 - `/workflow:dev-process:review-and-fix` — runs AI review → assessment → fix plan → implementation in one go
@@ -149,7 +167,7 @@ Organization values (GitHub org, default repo, Issue Fields, project board) aren
 
 | Environment variable | Default | Contents |
 |---|---|---|
-| `HANDOFF_STATE_DIR` | `~/.claude/state/handoff` | handoff entry points |
+| `HANDOFF_STATE_DIR` | unset (`${CLAUDE_PLUGIN_DATA}/handoff`) | handoff entry points |
 | `RUNBOOK_ROOT` | `~/.claude/runbooks` | runbook raw logs and written runbooks |
 
 ### Artifact ledger

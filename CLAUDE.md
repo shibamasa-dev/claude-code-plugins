@@ -54,6 +54,26 @@ Who installs a plugin decides where its data lives (SQLite, Postgres, Supabase) 
 6. Schema changes apply automatically and idempotently. Never ask the user to run an `ALTER` by hand. Over a connector, send DDL through the connector's migration tool (Supabase: `apply_migration`).
 7. Extension points: every table has a stable primary key and an `updated_at` that the schema maintains (a default on insert, a trigger on update), because Claude's own `UPDATE` may leave it out. Trigger syntax differs between SQLite and Postgres, so the migrations ship one per database. Optional features such as vector search add no columns to the plugin's schema; whoever wants one adds their own column or table and a hook (for example `PostToolUse` matched to the tools that touch the database) and finds rows to refresh by comparing each row's `updated_at` with the value it recorded for that row when it last processed it. Don't keep a single `updated_at > cursor` watermark: writes that share a timestamp (SQLite's second-resolution `CURRENT_TIMESTAMP`, or every write in one Postgres transaction) slip past it.
 
+## Where plugins write
+
+Every file a skill, hook or command produces goes to one of these places. A skill never says "save it somewhere": it names the destination.
+
+| Kind of output | Goes to |
+|---|---|
+| Hook or session state the user never opens | `${CLAUDE_PLUGIN_DATA}/<feature>/`, or `~/.claude/state/<plugin>/<feature>/` when the variable is unset. The hook garbage-collects it |
+| Data the user keeps (a database, photos) | `${CLAUDE_PLUGIN_DATA}` by default, movable with a `userConfig` key. The README says uninstalling deletes it |
+| The user's own documents (runbooks) | where the user keeps them (`~/.claude/runbooks/`), not plugin data, so uninstalling leaves them |
+| Deliverables meant to be committed | a fixed path in the repo, named in the skill |
+| Reports and logs not committed, read again later (doctor reports, review results, plans, debug logs) | `.context/<plugin>/` in the repo. Whatever writes there first adds `.context/` to `.git/info/exclude` (`git rev-parse --git-path info/exclude`), never to the tracked `.gitignore` |
+| Reports and intermediate files used once | the session scratchpad |
+| Temporary files of a script | the session scratchpad (`scratchpad_dir` in hook input) or `tempfile`, removed by whoever made them |
+
+`${CLAUDE_PLUGIN_DATA}` is `~/.claude/plugins/data/<id>/`, kept across updates and deleted when the plugin is uninstalled from the last place it is installed, unless `--keep-data` is passed. Hooks and MCP servers get it in their environment; commands Claude runs through Bash do not, and may even carry another plugin's value. So:
+
+- A script that also runs from Bash uses the variable only when its directory is the plugin's own (`<plugin>-<marketplace>` or `<plugin>-inline`).
+- A command a hook prints for Claude to run puts `CLAUDE_PLUGIN_DATA="<value>"` in front of it; a command in a SKILL.md body writes `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}"`, which Claude Code substitutes when it loads the skill (files under `references/` are read, not loaded, so they point at the SKILL.md command instead).
+- Each plugin README's Configuration section lists where its files go and what uninstalling removes.
+
 ## Before changing a shared skill or hook
 
 Skills and hooks here run in many repos. Check these before proposing a change.

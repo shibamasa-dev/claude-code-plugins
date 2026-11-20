@@ -29,6 +29,17 @@ Tools for making skills well: `skill-planner` plans a skill before it is built, 
 
 There is no denylist of names. A file that collects names would itself be a leak and would need upkeep. Proper names are judged by the reviewer from hints it collects from the environment at run time, and from context.
 
+## Configuration
+
+### Where files go
+
+| What | Where |
+|---|---|
+| skill-lint's working files (`lint.json`, `review.txt`, `review.json`) | the session scratchpad, or a `mktemp -d` directory removed after the report |
+| The reviewer evals (`run_reviewer_eval.py`) | `mktemp -d` directories; `--keep <dir>` keeps the output there |
+
+It keeps nothing in its plugin data directory, so uninstalling removes none of these files.
+
 ## Requirements
 
 - `python3` (standard library only)
