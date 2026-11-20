@@ -52,7 +52,7 @@ def migrate(old, new):
         if not os.listdir(old):
             return False
         os.makedirs(os.path.dirname(new), exist_ok=True)
-        shutil.copytree(old, tmp, symlinks=True)
+        shutil.copytree(old, tmp, symlinks=True, ignore=shutil.ignore_patterns("*.lock", "*.tmp"))
         os.rename(tmp, new)  # fails when another process got there first; its copy is the same data
         return True
     except OSError:
