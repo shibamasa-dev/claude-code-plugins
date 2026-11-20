@@ -73,6 +73,10 @@ jobs:
           if [ "${{ matrix.python }}" != default ]; then
             python3 -c 'import sys; v = "%d.%d" % sys.version_info[:2]; sys.exit(0 if v == "${{ matrix.python }}" else "python3 is " + v)'
           fi
+      # py_compile is not enough: a 3.10-only annotation (`str | None`) parses on 3.9 and fails only when the module runs
+      - name: Execute every plugin hook and script at module level (without main)
+        if: matrix.python != 'default'
+        run: python3 .github/scripts/imports/import-check.py
       - name: Hook regression sweep (fails on any mismatch)
         run: |
           git config --global user.name ci
