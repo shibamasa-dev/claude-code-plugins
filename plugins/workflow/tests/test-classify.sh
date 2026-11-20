@@ -9,6 +9,7 @@
 # document under skills/ hooks/ agents/ commands/ rules/ .github/ or named SKILL.md / CLAUDE.md / AGENTS.md, more than
 # 200 changed lines (added + deleted), or an empty diff; light for everything else. The "review it heavier" request and
 # the review:light label are steps the skill takes around the script, not inputs to it, so they have no rows here.
+# A rename is judged by its new name (classify.sh's own comment; the skill does not say): those rows are implementation-derived.
 set -u
 CL="$(cd "$(dirname "$0")/.." && pwd)/skills/pr-review-triage/scripts/classify.sh"
 T=$(mktemp -d "${TMPDIR:-/tmp}/classify.XXXX") || exit 1
@@ -84,6 +85,17 @@ case_ lines-mixed-201; (cd "$R" && seq 1 200 > docs-long.md && seq 1 101 | sed '
 row '100 deleted + 101 added in one file (201): heavy' "$(is "$(verdict)" heavy)" ok
 case_ lines-split; seq 1 150 > "$R/docs/a.md"; seq 1 51 > "$R/docs/b.md"; commit split
 row '150 + 51 lines across two documents (201): heavy' "$(is "$(verdict)" heavy)" ok
+
+echo
+echo '=== renames (judged by the new name) ==='
+# `git mv` with no content change: git diff --numstat (renames on by default) prints `old => new` or `dir/{old => new}`
+case_ ren-doc-to-code; git -C "$R" mv docs/guide.md docs/guide.py; commit ren
+row 'docs/guide.md renamed to docs/guide.py: heavy' "$(is "$(verdict)" heavy)" ok
+case_ ren-doc-to-doc; git -C "$R" mv docs/guide.md docs/manual.md; commit ren
+row 'docs/guide.md renamed to docs/manual.md: light' "$(is "$(verdict)" light)" ok
+case_ ren-into-skills; mkdir -p "$R/skills"; git -C "$R" mv docs/guide.md skills/guide.md; commit ren
+row 'docs/guide.md moved to skills/guide.md: heavy' "$(is "$(verdict)" heavy)" ok
+row '  ...numstat really printed rename notation' "$(is "$(cd "$R" && git diff --numstat origin/main...HEAD | grep -c ' => ')" 1)" ok
 
 echo
 echo '=== empty diff ==='

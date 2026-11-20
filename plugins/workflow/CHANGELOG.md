@@ -11,7 +11,7 @@ Changes to the workflow plugin. The format follows [Keep a Changelog](https://ke
 ### Added
 - `tests/test-artifact-ledger.sh`: rows for a publish with `icon`, with only `favicon`, with both and with neither, a redeploy that omits the icon, an older ledger row with `favicon` rendering after an index rebuild, and the response's `path` taking precedence in `src_path` (inside and outside the project, no absolute path written) (#122).
 - `tests/test-session-wrap-survey.sh`: rows for a branch with no upstream with and without commits of its own, a remote whose default branch is `trunk`, no `origin/HEAD`, and no remote at all (#123).
-- `tests/test-classify.sh`: runs pr-review-triage's `classify.sh` on real diffs from a throwaway clone, one row per rule with inputs just inside and just outside each boundary (#126).
+- `tests/test-classify.sh`: runs pr-review-triage's `classify.sh` on real diffs from a throwaway clone, one row per rule with inputs just inside and just outside each boundary, plus renames from a real `git mv` judged by the new name (#126).
 
 ## [0.12.2] - 2026-11-20
 
