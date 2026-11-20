@@ -32,7 +32,8 @@
 
 | 何か | 置き場 | アンインストールで消えるか |
 |---|---|---|
-| full-test-gate の記録（プロジェクトごとの最後の全体テスト） | `${CLAUDE_PLUGIN_DATA}/full-test/`（`~/.claude/plugins/data/<プラグイン ID>/`）。`FULL_TEST_STATE_DIR` で動かせる。変数なしで動いたときは `~/.claude/state/testing/full-test/` | 消える（最後の scope から外したとき。`--keep-data` を付ければ残る。`FULL_TEST_STATE_DIR` で指した先は消えない） |
+| full-test-gate の記録（プロジェクトごとの最後の全体テスト） | `${CLAUDE_PLUGIN_DATA}/full-test/`（`~/.claude/plugins/data/<プラグイン ID>/`） | 消える（最後の scope から外したとき。`--keep-data` を付ければ残る） |
+| `FULL_TEST_STATE_DIR` を設定したとき、または `CLAUDE_PLUGIN_DATA` なしで動いたときの同じ記録 | そのディレクトリ、または `~/.claude/state/testing/full-test/` | 消えない |
 | `origin` を引けなかった印 | `<git common dir>/full-test-gate-origin-miss` | 消えない |
 | `testcase-generator` のテストケース | リポに既にあるテストケースのファイルの隣、無ければ `docs/testcases/<テーマ>.md`。読むだけで残さないならセッションの scratchpad | 消えない |
 

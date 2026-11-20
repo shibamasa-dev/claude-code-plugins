@@ -126,7 +126,7 @@ Output both:
 1. **Terminal**: Summary table with ratings
 2. **File**: `.context/repo-setup/doctor/YYYYMMDDHHmmss_doctor_report.md` (timestamp at generation time). Later runs read it again, so it lives in the repo but stays out of git: before writing it, add `.context/` to `.git/info/exclude` (not to the tracked `.gitignore`) with
    ```bash
-   f=$(git rev-parse --git-path info/exclude) && mkdir -p "$(dirname "$f")" && { grep -qxF '.context/' "$f" 2>/dev/null || echo '.context/' >> "$f"; }
+   f=$(git rev-parse --git-path info/exclude) && mkdir -p "$(dirname "$f")" && { grep -qxF '.context/' "$f" 2>/dev/null || { [ -s "$f" ] && [ -n "$(tail -c1 "$f")" ] && echo >> "$f"; echo '.context/' >> "$f"; }; }
    ```
    Outside a git repository, skip the exclude line and write the report all the same
 

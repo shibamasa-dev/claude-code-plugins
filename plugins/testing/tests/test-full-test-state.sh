@@ -15,7 +15,9 @@ git init -q --bare -b main "$T/origin.git"; g "$w" remote add origin "$T/origin.
 g "$w" remote set-head origin main
 row() { printf '  %-62s -> %-5s (expect %s)\n' "$1" "$2" "$3"; }
 yes_no() { [ "$1" ] && echo yes || echo no; }
-status() { (cd "$w" && HOME="$1" CLAUDE_PLUGIN_DATA="$2" python3 "$H" status 2>&1) | grep -q 'No full test run recorded' && echo none || echo recorded; }
+status() { out=$(cd "$w" && HOME="$1" CLAUDE_PLUGIN_DATA="$2" python3 "$H" status 2>&1); rc=$?
+  if [ $rc = 0 ] && grep -q '^Since the last full test run' <<<"$out"; then echo recorded
+  elif [ $rc = 0 ] && grep -q 'No full test run recorded' <<<"$out"; then echo none; else echo "error$rc"; fi; }
 
 # The old record, written by the hook itself at the old place
 H1="$T/h1"; mkdir -p "$H1"

@@ -38,6 +38,13 @@ iw_status >/dev/null; rm -f "$DATA/issue-writeback/"*   # migrated, then everyth
 iw_status >/dev/null
 row 'new emptied later: the old copy is not pulled back' "$(yes_no "$(ls "$DATA/issue-writeback/fx-sess.json" 2>/dev/null)")" no
 
+fresh m5; old_iw; touch "$H/.claude/state/issue-writeback/unreadable.json"; chmod 000 "$H/.claude/state/issue-writeback/unreadable.json"
+out=$(iw_status)
+row 'copy fails: the new place is not created' "$(yes_no "$(ls -d "$DATA/issue-writeback" 2>/dev/null)")" no
+row '  ...and the hook reads the old place meanwhile' "$(yes_no "$(grep -o 'example-org/example-repo#7' <<<"$out")")" yes
+chmod 600 "$H/.claude/state/issue-writeback/unreadable.json"; iw_status >/dev/null
+row '  ...the next run copies it' "$(yes_no "$(ls "$DATA/issue-writeback/fx-sess.json" 2>/dev/null)")" yes
+
 echo '=== which directory ==='
 fresh w1; old_iw
 HOME="$H" CLAUDE_PLUGIN_DATA="$T/w1/data/codex-inline" python3 "$IW" status >/dev/null 2>&1
@@ -45,7 +52,7 @@ row "another plugin's CLAUDE_PLUGIN_DATA is not used" "$(yes_no "$(ls -A "$T/w1/
 row '  ...the fallback is ~/.claude/state/workflow/<feature>' "$(yes_no "$(ls "$H/.claude/state/workflow/issue-writeback/fx-sess.json" 2>/dev/null)")" yes
 
 fresh s1; mkdir -p "$DATA/issue-writeback"; cp "$FX" "$DATA/issue-writeback/"
-cmd=$(grep -o 'CLAUDE_PLUGIN_DATA="[^"]*" python3 "[^"]*survey.py"' "$D/skills/session-wrap/SKILL.md" | sed "s|\${CLAUDE_PLUGIN_DATA}|$DATA|; s|\${CLAUDE_PLUGIN_ROOT}|$D|")
+cmd=$(grep -o "CLAUDE_PLUGIN_DATA='[^']*' python3 \"[^\"]*survey.py\"" "$D/skills/session-wrap/SKILL.md" | sed "s|\${CLAUDE_PLUGIN_DATA}|$DATA|; s|\${CLAUDE_PLUGIN_ROOT}|$D|")
 out=$(cd "$T" && HOME="$H" bash -c "$cmd --session fx-sess --json" 2>&1)
 row 'survey.py (as SKILL.md runs it) reads the new location' "$(yes_no "$(grep -o PENDING_ISSUE <<<"$out")")" yes
 

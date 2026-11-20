@@ -55,9 +55,14 @@ def state_dir():
             if os.listdir(old):
                 os.makedirs(os.path.dirname(new), exist_ok=True)
                 shutil.copytree(old, tmp, symlinks=True, ignore=shutil.ignore_patterns("*.lock", "*.tmp"))
-                os.rename(tmp, new)  # fails when another process got there first; its copy is the same data
+                if os.path.lexists(new):  # another process finished first
+                    shutil.rmtree(tmp, ignore_errors=True)
+                else:
+                    os.rename(tmp, new)
         except OSError:
             shutil.rmtree(tmp, ignore_errors=True)
+            if not os.path.lexists(new):
+                return old  # the copy failed: keep using the old place this run and try again next time
     return new
 
 

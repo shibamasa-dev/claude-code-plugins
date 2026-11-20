@@ -14,7 +14,8 @@ names this plugin's directory: Claude Code names it after the plugin identifier,
 legacy=<dir> migrates once: when the resolved directory does not exist yet and <dir> has files, <dir> is copied to a
 temp name next to it and renamed into place. The old directory stays as the backup. "Does not exist" rather than
 "is empty", so a directory emptied later (every entry consumed, every file garbage-collected) never pulls the old
-copy back. Failures are swallowed: the hook then starts with an empty directory, as it would on a fresh install.
+copy back. When the copy fails, state_dir() returns the old directory for that run, so nothing is written to the new
+place and the next run tries again.
 """
 import os
 import shlex
@@ -30,7 +31,9 @@ def state_dir(feature, override_env=None, legacy=None):
     data = plugin_data()
     d = os.path.join(data, feature) if data else os.path.expanduser(os.path.join(LEGACY_ROOT, PLUGIN, feature))
     if legacy:
-        migrate(os.path.expanduser(os.path.join(LEGACY_ROOT, legacy)), d)
+        old = os.path.expanduser(os.path.join(LEGACY_ROOT, legacy))
+        if migrate(old, d) == "failed":
+            return old  # keep using the old place this run, so nothing is written to a half-empty new one
     return d
 
 
@@ -44,20 +47,23 @@ def plugin_data():
 
 
 def migrate(old, new):
-    """Copy old to new once (see the module docstring). Returns True when this call made the copy."""
+    """Copy old to new once (see the module docstring). Returns "copied", "none" (nothing to do) or "failed"."""
     if os.path.lexists(new) or not os.path.isdir(old):
-        return False
+        return "none"
     tmp = f"{new}.migrating-{os.getpid()}"
     try:
         if not os.listdir(old):
-            return False
+            return "none"
         os.makedirs(os.path.dirname(new), exist_ok=True)
         shutil.copytree(old, tmp, symlinks=True, ignore=shutil.ignore_patterns("*.lock", "*.tmp"))
-        os.rename(tmp, new)  # fails when another process got there first; its copy is the same data
-        return True
+        if os.path.lexists(new):  # another process finished first (rename would replace an emptied directory)
+            shutil.rmtree(tmp, ignore_errors=True)
+            return "none"
+        os.rename(tmp, new)
+        return "copied"
     except OSError:
         shutil.rmtree(tmp, ignore_errors=True)
-        return False
+        return "none" if os.path.lexists(new) else "failed"
 
 
 def cli(path):

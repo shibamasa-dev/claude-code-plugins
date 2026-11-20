@@ -29,7 +29,7 @@
 
 | フック | いつ | 何をするか |
 |---|---|---|
-| handoff | セッション開始 | 前のセッションが残した「次の入口」を注入する。書くのは `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" python3 "${CLAUDE_PLUGIN_ROOT}/hooks/handoff.py" write --entry <owner>/<repo>#<n> --state "..." --next "..."`、消すのは `... consume --entry <入口>`。注入される文面に実行できるコマンドがそのまま出る |
+| handoff | セッション開始 | 前のセッションが残した「次の入口」を注入する。書くのは `CLAUDE_PLUGIN_DATA='${CLAUDE_PLUGIN_DATA}' python3 "${CLAUDE_PLUGIN_ROOT}/hooks/handoff.py" write --entry <owner>/<repo>#<n> --state "..." --next "..."`、消すのは `... consume --entry <入口>`。注入される文面に実行できるコマンドがそのまま出る |
 | issue-writeback | セッション開始・プロンプト送信・停止・終了、issue 操作の後 | 読んだ issue に決定事項を書き戻していなければ促す |
 | runbook | ブラウザ・画面操作の後、停止、セッション開始 | ブラウザ・画面操作の手順を記録する。最初の操作で、GIF 録画の開始（Chrome）か要所のメモ（録画できないツール）を促す。手順書を書き忘れたら止める |
 | orchestrator-report | PR の作成・更新、issue への書き込み（コネクタか `gh`）の後 | 書き込み先のリポジトリ（フォルダの `origin` で判定。worktree を含む）で動いているセッションのうち、タイトルが `🎯` で始まるものがちょうど 1 つあり、それが自分でなければ、SendMessage で 1 行報告するよう Claude に伝える。PR / issue ごとにセッションで 1 回だけ。クラウドと Claude Projects のセッションでは動かない |
@@ -141,7 +141,8 @@ reviews:
 
 | 何か | 置き場 | アンインストールで消えるか |
 |---|---|---|
-| フックの状態（handoff の入口、issue-writeback、dev-flow-gate、orchestrator-report、commit-gate、pr-checks の拒否回数） | `${CLAUDE_PLUGIN_DATA}/<機能>/`（`~/.claude/plugins/data/<プラグイン ID>/`）。変数なしで動いたスクリプトは `~/.claude/state/workflow/<機能>/` | 消える（最後の scope から外したとき。`--keep-data` を付ければ残る） |
+| フックの状態（handoff の入口、issue-writeback、dev-flow-gate、orchestrator-report、commit-gate、pr-checks の拒否回数） | `${CLAUDE_PLUGIN_DATA}/<機能>/`（`~/.claude/plugins/data/<プラグイン ID>/`） | 消える（最後の scope から外したとき。`--keep-data` を付ければ残る） |
+| 変数なしで動いたスクリプトが書いた同じ状態 | `~/.claude/state/workflow/<機能>/` | 消えない |
 | `HANDOFF_STATE_DIR` を設定したときの handoff の入口 | そのディレクトリ | 消えない |
 | pr-checks の通過記録とログ | `<git common dir>/workflow-pr-checks.json` と `.log.jsonl` | 消えない（クローンに属する） |
 | runbook と生ログ | `RUNBOOK_ROOT`、既定は `~/.claude/runbooks/` | 消えない（自分の文書） |

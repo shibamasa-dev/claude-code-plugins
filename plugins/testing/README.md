@@ -32,7 +32,8 @@ Skills and hooks for designing and running tests.
 
 | What | Where | Uninstalling the plugin removes it |
 |---|---|---|
-| full-test-gate records (the last full run per project) | `${CLAUDE_PLUGIN_DATA}/full-test/` (`~/.claude/plugins/data/<plugin id>/`); `FULL_TEST_STATE_DIR` moves it; a run without the variable uses `~/.claude/state/testing/full-test/` | Yes, from the last scope it is installed in, unless you pass `--keep-data` (not a directory set with `FULL_TEST_STATE_DIR`) |
+| full-test-gate records (the last full run per project) | `${CLAUDE_PLUGIN_DATA}/full-test/` (`~/.claude/plugins/data/<plugin id>/`) | Yes, from the last scope it is installed in, unless you pass `--keep-data` |
+| The same records with `FULL_TEST_STATE_DIR` set, or written by a run without `CLAUDE_PLUGIN_DATA` | that directory, or `~/.claude/state/testing/full-test/` | No |
 | full-test-gate's marker for a failed `origin` lookup | `<git common dir>/full-test-gate-origin-miss` | No |
 | Test cases from `testcase-generator` | next to the repo's existing test-case files, else `docs/testcases/<topic>.md`; the session scratchpad when you only want to read them | No |
 

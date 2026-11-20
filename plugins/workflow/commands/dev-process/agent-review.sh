@@ -19,7 +19,10 @@ LOG_FILE="${LOG_DIR}/agent-review-$(date +%Y%m%d).log"
 mkdir -p "$LOG_DIR" "${OUT_DIR}/review"
 if EXCLUDE=$(git rev-parse --git-path info/exclude 2>/dev/null); then
   mkdir -p "$(dirname "$EXCLUDE")"
-  grep -qxF '.context/' "$EXCLUDE" 2>/dev/null || echo '.context/' >> "$EXCLUDE"
+  if ! grep -qxF '.context/' "$EXCLUDE" 2>/dev/null; then
+    [ -s "$EXCLUDE" ] && [ -n "$(tail -c1 "$EXCLUDE")" ] && echo >> "$EXCLUDE"   # the last line has no newline
+    echo '.context/' >> "$EXCLUDE"
+  fi
 fi
 
 # Debug log function

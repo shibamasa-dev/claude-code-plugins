@@ -71,7 +71,7 @@ Every file a skill, hook or command produces goes to one of these places. A skil
 `${CLAUDE_PLUGIN_DATA}` is `~/.claude/plugins/data/<id>/`, kept across updates and deleted when the plugin is uninstalled from the last place it is installed, unless `--keep-data` is passed. Hooks and MCP servers get it in their environment; commands Claude runs through Bash do not, and may even carry another plugin's value. So:
 
 - A script that also runs from Bash uses the variable only when its directory is the plugin's own (`<plugin>-<marketplace>` or `<plugin>-inline`).
-- A command a hook prints for Claude to run puts `CLAUDE_PLUGIN_DATA="<value>"` in front of it; a command in a SKILL.md body writes `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}"`, which Claude Code substitutes when it loads the skill (files under `references/` are read, not loaded, so they point at the SKILL.md command instead).
+- A command a hook prints for Claude to run puts `CLAUDE_PLUGIN_DATA=<value>` in front of it, shell-quoted (`shlex.quote`); a command in a SKILL.md body writes `CLAUDE_PLUGIN_DATA='${CLAUDE_PLUGIN_DATA}'`, which Claude Code substitutes when it loads the skill (single quotes, so a `$` in the path is not expanded again) (files under `references/` are read, not loaded, so they point at the SKILL.md command instead).
 - Each plugin README's Configuration section lists where its files go and what uninstalling removes.
 
 ## Before changing a shared skill or hook
