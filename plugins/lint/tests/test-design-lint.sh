@@ -2,7 +2,7 @@
 # Measures design-lint.py offline: silent for files other than DESIGN.md, and loud (not silent) when lint cannot run.
 set -u
 HOOK="$(cd "$(dirname "$0")/.." && pwd)/hooks/design-lint.py"
-TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+TMP=$(mktemp -d) || exit 1; trap 'rm -rf "$TMP"' EXIT
 printf '# Design\n' > "$TMP/DESIGN.md"; printf '# Readme\n' > "$TMP/README.md"
 PY=$(python3 -c 'import sys; print(sys.executable)')  # the real interpreter, so an empty PATH still runs the hook
 NONPX="$TMP/bin"; mkdir "$NONPX"

@@ -36,3 +36,9 @@
 ## 前提
 
 macOS / Linux、`python3`、`git`、`gh`
+
+## テスト
+
+```bash
+bash plugins/repo-setup/tests/run-all.sh
+```

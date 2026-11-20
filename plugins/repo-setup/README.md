@@ -36,3 +36,9 @@ It keeps nothing in its plugin data directory, so uninstalling removes none of t
 ## Requirements
 
 macOS or Linux, `python3`, `git`, `gh`
+
+## Tests
+
+```bash
+bash plugins/repo-setup/tests/run-all.sh
+```
