@@ -2,6 +2,11 @@
 
 Changelog of the creative plugin (named docs up to 0.1.4). Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow `version` in plugin.json.
 
+## [0.5.1] - 2026-11-20
+
+### Changed
+- motion-video names the project folder: the one the user names, else `motion-video/<slug>/` under the working directory; `brief.md`, `music-brief.md` and `verify.md` go directly in it (#83).
+
 ## [0.5.0] - 2026-11-18
 
 ### Removed

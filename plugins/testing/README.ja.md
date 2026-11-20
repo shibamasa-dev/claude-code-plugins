@@ -24,7 +24,24 @@
 | testcase-lint | Edit・Write の後 | テストケースの成果物がスタイルガイドに沿っているか検証する |
 | full-test-gate | セッション開始・Bash の前 | 全体テストを最後に通してからの変更量を知らせ、リリース等のコマンドを未検証の変更があれば止める |
 
-- **full-test-gate** は既定ブランチに `.claude/full-test.json` があるプロジェクトだけで動く。ファイルは作業ツリーではなく `origin/<既定>` から読むので、ブランチが自分を判定するコマンドやゲートを書き換えられない。新しい設定や変えた設定は既定ブランチにマージし、ローカルの `origin/<既定>` を fetch してから効く（`origin` リモートが無いリポは作業ツリーを読む）。書式は [`hooks/full-test-gate.py`](hooks/full-test-gate.py) の冒頭。`python3 "${CLAUDE_PLUGIN_ROOT}/hooks/full-test-gate.py" run` で全体テストを走らせて通れば記録、`python3 "${CLAUDE_PLUGIN_ROOT}/hooks/full-test-gate.py" run --working-tree` でマージ前の作業ツリーの設定を試せる（記録はしない）、`python3 "${CLAUDE_PLUGIN_ROOT}/hooks/full-test-gate.py" status` で前回からの変更量を確認できる。フックの文面にはフルパスのコマンドが出る
+- **full-test-gate** は既定ブランチに `.claude/full-test.json` があるプロジェクトだけで動く。ファイルは作業ツリーではなく `origin/<既定>` から読むので、ブランチが自分を判定するコマンドやゲートを書き換えられない。新しい設定や変えた設定は既定ブランチにマージし、ローカルの `origin/<既定>` を fetch してから効く（`origin` リモートが無いリポは作業ツリーを読む）。書式は [`hooks/full-test-gate.py`](hooks/full-test-gate.py) の冒頭。`python3 "${CLAUDE_PLUGIN_ROOT}/hooks/full-test-gate.py" run` で全体テストを走らせて通れば記録、`python3 "${CLAUDE_PLUGIN_ROOT}/hooks/full-test-gate.py" run --working-tree` でマージ前の作業ツリーの設定を試せる（記録はしない）、`python3 "${CLAUDE_PLUGIN_ROOT}/hooks/full-test-gate.py" status` で前回からの変更量を確認できる。フックの文面には、フルパスで `CLAUDE_PLUGIN_DATA=...` を前置きした `run` のコマンドが出る。そこから写して使い、`status` と `run --working-tree` にも同じ前置きを付ける。Bash にはこの変数が渡らないので、前置きの無いコマンドはフックとは別のディレクトリを読み書きし、stderr にそう出す
+
+## 設定
+
+### ファイルの置き場
+
+| 何か | 置き場 | アンインストールで消えるか |
+|---|---|---|
+| full-test-gate の記録（プロジェクトごとの最後の全体テスト） | `${CLAUDE_PLUGIN_DATA}/full-test/`（`~/.claude/plugins/data/<プラグイン ID>/`） | 消える（最後の scope から外したとき。`--keep-data` を付ければ残る） |
+| `FULL_TEST_STATE_DIR` を設定したとき、または `CLAUDE_PLUGIN_DATA` なしで動いたときの同じ記録 | そのディレクトリ、または `~/.claude/state/testing/full-test/` | 消えない |
+| `origin` を引けなかった印 | `<git common dir>/full-test-gate-origin-miss` | 消えない |
+| `testcase-generator` のテストケース | リポに既にあるテストケースのファイルの隣、無ければ `docs/testcases/<テーマ>.md`。読むだけで残さないならセッションの scratchpad | 消えない |
+
+```bash
+claude plugin uninstall testing@shibamasa-plugins --keep-data
+```
+
+古い版から上げると、最初の実行で `~/.claude/state/full-test/` を新しい置き場に一度だけコピーし、古いディレクトリはバックアップとして残す。Bash には `CLAUDE_PLUGIN_DATA` が渡らないので、フックが示す `run` のコマンドは `CLAUDE_PLUGIN_DATA=...` で始まる。この前置きを外すと、フックが見ない場所に記録される。
 
 ## 制限
 

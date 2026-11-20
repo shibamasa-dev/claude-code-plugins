@@ -49,6 +49,10 @@ Claude Code の作業を、取り返しがつかなくなる前に止めるフ�
 
 書き方の見本は [`examples/repo-structure.md`](examples/repo-structure.md)。どちらかへコピーして直す。判定に使うのは `<!-- guard:… -->` ブロックだけ。
 
+### ファイルの置き場
+
+プラグインが書くファイルは publish-guard の公開範囲のキャッシュ、`${CLAUDE_PLUGIN_DATA}`（`~/.claude/plugins/data/<プラグイン ID>/`）の `repo-visibility.json` だけ。最後の scope からアンインストールすると消える（`--keep-data` を付ければ残る）。消えてもフックが GitHub に聞き直すので困らない。
+
 ## マージの扱い
 
 マージの前の確認（以前の bash-guard の merge-gate）は 0.2.0 で外した。マージの条件（レビューがそろう・`Closes` 先の `## Result`）は workflow プラグインの `dev-flow` スキルと `dev-flow-gate` フックが持つ。guards だけを入れている場合、マージは止まらない。

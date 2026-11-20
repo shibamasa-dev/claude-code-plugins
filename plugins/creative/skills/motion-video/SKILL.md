@@ -33,7 +33,8 @@ Below, `R=${CLAUDE_PLUGIN_ROOT}/skills/motion-video/scripts/render.mjs`.
 Pick an entry point from `references/brief-template.md`.
 **The default is "start from rough notes"**: ask the human only for the impression, rough notes per scene and the asset list; the agent proposes the cut breakdown (the first cut sheet) and a music brief (`references/music-brief.md`, when adding BGM) first, and the human corrects them. Handing over a blank template stalls people.
 Add an instruction of this kind: "The ideas are hints. Don't aim to reproduce them. Over-the-top expression is fine."
-If the human wants to write a brief, copy the template as `brief.md` and fill it in. Fill only undecided items by asking (up to 3 questions at a time, in the order at the end of the template).
+Every file of the video lives in its project folder: the one the user names, else `motion-video/<slug>/` under the current working directory (layout: section 1 of `references/authoring.md`). `brief.md`, `music-brief.md` and `verify.md` go directly in it.
+If the human wants to write a brief, copy the template as `<project>/brief.md` and fill it in. Fill only undecided items by asking (up to 3 questions at a time, in the order at the end of the template).
 
 **Settle the asset list first.** If the product UI, numbers or claims do not exist as real material, do not make them up; ask the human for them (do not build a video on fabricated screens or numbers).
 Judging asset rights (whether a photo or logo may be used) is outside this skill. Ask the human.
@@ -43,7 +44,7 @@ If textures or live-action footage are needed, hand the human an **asset request
 
 For scenes that use many live-action clips, heavy compositing or heavy drawing (many particles, several stacked textures), prototype just that scene before v1.
 Write the prototype in the same `video.js` form as production, draw it with `node $R stills <project> --times <sec,…>` and look at it with Read. Drawing time is the stills run time divided by the number of frames (draw 10 or more frames to amortize Chrome's startup).
-Write the results per scene in `verify.md`:
+Write the results per scene in `<project>/verify.md`:
 
 ```markdown
 | Scene | Verdict | What to build and how | Needs | Draw time per frame |

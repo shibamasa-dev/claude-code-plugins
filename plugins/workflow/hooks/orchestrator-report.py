@@ -13,7 +13,7 @@ that session a one-line report with SendMessage. The orchestrator itself (same s
     whose cwd's `origin` remote is the GitHub repo written to (worktrees share their repo's origin; `gh -R` and
     connector writes to another repo go to that repo's orchestrator). Zero or several matches: nothing
   - Skipped in cloud sessions (CLAUDE_CODE_REMOTE=true) and Claude Projects sessions (CLAUDE_CODE_PROJECTS_SESSION=1)
-  - At most once per PR / issue per session. State: <CLAUDE_PLUGIN_DATA or ~/.claude/state>/orchestrator-report/<session_id>.json
+  - At most once per PR / issue per session. State: _state.state_dir("orchestrator-report")/<session_id>.json
 
 Whatever happens it never raises, always exits 0, and prints nothing when there is nothing to inject.
 """
@@ -30,6 +30,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 try:
+    from _state import state_dir  # where the state lives
     import dev_flow_gate as dfg  # gh parsing and tool-result helpers
 
     _spec = importlib.util.spec_from_file_location("issue_writeback", os.path.join(HERE, "issue-writeback.py"))
@@ -39,8 +40,7 @@ except Exception:
     sys.exit(0)
 
 MARKER = "\U0001F3AF"  # the orchestrator's title starts with this (e.g. "<marker> my-repo")
-STATE_DIR = os.path.join(os.environ.get("CLAUDE_PLUGIN_DATA") or os.path.expanduser("~/.claude/state"),
-                         "orchestrator-report")
+STATE_DIR = state_dir("orchestrator-report")
 GC_DAYS = 30
 TAG = "[orchestrator-report]"
 ISSUE_URL_RE = re.compile(r"github\.com/([\w.-]+/[\w.-]+)/issues/(\d+)")

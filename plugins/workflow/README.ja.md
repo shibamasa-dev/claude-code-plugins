@@ -29,7 +29,7 @@
 
 | フック | いつ | 何をするか |
 |---|---|---|
-| handoff | セッション開始 | 前のセッションが残した「次の入口」を注入する。書くのは `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/handoff.py" write --entry <owner>/<repo>#<n> --state "..." --next "..."`、消すのは `... consume --entry <入口>`。注入される文面に実行できるコマンドがそのまま出る |
+| handoff | セッション開始 | 前のセッションが残した「次の入口」を注入する。書くのは `CLAUDE_PLUGIN_DATA='${CLAUDE_PLUGIN_DATA}' python3 "${CLAUDE_PLUGIN_ROOT}/hooks/handoff.py" write --entry <owner>/<repo>#<n> --state "..." --next "..."`、消すのは `... consume --entry <入口>`。注入される文面に実行できるコマンドがそのまま出る |
 | issue-writeback | セッション開始・プロンプト送信・停止・終了、issue 操作の後 | 読んだ issue に決定事項を書き戻していなければ促す |
 | runbook | ブラウザ・画面操作の後、停止、セッション開始 | ブラウザ・画面操作の手順を記録する。最初の操作で、GIF 録画の開始（Chrome）か要所のメモ（録画できないツール）を促す。手順書を書き忘れたら止める |
 | orchestrator-report | PR の作成・更新、issue への書き込み（コネクタか `gh`）の後 | 書き込み先のリポジトリ（フォルダの `origin` で判定。worktree を含む）で動いているセッションのうち、タイトルが `🎯` で始まるものがちょうど 1 つあり、それが自分でなければ、SendMessage で 1 行報告するよう Claude に伝える。PR / issue ごとにセッションで 1 回だけ。クラウドと Claude Projects のセッションでは動かない |
@@ -50,7 +50,7 @@ commit-gate:
 - **指紋**: `merge-base(HEAD, origin/HEAD)` から見た作業ツリーの変更（未追跡ファイルを含む）。`git diff --raw` をハッシュしたもので、一時インデックスと一時オブジェクトディレクトリで計算するのでリポには何も書かない。変更の一部だけのコミット・push・衝突のない rebase では変わらず、どのツールによる編集でも変わる。merge-base が無いときはツリーのハッシュ。
 - **スタンプ**: コミットメッセージの末尾に `Verification: <種類> — <名前>`（例 `Verification: review — code-review`。種類は `review` と `verify`）か `Verification: none — <理由>` を書く。名前を書いた検証スキルは、ゲートが自分の記録と突き合わせる。検証なしのコミットは `git log origin/main --grep='^Verification: none'` で引ける。
 - **`git commit` の判定**（`enforce`）: 新しい証跡があり、トレーラーが合っていれば通す。`none — <理由>` は通して explained として記録する。それ以外は止める。証跡なし、古い証跡、記録の無い検証スキルを名乗るトレーラー、トレーラー無し（足す行を示す）、読めないメッセージ（変数・エディタ）、検証した作業ツリーとステージ済みの版が違うファイルがあるときがこれに当たる（コミットがそのファイルを作業ツリーから取るとき、つまり `-a` や、`-i` の有無を問わずパスを名指ししたときは除く。`--pathspec-from-file` で渡したパスは読まないので、すべてのファイルを確かめる。引用符付きや展開で生じたリダイレクトのような語（`'>'`）や、省略した長いオプション（`--mess`）と並んだパスも、語の区別がつかないので同じく全ファイルを確かめる。引用符の無いリダイレクト（`2>&1 | tail -3`・`>/dev/null`）は引数ではないので無視する。`git rm --cached` で外したが作業ツリーに残っているファイルは違うものとして数える。ただし git が無視するファイルは、検証したツリーにも入らないので数えない。作業ツリーが汚れているだけのサブモジュールは数えない）。1 セッションで 2 回止めたら、次のコミットは通して released として記録し、回数を戻す。`observe` は止めずにどうしたかを Claude に伝え、同じ回数も数える。古い証跡は通し、トレーラーに `(stale)` を付けるよう伝える。
-- **記録**: すべての判定を、セッション・リポ・ブランチ・指紋と一緒に `${CLAUDE_PLUGIN_DATA}/commit-gate/log.jsonl` に書く。コミットしたら（HEAD が動いたことで判断するので `git commit -q` も含む）、その sha とスタンプが記録に裏付けられているかを `committed` の行として書く。フック内の予期しないエラーは `error` として記録する（そのコミットは確かめていない）。初めて使うときにゲートがオンなら、そのために状態ディレクトリを作る（`off` では作らない）。`git commit` を含むのに読めないコマンド（引用符の閉じ忘れなど）は確かめず、`unparsed` として記録して Claude に伝える。`python3 "${CLAUDE_PLUGIN_ROOT}/hooks/commit_gate.py" report` で止めるはずだったものを一覧にする（`--all` で全件）。証跡と止めた回数は `${CLAUDE_PLUGIN_DATA}/commit-gate/`（その変数が無ければ `~/.claude/state/commit-gate/`）に置き、30 日より古いものはセッションの開始時に消す。
+- **記録**: すべての判定を、セッション・リポ・ブランチ・指紋と一緒に `${CLAUDE_PLUGIN_DATA}/commit-gate/log.jsonl` に書く。コミットしたら（HEAD が動いたことで判断するので `git commit -q` も含む）、その sha とスタンプが記録に裏付けられているかを `committed` の行として書く。フック内の予期しないエラーは `error` として記録する（そのコミットは確かめていない）。初めて使うときにゲートがオンなら、そのために状態ディレクトリを作る（`off` では作らない）。`git commit` を含むのに読めないコマンド（引用符の閉じ忘れなど）は確かめず、`unparsed` として記録して Claude に伝える。`python3 "${CLAUDE_PLUGIN_ROOT}/hooks/commit_gate.py" report` で止めるはずだったものを一覧にする（`--all` で全件）。証跡と止めた回数は `${CLAUDE_PLUGIN_DATA}/commit-gate/`（その変数が無ければ `~/.claude/state/workflow/commit-gate/`）に置き、30 日より古いものはセッションの開始時に消す。
 - **コスト**: `off` では何も書かず、何も言わず、ネットワークにも出ない。動くのはローカルの git だけ。Bash の各呼び出しの前は、コマンドに `git` と `commit` の両方が無ければすぐ終わり、あればリポとその設定ファイルを探すためにローカルの git を 2〜4 回読む。`duration_ms` を含む Bash 呼び出しの後には `git log -g -1` を 1 回だけ走らせる（約 10 ms、ファイルは書かない）。入力したコマンドや Skill の呼び出しでも同じようにリポのファイルを読む。セッション開始時の動きは「制限」のとおり。オンでは、コミットごとと、検証スキルが動いたターンの終わりに指紋を計算する（12,000 ファイルのリポで約 0.3 秒）。
 
 pr-checks（PR を出す前のローカル検査）:
@@ -62,7 +62,7 @@ pr-checks（PR を出す前のローカル検査）:
   - `observe`: 止めない。PR 作成 1 回につき 1 行を記録し、通った記録が無いときは Claude に伝える。
   - `enforce`: 通った記録が無い PR 作成を止める。PR 本文に `Local-Checks: none — <理由>` があれば通す（`explained` と記録）。同じセッションで 2 回止めたら、次の作成は通す（`released` と記録）。
 - **確かでないときは止めない**: 止めるのは、PR の宛先リポが PR を作るディレクトリの origin で、head がそこでチェックアウトしているブランチだと確かなときだけ。コマンドからディレクトリが分からない（`cd "$VAR" && gh pr create`）、`-R`・`GH_REPO`・コネクタの `owner` と `repo` が別のリポを指す、`--head` が別のブランチを指す、detached HEAD、既定ブランチが分からない、ゲートがオンなのに `prChecks` コマンドが無い、指紋を計算できない、同じ呼び出しの中でブランチ・ツリー・gh の既定リポを動かしうる git / gh コマンドが先にある（`git switch`・`gh pr checkout`・`gh repo set-default`）、`gh repo set-default` が `origin` 以外のリポを指している、のどれも、`observe` と `enforce` では伝えて記録するだけで、止めない（`unresolved`・`nogate`・`nocommand`・`unchecked`）。`off` では、ほかと同じく何も言わない。
-- **記録**: `<git common dir>/workflow-pr-checks.log.jsonl`。通った記録のファイルの隣で、リポごと（理由も同じで、`report` は Bash から起動され、そこでは `CLAUDE_PLUGIN_DATA` がこのプラグインのものではない）。PR 作成 1 回につき 1 行で、セッション・リポ・ブランチ・head のコミット（`pr_head`）・指紋・`had_pass`・未コミットの変更があったか（`dirty`）・判定を書く。リポの中で `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/checks.py" report` を実行すると、通った記録が無かった作成を一覧できる（`--all` で全件）。記録を書けないときも判定は変わらず（`enforce` で通った記録が無ければ止める）、その行が失われたことを Claude に伝える。判定の途中でフックが失敗したときは、PR を止めず、Claude に伝え、`error` の行を記録する。`${CLAUDE_PLUGIN_DATA}/checks/blocks/`（この変数が無いときは `~/.claude/state/checks/blocks/`）に置くのは、セッションごとの拒否回数だけ。
+- **記録**: `<git common dir>/workflow-pr-checks.log.jsonl`。通った記録のファイルの隣で、リポごと（理由も同じで、`report` は Bash から起動され、そこでは `CLAUDE_PLUGIN_DATA` がこのプラグインのものではない）。PR 作成 1 回につき 1 行で、セッション・リポ・ブランチ・head のコミット（`pr_head`）・指紋・`had_pass`・未コミットの変更があったか（`dirty`）・判定を書く。リポの中で `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/checks.py" report` を実行すると、通った記録が無かった作成を一覧できる（`--all` で全件）。記録を書けないときも判定は変わらず（`enforce` で通った記録が無ければ止める）、その行が失われたことを Claude に伝える。判定の途中でフックが失敗したときは、PR を止めず、Claude に伝え、`error` の行を記録する。`${CLAUDE_PLUGIN_DATA}/checks/blocks/`（この変数が無いときは `~/.claude/state/workflow/checks/blocks/`）に置くのは、セッションごとの拒否回数だけ。
 - **PR 本文のファイル**: `gh pr create` の呼び出し自身が本文として指す未追跡ファイル（`--body-file` / `-F`）は指紋から外す。検査のあとでリポの中に本文を書いても、通った記録は消えない。検査のときにすでにあった本文ファイルのために、`run` は未追跡ファイルごとに（10 個まで）そのファイルだけを外した指紋も記録する。だから、あとで本文を直しても（dev-flow-gate に差し戻されたときなど）記録は消えない。ファイルはディスク上の同じファイルかどうかで照合するので、大文字小文字を区別しないファイルシステムでの別の綴りや、そのファイルへのシンボリックリンクでも通る。ほかに外すものは無い。ignore されていない未追跡ファイルの追加・変更・削除は変更として数える（ignore するか、検査をやり直す）。本文をリポの外に置けば、この問題は起きない。
 - **コスト**: `off` では、PR 作成 1 回につきローカルの git の読み取りが 2〜4 回（ある計測で約 40 ms）。ほかのコマンドでは何も動かない。どのモードでもネットワークには出ない。
 
@@ -137,6 +137,25 @@ reviews:
 2. この設定を組織単位で入れられるか（入れられなければリポごとの `.coderabbit.yaml`）
 3. Codex をラベルで自動レビューから外せるか（外せなければ軽い PR でも Codex は走る）
 
+### ファイルの置き場
+
+| 何か | 置き場 | アンインストールで消えるか |
+|---|---|---|
+| フックの状態（handoff の入口、issue-writeback、dev-flow-gate、orchestrator-report、commit-gate、pr-checks の拒否回数） | `${CLAUDE_PLUGIN_DATA}/<機能>/`（`~/.claude/plugins/data/<プラグイン ID>/`） | 消える（最後の scope から外したとき。`--keep-data` を付ければ残る） |
+| 変数なしで動いたスクリプトが書いた同じ状態 | `~/.claude/state/workflow/<機能>/` | 消えない |
+| `HANDOFF_STATE_DIR` を設定したときの handoff の入口 | そのディレクトリ | 消えない |
+| pr-checks の通過記録とログ | `<git common dir>/workflow-pr-checks.json` と `.log.jsonl` | 消えない（クローンに属する） |
+| runbook と生ログ | `RUNBOOK_ROOT`、既定は `~/.claude/runbooks/` | 消えない（自分の文書） |
+| Artifact 台帳 | プロジェクトのルートの `.artifacts/`（保存先の節） | 消えない |
+| review-and-fix のレビュー結果・修正計画・デバッグログ | リポの `.context/workflow/review/`・`plan/`・`logs/`。コマンドが `.context/` を `.git/info/exclude` に足す | 消えない |
+| 利用上限（rate-limits mod） | `/tmp/claude-<uid>/rate-limits.json` | 消えない（一時ファイル） |
+
+```bash
+claude plugin uninstall workflow@shibamasa-plugins --keep-data
+```
+
+古い版から上げると、最初の実行で `~/.claude/state/issue-writeback/` と `~/.claude/state/handoff/` を新しい置き場に一度だけコピーし、古いディレクトリはバックアップとして残す。要らなくなったら消してよい。dev-flow-gate・orchestrator-report・checks・commit-gate は前から `${CLAUDE_PLUGIN_DATA}` を使っていて、変わったのは変数が無いときの置き場（`~/.claude/state/<機能>/` → `~/.claude/state/workflow/<機能>/`）だけ。こちらはコピーしない。Bash から叩いたコマンドが `~/.claude/state/workflow/` のフォールバックを使うときは、stderr にそう出る。Bash には `CLAUDE_PLUGIN_DATA` が渡らないので、フックが示すコマンドとスキルに書いたコマンド（handoff、issue-writeback、session-wrap の survey）は `CLAUDE_PLUGIN_DATA=...` で始まる。自分で叩くときもこの前置きを残す。
+
 ## コマンド
 
 - `/workflow:dev-process:review-and-fix` — AI レビュー → 評価 → 修正計画 → 実装までを一続きで行う
@@ -149,7 +168,7 @@ reviews:
 
 | 環境変数 | 既定 | 中身 |
 |---|---|---|
-| `HANDOFF_STATE_DIR` | `~/.claude/state/handoff` | handoff の入口 |
+| `HANDOFF_STATE_DIR` | 未設定（`${CLAUDE_PLUGIN_DATA}/handoff`） | handoff の入口 |
 | `RUNBOOK_ROOT` | `~/.claude/runbooks` | runbook の生ログと手順書 |
 
 ### Artifact 台帳

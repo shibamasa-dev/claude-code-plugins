@@ -10,8 +10,10 @@ branch / issue-writeback's unreflected issues. No judgment; it only raises flags
 """
 import argparse, json, os, subprocess, sys
 
-HOME = os.path.expanduser("~")
-STATE_DIR = os.path.join(HOME, ".claude", "state", "issue-writeback")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "hooks"))
+from _state import state_dir, warn_fallback  # noqa: E402  (the same directory issue-writeback.py uses)
+
+STATE_DIR = state_dir("issue-writeback", legacy="issue-writeback")
 
 def sh(cmd, cwd=None, timeout=5):
     try:
@@ -93,6 +95,7 @@ def fmt(r):
     return "\n".join(lines)
 
 def main():
+    warn_fallback(STATE_DIR)
     ap = argparse.ArgumentParser()
     ap.add_argument("--session"); ap.add_argument("--json", action="store_true")
     a = ap.parse_args()

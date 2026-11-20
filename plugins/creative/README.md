@@ -21,6 +21,18 @@ Skills for making images and videos.
 
 `DESIGN.md` linting moved to the `lint` plugin. To keep it, run `/plugin install lint@shibamasa-plugins`.
 
+## Configuration
+
+### Where files go
+
+| What | Where |
+|---|---|
+| A motion-video project (`brief.md`, `music-brief.md`, `verify.md`, `video.js`, `out/`) | the folder you name, else `motion-video/<slug>/` under the working directory |
+| motion-video's working PNG sequence and audio files | `os.tmpdir()/motion-video/`, not removed automatically; delete it when the video is done |
+| The soundfont for BGM | `~/.local/share/motion-video/soundfonts/`, where you put it |
+
+It keeps nothing in its plugin data directory, so uninstalling removes none of these files.
+
 ## Requirements
 
 - `motion-video`: Node.js, Chrome, ffmpeg

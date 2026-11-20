@@ -15,7 +15,7 @@ T=$(mktemp -d "${TMPDIR:-/tmp}/pc.XXXX")
 # Guard: every git write below happens under $T (an empty or unexpected path would commit into the caller's repo)
 case "$T" in ""|/) echo "mktemp failed" >&2; exit 1 ;; esac
 [ -d "$T" ] || { echo "no temp dir" >&2; exit 1; }
-export CLAUDE_PLUGIN_DATA="$T/data" HOME="$T" GIT_CONFIG_NOSYSTEM=1
+export CLAUDE_PLUGIN_DATA="$T/data/workflow-test" HOME="$T" GIT_CONFIG_NOSYSTEM=1
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.com GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.com
 unset CLAUDE_PLUGIN_OPTION_PR_CHECKS_GATE CLAUDE_PLUGIN_OPTION_COMMIT_GATE GH_REPO
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES

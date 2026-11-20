@@ -10,15 +10,20 @@ Reader:     the SessionStart (startup/resume) hook injects every handoff of the 
 Check:      handoff.py show
 No leftovers from other repos: an entry for another repo would be injected into this project's next session, where it is irrelevant.
             If --entry belongs to a different repo than the cwd's origin, it is refused (--force writes it anyway).
-State:      $HANDOFF_STATE_DIR (default ~/.claude/state/handoff)/<project-key>.json (project-key = sha1 of the git common dir; cwd outside git)
+State:      $HANDOFF_STATE_DIR, else ${CLAUDE_PLUGIN_DATA}/handoff, else ~/.claude/state/workflow/handoff (_state.py)
+            /<project-key>.json; the first run copies an older ~/.claude/state/handoff there once (not with the override)
+            (project-key = sha1 of the git common dir; cwd outside git)
             shape: {"project": root, "items": [{entry, state, next, written, at}, ...]}
 """
 import hashlib, json, os, re, subprocess, sys, time
 from datetime import datetime
 
-STATE_DIR = os.path.expanduser(os.environ.get("HANDOFF_STATE_DIR", "~/.claude/state/handoff"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _state import command_for, state_dir, warn_fallback  # noqa: E402
+
+STATE_DIR = state_dir("handoff", override_env="HANDOFF_STATE_DIR", legacy="handoff")
 STALE_DAYS = 14
-SELF = f'python3 "{os.path.abspath(__file__)}"'  # how messages tell Claude to run this script
+SELF = command_for(__file__)  # how messages tell Claude to run this script
 
 def project_root(cwd):
     try:
@@ -131,6 +136,7 @@ def cli(argv):
 
 def main():
     if len(sys.argv) > 1:
+        warn_fallback(STATE_DIR, "HANDOFF_STATE_DIR")
         sys.exit(cli(sys.argv[1:]))
     try:
         inp = json.load(sys.stdin)

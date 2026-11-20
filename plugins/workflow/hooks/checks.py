@@ -16,7 +16,7 @@ by worktrees and sessions (the same tree gives the same result); the log is next
 (workflow-pr-checks.log.jsonl). They are not under CLAUDE_PLUGIN_DATA because `run` and `report` are started from
 Bash, where that variable is not this plugin's; the git common dir is the one place both the CLI and the hook can
 derive. Only the per-session denial count, which the hook alone reads and writes, is in
-<CLAUDE_PLUGIN_DATA or ~/.claude/state>/checks/blocks/.
+_state.state_dir("checks")/blocks/.
 
 An untracked file that the `gh pr create` call itself names as its body (`--body-file` / `-F`) is left out of the
 fingerprint, so writing the PR body inside the repo after the checks ran does not undo the pass. For a body file that
@@ -49,6 +49,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _state  # noqa: E402
 import commit_gate as cg  # noqa: E402  (repo, default-branch config, fingerprint and locked files are item 3's)
 
 TAG = "[pr-checks]"
@@ -65,7 +66,7 @@ ORIGIN_RE = re.compile(r"github\.com[:/]([^/]+)/([^/\s]+?)(?:\.git)?$")
 
 def state_dir():
     """Where the per-session denial count lives (read and written by the hook only)."""
-    return os.path.join(os.environ.get("CLAUDE_PLUGIN_DATA") or os.path.expanduser("~/.claude/state"), "checks")
+    return _state.state_dir("checks")
 
 
 _log_failed = []  # set when a log line could not be written, so pr_gate() can say so
