@@ -50,8 +50,14 @@ row 'keeps the existing SessionStart hook' "$(grep -c 'echo other' "$R2/.claude/
 row 'adds the remote-setup hook next to it' "$(hooks "$R2/.claude/settings.json")" '1'
 
 echo '=== bad arguments ==='
-python3 "$SCAFFOLD" >/dev/null 2>&1; row 'no argument exits non-zero' "$([ $? != 0 ] && echo fail || echo ok)" 'fail'
-python3 "$SCAFFOLD" a b >/dev/null 2>&1; row 'two arguments exit non-zero' "$([ $? != 0 ] && echo fail || echo ok)" 'fail'
+err=$(python3 "$SCAFFOLD" 2>&1 >/dev/null); rc=$?
+row 'no argument exits non-zero' "$([ $rc != 0 ] && echo fail || echo ok)" 'fail'
+case "$err" in *Traceback*) kind=traceback ;; *'Usage: scaffold.py <repo-root>'*) kind=usage ;; *) kind=other ;; esac
+row 'no argument prints the usage line, not a traceback' "$kind" 'usage'
+R4="$TMP/twoargs"; mkdir "$R4"
+python3 "$SCAFFOLD" "$R4" extra >/dev/null 2>&1; rc=$?
+row 'two arguments (first a real repo) exit non-zero' "$([ $rc != 0 ] && echo fail || echo ok)" 'fail'
+row 'and create nothing in that repo' "$(ls -A "$R4" | wc -l | tr -d ' ')" '0'
 python3 "$SCAFFOLD" "$TMP/missing" >/dev/null 2>&1; row 'a directory that does not exist exits non-zero' "$([ $? != 0 ] && echo fail || echo ok)" 'fail'
 row 'and creates nothing' "$(yn test ! -e "$TMP/missing")" 'yes'
 R3="$TMP/badjson"; mkdir -p "$R3/.claude"; echo '{not json' > "$R3/.claude/settings.json"
