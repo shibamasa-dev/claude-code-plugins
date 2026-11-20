@@ -35,7 +35,7 @@ const ours = (path: string): InstructionFile => ({ path, kind: 'user', content: 
 test('adds the bundled file as a user file after the last user file', async ($, on) => {
   const read = world(on)
   const r = await $.prompt.context({ blocks: BLOCKS, instructionFiles: REAL })
-  expect(read).toHaveLength(1)
+  expect(read).toHaveLength(2)
   expect(read[0]?.startsWith('/')).toBe(true)
   expect(r.instructionFiles).toEqual([...REAL.slice(0, 3), ours(read[0] ?? ''), ...REAL.slice(3)])
   // the engine renders the claudeMd block again from the files, framing ours as it frames ~/.claude/CLAUDE.md
