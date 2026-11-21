@@ -17,6 +17,7 @@ Take every color from a CSS custom property, so one file carries both themes. Ne
     }
   }
   body { background: var(--bg); }
+  svg { color: var(--ink); }
   svg text { fill: var(--ink); font-family: system-ui, sans-serif; }
   .box { fill: var(--box); stroke: var(--line); stroke-width: 1; }
   .edge { stroke: var(--muted); fill: none; }
@@ -29,7 +30,7 @@ Take every color from a CSS custom property, so one file carries both themes. Ne
 </style>
 ```
 
-The values above are a neutral default. When the project has its own design tokens, or the host supplies theme variables, use those instead.
+`color` on the `<svg>` is what `currentColor` resolves to, so stroke-only concept icons follow the theme. The values above are a neutral default. When the project has its own design tokens, or the host supplies theme variables, use those instead.
 
 A host that sets the theme itself (an attribute on the root element, or its own variables) needs the same overrides under that selector as well as under the media query.
 
