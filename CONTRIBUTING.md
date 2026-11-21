@@ -55,7 +55,7 @@ Limits to know about:
 
 - Write everything in English: skills, hook messages, comments, tests, manifests and CHANGELOG entries
 - Skill `description` fields also list the Japanese trigger phrases, so Japanese prompts still trigger the skill. Write a description on one line, at 1024 characters or fewer: claude.ai cuts a longer one when it syncs the plugin, and `check-repo.py` fails it (it measures one-line values only)
-- CI fails a PR whose added lines contain Japanese outside quotes. Quote Japanese data (`code`, 「quotes」, string literals) or add `ja-ok` to the line; `README.ja.md`, `tests/`, `evals/` and `fixtures/` are not checked. Check locally with `python3 .github/scripts/check-repo.py --base origin/main`
+- CI fails a PR whose added lines contain Japanese outside quotes. Quote Japanese data (`code`, 「quotes」, string literals) or add `ja-ok` to the line; `README.ja.md`, `tests/`, `evals/`, `fixtures/` and lines inside a `<!-- lint:TAG -->` … `<!-- /lint:TAG -->` block (data a hook reads line by line, which takes neither quotes nor `ja-ok`) are not checked. Check locally with `python3 .github/scripts/check-repo.py --base origin/main`
 - Every `README.md` has a Japanese `README.ja.md` next to it, linked from a language switcher on line 3. Update both in the same PR. `check-repo.py` enforces the pair
 
 ## Versions and CHANGELOG

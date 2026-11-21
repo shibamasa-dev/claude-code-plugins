@@ -11,4 +11,4 @@ trap 'docker stop "$cid" >/dev/null' EXIT
 export INVENTORY_PG_ADMIN_URL="postgresql://postgres@127.0.0.1:$port/postgres"
 for _ in $(seq 60); do psql "$INVENTORY_PG_ADMIN_URL" -X -q -c 'SELECT 1' >/dev/null 2>&1 && break; sleep 1; done
 export INVENTORY_SERVER_CMD="uv run --quiet --script"
-INVENTORY_EXTRA_TESTS=pg-file-only.sh bash run-all.sh
+bash run-all.sh pg-file-only.sh

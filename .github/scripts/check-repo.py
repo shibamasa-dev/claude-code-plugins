@@ -17,8 +17,12 @@
    Katakana outside quotes. English is the base language (CLAUDE.md "Language"); only added lines are
    checked, so the Japanese data already in the repo doesn't need listing. Allowed: README.ja.md, files under
    tests/, evals/ or fixtures/, SKILL.md frontmatter (the description's Japanese trigger phrases), quoted text
-   (`code`, 「quotes」, '...', "...": user phrases, old Japanese markers, string literals, regexes) and lines
-   containing `ja-ok` (unquoted data such as a list of Japanese keywords)
+   (`code`, 「quotes」, '...', "...": user phrases, old Japanese markers, string literals, regexes), lines
+   containing `ja-ok` (unquoted data such as a list of Japanese keywords) and lines inside a
+   `<!-- lint:TAG -->` ... `<!-- /lint:TAG -->` block (data a hook reads line by line, where a quote or a
+   marker would become part of the value)
+5. Every plugins/<name>/tests/run-all.sh is the same file, so the plugins tally their tests the same way
+   (each plugin keeps its own copy so the tests of an installed plugin still run without .github/)
 """
 import os
 import re
@@ -138,6 +142,49 @@ def frontmatter_end(f):
     return next((n for n, line in enumerate(lines[1:], 2) if line.strip() == "---"), 0)
 
 
+RUNNER = re.compile(r"plugins/[^/]+/tests/run-all\.sh")
+runners = {}
+for f in filter(None, FILES):
+    if RUNNER.fullmatch(f):
+        try:  # the same source as the loop above: the index for pre-commit, else the working tree
+            runners[f] = (subprocess.run(["git", "show", f":{f}"], cwd=ROOT, capture_output=True, check=True).stdout
+                          if INDEX else open(os.path.join(ROOT, f), "rb").read())
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            continue
+if len(set(runners.values())) > 1:
+    first = sorted(runners)[0]
+    for f in sorted(runners):
+        if runners[f] != runners[first]:
+            errors.append(f"{f}: differs from {first} (every plugin's tests/run-all.sh is the same file; change them together)")
+
+
+LINT_OPEN = re.compile(r"<!--\s*lint:([\w-]+)\s*-->")
+
+
+def lint_block_lines(f):
+    """Line numbers at HEAD strictly inside <!-- lint:TAG --> ... <!-- /lint:TAG --> blocks.
+
+    These blocks are data that hooks read line by line (testcase-lint.py's read_block takes everything after
+    "- "), so a quote or a ja-ok marker would change the value. A block that is never closed exempts nothing.
+    """
+    try:
+        lines = git("show", f"HEAD:{f}").splitlines()
+    except subprocess.CalledProcessError:
+        return set()
+    inside, tag, pending = set(), None, []
+    for n, line in enumerate(lines, 1):
+        if tag is None:
+            m = LINT_OPEN.search(line)
+            if m:
+                tag, pending = m.group(1), []
+        elif re.search(rf"<!--\s*/lint:{re.escape(tag)}\s*-->", line):
+            inside.update(pending)
+            tag = None
+        else:
+            pending.append(n)
+    return inside
+
+
 if "--base" in sys.argv:
     base = git("merge-base", sys.argv[sys.argv.index("--base") + 1], "HEAD").strip()
     # Paths come from -z (never quoted); each file's diff is read on its own, and only lines after the first
@@ -146,13 +193,14 @@ if "--base" in sys.argv:
         if LANG_EXEMPT.search(f):
             continue
         fm = frontmatter_end(f) if f == "SKILL.md" or f.endswith("/SKILL.md") else 0
+        data = lint_block_lines(f)
         n = None
         for line in git("diff", "-U0", "--no-color", base, "HEAD", "--", f).splitlines():
             if line.startswith("@@"):
                 n = int(re.search(r"\+(\d+)", line).group(1))
             elif n is not None and line.startswith("+"):
                 text = line[1:]
-                if not (n <= fm or "ja-ok" in text) and KANA.search(QUOTED.sub("", text)):
+                if not (n <= fm or n in data or "ja-ok" in text) and KANA.search(QUOTED.sub("", text)):
                     errors.append(f"{f}:{n}: Japanese outside quotes (write it in English, quote it, or add ja-ok to the line)")
                 n += 1
 
