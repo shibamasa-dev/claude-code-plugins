@@ -2,6 +2,11 @@
 
 Changelog of the creative plugin (named docs up to 0.1.4). Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow `version` in plugin.json.
 
+## [0.6.0] - 2026-11-21
+
+### Removed
+- The `diagram-frames` skill.
+
 ## [0.5.1] - 2026-11-20
 
 ### Changed
