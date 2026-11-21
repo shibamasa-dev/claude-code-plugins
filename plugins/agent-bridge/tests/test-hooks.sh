@@ -72,6 +72,17 @@ row 'the prompt context never carries the message body' "$(yesno not grep -q 'se
 id=$(jget "$(post tok-claude '{"action":"inbox"}')" 'd["messages"][0]["id"]')
 post tok-claude "{\"action\":\"ack\",\"ids\":[$id]}" >/dev/null
 row 'with nothing unread the prompt hook prints nothing' "$(yesno [ -z "$(echo '{}' | python3 "$NOTICE")" ])" yes
+
+# The wait counts from the session's last turn: a new turn's hook refreshes the turn file the running poller reads
+input s1 | python3 "$WAIT" 2>/dev/null & poller=$!
+for _ in $(seq 100); do [ -e "$CLAUDE_PLUGIN_DATA/wait/s1.pid" ] && break; sleep 0.1; done
+python3 -c 'import os, sys, time; t = time.time() - 600; os.utime(sys.argv[1], (t, t))' "$CLAUDE_PLUGIN_DATA/wait/s1.turn"
+input s1 | python3 "$WAIT" 2>/dev/null
+row 'a new turn while a poller runs moves its deadline to max_wait_minutes from now' "$(yesno python3 -c 'import os, sys, time; sys.exit(time.time() - os.stat(sys.argv[1]).st_mtime > 5)' "$CLAUDE_PLUGIN_DATA/wait/s1.turn")" yes
+python3 -c 'import os, sys, time; t = time.time() - 120; os.utime(sys.argv[1], (t, t))' "$CLAUDE_PLUGIN_DATA/wait/s1.turn"
+for _ in $(seq 250); do kill -0 "$poller" 2>/dev/null || break; sleep 0.1; done
+row 'a running poller ends once the last turn is older than max_wait_minutes' "$(yesno not kill -0 "$poller" 2>/dev/null)" yes
+kill "$poller" 2>/dev/null; wait "$poller" 2>/dev/null
 stop_fake
 
 start_fake FAKE_BRIDGE_DOWN=1

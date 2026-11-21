@@ -53,7 +53,7 @@ The bundled MCP server (`bridge`): `send_message`, `check_inbox`, `mark_read`, `
 | Hook | When | What it does |
 |---|---|---|
 | `arm_session.py` | `PostToolUse` on the bridge's tools | Marks the session as one that talks to agents, so only such sessions listen |
-| `wait_inbox.py` | `SessionStart` and `Stop`, in the background (`asyncRewake`) | With `listen` on, in a marked session: polls the bridge's status every `poll_seconds`. When a message is unread and either its id is newer than any this machine has seen for this bridge or the unread count went up, it wakes Claude with a count only (never the body). It records the id and count first, so one message wakes one session once. Stops after `max_wait_minutes` or when its session's process is gone, and the next turn starts it again |
+| `wait_inbox.py` | `SessionStart` and `Stop`, in the background (`asyncRewake`) | With `listen` on, in a marked session: polls the bridge's status every `poll_seconds`. When a message is unread and either its id is newer than any this machine has seen for this bridge or the unread count went up, it wakes Claude with a count only (never the body). It records the id and count first, so one message wakes one session once. Stops `max_wait_minutes` after the session's last turn (a new turn extends a poller that is still running) or when its session's process is gone, and the next turn starts it again |
 | `unread_notice.py` | `UserPromptSubmit` | When messages are unread, adds their count to your prompt's context. Silent when there are none or the bridge doesn't answer within 2 seconds |
 
 ## Configuration
@@ -79,6 +79,7 @@ Files on this machine: under `${CLAUDE_PLUGIN_DATA}/wait/` (or `~/.claude/state/
 
 ## Requirements
 
+- macOS or Linux (the hooks use `fcntl` and `ps`)
 - `python3` (standard library only)
 - A Supabase project with Vault and `pg_net` (both available on Supabase)
 - For setup: a Supabase connector (claude.ai connector or MCP server)

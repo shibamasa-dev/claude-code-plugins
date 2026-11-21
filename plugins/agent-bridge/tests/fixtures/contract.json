@@ -1,5 +1,5 @@
 {
-  "_comment": "The bridge's response shapes. tests/fake_bridge.py answers with exactly these keys, and test-sql.sh checks that agent_bridge.api() / status() in the real schema return them, so the fake cannot drift from the SQL.",
+  "_comment": "The bridge's response shapes. tests/fake_bridge.py answers with exactly these keys, and pg-sql.sh checks that agent_bridge.api() / status() in the real schema return them, so the fake cannot drift from the SQL.",
   "status": ["agent", "unread", "latest_id"],
   "send": ["id", "thread", "to", "delivery"],
   "inbox": ["agent", "messages"],

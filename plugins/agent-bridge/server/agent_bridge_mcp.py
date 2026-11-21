@@ -203,6 +203,10 @@ def send(obj: dict):
 
 
 def main():
+    # JSON-RPC over stdio is UTF-8 whatever the locale says; a cp1252 stdout would fail on a Japanese body after
+    # the inbox had already claimed the message, hiding it for 10 minutes
+    sys.stdin.reconfigure(encoding="utf-8")
+    sys.stdout.reconfigure(encoding="utf-8")
     for line in sys.stdin:
         line = line.strip()
         if not line:

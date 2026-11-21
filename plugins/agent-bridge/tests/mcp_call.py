@@ -15,6 +15,7 @@ SERVER = Path(__file__).resolve().parent.parent / "server" / "agent_bridge_mcp.p
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8")
     args = sys.argv[1:]
     msgs = [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}},
             {"jsonrpc": "2.0", "method": "notifications/initialized"}]
@@ -24,7 +25,8 @@ def main():
         arguments = json.loads(args[1]) if len(args) > 1 else {}
         msgs.append({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": args[0], "arguments": arguments}})
     stdin = "".join(json.dumps(m) + "\n" for m in msgs)
-    out = subprocess.run([sys.executable, str(SERVER)], input=stdin, capture_output=True, text=True, timeout=60).stdout
+    out = subprocess.run([sys.executable, str(SERVER)], input=stdin, capture_output=True, encoding="utf-8",
+                         timeout=60).stdout
     replies = {r.get("id"): r for r in map(json.loads, out.splitlines())}
     r = replies[2]
     if "error" in r:

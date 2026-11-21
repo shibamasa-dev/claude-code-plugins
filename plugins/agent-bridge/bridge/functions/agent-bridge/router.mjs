@@ -82,7 +82,8 @@ export async function handle(req, db) {
   } catch (e) {
     const known = splitError(e && e.message);
     if (known) return json(HTTP_STATUS[known[0]], { error: known[0], message: known[1] });
-    console.error("agent-bridge:", e);
+    // Only the message and code: a postgres.js error also carries the query parameters, which include the token
+    console.error("agent-bridge:", e && e.code, e && e.message);
     return json(500, { error: "internal", message: "the bridge failed; see the function logs" });
   }
 }

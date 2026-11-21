@@ -41,6 +41,9 @@ python3 "$CALL" send_message '{"to":"alpha","thread":"design-review","body":"thi
 out=$(python3 "$CALL" send_message '{"to":"alpha","thread":"design-review","body":"one too many"}')
 row 'past the thread cap the bridge error code reaches Claude as a tool error' "$(yesno grep -q '^ERROR: hop_limit:' <<<"$out")" yes
 
+AGENT_BRIDGE_TOKEN="$FAKE_ALPHA" python3 "$CALL" send_message '{"to":"claude","thread":"ja","body":"日本語の本文です"}' >/dev/null
+out=$(PYTHONIOENCODING=cp1252 python3 "$CALL" check_inbox '{"thread":"ja"}')
+row 'a Japanese body reaches Claude even when the locale encoding is cp1252' "$(yesno grep -q '日本語の本文です' <<<"$out")" yes  # ja-ok
 out=$(AGENT_BRIDGE_TOKEN="$FAKE_WRONG" python3 "$CALL" list_participants)
 row 'a wrong token is a tool error with the unauthorized code' "$(yesno grep -q '^ERROR: unauthorized:' <<<"$out")" yes
 stop_fake

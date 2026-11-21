@@ -9,7 +9,8 @@ session at a time; it polls the bridge's status (counts only, no token) every po
     (a message whose id is lower than one already seen, because it committed later). stderr becomes a system
     reminder that wakes Claude, carrying a count only, never a body. The seen state moves forward first, so the
     same message does not wake Claude again, and only one listening session wakes per message.
-  - 0 after max_wait_minutes (the next turn's Stop starts a new poller), at once when not set up, and as soon as
+  - 0 after max_wait_minutes counted from the session's last turn (each SessionStart / Stop touches
+    <session>.turn, which a poller that is still running reads, so a new turn extends its wait), at once when not set up, and as soon as
     the process that started it is gone (a closed session must not take a wake that a live one needs).
 A failed status call is retried at the next interval, silently.
 """
@@ -61,7 +62,7 @@ def claim_session(d: Path, session: str):
 
 def gc(d: Path):
     now = time.time()
-    for pattern, age in (("*.pid", STALE_PID_S), ("*.armed", STALE_ARMED_S)):
+    for pattern, age in (("*.pid", STALE_PID_S), ("*.turn", STALE_PID_S), ("*.armed", STALE_ARMED_S)):
         for f in d.glob(pattern):
             try:
                 if now - f.stat().st_mtime > age:
@@ -106,6 +107,13 @@ def advance_seen(d: Path, key: str, latest: int, unread: int):
         return unread > 0 and (latest > seen_latest or unread > seen_unread)
 
 
+def last_turn(turn_file: Path) -> float:
+    try:
+        return turn_file.stat().st_mtime
+    except OSError:
+        return time.time()
+
+
 def main():
     try:
         session = str(json.load(sys.stdin).get("session_id") or "")
@@ -120,14 +128,16 @@ def main():
     gc(d)
     if not (d / (session + ".armed")).exists():
         return 0
+    turn_file = d / (session + ".turn")
+    turn_file.touch()  # a poller already running for this session reads it and waits longer
     watch = ancestors()
     pid_file = claim_session(d, session)
     if pid_file is None:
         return 0
     interval = number("poll_seconds", 60, 15)
-    deadline = time.time() + number("max_wait_minutes", 50, 1) * 60
+    wait_s = number("max_wait_minutes", 50, 1) * 60
     try:
-        while time.time() < deadline:
+        while time.time() < last_turn(turn_file) + wait_s:
             if not all(alive(p) for p in watch):
                 return 0
             try:
@@ -143,7 +153,7 @@ def main():
                     return 2
             except Exception:
                 pass
-            time.sleep(min(interval, max(deadline - time.time(), 0)))
+            time.sleep(min(interval, max(last_turn(turn_file) + wait_s - time.time(), 0)))
         return 0
     finally:
         try:

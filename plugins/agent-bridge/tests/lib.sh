@@ -7,6 +7,7 @@ CONTRACT="$TESTS/fixtures/contract.json"
 # Fake participant credentials the fake bridge accepts (test data only)
 FAKE_CLAUDE=tok-claude
 FAKE_WRONG=not-a-participant
+FAKE_ALPHA=tok-alpha
 
 # start_fake [ENV=VALUE ...]: start the fake bridge with agents alpha, beta and claude; sets BRIDGE_URL
 start_fake() {
