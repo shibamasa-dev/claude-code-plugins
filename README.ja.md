@@ -19,6 +19,7 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 /plugin install testing@shibamasa-plugins
 /plugin install repo-setup@shibamasa-plugins
 /plugin install creative@shibamasa-plugins
+/plugin install diagram@shibamasa-plugins
 /plugin install lint@shibamasa-plugins
 /plugin install inventory@shibamasa-plugins
 /plugin install instructions@shibamasa-plugins
@@ -35,7 +36,8 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 | [workflow](plugins/workflow/README.ja.md) | 依頼からマージまでの開発フロー（PR のレビューの振り分けと待ち方を含む）・issue 運用・セッションの引き継ぎ・runbook 記録などのスキルとフック、使用枠をファイルへ書き出す mod |
 | [testing](plugins/testing/README.ja.md) | テストを設計して回す。Gherkin のテストケース作成・成果物の検証・全体テストのゲート |
 | [repo-setup](plugins/repo-setup/README.ja.md) | リポの立ち上げ。基本設定の点検・クラウド環境のセットアップ・プロジェクト専用の実アプリ検証スキルの作成（`verification-skill-builder`） |
-| [creative](plugins/creative/README.ja.md) | 画像生成プロンプト・図の枠の意味の決め方・コードで描くモーション動画のスキル |
+| [creative](plugins/creative/README.ja.md) | 画像生成プロンプトと、コードで描くモーション動画のスキル |
+| [diagram](plugins/diagram/README.ja.md) | 図をコードで描くスキル。`one-page-diagram` は全体像や概念の一枚図を SVG で描き、要素の種別が混ざらないようにする。`typed-diagram` はフロー図・シーケンス図・状態遷移図・ER 図・C4 を Mermaid で描く。どちらも、描いた図を表示して確かめてから渡す |
 | [lint](plugins/lint/README.ja.md) | スキルを作るための道具群。skill-planner（作る前の計画）と skill-lint（スキルに作った人・会社・マシンの固有情報が混ざっていないかを調べ、配布してよいかを報告する）。DESIGN.md を編集したら lint するフックも |
 | [inventory](plugins/inventory/README.ja.md) | 手持ちの物の在庫DB。Claude が写真から登録し、読めなかった項目は `needs_review` に残し、NFKC 正規化した検索で引ける。既定は SQLite、Postgres / Supabase にも直結かコネクタ経由で置ける |
 | [instructions](plugins/instructions/README.ja.md) | 同梱した指示ファイルを `~/.claude/CLAUDE.md` と同じ扱いで読み込ませる mod。同じ作業ルールがどのマシンでも効く。今は返答の言語とファイルのリンクの 1 ファイルだけ。managed settings や Team / Enterprise のプランで Claude Code の組み込みガードが入る環境では効かない |
