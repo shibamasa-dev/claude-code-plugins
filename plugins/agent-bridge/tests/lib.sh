@@ -14,9 +14,11 @@ start_fake() {
   : > "$portfile"
   env FAKE_BRIDGE_AGENTS="claude=tok-claude,alpha=tok-alpha,beta=tok-beta" "$@" python3 "$TESTS/fake_bridge.py" "$portfile" &
   FAKE_PID=$!
-  for _ in $(seq 50); do [ -s "$portfile" ] && break; sleep 0.1; done
-  BRIDGE_URL="http://127.0.0.1:$(cat "$portfile")/functions/v1/agent-bridge"
-  rm -f "$portfile"
+  # A cold python3 on a CI runner can take several seconds to start; give it 60
+  for _ in $(seq 600); do [ -s "$portfile" ] && break; sleep 0.1; done
+  local port; port=$(cat "$portfile"); rm -f "$portfile"
+  [ -n "$port" ] || { echo "fake bridge did not start"; exit 1; }
+  BRIDGE_URL="http://127.0.0.1:$port/functions/v1/agent-bridge"
 }
 stop_fake() { kill "$FAKE_PID" 2>/dev/null; wait "$FAKE_PID" 2>/dev/null; }
 
