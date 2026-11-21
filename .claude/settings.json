@@ -4,6 +4,7 @@
       "Bash(bash plugins/guards/tests/run-all.sh)",
       "Bash(bash plugins/inventory/tests/run-all.sh)",
       "Bash(bash plugins/lint/tests/run-all.sh)",
+      "Bash(bash plugins/repo-setup/tests/run-all.sh)",
       "Bash(bash plugins/research/tests/run-all.sh)",
       "Bash(bash plugins/testing/tests/run-all.sh)",
       "Bash(bash plugins/workflow/tests/run-all.sh)",
