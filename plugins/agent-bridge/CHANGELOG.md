@@ -11,7 +11,7 @@ Changes to the agent-bridge plugin. The format follows [Keep a Changelog](https:
 
 ### Added
 - `setup` skill: optional route where Claude sets the token without seeing it (generated in the shell, saved with `claude plugin configure`, written to Vault with the user's Supabase CLI after the user's explicit OK), with the clipboard and the manual steps as fallbacks
-- README: install scope note
+- README: install scope note (options are saved per user whatever the scope)
 
 ## [0.1.0] - 2026-11-21
 

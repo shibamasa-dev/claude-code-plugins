@@ -21,10 +21,10 @@ Pick from the request: **install** (first time or update), **add** (a participan
 
 ## 2. Install or update
 
-**Ask first** (skip what the saved settings or the request already answer):
+**Ask first** (skip what the request already answers, or a saved setting the user chose; a saved `agent_id` of `claude` is the default, not an answer, so ask unless the user named it):
 
-- **Install scope**: which repo's sessions should use the bridge. Plugin options are per user, so a user-scope install runs the hooks and the MCP server in every Claude Code session on the machine. For one repo, run from that repo `claude plugin install <plugin id> --scope local` (only you, this repo) or `--scope project` (everyone who uses the repo). When the plugin is already installed at user scope and the user wants one repo, `claude plugin uninstall <plugin id> --scope user` first, then install from that repo and save the settings again with `claude plugin configure`. The plugin id is the one from `claude plugin list`.
-- **This environment's `agent_id`**: the id Claude Code in this environment uses on the bridge. Don't silently register `claude`; a second machine or repo needs its own id, and the user picks it. Save it with `claude plugin configure`.
+- **Install scope**: which repo's sessions should use the bridge. Plugin options (`agent_id`, `token`, `bridge_url`) are saved per user whatever the scope, so the scope decides only where the hooks and the MCP server run: a user-scope install runs them in every Claude Code session on the machine. For one repo, run from that repo `claude plugin install <plugin id> --scope local` (only you, this repo) or `--scope project` (everyone who uses the repo). When the plugin is already installed at user scope and the user wants one repo, `claude plugin uninstall <plugin id> --scope user` first, then install from that repo and save the settings again with `claude plugin configure`. The plugin id is the one from `claude plugin list`.
+- **This environment's `agent_id`**: the id Claude Code in this environment uses on the bridge. Don't silently register `claude`; each machine or user that connects needs its own id, and the user picks it. The id is per user, not per repo: every repo on this machine where the plugin is enabled uses the same one. Save it with `claude plugin configure`.
 
 **Before changing anything, tell the user exactly what will be created and get a yes:**
 
@@ -62,12 +62,12 @@ Tell the user, per participant, which Vault secrets to replace in the Supabase d
 Offer this only when the user asks Claude to do the token handoff, and run it only after they explicitly say yes to the hosted write (it changes a Vault secret in their Supabase project; say which project, and that it is production when it is). **Never put the value in a connector tool call (`execute_sql` and the like), in a command's output or in the chat**: the connector route makes Claude read it, and the auto-mode check blocks that as a leak. Do everything in the shell, with files only the user can read, in the session scratchpad (`<scratch>`):
 
 1. Generate it: `umask 077; openssl rand -hex 32 > <scratch>/tok`
-2. Save it as the plugin's setting: `jq -n --rawfile t <scratch>/tok '{token:($t|rtrimstr("\n"))}' | claude plugin configure <plugin id> --values-stdin`
+2. Save it as the plugin's setting: `jq -n --rawfile t <scratch>/tok '{token:($t|rtrimstr("\n"))}' | claude plugin configure <plugin id> --values-stdin`. If it fails, stop, tell the user, and don't touch Vault (the two would differ)
 3. Build the SQL inside the shell, never printing it: `umask 077; { printf "SELECT vault.update_secret((SELECT id FROM vault.secrets WHERE name='agent_bridge:<id>:token'), '"; tr -d '\n' < <scratch>/tok; printf "') IS NULL AS updated;\n"; } > <scratch>/q.sql`
-4. Run it with the user's logged-in Supabase CLI (3.x): `supabase db query --remote=<project-ref> --yes -f <scratch>/q.sql 2>&1 | grep -o '"updated"[^,}]*'`. Without `--yes` the CLI refuses in agent mode (`HostedMutationConsentRequiredError`), so `--yes` is the user's explicit OK, not a default. The filter keeps the value out of the output; when it prints nothing, treat that as a failure and don't show the raw output.
+4. Run it with the user's logged-in Supabase CLI (3.x): `supabase db query --remote=<project-ref> --yes -f <scratch>/q.sql 2>&1 | grep -o '"updated"[^,}]*'`. Without `--yes` the CLI refuses in agent mode (`HostedMutationConsentRequiredError`), so `--yes` is the user's explicit OK, not a default. The filter keeps the value out of the output; when it prints nothing, treat that as a failure, don't show the raw output, retry once with the same `tok`, and if it still fails use the clipboard route below.
 5. Delete both files: `rm -f <scratch>/q.sql`. Keep `<scratch>/tok` until check mode has run in step 5 of this skill (it needs it), then `rm -f <scratch>/tok`.
 
-When the CLI is missing or logged out, copy the value instead: `pbcopy < <scratch>/tok` (macOS), and the user pastes it into the Vault secret in the dashboard, then delete `tok`. Without a clipboard tool, fall back to the manual steps above.
+When the CLI is missing or logged out, copy the value instead: `pbcopy < <scratch>/tok` (macOS), and the user pastes it into the Vault secret in the dashboard, then run check mode and delete `tok` afterwards. Without a clipboard tool, fall back to the manual steps above.
 
 Until a secret is replaced, the bridge treats it as unset: a placeholder token authenticates no one, and a webhook agent's messages are stored with `delivery = not_configured` instead of being POSTed.
 
@@ -78,7 +78,7 @@ Until a secret is replaced, the bridge treats it as unset: a placeholder token a
 - In a session started after the settings were saved, call the `list_participants` tool.
 - Right after Claude saved the token itself (section 4), the MCP server still has the old settings, so call the bridge from the shell with the token kept out of argv: `umask 077; printf 'Authorization: Bearer %s' "$(tr -d '\n' < <scratch>/tok)" > <scratch>/hdr`, then `curl -s -X POST <bridge_url> -H @<scratch>/hdr -H 'Content-Type: application/json' -d '{"action":"participants"}'`, then `rm -f <scratch>/hdr`.
 
-`unauthorized` means the two values differ. Report all of it, and what the user still has to replace.
+`unauthorized` means the two values differ. The `curl` call proves only that the Vault secret equals `tok`; the saved plugin setting is proved only by `list_participants` in a new session, so until then report the plugin side as unverified. Report all of it, and what the user still has to replace.
 
 ## Raising a thread's message cap
 
