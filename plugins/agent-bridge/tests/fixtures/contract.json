@@ -1,0 +1,11 @@
+{
+  "_comment": "The bridge's response shapes. tests/fake_bridge.py answers with exactly these keys, and test-sql.sh checks that agent_bridge.api() / status() in the real schema return them, so the fake cannot drift from the SQL.",
+  "status": ["agent", "unread", "latest_id"],
+  "send": ["id", "thread", "to", "delivery"],
+  "inbox": ["agent", "messages"],
+  "inbox_message": ["id", "thread", "from", "purpose", "body", "created_at"],
+  "ack": ["acked"],
+  "participants": ["me", "participants"],
+  "participant": ["agent_id", "display_name", "role", "capabilities", "wake"],
+  "message": ["id", "thread", "from", "to", "delivery", "claimed_at", "read_at"]
+}

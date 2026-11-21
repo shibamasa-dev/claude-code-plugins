@@ -116,3 +116,9 @@ jobs:
           # pg-file-only.sh runs only on the Postgres route, so its absence means the run fell back to SQLite or stopped early
           echo "$out" | grep -q '▼ pg-file-only.sh' || { echo "::error::pg-file-only.sh did not run"; fail=1; }
           exit $fail
+      - name: agent-bridge schema tests on Postgres (fails on any mismatch)
+        run: |
+          rc=0; out=$(bash plugins/agent-bridge/tests/run-postgres.sh 2>&1) || rc=$?
+          echo "$out"
+          if [ "$rc" != 0 ]; then echo "::error::agent-bridge run-postgres.sh exited with $rc"; exit 1; fi
+          echo "$out" | grep -qE '/ 0 mismatches ====' || { echo "::error::agent-bridge run-postgres.sh reported mismatches"; exit 1; }
