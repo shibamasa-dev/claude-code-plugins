@@ -1,6 +1,6 @@
 {
   "name": "lint",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Tools for making skills: skill-planner (plans a skill before it is built), skill-lint (checks whether a skill contains information specific to the person, company or machine that made it), a hook that prompts skill-lint after skill-creator, and a hook that lints DESIGN.md after it is edited",
   "author": {
     "name": "shibamasa-dev"

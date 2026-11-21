@@ -2,6 +2,11 @@
 
 Change history of the lint plugin. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
 
+## [0.4.2] - 2026-11-21
+
+### Changed
+- skill-lint's rule table quotes its Japanese decision words in backticks, so editing that line passes the repo's language check (#112).
+
 ## [0.4.1] - 2026-11-20
 
 ### Changed

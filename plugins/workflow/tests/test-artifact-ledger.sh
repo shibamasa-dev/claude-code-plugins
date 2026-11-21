@@ -2,12 +2,20 @@
 # Live check of hooks/artifact-ledger.py on the oldest supported Python (3.9).
 # Runs the real hook in a throwaway git repo (CLAUDE_PROJECT_DIR), so no real ledger is touched.
 #
-# Input shape: the documented PostToolUse payload (https://code.claude.com/docs/en/hooks:
-# session_id, cwd, hook_event_name, tool_name, tool_input, tool_response, tool_use_id).
-# Synthesized, NOT captured from a real Artifact run: the tool_response fields (artifact_id, url, title, path, ...)
-# are the ones the hook reads, so every publish payload below is unverified against a live event.
-# The tool_input fields `icon` (current) and `favicon` (deprecated) come from the Artifact tool's own input schema.
-# The ledger line in case 5 is hand-written in the shape older versions of the hook wrote (key `favicon`).
+# What the publish payloads are made of:
+# - Real: the key structure of tool_input and of the tool's result, taken from one real Artifact publish in a
+#   session transcript (key names and value types only; every value below is made up):
+#     tool_input:    file_path (str), favicon (str), description (str), label (str)
+#     tool_response: url, path, artifact_id, title (str), updated (bool), audience, version, contract,
+#                    liveSubscription (str)
+#   Case 1 uses exactly these keys. pub() sends the same tool_response keys with a tool_input chosen per case.
+# - Not real: the envelope around them. No local hook logged a raw PostToolUse event, so it is the one the docs
+#   show (https://code.claude.com/docs/en/hooks: session_id, transcript_path, cwd, permission_mode,
+#   hook_event_name, tool_name, tool_input, tool_response, tool_use_id, duration_ms), with made-up values.
+# - Unverified: what the result's `path` points to. Only its name and type are known; src_path prefers it over
+#   tool_input.file_path, so the values below assume a local file path.
+# The tool_input field `icon` (current; the real publish used the deprecated `favicon`) comes from the Artifact
+# tool's own input schema. The ledger line in case 5 is hand-written in the shape older versions of the hook wrote.
 set -u
 HOOK="$(cd "$(dirname "$0")/.." && pwd)/hooks/artifact-ledger.py"
 # Prefer the stock macOS interpreter (3.9); elsewhere fall back to python3 (CI pins 3.9 separately).
@@ -29,10 +37,19 @@ check() {  # $1 label, $2 got, $3 want
   [ "$2" = "$3" ] && r=ok || r=ng
   echo "  $1: got '$2' -> $r (expect ok: '$3')"
 }
-# pub <id> <tool_input json> [<extra tool_response fields, starting with a comma>]: a publish payload
+# envelope <tool_input json> <tool_response json>: the documented PostToolUse envelope (made-up values)
+envelope() {
+  printf '{"session_id":"00000000-0000-4000-8000-00000000000a","transcript_path":"%s/transcript.jsonl","cwd":"%s","permission_mode":"default","hook_event_name":"PostToolUse","tool_name":"Artifact","tool_input":%s,"tool_response":%s,"tool_use_id":"toolu_01AAAAAAAAAAAAAAAAAAAAAAAA","duration_ms":1840}' \
+    "$T" "$T" "$1" "$2"
+}
+# result <id> <path> [<updated: true|false>]: a tool result with the real key structure
+result() {
+  printf '{"url":"https://claude.ai/code/artifact/%s","path":"%s","artifact_id":"%s","title":"Page %s","updated":%s,"audience":"private","version":"1","contract":"1.0.0","liveSubscription":"watching"}' \
+    "$1" "$2" "$1" "$1" "${3:-false}"
+}
+# pub <id> <tool_input json> [<result path>]: a publish payload (the result path defaults to $T/<id>.html)
 pub() {
-  printf '{"session_id":"s1","cwd":"%s","hook_event_name":"PostToolUse","tool_name":"Artifact","tool_input":%s,"tool_response":{"artifact_id":"%s","url":"https://claude.ai/artifact/%s","title":"Page %s","version":"1"%s},"tool_use_id":"toolu_01"}' \
-    "$T" "$2" "$1" "$1" "$1" "${3:-}"
+  envelope "$2" "$(result "$1" "${3:-$T/$1.html}")"
 }
 # field <id> <key>: <key> of the last ledger row for artifact <id> ("(none)" when absent or null)
 field() {
@@ -48,14 +65,15 @@ PY
 icon_cell() {
   "$PY" - "$INDEX" "$1" <<'PY'
 import re, sys
-m = re.search(r'<tr><td class="ic">([^<]*)</td><td><a href="https://claude\.ai/artifact/%s">' % re.escape(sys.argv[2]),
+m = re.search(r'<tr><td class="ic">([^<]*)</td><td><a href="https://claude\.ai/(?:code/)?artifact/%s">' % re.escape(sys.argv[2]),
               open(sys.argv[1], encoding="utf-8").read())
 print(m.group(1) if m else "(no row)")
 PY
 }
 
-echo "=== case 1: Artifact publish appends one line ==="
-PUB='{"session_id":"s1","cwd":"'"$T"'","hook_event_name":"PostToolUse","tool_name":"Artifact","tool_input":{"file_path":"'"$T"'/page.html","description":"A page","icon":"chart"},"tool_response":{"artifact_id":"abc123","url":"https://claude.ai/artifact/abc123","title":"Demo Page","version":"1"},"tool_use_id":"toolu_01"}'
+echo "=== case 1: a publish with the real key structure appends one line ==="
+PUB=$(envelope '{"file_path":"'"$T"'/page.html","favicon":"chart","description":"A page","label":"First draft"}' \
+  '{"url":"https://claude.ai/code/artifact/abc123","path":"'"$T"'/page.html","artifact_id":"abc123","title":"Demo Page","updated":false,"audience":"private","version":"1","contract":"1.0.0","liveSubscription":"watching"}')
 rc=$(run "$PUB")
 check "exit" "$rc" 0
 check "ledger lines" "$(lines)" 1
@@ -71,6 +89,16 @@ print("  row fields -> %s (expect ok: publish / id / url / title / relative src_
 PY
 check "row fields script exit" "$?" 0
 [ -f "$INDEX" ] && r=ok || r=ng; echo "  index.html -> $r (expect ok)"
+check "favicon recorded" "$(field abc123 favicon)" chart
+check "updated (a boolean) stored as JSON false" "$(grep -c '"updated": false' "$LEDGER")" 1
+check "index.html row" "$(icon_cell abc123)" chart
+
+echo "=== case 1b: a redeploy of the same page (updated true) ==="
+run "$(envelope '{"file_path":"'"$T"'/page.html","favicon":"chart","description":"A page","label":"Second draft"}' "$(result abc123 "$T/page.html" true)")" >/dev/null
+check "ledger lines" "$(lines)" 2
+check "updated (a boolean) stored as JSON true" "$(grep -c '"updated": true' "$LEDGER")" 1
+check "index.html still one row for the page" "$(grep -c 'artifact/abc123"' "$INDEX")" 1
+check "index.html shows the publish count" "$(grep -c '<span class="n">2</span>' "$INDEX")" 1
 
 echo "=== case 2: payloads the hook does not handle exit 0 and write nothing ==="
 rm -rf "$T/.artifacts"
@@ -113,10 +141,10 @@ check "index.html rebuilt with the old icon" "$(icon_cell old1)" "📊"
 
 echo "=== case 6: src_path prefers the response's path and never writes an absolute path ==="
 rm -rf "$T/.artifacts"
-run "$(pub p1 '{"file_path":"'"$T"'/draft.html"}' ',"path":"'"$T"'/site/page.html"')" >/dev/null
+run "$(pub p1 '{"file_path":"'"$T"'/draft.html"}' "$T/site/page.html")" >/dev/null
 check "response path inside the project: repo-relative" "$(field p1 src_path)" site/page.html
 OUT=$(mktemp -d "${TMPDIR:-/tmp}/ledger-outside.XXXX") || exit 1
-run "$(pub p2 '{"file_path":"'"$T"'/draft.html"}' ',"path":"'"$OUT"'/scratch/report.html"')" >/dev/null
+run "$(pub p2 '{"file_path":"'"$T"'/draft.html"}' "$OUT/scratch/report.html")" >/dev/null
 rm -rf "$OUT"
 check "response path outside the project: file name only" "$(field p2 src_path)" report.html
 check "no src_path starts with /" "$(grep -c '"src_path": "/' "$LEDGER")" 0
