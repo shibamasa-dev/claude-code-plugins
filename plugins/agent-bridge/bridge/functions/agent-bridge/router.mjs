@@ -15,7 +15,9 @@ const HTTP_STATUS = {
   hop_limit: 409,
 };
 const AGENT_ID = /^[a-z0-9_-]{1,40}$/;
-const MAX_BODY_BYTES = 64 * 1024;
+// The request text, in characters. Room for a 20000-character body even if every character arrives \u-escaped
+// (6 characters each, 12 for a surrogate pair); SQL enforces the real 20000-character limit on the body.
+const MAX_REQUEST_CHARS = 256 * 1024;
 
 function json(status, obj) {
   return new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
@@ -39,7 +41,7 @@ export async function handle(req, db) {
     const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
     if (!token) return json(401, { error: "unauthorized", message: "missing Authorization: Bearer <token>" });
     const raw = await req.text();
-    if (raw.length > MAX_BODY_BYTES) return json(413, { error: "bad_request", message: "request body too large" });
+    if (raw.length > MAX_REQUEST_CHARS) return json(413, { error: "bad_request", message: "request body too large" });
     let payload;
     try {
       payload = JSON.parse(raw || "{}");

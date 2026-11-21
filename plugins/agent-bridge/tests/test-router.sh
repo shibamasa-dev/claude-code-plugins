@@ -34,6 +34,12 @@ await show("bad_token", post('{"action":"inbox"}', "nope"));
 await show("hop_limit", post('{"action":"send","thread":"full"}'));
 await show("internal", post('{"action":"boom"}'));
 await show("put", new Request(U, { method: "PUT" }));
+const ja = "\u65e5\u672c\u8a9e".repeat(6667).slice(0, 20000);  // 20000 Japanese characters
+await show("ja_raw", post(JSON.stringify({ action: "send", to: "a", thread: "t", body: ja })));
+const escaped = JSON.stringify({ action: "send", to: "a", thread: "t", body: ja }).replace(/[^\x00-\x7f]/g,
+  (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
+await show("ja_escaped", post(escaped));
+await show("too_large", post(JSON.stringify({ action: "send", body: "x".repeat(300000) })));
 const api = calls.find((c) => c[0] === "api" && c[2] === "inbox" && c[1] === "good");
 console.log("args_passed", JSON.stringify(api[3]) === '{"limit":5}' ? "yes" : "no");
 JS
@@ -50,3 +56,6 @@ row 'an unauthorized error from SQL becomes a 401' "$(yesno [ "$(st bad_token)" 
 row 'a hop_limit error from SQL becomes a 409' "$(yesno [ "$(st hop_limit)" = 409_hop_limit ])" yes
 row 'an unexpected error becomes a 500 without its text' "$(yesno [ "$(st internal)" = 500_internal ])" yes
 row 'other methods are a 405' "$(yesno [ "$(st put)" = 405_bad_request ])" yes
+row 'a 20000-character Japanese body is accepted as UTF-8' "$(yesno [ "$(st ja_raw)" = 200_- ])" yes
+row 'and also when every character is \u-escaped' "$(yesno [ "$(st ja_escaped)" = 200_- ])" yes
+row 'a request far over that size is a 413' "$(yesno [ "$(st too_large)" = 413_bad_request ])" yes

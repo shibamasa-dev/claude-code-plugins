@@ -132,7 +132,7 @@ def call_bridge(action: str, args: dict) -> dict:
         )
     if not allowed_url(url):
         raise BridgeError("bridge_url must be an https:// URL")
-    data = json.dumps(dict(args, action=action)).encode("utf-8")
+    data = json.dumps(dict(args, action=action), ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(
         url, data=data, method="POST",
         headers={"Content-Type": "application/json", "Authorization": "Bearer " + token},

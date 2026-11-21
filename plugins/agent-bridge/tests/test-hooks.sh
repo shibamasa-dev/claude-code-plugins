@@ -43,6 +43,21 @@ rc=$(CLAUDE_PLUGIN_OPTION_MAX_WAIT_MINUTES=1 wait_status s1)
 row 'an unread message already seen does not wake again; the poller ends at its deadline' "$(yesno [ "$rc" = 0 ])" yes
 row 'and it waited for the deadline rather than exiting early' "$(yesno [ $(( $(date +%s) - start )) -ge 55 ])" yes
 
+# A reply that arrived before this machine's first poll (no seen id yet) still wakes the session
+rm -f "$CLAUDE_PLUGIN_DATA/wait/claude.seen"
+row 'an unread reply that landed before the first poll wakes Claude' "$(yesno [ "$(wait_status s1)" = 2 ])" yes
+seen_rule() {  # advance_seen(dir, agent, latest, unread) on a fresh directory: prints the wake decision and the stored id
+  python3 - "$PLUGIN/hooks" "$@" <<'PY2'
+import sys, tempfile
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import wait_inbox
+d = Path(tempfile.mkdtemp())
+print(wait_inbox.advance_seen(d, "x", int(sys.argv[2]), int(sys.argv[3])), (d / "x.seen").read_text())
+PY2
+}
+row 'with every message already read, a newer id is recorded without waking' "$(yesno [ "$(seen_rule 5 0)" = 'False 5' ])" yes
+
 out=$(echo '{}' | python3 "$NOTICE")
 row 'the prompt hook adds the unread count as context' "$(yesno [ "$(jget "$out" 'd["hookSpecificOutput"]["additionalContext"].split(":")[1].split()[0]')" = 1 ])" yes
 row 'the prompt context never carries the message body' "$(yesno not grep -q 'secret-looking' <<<"$out")" yes
