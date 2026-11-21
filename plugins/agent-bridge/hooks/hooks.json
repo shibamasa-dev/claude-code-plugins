@@ -1,0 +1,8 @@
+{
+  "hooks": {
+    "SessionStart": [{"hooks": [{"type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/wait_inbox.py\"", "asyncRewake": true, "timeout": 3600}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/wait_inbox.py\"", "asyncRewake": true, "timeout": 3600}]}],
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/unread_notice.py\"", "timeout": 5}]}],
+    "PostToolUse": [{"matcher": "mcp__plugin_agent-bridge_bridge__.*", "hooks": [{"type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/arm_session.py\"", "timeout": 10}]}]
+  }
+}

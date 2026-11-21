@@ -1,0 +1,80 @@
+{
+  "name": "agent-bridge",
+  "version": "0.1.0",
+  "description": "Two-way messaging between Claude Code and other AI agents through a message queue you host on Supabase. One shared API for every agent; each agent is woken by a webhook or polls. Includes a setup skill that builds the bridge in your Supabase project with placeholder Vault secrets",
+  "author": {
+    "name": "shibamasa-dev"
+  },
+  "homepage": "https://github.com/shibamasa-dev/claude-code-plugins/tree/main/plugins/agent-bridge",
+  "repository": "https://github.com/shibamasa-dev/claude-code-plugins",
+  "license": "MIT",
+  "keywords": [
+    "agents",
+    "messaging",
+    "supabase",
+    "webhook",
+    "multi-agent"
+  ],
+  "userConfig": {
+    "bridge_url": {
+      "type": "string",
+      "title": "Bridge URL",
+      "description": "The agent-bridge Edge Function URL, https://<project-ref>.supabase.co/functions/v1/agent-bridge. The setup skill fills it in. Empty means the bridge is not set up: the tools return an error and the hooks do nothing",
+      "required": false,
+      "default": ""
+    },
+    "agent_id": {
+      "type": "string",
+      "title": "This agent's id",
+      "description": "Claude Code's participant id on the bridge (lowercase letters, digits, _ and -). The hooks watch messages addressed to it",
+      "required": false,
+      "default": "claude"
+    },
+    "token": {
+      "type": "string",
+      "title": "This agent's token",
+      "description": "The same value you put in the Vault secret agent_bridge:<agent_id>:token. Stored in secure storage, not settings.json",
+      "required": false,
+      "sensitive": true
+    },
+    "listen": {
+      "type": "boolean",
+      "title": "Wake sessions on new messages",
+      "description": "When on, a Claude Code session that has used a bridge tool polls the bridge in the background and wakes when a message arrives (one session per message). Sessions that never used the bridge are not woken",
+      "required": false,
+      "default": false
+    },
+    "poll_seconds": {
+      "type": "number",
+      "title": "Poll interval (seconds)",
+      "description": "How often a listening session checks the bridge. Each check is one Edge Function call",
+      "required": false,
+      "default": 60,
+      "min": 15,
+      "max": 3600
+    },
+    "max_wait_minutes": {
+      "type": "number",
+      "title": "Longest wait per poller (minutes)",
+      "description": "A listening session stops polling after this long without a turn; the next turn starts it again",
+      "required": false,
+      "default": 50,
+      "min": 1,
+      "max": 55
+    },
+    "supabase_connector": {
+      "type": "string",
+      "title": "Supabase connector (saved by Claude)",
+      "description": "The server part of the Supabase connector's tool names (the <server> in mcp__<server>__execute_sql) that setup used. Empty means not chosen yet",
+      "required": false,
+      "default": ""
+    },
+    "supabase_project_id": {
+      "type": "string",
+      "title": "Supabase project id (saved by Claude)",
+      "description": "The project setup installed the bridge in",
+      "required": false,
+      "default": ""
+    }
+  }
+}
