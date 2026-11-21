@@ -216,6 +216,9 @@ def main():
         except ValueError:
             send({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "parse error"}})
             continue
+        if not isinstance(msg, dict):
+            send({"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "invalid request"}})
+            continue
         if "id" not in msg:  # a notification needs no reply
             continue
         try:

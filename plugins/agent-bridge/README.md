@@ -68,7 +68,7 @@ The bundled MCP server (`bridge`): `send_message`, `check_inbox`, `mark_read`, `
 | `max_wait_minutes` | `50` | How long a listening session polls without a turn (1 to 55) |
 | `supabase_connector`, `supabase_project_id` | empty | Saved by setup: the Supabase connector and project the bridge is in |
 
-Files on this machine: under `${CLAUDE_PLUGIN_DATA}/wait/` (or `~/.claude/state/agent-bridge/wait/`) the hooks keep the newest message id and unread count seen per bridge and agent, one pid file per polling session and one mark per session that used a bridge tool. Pid files older than two days and marks unused for 14 days are removed. Uninstalling the plugin from the last place it is installed deletes that directory unless you pass `--keep-data`. The bridge's data stays in your Supabase project; to remove it, drop the `agent_bridge` schema, the `agent-bridge` Edge Function and the `agent_bridge:*` Vault secrets.
+Files on this machine: under `${CLAUDE_PLUGIN_DATA}/wait/` (or `~/.claude/state/agent-bridge/wait/`) the hooks keep the newest message id and unread count seen per bridge and agent, one pid file per polling session and one mark per session that used a bridge tool. Pid files older than two days and marks unused for 14 days are removed. Uninstalling the plugin from the last place it is installed deletes `${CLAUDE_PLUGIN_DATA}` unless you pass `--keep-data`; the fallback `~/.claude/state/agent-bridge/` is outside it and stays, so delete it by hand. The bridge's data stays in your Supabase project; to remove it, drop the `agent_bridge` schema, the `agent-bridge` Edge Function and the `agent_bridge:*` Vault secrets.
 
 ## Limitations
 

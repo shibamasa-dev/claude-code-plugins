@@ -44,6 +44,8 @@ row 'past the thread cap the bridge error code reaches Claude as a tool error' "
 AGENT_BRIDGE_TOKEN="$FAKE_ALPHA" python3 "$CALL" send_message '{"to":"claude","thread":"ja","body":"日本語の本文です"}' >/dev/null
 out=$(PYTHONIOENCODING=cp1252 python3 "$CALL" check_inbox '{"thread":"ja"}')
 row 'a Japanese body reaches Claude even when the locale encoding is cp1252' "$(yesno grep -q '日本語の本文です' <<<"$out")" yes  # ja-ok
+out=$(printf 'null\n{"jsonrpc":"2.0","id":7,"method":"ping"}\n' | python3 "$PLUGIN/server/agent_bridge_mcp.py")
+row 'a JSON value that is not an object is an invalid request, and the server keeps serving' "$(yesno [ "$(jget "$(sed -n 1p <<<"$out")" 'd["error"]["code"]')/$(jget "$(sed -n 2p <<<"$out")" 'd["id"]')" = -32600/7 ])" yes
 out=$(AGENT_BRIDGE_TOKEN="$FAKE_WRONG" python3 "$CALL" list_participants)
 row 'a wrong token is a tool error with the unauthorized code' "$(yesno grep -q '^ERROR: unauthorized:' <<<"$out")" yes
 stop_fake

@@ -64,6 +64,7 @@ PY2
 row 'with every message already read, a newer id is recorded without waking' "$(yesno [ "$(seen_rule 5:0)" = 'False 5' ])" yes
 row 'a message that commits after a newer one (lower id, unread count rises) still wakes' "$(yesno [ "$(seen_rule 5:1 5:2)" = 'True 5' ])" yes
 row 'the same unread count with no newer id does not wake again' "$(yesno [ "$(seen_rule 5:1 5:1)" = 'False 5' ])" yes
+row 'a late, older status does not lower the unread count and wake again for the same message' "$(yesno [ "$(seen_rule 1:1 2:2 1:1 2:2)" = 'False 2' ])" yes
 row 'two bridges with the same agent id keep separate seen state' "$(yesno not [ "$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import wait_inbox as w; print(w.seen_key("https://a.example/f?agent=claude", "claude") == w.seen_key("https://b.example/f?agent=claude", "claude"))' "$PLUGIN/hooks")" = True ])" yes
 
 out=$(echo '{}' | python3 "$NOTICE")
@@ -76,7 +77,7 @@ row 'with nothing unread the prompt hook prints nothing' "$(yesno [ -z "$(echo '
 # The wait counts from the session's last turn: a new turn's hook refreshes the turn file the running poller reads
 input s1 | python3 "$WAIT" 2>/dev/null & poller=$!
 for _ in $(seq 100); do [ -e "$CLAUDE_PLUGIN_DATA/wait/s1.pid" ] && break; sleep 0.1; done
-python3 -c 'import os, sys, time; t = time.time() - 600; os.utime(sys.argv[1], (t, t))' "$CLAUDE_PLUGIN_DATA/wait/s1.turn"
+python3 -c 'import os, sys, time; t = time.time() - 30; os.utime(sys.argv[1], (t, t))' "$CLAUDE_PLUGIN_DATA/wait/s1.turn"
 input s1 | python3 "$WAIT" 2>/dev/null
 row 'a new turn while a poller runs moves its deadline to max_wait_minutes from now' "$(yesno python3 -c 'import os, sys, time; sys.exit(time.time() - os.stat(sys.argv[1]).st_mtime > 5)' "$CLAUDE_PLUGIN_DATA/wait/s1.turn")" yes
 python3 -c 'import os, sys, time; t = time.time() - 120; os.utime(sys.argv[1], (t, t))' "$CLAUDE_PLUGIN_DATA/wait/s1.turn"

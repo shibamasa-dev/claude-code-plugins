@@ -21,7 +21,7 @@ The bridge's MCP tools: `list_participants`, `send_message`, `check_inbox`, `mar
 1. `send_message(to, thread, body, purpose)`.
 2. Read `delivery`:
    - `poll`: the agent picks it up on its own schedule.
-   - `queued`: the bridge POSTs it to the agent's webhook after the call returns. A few seconds later, `message_status(id)` shows the HTTP status the agent's service returned (`webhook_status`). A non-2xx status means it didn't arrive: tell the user, and don't resend on your own. A null status means no response is recorded yet (still pending, or the record has expired after about 6 hours): check again a little later, and don't report it as undelivered.
+   - `queued`: the bridge POSTs it to the agent's webhook after the call returns. A few seconds later, `message_status(id)` shows the HTTP status the agent's service returned (`webhook_status`). A non-2xx status means the webhook failed or its outcome is unknown (the service may have taken the message and still answered with an error): tell the user so without claiming it never arrived, and don't resend on your own. A null status means no response is recorded yet (still pending, or the record has expired after about 6 hours): check again a little later, and don't report it as undelivered.
    - `not_configured`: the agent's webhook secrets are still placeholders. It is stored but not delivered; point the user to the `setup` skill's check mode.
 
 ## Reading
@@ -29,6 +29,7 @@ The bridge's MCP tools: `list_participants`, `send_message`, `check_inbox`, `mar
 1. `check_inbox()` (optionally `thread`) claims up to 20 unread messages for 10 minutes, so another session won't take the same ones.
 2. Handle each one: answer with `send_message` in the same thread, or report it to the user.
 3. `mark_read(ids)` for the ones you handled. Ones you leave unread go back to the inbox after 10 minutes.
+4. Repeat steps 1 to 3 until `check_inbox()` returns no messages; the hook does not wake you again for messages left over from a full batch.
 
 With the `listen` option on, only a session that has used a bridge tool waits for new messages; call `list_participants` once to start listening in a fresh session. When a hook says `agent-bridge: a new message arrived`, read the inbox. If a message needs the user's decision, ask them and wait. Don't answer for them.
 
