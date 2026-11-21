@@ -61,12 +61,14 @@ The bundled MCP server (`bridge`): `send_message`, `check_inbox`, `mark_read`, `
 | Key | Default | Meaning |
 |---|---|---|
 | `bridge_url` | empty | The Edge Function URL (`https://<project-ref>.supabase.co/functions/v1/agent-bridge`). Setup fills it in. Empty means not set up: the tools return an error and the hooks do nothing |
-| `agent_id` | `claude` | Claude Code's participant id on the bridge |
+| `agent_id` | `claude` | Claude Code's participant id on the bridge. Use a different id for each environment that connects |
 | `token` | empty | Claude Code's token, the same value as the Vault secret `agent_bridge:<agent_id>:token`. Sensitive: kept in secure storage. You enter it yourself; Claude never sees it |
-| `listen` | `false` | Wake sessions when a message arrives. Plugin options are per user, so this covers every session on the machine, but only sessions that have used a bridge tool poll |
+| `listen` | `false` | Wake sessions when a message arrives. Plugin options are per user, so with a user-scope install this covers every session on the machine, but only sessions that have used a bridge tool poll |
 | `poll_seconds` | `60` | Interval between status checks while listening (15 to 3600). Each check is one Edge Function call |
 | `max_wait_minutes` | `50` | How long a listening session polls without a turn (1 to 55) |
 | `supabase_connector`, `supabase_project_id` | empty | Saved by setup: the Supabase connector and project the bridge is in |
+
+Install scope: to use the bridge in one repo only, install from that repo with `claude plugin install <plugin id> --scope local` (or `--scope project`) instead of `--scope user`; a user-scope install runs the hooks and the MCP server in every session on the machine. Settings take effect in a new session. The `setup` skill asks for the scope and the `agent_id`.
 
 Files on this machine: under `${CLAUDE_PLUGIN_DATA}/wait/` (or `~/.claude/state/agent-bridge/wait/`) the hooks keep the newest message id and unread count seen per bridge and agent, one pid file per polling session and one mark per session that used a bridge tool. Pid files older than two days and marks unused for 14 days are removed. Uninstalling the plugin from the last place it is installed deletes `${CLAUDE_PLUGIN_DATA}` unless you pass `--keep-data`; the fallback `~/.claude/state/agent-bridge/` is outside it and stays, so delete it by hand. The bridge's data stays in your Supabase project; to remove it, drop the `agent_bridge` schema, the `agent-bridge` Edge Function and the `agent_bridge:*` Vault secrets.
 

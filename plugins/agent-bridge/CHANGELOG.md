@@ -2,6 +2,17 @@
 
 Changes to the agent-bridge plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
 
+## [0.1.1] - 2026-11-22
+
+### Changed
+- `setup` skill asks for the install scope (which repo's sessions use the bridge) and this environment's `agent_id` before installing, instead of registering `claude` silently
+- `setup` skill: the approval message says when the target project is production; ends by saying settings take effect only in a new session
+- `setup` check mode makes an authenticated call (`me` in the answer) to prove that the plugin's `token` equals the Vault secret, which `doctor()` and the unauthenticated status endpoint cannot show
+
+### Added
+- `setup` skill: optional route where Claude sets the token without seeing it (generated in the shell, saved with `claude plugin configure`, written to Vault with the user's Supabase CLI after the user's explicit OK), with the clipboard and the manual steps as fallbacks
+- README: install scope note
+
 ## [0.1.0] - 2026-11-21
 
 ### Added
