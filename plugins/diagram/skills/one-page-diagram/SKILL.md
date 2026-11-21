@@ -85,7 +85,7 @@ Downloaded icons, screenshots and any generator script are working files: keep t
 
 1. **Same-kind check**: for every row, group and layer that presents a set, read out the tags. All the same, or fix it.
 2. **Legend check**: the legend lists every kind, every semantic style, every concept icon and the arrow meaning. Nothing appears in the diagram that the legend does not explain.
-3. **Render and look**: open the result the way the reader will (the host's preview, a browser, or a headless screenshot such as `chrome --headless --screenshot="$TMPDIR/diagram-check.png" --window-size=1600,1000 file.html`) and look at it in both themes. When headless Chrome cannot start (a sandboxed shell often blocks it), serve the folder on localhost and open it with the host's browser tool. Check that every label fits its box, no arrow crosses text, nothing is clipped, and every icon is visible on its background.
+3. **Render and look**: open the result the way the reader will (the host's preview, a browser, or a headless screenshot such as `chrome --headless --screenshot="${TMPDIR:-/tmp}/diagram-check.png" --window-size=1600,1000 file.html`) and look at it in both themes. When headless Chrome cannot start (a sandboxed shell often blocks it), serve the folder on localhost and open it with the host's browser tool. Check that every label fits its box, no arrow crosses text, nothing is clipped, and every icon is visible on its background.
 4. Fix what you find and render again, twice at most. Then deliver, and name any defect that remains.
 
 When you could not render it, say "not visually checked" in the reply. Do not describe the diagram's look as verified.

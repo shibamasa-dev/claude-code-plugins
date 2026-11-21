@@ -34,7 +34,9 @@ Take every color from a CSS custom property, so one file carries both themes. Ne
 
 A host that sets the theme itself (an attribute on the root element, or its own variables) needs the same overrides under that selector as well as under the media query.
 
-An SVG saved as a standalone `.svg` file can carry the same `<style>` block inside it. An SVG embedded in Markdown through an image tag follows the viewer's system theme, not the page's.
+An SVG saved as a standalone `.svg` file can carry the same `<style>` block inside it. It has no `body`, so draw the background yourself: the first element is a full-size `<rect width="100%" height="100%" fill="var(--bg)"/>`. Do the same in HTML when the figure may be copied out of its page.
+
+An SVG embedded through an image tag picks its theme from the color scheme the embedding page declares, or from the system theme when the page declares none. That can differ from the theme the page shows, so check the figure in the viewer it is meant for.
 
 ## Accessibility
 

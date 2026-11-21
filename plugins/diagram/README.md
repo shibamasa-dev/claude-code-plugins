@@ -36,7 +36,7 @@ The plugin has no settings and no hooks, and keeps nothing in its plugin data di
 ## Limitations
 
 - Logos and concept icons are downloaded while drawing (svgl, Devicon, gilbarbara/logos, Lucide), so that step needs network access. Without it the skill uses text labels and says so. The finished file embeds its icons and needs no network
-- An SVG shown in Markdown through an image tag follows the reader's system theme, not the page's
+- An SVG shown in Markdown through an image tag picks light or dark from the color scheme the embedding page declares, or from the system theme when it declares none. That can differ from the theme the page shows
 - Mermaid's C4 diagrams are experimental; on GitHub the skill draws a C4 level as a flowchart unless you ask for the C4 syntax
 
 ## Requirements

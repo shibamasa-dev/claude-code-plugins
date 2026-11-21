@@ -63,7 +63,7 @@ The diagram goes inside the document it illustrates. A standalone file goes to t
 2. **Render it.** Syntax that looks right often fails to parse. Use what is available: the host's Markdown or Mermaid preview, or the Mermaid CLI when Node.js is installed:
 
    ```sh
-   npx -y @mermaid-js/mermaid-cli -i diagram.mmd -o "$TMPDIR/diagram-check.svg"
+   npx -y @mermaid-js/mermaid-cli -i diagram.mmd -o "${TMPDIR:-/tmp}/diagram-check.svg"
    ```
 
    The CLI needs network access on first use and a headless Chrome. When it reports a missing browser, install the one the error message names, or pass a Puppeteer config (`-p`) whose `executablePath` points at an installed Chrome.
