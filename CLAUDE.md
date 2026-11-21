@@ -1,5 +1,7 @@
 # claude-code-plugins-public
 
+`GEMINI.md` points Gemini-based tools at this file; keep the rules here, not there.
+
 ## References for building plugins and MCP servers
 
 Verify spec questions against the official docs. The official plugin-dev skill (v0.1.0) is outdated: it doesn't cover `userConfig`, `mcp_tool` hooks, `${CLAUDE_PLUGIN_DATA}` or `.mcpb`, and it still suggests the old `.claude/<plugin>.local.md` settings files, so use it only as a skeleton. The mcp-builder skill reads the MCP spec but not Claude-side features such as MCP Apps.
