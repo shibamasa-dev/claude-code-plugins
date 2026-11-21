@@ -1,6 +1,6 @@
 {
   "name": "inventory",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "An inventory database of the things you own (parts, tools, consumables, devices). Register items from photos, keep what couldn't be read as needs_review, and search with NFKC-normalized text. SQLite by default, or Postgres/Supabase directly or through a claude.ai connector",
   "author": {
     "name": "shibamasa-dev"

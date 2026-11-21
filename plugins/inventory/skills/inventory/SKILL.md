@@ -43,7 +43,7 @@ SELECT item_key, kind, category, descr, mpn, manufacturer, qty, location, needs_
 
 - `search_text` is NFKC-normalized and lower-cased by a trigger, so the term has to go through the same `norm()`. A bare `LIKE '%ｅｓｐ３２%'` finds nothing.
 - Embed the term as a string literal: double every `'`, and put `\` before every `%`, `_` and `\` (and their full-width forms `％` `＿` `＼`, which NFKC turns into the plain ones). No bind parameters: a connector takes only a SQL string.
-- It matches the description, part number, maker and aliases. NFKC folds full-width and half-width forms and case, not kana, kanji or English, so when a search finds nothing, try other spellings (はんだごて / 半田ごて / ハンダゴテ / soldering iron) before saying the user doesn't have it.
+- It matches the description, part number, maker and aliases. NFKC folds full-width and half-width forms and case, not kana, kanji or English, so when a search finds nothing, try other spellings (`はんだごて` / `半田ごて` / `ハンダゴテ` / soldering iron) before saying the user doesn't have it.
 - Rows to check against the real thing: `SELECT * FROM inv_v_needs_review`.
 
 **Showing quantities.** When `qty` is NULL, or `needs_review` lists `qty`, don't state a number: say it hasn't been counted, or give the number as a rough count from the photo. `qty = 0` means none left. For consumables, the amount left is `attrs.remaining` (for example `"about half"`); if it hasn't been measured, the key is absent, so don't make one up. Read a key with `attrs ->> 'remaining'` (works on SQLite 3.38+ and Postgres).
