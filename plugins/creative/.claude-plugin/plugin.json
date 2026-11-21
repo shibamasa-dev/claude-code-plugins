@@ -1,7 +1,7 @@
 {
   "name": "creative",
-  "version": "0.5.1",
-  "description": "Skills for structuring image-generation prompts, fixing what a box means before drawing a diagram, and rendering motion-graphics videos from code",
+  "version": "0.6.0",
+  "description": "Skills for structuring image-generation prompts and rendering motion-graphics videos from code",
   "author": {
     "name": "shibamasa-dev"
   },
@@ -11,7 +11,6 @@
   "keywords": [
     "image-generation",
     "video",
-    "motion-graphics",
-    "diagram"
+    "motion-graphics"
   ]
 }

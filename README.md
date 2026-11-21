@@ -19,6 +19,7 @@ A Claude Code plugin marketplace: guard hooks and workflow skills from daily dev
 /plugin install testing@shibamasa-plugins
 /plugin install repo-setup@shibamasa-plugins
 /plugin install creative@shibamasa-plugins
+/plugin install diagram@shibamasa-plugins
 /plugin install lint@shibamasa-plugins
 /plugin install inventory@shibamasa-plugins
 /plugin install instructions@shibamasa-plugins
@@ -35,7 +36,8 @@ Every plugin is independent. Install only the ones you need.
 | [workflow](plugins/workflow/README.md) | Skills and hooks for the path from request to merge (including routing and waiting for PR reviews), issue hygiene, session handoff and runbook recording, plus a mod that writes usage limits to a file |
 | [testing](plugins/testing/README.md) | Designing and running tests: Gherkin test cases, linting the test artifacts, and a gate that requires a full test run before releases |
 | [repo-setup](plugins/repo-setup/README.md) | Bootstrapping a repo: a health check of the basics, a setup scaffold for cloud environments and a builder for a project's own real-app verification skill (`verification-skill-builder`) |
-| [creative](plugins/creative/README.md) | Skills for image-generation prompts, diagram box semantics and code-driven motion videos |
+| [creative](plugins/creative/README.md) | Skills for image-generation prompts and code-driven motion videos |
+| [diagram](plugins/diagram/README.md) | Skills for drawing diagrams as code. `one-page-diagram` draws an overview or concept diagram as SVG, keeping the kinds of element from mixing; `typed-diagram` draws flowcharts, sequence, state, ER and C4 diagrams in Mermaid. Both render the result and look at it before delivering, and say so when they could not |
 | [lint](plugins/lint/README.md) | Tools for making skills: `skill-planner` plans a skill before it is built, and `skill-lint` checks whether it leaks details about its author, company or machine before you publish it. Also a hook that lints `DESIGN.md` after it is edited |
 | [inventory](plugins/inventory/README.md) | An inventory database of the things you own. Claude registers items from photos, keeps what it couldn't read as `needs_review`, and searches with NFKC-normalized text. SQLite by default, or Postgres / Supabase directly or through a claude.ai connector |
 | [instructions](plugins/instructions/README.md) | A mod that loads bundled instruction files the way Claude Code loads your `~/.claude/CLAUDE.md`, so the same working rules apply on every machine. Currently one file on reply language and linking files. No effect where managed settings or a Team / Enterprise plan seat Claude Code's built-in guard |
