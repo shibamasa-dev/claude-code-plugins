@@ -4,6 +4,7 @@ set -u
 . "$(dirname "$0")/lib.sh"
 WAIT="$PLUGIN/hooks/wait_inbox.py"
 NOTICE="$PLUGIN/hooks/unread_notice.py"
+ARM="$PLUGIN/hooks/arm_session.py"
 
 export CLAUDE_PLUGIN_DATA; CLAUDE_PLUGIN_DATA=$(mktemp -d "${TMPDIR:-/tmp}/agent-bridge-hooks.XXXXXX")
 unset CLAUDE_PLUGIN_OPTION_BRIDGE_URL CLAUDE_PLUGIN_OPTION_AGENT_ID CLAUDE_PLUGIN_OPTION_LISTEN
@@ -19,10 +20,14 @@ export CLAUDE_PLUGIN_OPTION_POLL_SECONDS=15 CLAUDE_PLUGIN_OPTION_MAX_WAIT_MINUTE
 row 'with listen off the poller exits at once' "$(yesno [ "$(CLAUDE_PLUGIN_OPTION_LISTEN=false wait_status s1)" = 0 ])" yes
 export CLAUDE_PLUGIN_OPTION_LISTEN=true
 row 'with listen on but no bridge_url the poller exits at once' "$(yesno [ "$(CLAUDE_PLUGIN_OPTION_BRIDGE_URL= wait_status s1)" = 0 ])" yes
+row 'a bridge_url that only starts with http://127.0.0.1 is not trusted' "$(yesno [ "$(echo '{}' | CLAUDE_PLUGIN_OPTION_BRIDGE_URL=http://127.0.0.1.example.test/x python3 "$NOTICE")" = '' ])" yes
+row 'a session that never used a bridge tool does not poll' "$(yesno [ "$(wait_status s1)" = 0 ] && [ ! -e "$CLAUDE_PLUGIN_DATA/wait/s1.pid" ])" yes
+input s1 | python3 "$ARM"
+row 'using a bridge tool marks the session' "$(yesno [ -e "$CLAUDE_PLUGIN_DATA/wait/s1.armed" ])" yes
 
 # First poll records the newest id without waking; a message sent meanwhile wakes it at the next poll
 input s1 | python3 "$WAIT" 2>"$CLAUDE_PLUGIN_DATA/stderr" & poller=$!
-sleep 2
+for _ in $(seq 100); do [ -s "$CLAUDE_PLUGIN_DATA/wait/claude.seen" ] && break; sleep 0.1; done  # first poll done
 post tok-alpha '{"action":"send","to":"claude","thread":"t1","body":"secret-looking body text"}' >/dev/null
 second=$(input s1 | python3 "$WAIT" 2>/dev/null; echo $?)
 row 'a second poller for the same session exits at once' "$(yesno [ "$second" = 0 ])" yes

@@ -25,7 +25,10 @@ other agent with a token ──┼─> Edge Function ─> DB ─┤
 - **The API**: `POST <bridge_url>` with `Authorization: Bearer <token>` and `{"action": ...}`. The actions are `send` (`to`, `thread`, `body`, optional `purpose`), `inbox` (claims up to `limit` unread messages for 10 minutes), `ack` (`ids`), `participants` and `message` (`id`: delivery state). Errors come back as `{"error": "<code>", "message": ...}`: `unauthorized` (401), `bad_request` or `unknown_agent` (400), `not_found` (404), `hop_limit` or `thread_closed` (409).
 - **Waking agents**: a `webhook` agent gets each message as a POST to its URL, with `Authorization: Bearer <its webhook key>` and the body `{"event":"agent_bridge.message","id","thread","from","to","body","created_at"}`. A `poll` agent calls `GET <bridge_url>?agent=<id>`, which needs no token and returns only `{"agent","unread","latest_id"}`, and reads with its token when `latest_id` changes.
 - **Secrets** live in Supabase Vault: `agent_bridge:<id>:token` for every agent, plus `agent_bridge:<id>:webhook_url` and `:webhook_key` for webhook agents. Setup creates them as the placeholder `REPLACE_ME`, and you replace them in the dashboard. A placeholder token authenticates no one. A webhook agent whose secrets are placeholders gets its messages stored but not POSTed (`delivery: not_configured`).
+- **Threads**: only an agent already in a thread (its creator, or one that sent or received a message in it) can write to it.
 - **Loop guard**: a thread takes at most `max_messages` messages (20 by default). After that, sends fail with `hop_limit` until you raise the cap.
+
+The bridge's data is shared by several agents on different machines, so it lives in Supabase only. Unlike this repo's other plugins that keep data, there is no local SQLite default: a local file could not be shared.
 
 ## What is sent where
 
@@ -49,7 +52,8 @@ The bundled MCP server (`bridge`): `send_message`, `check_inbox`, `mark_read`, `
 
 | Hook | When | What it does |
 |---|---|---|
-| `wait_inbox.py` | `SessionStart` and `Stop`, in the background (`asyncRewake`) | With `listen` on: polls the bridge's status every `poll_seconds`. When a message newer than any this machine has seen arrives, it wakes Claude with a count only (never the body). It records that id first, so one message wakes one session once. Stops after `max_wait_minutes`, and the next turn starts it again |
+| `arm_session.py` | `PostToolUse` on the bridge's tools | Marks the session as one that talks to agents, so only such sessions listen |
+| `wait_inbox.py` | `SessionStart` and `Stop`, in the background (`asyncRewake`) | With `listen` on, in a marked session: polls the bridge's status every `poll_seconds`. When a message newer than any this machine has seen arrives, it wakes Claude with a count only (never the body). It records that id first, so one message wakes one session once. Stops after `max_wait_minutes` or when its session's process is gone, and the next turn starts it again |
 | `unread_notice.py` | `UserPromptSubmit` | When messages are unread, adds their count to your prompt's context. Silent when there are none or the bridge doesn't answer within 2 seconds |
 
 ## Configuration
@@ -59,12 +63,12 @@ The bundled MCP server (`bridge`): `send_message`, `check_inbox`, `mark_read`, `
 | `bridge_url` | empty | The Edge Function URL (`https://<project-ref>.supabase.co/functions/v1/agent-bridge`). Setup fills it in. Empty means not set up: the tools return an error and the hooks do nothing |
 | `agent_id` | `claude` | Claude Code's participant id on the bridge |
 | `token` | empty | Claude Code's token, the same value as the Vault secret `agent_bridge:<agent_id>:token`. Sensitive: kept in secure storage. You enter it yourself; Claude never sees it |
-| `listen` | `false` | Wake sessions when a message arrives. Every session that has the plugin polls, so turn it on in the project scope of the repo where you talk to the agents |
+| `listen` | `false` | Wake sessions when a message arrives. Plugin options are per user, so this covers every session on the machine, but only sessions that have used a bridge tool poll |
 | `poll_seconds` | `60` | Interval between status checks while listening (15 to 3600). Each check is one Edge Function call |
 | `max_wait_minutes` | `50` | How long a listening session polls without a turn (1 to 55) |
 | `supabase_connector`, `supabase_project_id` | empty | Saved by setup: the Supabase connector and project the bridge is in |
 
-Files on this machine: the listening poller keeps the newest message id it has seen and one pid file per session under `${CLAUDE_PLUGIN_DATA}/wait/` (or `~/.claude/state/agent-bridge/wait/`). It removes pid files older than two days. Uninstalling the plugin from the last place it is installed deletes that directory unless you pass `--keep-data`. The bridge's data stays in your Supabase project; to remove it, drop the `agent_bridge` schema, the `agent-bridge` Edge Function and the `agent_bridge:*` Vault secrets.
+Files on this machine: under `${CLAUDE_PLUGIN_DATA}/wait/` (or `~/.claude/state/agent-bridge/wait/`) the hooks keep the newest message id seen, one pid file per polling session and one mark per session that used a bridge tool. Pid files older than two days and marks unused for 14 days are removed. Uninstalling the plugin from the last place it is installed deletes that directory unless you pass `--keep-data`. The bridge's data stays in your Supabase project; to remove it, drop the `agent_bridge` schema, the `agent-bridge` Edge Function and the `agent_bridge:*` Vault secrets.
 
 ## Limitations
 

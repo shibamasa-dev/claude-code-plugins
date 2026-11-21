@@ -87,7 +87,15 @@ row 'the cap also holds for a direct INSERT' \
 q "UPDATE agent_bridge.threads SET status = 'closed' WHERE thread_id = 'notes'"
 row 'a closed thread takes no more messages' "$(err "SELECT agent_bridge.api('tok-beta', 'send', '{\"to\":\"claude\",\"thread\":\"notes\",\"body\":\"late\"}')")" thread_closed
 row 'sending to an unknown agent is refused' "$(err "SELECT agent_bridge.api('tok-beta', 'send', '{\"to\":\"nobody\",\"thread\":\"x\",\"body\":\"hi\"}')")" unknown_agent
-row 'an agent cannot message itself' "$(yesno [ "$(err "SELECT agent_bridge.api('tok-beta', 'send', '{\"to\":\"beta\",\"thread\":\"self\",\"body\":\"hi\"}')")" != none ])" yes
+row 'an agent cannot message itself' "$(err "SELECT agent_bridge.api('tok-beta', 'send', '{\"to\":\"beta\",\"thread\":\"self\",\"body\":\"hi\"}')")" bad_request
+row 'a thread id outside the pattern is a bad_request' "$(err "SELECT agent_bridge.api('tok-beta', 'send', '{\"to\":\"claude\",\"thread\":\"Bad Thread\",\"body\":\"hi\"}')")" bad_request
+row 'a body over 20000 characters is a bad_request' "$(err "SELECT agent_bridge.api('tok-beta', 'send', jsonb_build_object('to', 'claude', 'thread', 'long', 'body', repeat('x', 20001)))")" bad_request
+row 'a non-integer limit is a bad_request' "$(err "SELECT agent_bridge.api('tok-beta', 'inbox', '{\"limit\":\"ten\"}')")" bad_request
+row 'non-integer ids in ack are a bad_request' "$(err "SELECT agent_bridge.api('tok-beta', 'ack', '{\"ids\":[\"x\"]}')")" bad_request
+row 'a missing message id is a bad_request' "$(err "SELECT agent_bridge.api('tok-beta', 'message', '{}')")" bad_request
+row 'an agent that is not in a thread cannot write to it' "$(err "SELECT agent_bridge.api('tok-beta', 'send', '{\"to\":\"alpha\",\"thread\":\"plan\",\"body\":\"butting in\"}')")" not_found
+api tok-claude send '{"to":"beta","thread":"invite","body":"join us"}' >/dev/null
+row 'an agent that received a message in a thread can answer in it' "$(jget "$(api tok-beta send '{"to":"claude","thread":"invite","body":"joined"}')" 'd["delivery"]')" poll
 row 'an unknown action is a bad_request' "$(err "SELECT agent_bridge.api('tok-beta', 'delete_all')")" bad_request
 
 before=$(q "SELECT updated_at FROM agent_bridge.participants WHERE agent_id = 'beta'")

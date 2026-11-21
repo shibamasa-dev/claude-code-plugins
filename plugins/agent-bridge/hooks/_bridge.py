@@ -24,7 +24,12 @@ def config():
     url, agent = option("bridge_url"), option("agent_id")
     if not url or not AGENT_ID.match(agent):
         return None
-    if not url.startswith("https://") and not url.startswith("http://127.0.0.1"):
+    try:
+        p = urllib.parse.urlsplit(url)
+        ok = p.scheme == "https" and bool(p.hostname) or (p.scheme == "http" and p.hostname == "127.0.0.1")
+    except ValueError:
+        ok = False
+    if not ok:  # https, or plain http to 127.0.0.1 only (a local test bridge); the host is parsed, not prefix-matched
         return None
     sep = "&" if "?" in url else "?"
     return url + sep + "agent=" + urllib.parse.quote(agent), agent

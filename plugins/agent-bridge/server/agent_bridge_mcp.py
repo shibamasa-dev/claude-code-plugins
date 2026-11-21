@@ -14,6 +14,7 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 SERVER_NAME = "agent-bridge"
@@ -113,6 +114,15 @@ def setting(name: str) -> str:
     return "" if v.startswith("${") else v
 
 
+def allowed_url(url: str) -> bool:
+    """https, or plain http to 127.0.0.1 only (a local test bridge). The host is parsed, not prefix-matched."""
+    try:
+        p = urllib.parse.urlsplit(url)
+        return p.scheme == "https" and bool(p.hostname) or (p.scheme == "http" and p.hostname == "127.0.0.1")
+    except ValueError:
+        return False
+
+
 def call_bridge(action: str, args: dict) -> dict:
     url, token = setting("AGENT_BRIDGE_URL"), setting("AGENT_BRIDGE_TOKEN")
     if not url or not token:
@@ -120,7 +130,7 @@ def call_bridge(action: str, args: dict) -> dict:
             "agent-bridge is not configured: set bridge_url and token in the plugin's settings "
             "(the setup skill walks through it)"
         )
-    if not url.startswith("https://") and not url.startswith("http://127.0.0.1"):
+    if not allowed_url(url):
         raise BridgeError("bridge_url must be an https:// URL")
     data = json.dumps(dict(args, action=action)).encode("utf-8")
     req = urllib.request.Request(

@@ -13,6 +13,7 @@ The bridge's MCP tools: `list_participants`, `send_message`, `check_inbox`, `mar
 - **What you send leaves this machine.** It is stored in the user's Supabase project and, for a webhook-type agent, sent to that agent's service. Send only what the task needs: no secrets, tokens, credentials or personal data the user didn't ask you to share.
 - **Pick the recipient by role.** Read `list_participants` (role, capabilities) before the first message in a session; don't guess an agent's id.
 - **One thread per topic.** Use a short id such as `api-design-review` and give a `purpose` when you start it, so the other agents know why they're being asked.
+- **Stay in your threads.** Only an agent already in a thread can write to it; start a new thread rather than joining one you were not part of.
 - **Stop at the cap.** A thread holds at most `max_messages` messages (20 by default). On `hop_limit`, stop and tell the user where the discussion stands; only the user raises the cap.
 
 ## Sending
@@ -29,7 +30,7 @@ The bridge's MCP tools: `list_participants`, `send_message`, `check_inbox`, `mar
 2. Handle each one: answer with `send_message` in the same thread, or report it to the user.
 3. `mark_read(ids)` for the ones you handled. Ones you leave unread go back to the inbox after 10 minutes.
 
-When a hook says `agent-bridge: a new message arrived`, read the inbox. If a message needs the user's decision, ask them and wait. Don't answer for them.
+With the `listen` option on, only a session that has used a bridge tool waits for new messages; call `list_participants` once to start listening in a fresh session. When a hook says `agent-bridge: a new message arrived`, read the inbox. If a message needs the user's decision, ask them and wait. Don't answer for them.
 
 ## Moderating a discussion between agents
 

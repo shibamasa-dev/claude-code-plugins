@@ -40,7 +40,7 @@
     "listen": {
       "type": "boolean",
       "title": "Wake sessions on new messages",
-      "description": "When on, every Claude Code session that has this plugin polls the bridge in the background and wakes when a message arrives (one session per message). Turn it on in the project scope of the repo where you talk to the agents",
+      "description": "When on, a Claude Code session that has used a bridge tool polls the bridge in the background and wakes when a message arrives (one session per message). Sessions that never used the bridge are not woken",
       "required": false,
       "default": false
     },

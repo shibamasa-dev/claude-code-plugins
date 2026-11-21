@@ -215,9 +215,26 @@ BEGIN
     IF v_thread IS NULL OR v_body IS NULL OR a ->> 'to' IS NULL THEN
       RAISE EXCEPTION 'bad_request: send needs to, thread and body';
     END IF;
+    IF v_thread !~ '^[a-z0-9_-]{1,80}$' THEN
+      RAISE EXCEPTION 'bad_request: thread must match ^[a-z0-9_-]{1,80}$';
+    END IF;
+    IF length(v_body) NOT BETWEEN 1 AND 20000 THEN
+      RAISE EXCEPTION 'bad_request: body must be 1 to 20000 characters';
+    END IF;
+    IF a ->> 'to' = me THEN
+      RAISE EXCEPTION 'bad_request: an agent cannot send to itself';
+    END IF;
     SELECT * INTO rcpt FROM agent_bridge.participants WHERE agent_id = a ->> 'to' AND active;
     IF NOT FOUND THEN
       RAISE EXCEPTION 'unknown_agent: no active participant %', a ->> 'to';
+    END IF;
+    -- Only agents already in a thread write to it (its creator, or one that sent or received a message in it);
+    -- anyone else would use up its cap or slip text into a discussion it was not part of
+    IF EXISTS (SELECT 1 FROM agent_bridge.threads WHERE thread_id = v_thread)
+       AND NOT EXISTS (SELECT 1 FROM agent_bridge.threads WHERE thread_id = v_thread AND created_by = me)
+       AND NOT EXISTS (SELECT 1 FROM agent_bridge.messages
+                       WHERE thread_id = v_thread AND (from_agent = me OR to_agent = me)) THEN
+      RAISE EXCEPTION 'not_found: no thread % that you are part of', v_thread;
     END IF;
     INSERT INTO agent_bridge.threads (thread_id, purpose, created_by)
     VALUES (v_thread, coalesce(a ->> 'purpose', ''), me)
@@ -244,6 +261,9 @@ BEGIN
     RETURN jsonb_build_object('id', m.id, 'thread', m.thread_id, 'to', m.to_agent, 'delivery', v_delivery);
 
   ELSIF p_action = 'inbox' THEN
+    IF a ? 'limit' AND coalesce(a ->> 'limit', '') !~ '^[0-9]{1,4}$' THEN
+      RAISE EXCEPTION 'bad_request: limit must be an integer';
+    END IF;
     v_limit := least(greatest(coalesce((a ->> 'limit')::integer, 20), 1), 100);
     WITH picked AS (
       SELECT id FROM agent_bridge.messages
@@ -266,7 +286,8 @@ BEGIN
     RETURN jsonb_build_object('agent', me, 'messages', r);
 
   ELSIF p_action = 'ack' THEN
-    IF jsonb_typeof(a -> 'ids') IS DISTINCT FROM 'array' THEN
+    IF jsonb_typeof(a -> 'ids') IS DISTINCT FROM 'array'
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(a -> 'ids') e WHERE e::text !~ '^[0-9]{1,18}$') THEN
       RAISE EXCEPTION 'bad_request: ack needs ids (an array of message ids)';
     END IF;
     WITH done AS (
@@ -285,6 +306,9 @@ BEGIN
     RETURN jsonb_build_object('me', me, 'participants', r);
 
   ELSIF p_action = 'message' THEN
+    IF coalesce(a ->> 'id', '') !~ '^[0-9]{1,18}$' THEN
+      RAISE EXCEPTION 'bad_request: message needs id (a message id)';
+    END IF;
     SELECT * INTO m FROM agent_bridge.messages
     WHERE id = (a ->> 'id')::bigint AND (from_agent = me OR to_agent = me);
     IF NOT FOUND THEN

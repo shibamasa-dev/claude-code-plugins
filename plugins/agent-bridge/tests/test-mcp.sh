@@ -13,6 +13,8 @@ out=$(AGENT_BRIDGE_URL='${user_config.bridge_url}' AGENT_BRIDGE_TOKEN='${user_co
 row 'unset userConfig placeholders count as not configured' "$(yesno grep -q '^ERROR: .*not configured' <<<"$out")" yes
 out=$(AGENT_BRIDGE_URL=http://example.com/x AGENT_BRIDGE_TOKEN="$FAKE_WRONG" python3 "$CALL" list_participants)
 row 'a plain http URL is refused before any request' "$(yesno grep -q '^ERROR: .*https' <<<"$out")" yes
+out=$(AGENT_BRIDGE_URL=http://127.0.0.1.example.test/x AGENT_BRIDGE_TOKEN="$FAKE_WRONG" python3 "$CALL" list_participants)
+row 'a host that only starts with 127.0.0.1 is refused too' "$(yesno grep -q '^ERROR: .*https' <<<"$out")" yes
 
 start_fake
 export AGENT_BRIDGE_URL="$BRIDGE_URL" AGENT_BRIDGE_TOKEN="$FAKE_CLAUDE"
