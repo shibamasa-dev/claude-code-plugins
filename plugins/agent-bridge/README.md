@@ -11,7 +11,7 @@ Two-way messaging between Claude Code and other AI agents through a message queu
 /plugin install agent-bridge@shibamasa-plugins
 ```
 
-Then ask Claude to "set up the agent bridge". The `setup` skill builds the bridge in a Supabase project you choose.
+Then ask Claude to "set up the agent bridge". The `setup` skill builds the bridge in a Supabase project you choose. To connect another agent, ask Claude to "add an agent to the bridge": the `add` skill registers it, hands over its token and writes the instructions you give that agent.
 
 ## How it works
 
@@ -41,7 +41,8 @@ The bridge's data is shared by several agents on different machines, so it lives
 
 | Skill | Use it for |
 |---|---|
-| `setup` | Building or updating the bridge in your Supabase project, adding a participant agent, and checking which Vault secrets still hold placeholders. It shows what it will create and waits for your yes before changing anything |
+| `setup` | Building or updating the bridge in your Supabase project, registering Claude Code, and checking which Vault secrets still hold placeholders. It shows what it will create and waits for your yes before changing anything |
+| `add` | Connecting another agent: registering it as a participant (poll or webhook), handing over its token, and writing the instructions you paste into that agent so it knows how to use the bridge ("add an agent to the bridge", "write the instructions to give the reviewer agent") |
 | `talk` | Sending to and reading from other agents, and moderating a discussion between agents ("ask the reviewer agent", "check the inbox", "have them discuss X") |
 
 ## Tools
@@ -61,12 +62,14 @@ The bundled MCP server (`bridge`): `send_message`, `check_inbox`, `mark_read`, `
 | Key | Default | Meaning |
 |---|---|---|
 | `bridge_url` | empty | The Edge Function URL (`https://<project-ref>.supabase.co/functions/v1/agent-bridge`). Setup fills it in. Empty means not set up: the tools return an error and the hooks do nothing |
-| `agent_id` | `claude` | Claude Code's participant id on the bridge |
+| `agent_id` | `claude` | Claude Code's participant id on the bridge. Per user, not per repo; use a different id for each machine or user that connects |
 | `token` | empty | Claude Code's token, the same value as the Vault secret `agent_bridge:<agent_id>:token`. Sensitive: kept in secure storage. You enter it yourself; Claude never sees it |
-| `listen` | `false` | Wake sessions when a message arrives. Plugin options are per user, so this covers every session on the machine, but only sessions that have used a bridge tool poll |
+| `listen` | `false` | Wake sessions when a message arrives. Plugin options are per user, so with a user-scope install this covers every session on the machine, but only sessions that have used a bridge tool poll |
 | `poll_seconds` | `60` | Interval between status checks while listening (15 to 3600). Each check is one Edge Function call |
 | `max_wait_minutes` | `50` | How long a listening session polls without a turn (1 to 55) |
 | `supabase_connector`, `supabase_project_id` | empty | Saved by setup: the Supabase connector and project the bridge is in |
+
+Install scope: to use the bridge in one repo only, install from that repo with `claude plugin install <plugin id> --scope local` (or `--scope project`) instead of `--scope user`; a user-scope install runs the hooks and the MCP server in every session on the machine. The scope decides only where the plugin runs: the options (`agent_id`, `token`, `bridge_url`) are saved per user whatever the scope, so every repo on the machine that has the plugin enabled uses the same ones. Settings take effect in a new session. The `setup` skill asks for the scope and the `agent_id`.
 
 Files on this machine: under `${CLAUDE_PLUGIN_DATA}/wait/` (or `~/.claude/state/agent-bridge/wait/`) the hooks keep the newest message id and unread count seen per bridge and agent, one pid file per polling session and one mark per session that used a bridge tool. Pid files older than two days and marks unused for 14 days are removed. Uninstalling the plugin from the last place it is installed deletes `${CLAUDE_PLUGIN_DATA}` unless you pass `--keep-data`; the fallback `~/.claude/state/agent-bridge/` is outside it and stays, so delete it by hand. The bridge's data stays in your Supabase project; to remove it, drop the `agent_bridge` schema, the `agent-bridge` Edge Function and the `agent_bridge:*` Vault secrets.
 
@@ -75,14 +78,14 @@ Files on this machine: under `${CLAUDE_PLUGIN_DATA}/wait/` (or `~/.claude/state/
 - A listening session wakes only while Claude Code is running. When a poller stops after `max_wait_minutes` with no turn, new messages wait until your next prompt, where `unread_notice.py` reports them.
 - Webhook delivery uses Supabase's `pg_net`, which sends after the message is stored and does not retry. `message_status` shows the HTTP status the agent's service returned. Supabase keeps that response for about 6 hours.
 - The webhook payload and auth header are fixed (`Authorization: Bearer <key>`, JSON body). An agent service that needs another format needs its own adapter.
-- Setup needs a Supabase connector that can run SQL, apply migrations and deploy Edge Functions.
+- `setup` and `add` need a Supabase connector that can run SQL, apply migrations and deploy Edge Functions.
 
 ## Requirements
 
 - macOS or Linux (the hooks use `fcntl` and `ps`)
 - `python3` (standard library only)
 - A Supabase project with Vault and `pg_net` (both available on Supabase)
-- For setup: a Supabase connector (claude.ai connector or MCP server)
+- For `setup` and `add`: a Supabase connector (claude.ai connector or MCP server)
 
 ## Tests
 

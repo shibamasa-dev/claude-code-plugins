@@ -11,7 +11,7 @@
 /plugin install agent-bridge@shibamasa-plugins
 ```
 
-そのあと Claude に「ブリッジをセットアップして」と頼む。`setup` スキルが、選んだ Supabase プロジェクトにブリッジを作る。
+そのあと Claude に「ブリッジをセットアップして」と頼む。`setup` スキルが、選んだ Supabase プロジェクトにブリッジを作る。ほかのエージェントをつなぐときは「エージェントをブリッジに追加して」と頼む。`add` スキルが、参加者の登録、トークンの受け渡し、そのエージェントに渡す指示の作成までやる。
 
 ## 仕組み
 
@@ -54,7 +54,8 @@ Claude Code（このプラグイン）─┐                        ┌─> webh
 
 | スキル | 使う場面 |
 |---|---|
-| `setup` | Supabase プロジェクトにブリッジを作る・更新する、参加エージェントを追加する、Vault の秘密でまだダミーのものを確かめる。作るものを先に示し、あなたの OK を待ってから変更する |
+| `setup` | Supabase プロジェクトにブリッジを作る・更新する、Claude Code を参加者に登録する、Vault の秘密でまだダミーのものを確かめる。作るものを先に示し、あなたの OK を待ってから変更する |
+| `add` | ほかのエージェントをつなぐ。参加者の登録（poll 型か webhook 型）、トークンの受け渡し、そのエージェントが使い方を知るために貼る指示の作成（「エージェントを追加して」「レビュー担当に渡す指示を作って」） |
 | `talk` | ほかのエージェントへの送信と受信箱の確認、エージェント同士の議論の司会（「レビュー担当のエージェントに聞いて」「受信箱を見て」「X について議論させて」） |
 
 ## ツール
@@ -74,12 +75,14 @@ Claude Code（このプラグイン）─┐                        ┌─> webh
 | キー | 既定値 | 意味 |
 |---|---|---|
 | `bridge_url` | 空 | Edge Function の URL（`https://<project-ref>.supabase.co/functions/v1/agent-bridge`）。セットアップが入れる。空ならセットアップ前とみなし、ツールはエラーを返し、フックは何もしない |
-| `agent_id` | `claude` | ブリッジ上での Claude Code の参加者 ID |
+| `agent_id` | `claude` | ブリッジ上での Claude Code の参加者 ID。リポごとではなくユーザー単位。接続するマシンやユーザーごとに別の ID を使う |
 | `token` | 空 | Claude Code のトークン。Vault の秘密 `agent_bridge:<agent_id>:token` と同じ値。秘密扱いで安全な保管場所に入る。入力するのはあなた自身で、Claude は値を見ない |
-| `listen` | `false` | メッセージが届いたらセッションを起こす。プラグインの設定はユーザー単位なのでマシン上の全セッションに効くが、ポーリングするのはブリッジのツールを使ったことのあるセッションだけ |
+| `listen` | `false` | メッセージが届いたらセッションを起こす。プラグインの設定はユーザー単位なので、user スコープでインストールするとマシン上の全セッションに効くが、ポーリングするのはブリッジのツールを使ったことのあるセッションだけ |
 | `poll_seconds` | `60` | 待ち受け中に状態を見る間隔（15〜3600 秒）。1 回が Edge Function の呼び出し 1 回 |
 | `max_wait_minutes` | `50` | ターンが無いまま待ち受けを続ける時間の上限（1〜55 分） |
 | `supabase_connector`・`supabase_project_id` | 空 | セットアップが保存する、ブリッジを置いた Supabase コネクタとプロジェクト |
+
+インストールのスコープ: ブリッジを 1 つのリポだけで使うときは、`--scope user` ではなく、そのリポから `claude plugin install <plugin id> --scope local`（または `--scope project`）でインストールする。user スコープのインストールは、マシン上の全セッションでフックと MCP サーバーを動かす。スコープが決めるのはプラグインが動く場所だけで、設定（`agent_id`・`token`・`bridge_url`）はスコープに関係なくユーザー単位で保存される。プラグインを有効にしたマシン上のどのリポも同じ値を使う。設定が効くのは新しいセッションから。`setup` スキルがスコープと `agent_id` を聞く。
 
 このマシンに置くファイル: フックは `${CLAUDE_PLUGIN_DATA}/wait/`（無ければ `~/.claude/state/agent-bridge/wait/`）に、ブリッジとエージェントごとに見たことのある最新のメッセージ ID と未読の件数、ポーリング中のセッションごとの pid ファイル、ブリッジのツールを使ったセッションごとの印を置く。2 日より古い pid ファイルと、14 日使われていない印は消す。プラグインを最後の 1 か所からアンインストールすると、`--keep-data` を付けない限り `${CLAUDE_PLUGIN_DATA}` は消える。代わりに使う `~/.claude/state/agent-bridge/` はその外にあって残るので、手で消す。ブリッジのデータは Supabase プロジェクトに残る。消すときは、スキーマ `agent_bridge`、Edge Function `agent-bridge`、Vault の `agent_bridge:*` の秘密を削除する。
 
@@ -88,14 +91,14 @@ Claude Code（このプラグイン）─┐                        ┌─> webh
 - 待ち受けで起きられるのは Claude Code が動いている間だけ。ターンが無いまま `max_wait_minutes` でポーラーが止まると、それ以降の新着は次に話しかけたときに `unread_notice.py` が知らせるまで待つ。
 - webhook への配送は Supabase の `pg_net` を使う。メッセージを保存したあとに送り、再送はしない。相手のサービスが返した HTTP ステータスは `message_status` で見られる。Supabase がその応答を残すのは約 6 時間。
 - webhook の本文と認証ヘッダーの形（`Authorization: Bearer <key>`、JSON の本文）は固定。別の形が要るサービスには、そのサービス用の変換が別に要る。
-- セットアップには、SQL の実行・マイグレーションの適用・Edge Function のデプロイができる Supabase コネクタが要る。
+- `setup` と `add` には、SQL の実行・マイグレーションの適用・Edge Function のデプロイができる Supabase コネクタが要る。
 
 ## 前提
 
 - macOS か Linux（フックが `fcntl` と `ps` を使う）
 - `python3`（標準ライブラリだけ）
 - Vault と `pg_net` が使える Supabase プロジェクト（どちらも Supabase で使える）
-- セットアップ用の Supabase コネクタ（claude.ai のコネクタか MCP サーバー）
+- `setup` と `add` 用の Supabase コネクタ（claude.ai のコネクタか MCP サーバー）
 
 ## テスト
 
