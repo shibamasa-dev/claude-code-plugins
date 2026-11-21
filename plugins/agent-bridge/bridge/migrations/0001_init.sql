@@ -228,17 +228,18 @@ BEGIN
     IF NOT FOUND THEN
       RAISE EXCEPTION 'unknown_agent: no active participant %', a ->> 'to';
     END IF;
+    INSERT INTO agent_bridge.threads (thread_id, purpose, created_by)
+    VALUES (v_thread, coalesce(a ->> 'purpose', ''), me)
+    ON CONFLICT (thread_id) DO NOTHING;
     -- Only agents already in a thread write to it (its creator, or one that sent or received a message in it);
-    -- anyone else would use up its cap or slip text into a discussion it was not part of
-    IF EXISTS (SELECT 1 FROM agent_bridge.threads WHERE thread_id = v_thread)
-       AND NOT EXISTS (SELECT 1 FROM agent_bridge.threads WHERE thread_id = v_thread AND created_by = me)
+    -- anyone else would use up its cap or slip text into a discussion it was not part of. Checked after the insert
+    -- with the thread row locked, so two agents creating the same thread at once cannot both pass as creator.
+    PERFORM 1 FROM agent_bridge.threads WHERE thread_id = v_thread FOR UPDATE;
+    IF NOT EXISTS (SELECT 1 FROM agent_bridge.threads WHERE thread_id = v_thread AND created_by = me)
        AND NOT EXISTS (SELECT 1 FROM agent_bridge.messages
                        WHERE thread_id = v_thread AND (from_agent = me OR to_agent = me)) THEN
       RAISE EXCEPTION 'not_found: no thread % that you are part of', v_thread;
     END IF;
-    INSERT INTO agent_bridge.threads (thread_id, purpose, created_by)
-    VALUES (v_thread, coalesce(a ->> 'purpose', ''), me)
-    ON CONFLICT (thread_id) DO NOTHING;
     v_delivery := 'poll';
     IF rcpt.wake = 'webhook' THEN
       v_url := agent_bridge.secret('agent_bridge:' || rcpt.agent_id || ':webhook_url');

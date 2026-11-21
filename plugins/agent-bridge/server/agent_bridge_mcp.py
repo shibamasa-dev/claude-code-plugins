@@ -108,6 +108,16 @@ class BridgeError(Exception):
     pass
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Refuse redirects: following one would resend the bearer token and the message to an address nobody set."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
 def setting(name: str) -> str:
     """A userConfig value from the environment. An unset option may arrive as the literal ${user_config.X}."""
     v = os.environ.get(name, "").strip()
@@ -138,9 +148,14 @@ def call_bridge(action: str, args: dict) -> dict:
         headers={"Content-Type": "application/json", "Authorization": "Bearer " + token},
     )
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
+        with _OPENER.open(req, timeout=TIMEOUT_S) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
+        if 300 <= e.code < 400:
+            raise BridgeError(
+                f"redirect: the bridge answered HTTP {e.code} with a redirect; it was not followed, so the token "
+                "and message went nowhere else. Check bridge_url"
+            ) from None
         try:
             err = json.loads(e.read().decode("utf-8"))
             raise BridgeError(f"{err.get('error', 'http_' + str(e.code))}: {err.get('message', '')}") from None

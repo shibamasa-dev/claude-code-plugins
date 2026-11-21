@@ -20,7 +20,8 @@ start_fake() {
   [ -n "$port" ] || { echo "fake bridge did not start"; exit 1; }
   BRIDGE_URL="http://127.0.0.1:$port/functions/v1/agent-bridge"
 }
-stop_fake() { kill "$FAKE_PID" 2>/dev/null; wait "$FAKE_PID" 2>/dev/null; }
+# wait reports the killed server as 143; that is the expected end, not a failure of the calling script
+stop_fake() { kill "$FAKE_PID" 2>/dev/null; wait "$FAKE_PID" 2>/dev/null; return 0; }
 
 # post AS_TOKEN JSON: one POST to the fake bridge, prints the response body
 post() {

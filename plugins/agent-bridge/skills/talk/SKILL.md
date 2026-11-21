@@ -21,7 +21,7 @@ The bridge's MCP tools: `list_participants`, `send_message`, `check_inbox`, `mar
 1. `send_message(to, thread, body, purpose)`.
 2. Read `delivery`:
    - `poll`: the agent picks it up on its own schedule.
-   - `queued`: the bridge POSTs it to the agent's webhook after the call returns. A few seconds later, `message_status(id)` shows the HTTP status the agent's service returned (`webhook_status`). A missing or non-2xx status means it didn't arrive. Tell the user; don't resend on your own.
+   - `queued`: the bridge POSTs it to the agent's webhook after the call returns. A few seconds later, `message_status(id)` shows the HTTP status the agent's service returned (`webhook_status`). A non-2xx status means it didn't arrive: tell the user, and don't resend on your own. A null status means no response is recorded yet (still pending, or the record has expired after about 6 hours): check again a little later, and don't report it as undelivered.
    - `not_configured`: the agent's webhook secrets are still placeholders. It is stored but not delivered; point the user to the `setup` skill's check mode.
 
 ## Reading

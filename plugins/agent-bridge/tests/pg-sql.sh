@@ -94,6 +94,7 @@ row 'a non-integer limit is a bad_request' "$(err "SELECT agent_bridge.api('tok-
 row 'non-integer ids in ack are a bad_request' "$(err "SELECT agent_bridge.api('tok-beta', 'ack', '{\"ids\":[\"x\"]}')")" bad_request
 row 'a missing message id is a bad_request' "$(err "SELECT agent_bridge.api('tok-beta', 'message', '{}')")" bad_request
 row 'an agent that is not in a thread cannot write to it' "$(err "SELECT agent_bridge.api('tok-beta', 'send', '{\"to\":\"alpha\",\"thread\":\"plan\",\"body\":\"butting in\"}')")" not_found
+row 'and the refused write stores nothing' "$(q "SELECT count(*) FROM agent_bridge.messages WHERE thread_id = 'plan' AND from_agent = 'beta'")" 0
 api tok-claude send '{"to":"beta","thread":"invite","body":"join us"}' >/dev/null
 row 'an agent that received a message in a thread can answer in it' "$(jget "$(api tok-beta send '{"to":"claude","thread":"invite","body":"joined"}')" 'd["delivery"]')" poll
 row 'an unknown action is a bad_request' "$(err "SELECT agent_bridge.api('tok-beta', 'delete_all')")" bad_request

@@ -97,6 +97,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if os.environ.get("FAKE_BRIDGE_DOWN") == "1":
             return self.reply(503, {"error": "internal", "message": "down"})
+        if os.environ.get("FAKE_BRIDGE_REDIRECT") == "1":
+            self.send_response(302)
+            self.send_header("Location", "http://127.0.0.1:9/elsewhere")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         auth = self.headers.get("Authorization", "")
         me = TOKENS.get(auth[7:]) if auth.startswith("Bearer ") else None
         if not me:

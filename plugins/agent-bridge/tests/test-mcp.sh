@@ -47,3 +47,9 @@ stop_fake
 
 out=$(python3 "$CALL" list_participants)
 row 'a bridge that is down is a tool error, nothing is sent elsewhere' "$(yesno grep -q '^ERROR: unreachable:' <<<"$out")" yes
+
+start_fake FAKE_BRIDGE_REDIRECT=1
+export AGENT_BRIDGE_URL="$BRIDGE_URL"
+out=$(python3 "$CALL" list_participants)
+row 'a redirect from the bridge is refused as a tool error, not followed' "$(yesno grep -q '^ERROR: redirect:' <<<"$out")" yes
+stop_fake

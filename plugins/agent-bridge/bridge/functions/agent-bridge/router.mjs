@@ -15,9 +15,9 @@ const HTTP_STATUS = {
   hop_limit: 409,
 };
 const AGENT_ID = /^[a-z0-9_-]{1,40}$/;
-// The request text, in characters. Room for a 20000-character body even if every character arrives \u-escaped
-// (6 characters each, 12 for a surrogate pair); SQL enforces the real 20000-character limit on the body.
-const MAX_REQUEST_CHARS = 256 * 1024;
+// The request body, in bytes. Room for a 20000-character body even if every character arrives \u-escaped
+// (6 bytes each, 12 for a surrogate pair); SQL enforces the real 20000-character limit on the body.
+const MAX_REQUEST_BYTES = 256 * 1024;
 
 function json(status, obj) {
   return new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
@@ -27,6 +27,32 @@ function json(status, obj) {
 export function splitError(message) {
   const m = /^([a-z_]+): (.*)$/s.exec(String(message || ""));
   return m && m[1] in HTTP_STATUS ? [m[1], m[2]] : null;
+}
+
+// Read the body as text, stopping as soon as it passes the limit so a huge upload is never held in memory.
+// null when it is too large.
+async function readLimited(req, limit) {
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  const chunks = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > limit) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(size);
+  let at = 0;
+  for (const c of chunks) {
+    all.set(c, at);
+    at += c.byteLength;
+  }
+  return new TextDecoder().decode(all);
 }
 
 export async function handle(req, db) {
@@ -40,8 +66,8 @@ export async function handle(req, db) {
     const auth = req.headers.get("authorization") || "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
     if (!token) return json(401, { error: "unauthorized", message: "missing Authorization: Bearer <token>" });
-    const raw = await req.text();
-    if (raw.length > MAX_REQUEST_CHARS) return json(413, { error: "bad_request", message: "request body too large" });
+    const raw = await readLimited(req, MAX_REQUEST_BYTES);
+    if (raw === null) return json(413, { error: "bad_request", message: "request body too large" });
     let payload;
     try {
       payload = JSON.parse(raw || "{}");

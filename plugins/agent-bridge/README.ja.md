@@ -36,7 +36,7 @@ Claude Code（このプラグイン）─┐                        ┌─> webh
   - `hop_limit`・`thread_closed`: 409
 - **エージェントの起こし方**:
   - `webhook` 型は、新着ごとに自分の URL へ POST を受け取る。ヘッダーは `Authorization: Bearer <そのエージェントの webhook キー>`、本文は `{"event":"agent_bridge.message","id","thread","from","to","body","created_at"}`。
-  - `poll` 型は `GET <bridge_url>?agent=<id>` を呼ぶ。トークンは要らず、返るのは `{"agent","unread","latest_id"}` だけ。`latest_id` が変わったら、トークンを使って読む。
+  - `poll` 型は `GET <bridge_url>?agent=<id>` を呼ぶ。トークンは要らず、返るのは `{"agent","unread","latest_id"}` だけ。`latest_id` か `unread` が増えたら、トークンを使って読む。`inbox` で受け取ったまま `ack` していないメッセージは、新しい ID を伴わずに 10 分後に戻ってくる。そのため `unread` が 0 より大きいあいだは、ときどき `inbox` を呼び直す。
 - **秘密**は Supabase の Vault に置く。全エージェントに `agent_bridge:<id>:token`、webhook 型にはさらに `agent_bridge:<id>:webhook_url` と `:webhook_key` がある。セットアップはこれらをダミー値 `REPLACE_ME` で作り、本物の値はダッシュボードで入れ替える。ダミーのトークンでは誰も認証されない。webhook 型のエージェントの秘密がダミーのままだと、メッセージは保存されるが POST されない（`delivery: not_configured`）。
 - **スレッド**: 書き込めるのは、そのスレッドに参加しているエージェント（作った本人か、そのスレッドで送ったか受け取ったことがあるもの）だけ。
 - **ループ防止**: 1 つのスレッドに入るメッセージは最大 `max_messages` 件（既定 20）。超えると、上限を上げるまで送信は `hop_limit` で失敗する。
@@ -66,7 +66,7 @@ Claude Code（このプラグイン）─┐                        ┌─> webh
 | フック | いつ | 何をするか |
 |---|---|---|
 | `arm_session.py` | ブリッジのツールの `PostToolUse` | そのセッションを「エージェントと話すセッション」として印を付ける。待ち受けるのは印のあるセッションだけ |
-| `wait_inbox.py` | `SessionStart` と `Stop`、バックグラウンド（`asyncRewake`） | `listen` がオンで、印のあるセッションのとき、`poll_seconds` ごとにブリッジの状態を見る。このマシンで見たことのある ID より新しいメッセージが届いたら、件数だけを添えて Claude を起こす（本文は渡さない）。その ID を先に記録するので、1 通のメッセージで起きるのは 1 つのセッションの 1 回だけ。`max_wait_minutes` が過ぎるか、セッションのプロセスが無くなると止まり、次のターンでまた始まる |
+| `wait_inbox.py` | `SessionStart` と `Stop`、バックグラウンド（`asyncRewake`） | `listen` がオンで、印のあるセッションのとき、`poll_seconds` ごとにブリッジの状態を見る。未読があり、かつ、このマシンがこのブリッジで見たことのある ID より新しいメッセージが届いたか未読の件数が増えたら、件数だけを添えて Claude を起こす（本文は渡さない）。ID と件数を先に記録するので、1 通のメッセージで起きるのは 1 つのセッションの 1 回だけ。`max_wait_minutes` が過ぎるか、セッションのプロセスが無くなると止まり、次のターンでまた始まる |
 | `unread_notice.py` | `UserPromptSubmit` | 未読があれば、その件数を発言の文脈に足す。未読が無いとき、またはブリッジが 2 秒以内に答えないときは何もしない |
 
 ## 設定
@@ -81,7 +81,7 @@ Claude Code（このプラグイン）─┐                        ┌─> webh
 | `max_wait_minutes` | `50` | ターンが無いまま待ち受けを続ける時間の上限（1〜55 分） |
 | `supabase_connector`・`supabase_project_id` | 空 | セットアップが保存する、ブリッジを置いた Supabase コネクタとプロジェクト |
 
-このマシンに置くファイル: フックは `${CLAUDE_PLUGIN_DATA}/wait/`（無ければ `~/.claude/state/agent-bridge/wait/`）に、見たことのある最新のメッセージ ID、ポーリング中のセッションごとの pid ファイル、ブリッジのツールを使ったセッションごとの印を置く。2 日より古い pid ファイルと、14 日使われていない印は消す。プラグインを最後の 1 か所からアンインストールすると、`--keep-data` を付けない限りこのフォルダは消える。ブリッジのデータは Supabase プロジェクトに残る。消すときは、スキーマ `agent_bridge`、Edge Function `agent-bridge`、Vault の `agent_bridge:*` の秘密を削除する。
+このマシンに置くファイル: フックは `${CLAUDE_PLUGIN_DATA}/wait/`（無ければ `~/.claude/state/agent-bridge/wait/`）に、ブリッジとエージェントごとに見たことのある最新のメッセージ ID と未読の件数、ポーリング中のセッションごとの pid ファイル、ブリッジのツールを使ったセッションごとの印を置く。2 日より古い pid ファイルと、14 日使われていない印は消す。プラグインを最後の 1 か所からアンインストールすると、`--keep-data` を付けない限りこのフォルダは消える。ブリッジのデータは Supabase プロジェクトに残る。消すときは、スキーマ `agent_bridge`、Edge Function `agent-bridge`、Vault の `agent_bridge:*` の秘密を削除する。
 
 ## 制限
 

@@ -40,6 +40,11 @@ const escaped = JSON.stringify({ action: "send", to: "a", thread: "t", body: ja 
   (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
 await show("ja_escaped", post(escaped));
 await show("too_large", post(JSON.stringify({ action: "send", body: "x".repeat(300000) })));
+// An endless upload: the router must stop reading once it passes the limit, not wait for the end.
+let pulled = 0;
+const endless = new ReadableStream({ pull(c) { pulled += 1; c.enqueue(new Uint8Array(64 * 1024).fill(120)); } });
+await show("endless", new Request(U, { method: "POST", headers: { Authorization: "Bearer good" }, body: endless, duplex: "half" }));
+console.log("endless_pulls", pulled < 10 ? "yes" : "no");
 const api = calls.find((c) => c[0] === "api" && c[2] === "inbox" && c[1] === "good");
 console.log("args_passed", JSON.stringify(api[3]) === '{"limit":5}' ? "yes" : "no");
 JS
@@ -59,3 +64,4 @@ row 'other methods are a 405' "$(yesno [ "$(st put)" = 405_bad_request ])" yes
 row 'a 20000-character Japanese body is accepted as UTF-8' "$(yesno [ "$(st ja_raw)" = 200_- ])" yes
 row 'and also when every character is \u-escaped' "$(yesno [ "$(st ja_escaped)" = 200_- ])" yes
 row 'a request far over that size is a 413' "$(yesno [ "$(st too_large)" = 413_bad_request ])" yes
+row 'an endless upload is a 413 after reading just past the limit' "$(yesno [ "$(st endless)/$(awk '$1 == "endless_pulls" {print $2}' <<<"$out")" = 413_bad_request/yes ])" yes
