@@ -158,30 +158,27 @@ if len(set(runners.values())) > 1:
             errors.append(f"{f}: differs from {first} (every plugin's tests/run-all.sh is the same file; change them together)")
 
 
-LINT_OPEN = re.compile(r"<!--\s*lint:([\w-]+)\s*-->")
+# The same block pattern as read_block in plugins/testing/hooks/testcase-lint.py (non-greedy, so a block that
+# opens and closes on one line ends there)
+LINT_BLOCK = re.compile(r"<!--\s*lint:([\w-]+)\s*-->(.*?)<!--\s*/lint:\1\s*-->", re.S)
 
 
 def lint_block_lines(f):
-    """Line numbers at HEAD strictly inside <!-- lint:TAG --> ... <!-- /lint:TAG --> blocks.
+    """Line numbers at HEAD strictly between the marker lines of <!-- lint:TAG --> ... <!-- /lint:TAG --> blocks.
 
     These blocks are data that hooks read line by line (testcase-lint.py's read_block takes everything after
-    "- "), so a quote or a ja-ok marker would change the value. A block that is never closed exempts nothing.
+    "- "), so a quote or a ja-ok marker would change the value. A block that is never closed exempts nothing,
+    and neither do the marker lines themselves.
     """
     try:
-        lines = git("show", f"HEAD:{f}").splitlines()
+        text = git("show", f"HEAD:{f}")
     except subprocess.CalledProcessError:
         return set()
-    inside, tag, pending = set(), None, []
-    for n, line in enumerate(lines, 1):
-        if tag is None:
-            m = LINT_OPEN.search(line)
-            if m:
-                tag, pending = m.group(1), []
-        elif re.search(rf"<!--\s*/lint:{re.escape(tag)}\s*-->", line):
-            inside.update(pending)
-            tag = None
-        else:
-            pending.append(n)
+    inside = set()
+    for m in LINT_BLOCK.finditer(text):
+        first = text.count("\n", 0, m.start(2)) + 1   # line of the opening marker
+        last = text.count("\n", 0, m.end(2)) + 1      # line of the closing marker
+        inside.update(range(first + 1, last))
     return inside
 
 
