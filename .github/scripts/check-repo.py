@@ -170,10 +170,11 @@ def lint_block_lines(f):
     "- "), so a quote or a ja-ok marker would change the value. A block that is never closed exempts nothing,
     and neither do the marker lines themselves.
     """
-    try:
-        text = git("show", f"HEAD:{f}")
-    except subprocess.CalledProcessError:
+    # Bytes decoded with replacement: the file may be binary or not UTF-8 (only called once a line is flagged)
+    r = subprocess.run(["git", "show", f"HEAD:{f}"], cwd=ROOT, capture_output=True)
+    if r.returncode != 0:
         return set()
+    text = r.stdout.decode("utf-8", errors="replace")
     inside = set()
     for m in LINT_BLOCK.finditer(text):
         first = text.count("\n", 0, m.start(2)) + 1   # line of the opening marker
@@ -190,15 +191,18 @@ if "--base" in sys.argv:
         if LANG_EXEMPT.search(f):
             continue
         fm = frontmatter_end(f) if f == "SKILL.md" or f.endswith("/SKILL.md") else 0
-        data = lint_block_lines(f)
+        data = None  # lines inside lint blocks, read only when an added line has kana
         n = None
         for line in git("diff", "-U0", "--no-color", base, "HEAD", "--", f).splitlines():
             if line.startswith("@@"):
                 n = int(re.search(r"\+(\d+)", line).group(1))
             elif n is not None and line.startswith("+"):
                 text = line[1:]
-                if not (n <= fm or n in data or "ja-ok" in text) and KANA.search(QUOTED.sub("", text)):
-                    errors.append(f"{f}:{n}: Japanese outside quotes (write it in English, quote it, or add ja-ok to the line)")
+                if not (n <= fm or "ja-ok" in text) and KANA.search(QUOTED.sub("", text)):
+                    if data is None:
+                        data = lint_block_lines(f)
+                    if n not in data:
+                        errors.append(f"{f}:{n}: Japanese outside quotes (write it in English, quote it, or add ja-ok to the line)")
                 n += 1
 
 # Don't print the location or count of BLOCKED_PATTERNS matches. If the public log showed which line
