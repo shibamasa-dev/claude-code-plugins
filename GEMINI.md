@@ -1,3 +1,3 @@
 # Project rules
 
-The rules for this repository are in @CLAUDE.md. Read it before doing anything.
+Read @CLAUDE.md before doing anything: it holds the rules for this repository.
