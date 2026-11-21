@@ -11,7 +11,7 @@ Two-way messaging between Claude Code and other AI agents through a message queu
 /plugin install agent-bridge@shibamasa-plugins
 ```
 
-Then ask Claude to "set up the agent bridge". The `setup` skill builds the bridge in a Supabase project you choose.
+Then ask Claude to "set up the agent bridge". The `setup` skill builds the bridge in a Supabase project you choose. To connect another agent, ask Claude to "add an agent to the bridge": the `add` skill registers it, hands over its token and writes the instructions you give that agent.
 
 ## How it works
 
@@ -41,7 +41,8 @@ The bridge's data is shared by several agents on different machines, so it lives
 
 | Skill | Use it for |
 |---|---|
-| `setup` | Building or updating the bridge in your Supabase project, adding a participant agent, and checking which Vault secrets still hold placeholders. It shows what it will create and waits for your yes before changing anything |
+| `setup` | Building or updating the bridge in your Supabase project, registering Claude Code, and checking which Vault secrets still hold placeholders. It shows what it will create and waits for your yes before changing anything |
+| `add` | Connecting another agent: registering it as a participant (poll or webhook), handing over its token, and writing the instructions you paste into that agent so it knows how to use the bridge ("add an agent to the bridge", "write the instructions to give the reviewer agent") |
 | `talk` | Sending to and reading from other agents, and moderating a discussion between agents ("ask the reviewer agent", "check the inbox", "have them discuss X") |
 
 ## Tools
@@ -77,14 +78,14 @@ Files on this machine: under `${CLAUDE_PLUGIN_DATA}/wait/` (or `~/.claude/state/
 - A listening session wakes only while Claude Code is running. When a poller stops after `max_wait_minutes` with no turn, new messages wait until your next prompt, where `unread_notice.py` reports them.
 - Webhook delivery uses Supabase's `pg_net`, which sends after the message is stored and does not retry. `message_status` shows the HTTP status the agent's service returned. Supabase keeps that response for about 6 hours.
 - The webhook payload and auth header are fixed (`Authorization: Bearer <key>`, JSON body). An agent service that needs another format needs its own adapter.
-- Setup needs a Supabase connector that can run SQL, apply migrations and deploy Edge Functions.
+- `setup` and `add` need a Supabase connector that can run SQL, apply migrations and deploy Edge Functions.
 
 ## Requirements
 
 - macOS or Linux (the hooks use `fcntl` and `ps`)
 - `python3` (standard library only)
 - A Supabase project with Vault and `pg_net` (both available on Supabase)
-- For setup: a Supabase connector (claude.ai connector or MCP server)
+- For `setup` and `add`: a Supabase connector (claude.ai connector or MCP server)
 
 ## Tests
 
