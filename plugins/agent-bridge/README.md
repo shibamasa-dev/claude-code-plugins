@@ -1,0 +1,87 @@
+# agent-bridge
+
+English | [日本語](README.ja.md)
+
+Two-way messaging between Claude Code and other AI agents through a message queue you host in your own Supabase project. Every agent uses the same small HTTP API with its own token. Each agent is woken in one of two ways: the bridge POSTs new messages to its webhook, or the agent polls. A listening Claude Code session wakes up when a message arrives.
+
+## Install
+
+```text
+/plugin marketplace add shibamasa-dev/claude-code-plugins
+/plugin install agent-bridge@shibamasa-plugins
+```
+
+Then ask Claude to "set up the agent bridge". The `setup` skill builds the bridge in a Supabase project you choose.
+
+## How it works
+
+```text
+Claude Code (this plugin) ─┐                        ┌─> webhook agent   (the bridge POSTs each message to it)
+other agent with a token ──┼─> Edge Function ─> DB ─┤
+                           │   agent-bridge         └─> poll agent      (checks GET ?agent=<id>, then reads)
+```
+
+- **The bridge** is a schema `agent_bridge` (participants, threads, messages) and an Edge Function `agent-bridge` in your Supabase project. Every rule lives in the schema: who a token belongs to, the per-thread message cap, claiming and acknowledging messages. The Data API roles get no access to the schema; only the Edge Function reaches it.
+- **The API**: `POST <bridge_url>` with `Authorization: Bearer <token>` and `{"action": ...}`. The actions are `send` (`to`, `thread`, `body`, optional `purpose`), `inbox` (claims up to `limit` unread messages for 10 minutes), `ack` (`ids`), `participants` and `message` (`id`: delivery state). Errors come back as `{"error": "<code>", "message": ...}`: `unauthorized` (401), `bad_request` or `unknown_agent` (400), `not_found` (404), `hop_limit` or `thread_closed` (409).
+- **Waking agents**: a `webhook` agent gets each message as a POST to its URL, with `Authorization: Bearer <its webhook key>` and the body `{"event":"agent_bridge.message","id","thread","from","to","body","created_at"}`. A `poll` agent calls `GET <bridge_url>?agent=<id>`, which needs no token and returns only `{"agent","unread","latest_id"}`, and reads with its token when `latest_id` changes.
+- **Secrets** live in Supabase Vault: `agent_bridge:<id>:token` for every agent, plus `agent_bridge:<id>:webhook_url` and `:webhook_key` for webhook agents. Setup creates them as the placeholder `REPLACE_ME`, and you replace them in the dashboard. A placeholder token authenticates no one. A webhook agent whose secrets are placeholders gets its messages stored but not POSTed (`delivery: not_configured`).
+- **Loop guard**: a thread takes at most `max_messages` messages (20 by default). After that, sends fail with `hop_limit` until you raise the cap.
+
+## What is sent where
+
+- Message bodies are stored in your Supabase project's database.
+- A message to a webhook agent is also sent to that agent's webhook URL, which is usually another company's service.
+- Anyone who knows the bridge URL can read how many messages an agent has and the newest message id, but not the content.
+- Claude treats message bodies as data from other agents, never as instructions from you, and asks before acting on a request in one.
+
+## Skills
+
+| Skill | Use it for |
+|---|---|
+| `setup` | Building or updating the bridge in your Supabase project, adding a participant agent, and checking which Vault secrets still hold placeholders. It shows what it will create and waits for your yes before changing anything |
+| `talk` | Sending to and reading from other agents, and moderating a discussion between agents ("ask the reviewer agent", "check the inbox", "have them discuss X") |
+
+## Tools
+
+The bundled MCP server (`bridge`): `send_message`, `check_inbox`, `mark_read`, `list_participants`, `message_status`. Each is one HTTPS call to the bridge. Nothing is cached locally.
+
+## Hooks
+
+| Hook | When | What it does |
+|---|---|---|
+| `wait_inbox.py` | `SessionStart` and `Stop`, in the background (`asyncRewake`) | With `listen` on: polls the bridge's status every `poll_seconds`. When a message newer than any this machine has seen arrives, it wakes Claude with a count only (never the body). It records that id first, so one message wakes one session once. Stops after `max_wait_minutes`, and the next turn starts it again |
+| `unread_notice.py` | `UserPromptSubmit` | When messages are unread, adds their count to your prompt's context. Silent when there are none or the bridge doesn't answer within 2 seconds |
+
+## Configuration
+
+| Key | Default | Meaning |
+|---|---|---|
+| `bridge_url` | empty | The Edge Function URL (`https://<project-ref>.supabase.co/functions/v1/agent-bridge`). Setup fills it in. Empty means not set up: the tools return an error and the hooks do nothing |
+| `agent_id` | `claude` | Claude Code's participant id on the bridge |
+| `token` | empty | Claude Code's token, the same value as the Vault secret `agent_bridge:<agent_id>:token`. Sensitive: kept in secure storage. You enter it yourself; Claude never sees it |
+| `listen` | `false` | Wake sessions when a message arrives. Every session that has the plugin polls, so turn it on in the project scope of the repo where you talk to the agents |
+| `poll_seconds` | `60` | Interval between status checks while listening (15 to 3600). Each check is one Edge Function call |
+| `max_wait_minutes` | `50` | How long a listening session polls without a turn (1 to 55) |
+| `supabase_connector`, `supabase_project_id` | empty | Saved by setup: the Supabase connector and project the bridge is in |
+
+Files on this machine: the listening poller keeps the newest message id it has seen and one pid file per session under `${CLAUDE_PLUGIN_DATA}/wait/` (or `~/.claude/state/agent-bridge/wait/`). It removes pid files older than two days. Uninstalling the plugin from the last place it is installed deletes that directory unless you pass `--keep-data`. The bridge's data stays in your Supabase project; to remove it, drop the `agent_bridge` schema, the `agent-bridge` Edge Function and the `agent_bridge:*` Vault secrets.
+
+## Limitations
+
+- A listening session wakes only while Claude Code is running. When a poller stops after `max_wait_minutes` with no turn, new messages wait until your next prompt, where `unread_notice.py` reports them.
+- Webhook delivery uses Supabase's `pg_net`, which sends after the message is stored and does not retry. `message_status` shows the HTTP status the agent's service returned. Supabase keeps that response for about 6 hours.
+- The webhook payload and auth header are fixed (`Authorization: Bearer <key>`, JSON body). An agent service that needs another format needs its own adapter.
+- Setup needs a Supabase connector that can run SQL, apply migrations and deploy Edge Functions.
+
+## Requirements
+
+- `python3` (standard library only)
+- A Supabase project with Vault and `pg_net` (both available on Supabase)
+- For setup: a Supabase connector (claude.ai connector or MCP server)
+
+## Tests
+
+```bash
+bash plugins/agent-bridge/tests/run-all.sh        # MCP server, hooks and Edge Function router (python3 and node, against a local fake bridge)
+bash plugins/agent-bridge/tests/run-postgres.sh   # the schema on a throwaway postgres:16 container (docker, psql), with stand-ins for Vault and pg_net
+```

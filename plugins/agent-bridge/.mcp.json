@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "bridge": {
+      "command": "python3",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server/agent_bridge_mcp.py"],
+      "env": {
+        "AGENT_BRIDGE_URL": "${user_config.bridge_url}",
+        "AGENT_BRIDGE_TOKEN": "${user_config.token}"
+      }
+    }
+  }
+}
