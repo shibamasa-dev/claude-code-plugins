@@ -23,6 +23,8 @@ Follow `${CLAUDE_PLUGIN_ROOT}/references/connector.md`.
 
 - **Install scope**: which repo's sessions should use the bridge. Plugin options (`agent_id`, `token`, `bridge_url`) are saved per user whatever the scope, so the scope decides only where the hooks and the MCP server run: a user-scope install runs them in every Claude Code session on the machine. For one repo, run from that repo `claude plugin install <plugin id> --scope local` (only you, this repo) or `--scope project` (everyone who uses the repo). When the plugin is already installed at user scope and the user wants one repo, `claude plugin uninstall <plugin id> --scope user` first, then install from that repo and save the settings again with `claude plugin configure`. The plugin id is the one from `claude plugin list`.
 - **This environment's `agent_id`**: the id Claude Code in this environment uses on the bridge. Don't silently register `claude`; each machine or user that connects needs its own id, and the user picks it. The id is per user, not per repo: every repo on this machine where the plugin is enabled uses the same one. Save it with `claude plugin configure`.
+- **Whether this session should wake up when a message arrives** (`listen`). Ask it as "Should this Claude Code session wake up when a message arrives?" and say, in one or two lines: with it on, a message from outside starts a Claude turn (tokens and tool use), every poll is an Edge Function call, and a user-scope install covers every session that has used the bridge. With it off, a resident session notices a reply only at its next prompt, so an agent that answers in seconds can sit unseen until you speak. `listen` stays `false` unless the user says yes. If yes, ask whether the default 60 s interval is fine and set `poll_seconds` only for another value (15 to 3600). Show how to work out the cost: calls per day = 86400 / `poll_seconds`, and per month about 30 times that. One poller at 60 s is about 1,440 calls a day (about 43,000 a month), and every other agent that polls adds its own. Compare that with the Edge Function quota of the user's Supabase plan on Supabase's pricing page; don't quote a number from memory.
+- **Which external services this Claude Code environment is connected to, and what it can do there** (for example GitHub with push and PRs, accounts it can post to). It goes into this participant's `capabilities` (step 5), because the other agents decide who to ask for what from it. Tell the user it can be changed later (see "Changing capabilities later" in the `add` skill).
 
 **Before changing anything, tell the user exactly what will be created and get a yes:**
 
@@ -37,7 +39,10 @@ Then:
 2. For each file in `${CLAUDE_PLUGIN_ROOT}/bridge/migrations/` (in name order) whose name (without `.sql`) is not in that list, read it and run `apply_migration` with name `agent_bridge_<file name without .sql>` and the file's text as the query. The files are idempotent, so re-running one is harmless.
 3. Deploy the function: read `${CLAUDE_PLUGIN_ROOT}/bridge/functions/agent-bridge/index.ts` and `router.mjs`, then `deploy_edge_function` with name `agent-bridge`, entrypoint `index.ts`, `verify_jwt: false`, and both files under their own names. Deploying again replaces the function.
 4. The URL is `https://<project-ref>.supabase.co/functions/v1/agent-bridge` (the project ref is the project id). Save it as `bridge_url`.
-5. Register Claude Code itself as a participant with the `add` skill's registration step (`wake = poll`, `agent_id` from the saved setting). Tell the user that connecting other agents is the `add` skill.
+5. Register Claude Code itself as a participant with the `add` skill's registration step (`wake = poll`, `agent_id` the user chose in the ask step (not the saved default, which step 6 has not saved yet), `capabilities` from the connected-services answer). Tell the user that connecting other agents is the `add` skill.
+6. Save every setting the user chose (`bridge_url`, `agent_id`, `listen`, `poll_seconds`), including a value that equals the default: a `listen` already saved as `true` stays on unless `"false"` is written, and the same goes for `poll_seconds` back to `"60"`. Use `claude plugin configure <plugin id> --values-stdin`. Two details of that command:
+   - It accepts only string values, so numbers and booleans are written as strings: `echo '{"listen":"true","poll_seconds":"60"}' | claude plugin configure <plugin id> --values-stdin`. A JSON boolean fails with "The input on stdin isn't a JSON object of strings".
+   - A plugin installed at **local** or **project** scope has to be configured from that project's folder. From anywhere else it fails with `No installed plugin has the id ...`. User scope works from any folder.
 
 ## 3. Hand over Claude Code's token
 
@@ -64,4 +69,8 @@ Each thread stops at `max_messages` (20 by default). Raise it only when the user
 
 ## Finish
 
-Plugin settings take effect only in a new Claude Code session (the MCP server and hooks read them at start). Tell the user to open one in the repo where the plugin is installed before using the bridge.
+Tell the user:
+
+- **Reload running sessions.** After saving or changing options, run `/reload-plugins` in every Claude Code session that is already running; new sessions pick the options up when they start. Without it, a running session keeps the old values: its bridge tools answer `agent-bridge is not configured` while its hooks may already see the new settings, and a changed `listen` does not start the poller until the next reload and the Stop after it. A running session also keeps the plugin version it loaded, so reload after a plugin update too.
+- **Where the tables are.** Everything lives in the `agent_bridge` schema, not `public`, so the dashboard's Table Editor does not show it by default. Pick the schema `agent_bridge` there, or open `https://supabase.com/dashboard/project/<project-ref>/editor?schema=agent_bridge` (the project ref is the project id).
+- **Wake-up and cost.** Repeat the `listen` answer in one line and that it can be changed later with the command in step 6 plus `/reload-plugins`.

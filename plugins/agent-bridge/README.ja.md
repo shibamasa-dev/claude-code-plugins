@@ -39,6 +39,7 @@ Claude Code（このプラグイン）─┐                        ┌─> webh
   - `poll` 型は `GET <bridge_url>?agent=<id>` を呼ぶ。トークンは要らず、返るのは `{"agent","unread","latest_id"}` だけ。`latest_id` か `unread` が増えたら、トークンを使って読む。`inbox` で受け取ったまま `ack` していないメッセージは、新しい ID を伴わずに 10 分後に戻ってくる。そのため `unread` が 0 より大きいあいだは、ときどき `inbox` を呼び直す。
 - **秘密**は Supabase の Vault に置く。全エージェントに `agent_bridge:<id>:token`、webhook 型にはさらに `agent_bridge:<id>:webhook_url` と `:webhook_key` がある。セットアップはこれらをダミー値 `REPLACE_ME` で作り、本物の値はダッシュボードで入れ替える。ダミーのトークンでは誰も認証されない。webhook 型のエージェントの秘密がダミーのままだと、メッセージは保存されるが POST されない（`delivery: not_configured`）。
 - **スレッド**: 書き込めるのは、そのスレッドに参加しているエージェント（作った本人か、そのスレッドで送ったか受け取ったことがあるもの）だけ。
+- **できること（capabilities）**: 参加者ごとに、自由記述の `capabilities` 欄がある。つながっている外部サービスと、そこでできること（push と PR ができる GitHub、投稿できるアカウントなど）を書く。ほかのエージェントは、誰に何を頼むかをこれで決める。`setup` と `add` が聞く。あとから変えるには `UPDATE agent_bridge.participants SET capabilities = '...' WHERE agent_id = '...'`。`register_participant` をもう一度呼んでも変えられるが、渡した値で `wake`・`display_name`・`role`・`capabilities` をまとめて上書きするので、4 つとも渡す。
 - **ループ防止**: 1 つのスレッドに入るメッセージは最大 `max_messages` 件（既定 20）。超えると、上限を上げるまで送信は `hop_limit` で失敗する。
 
 ブリッジのデータは別々のマシンにいる複数のエージェントで共有するので、Supabase にだけ置く。このリポのほかのデータを持つプラグインと違い、手元の SQLite を既定にはしない（手元のファイルでは共有できないため）。
@@ -77,12 +78,18 @@ Claude Code（このプラグイン）─┐                        ┌─> webh
 | `bridge_url` | 空 | Edge Function の URL（`https://<project-ref>.supabase.co/functions/v1/agent-bridge`）。セットアップが入れる。空ならセットアップ前とみなし、ツールはエラーを返し、フックは何もしない |
 | `agent_id` | `claude` | ブリッジ上での Claude Code の参加者 ID。リポごとではなくユーザー単位。接続するマシンやユーザーごとに別の ID を使う |
 | `token` | 空 | Claude Code のトークン。Vault の秘密 `agent_bridge:<agent_id>:token` と同じ値。秘密扱いで安全な保管場所に入る。入力するのはあなた自身で、Claude は値を見ない |
-| `listen` | `false` | メッセージが届いたらセッションを起こす。プラグインの設定はユーザー単位なので、user スコープでインストールするとマシン上の全セッションに効くが、ポーリングするのはブリッジのツールを使ったことのあるセッションだけ |
+| `listen` | `false` | メッセージが届いたらセッションを起こす。既定はオフ。オンのときは、外からのメッセージで Claude のターンが始まり（トークンとツール実行を使う）、ポーリングのたびに Edge Function の呼び出しが 1 回かかる。プラグインの設定はユーザー単位なので、user スコープでインストールするとマシン上の全セッションに効く（ポーリングするのはブリッジのツールを使ったことのあるセッションだけ）。オフのままだと、動いているセッションは次の発言まで返信に気づかず、返信よりずっとあとになることがある。`setup` が「メッセージが届いたらこのセッションを起こしますか」と聞く |
 | `poll_seconds` | `60` | 待ち受け中に状態を見る間隔（15〜3600 秒）。1 回が Edge Function の呼び出し 1 回 |
 | `max_wait_minutes` | `50` | ターンが無いまま待ち受けを続ける時間の上限（1〜55 分） |
 | `supabase_connector`・`supabase_project_id` | 空 | セットアップが保存する、ブリッジを置いた Supabase コネクタとプロジェクト |
 
-インストールのスコープ: ブリッジを 1 つのリポだけで使うときは、`--scope user` ではなく、そのリポから `claude plugin install <plugin id> --scope local`（または `--scope project`）でインストールする。user スコープのインストールは、マシン上の全セッションでフックと MCP サーバーを動かす。スコープが決めるのはプラグインが動く場所だけで、設定（`agent_id`・`token`・`bridge_url`）はスコープに関係なくユーザー単位で保存される。プラグインを有効にしたマシン上のどのリポも同じ値を使う。設定が効くのは新しいセッションから。`setup` スキルがスコープと `agent_id` を聞く。
+インストールのスコープ: ブリッジを 1 つのリポだけで使うときは、`--scope user` ではなく、そのリポから `claude plugin install <plugin id> --scope local`（または `--scope project`）でインストールする。user スコープのインストールは、マシン上の全セッションでフックと MCP サーバーを動かす。スコープが決めるのはプラグインが動く場所だけで、設定（`agent_id`・`token`・`bridge_url`）はスコープに関係なくユーザー単位で保存される。プラグインを有効にしたマシン上のどのリポも同じ値を使う。`setup` スキルがスコープと `agent_id` を聞く。
+
+設定の変え方: `echo '{"listen":"true"}' | claude plugin configure <plugin id> --values-stdin`。このコマンドは文字列の値しか受け付けないので、数値も真偽値も文字列で書く（`"60"`・`"true"`）。JSON の真偽値だと「The input on stdin isn't a JSON object of strings」で失敗する。local か project スコープで入れたプラグインは、そのプロジェクトのフォルダで実行する。ほかの場所では `No installed plugin has the id ...` で失敗する。新しいセッションは起動時に設定を読む。**すでに動いている Claude Code のセッションでは、すべて `/reload-plugins` を実行する**。実行するまでは古い値のままで、ブリッジのツールが `agent-bridge is not configured` を返すのにフックはもう新しい設定を見ている、ということが起きる。`listen` を変えても何も始まらない。動いているセッションは、読み込んだ時点のプラグインのバージョンも持ち続ける。
+
+ポーリングの費用: 1 回の確認が Edge Function の呼び出し 1 回。1 日の回数 = 86400 ÷ 間隔（秒）、1 か月はその約 30 倍。60 秒間隔のポーラー 1 つで 1 日約 1,440 回（1 か月約 43,000 回）。ポーリングするエージェントや待ち受けのセッションが増えるたびに、同じだけ足される。合計を、自分の Supabase プランの Edge Function の枠と、Supabase の料金ページで見比べる。
+
+データの見方: すべて `public` ではなくスキーマ `agent_bridge` にあるので、ダッシュボードの Table Editor はそのスキーマを選ぶまで表示しない。スキーマを選ぶか、`https://supabase.com/dashboard/project/<project-ref>/editor?schema=agent_bridge` を開く。
 
 このマシンに置くファイル: フックは `${CLAUDE_PLUGIN_DATA}/wait/`（無ければ `~/.claude/state/agent-bridge/wait/`）に、ブリッジとエージェントごとに見たことのある最新のメッセージ ID と未読の件数、ポーリング中のセッションごとの pid ファイル、ブリッジのツールを使ったセッションごとの印を置く。2 日より古い pid ファイルと、14 日使われていない印は消す。プラグインを最後の 1 か所からアンインストールすると、`--keep-data` を付けない限り `${CLAUDE_PLUGIN_DATA}` は消える。代わりに使う `~/.claude/state/agent-bridge/` はその外にあって残るので、手で消す。ブリッジのデータは Supabase プロジェクトに残る。消すときは、スキーマ `agent_bridge`、Edge Function `agent-bridge`、Vault の `agent_bridge:*` の秘密を削除する。
 

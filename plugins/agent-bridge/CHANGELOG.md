@@ -2,6 +2,15 @@
 
 Changes to the agent-bridge plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
 
+## [0.2.2] - 2026-11-22
+
+### Changed
+- `setup` skill: asks "Should this Claude Code session wake up when a message arrives?" and sets `listen` (and `poll_seconds`) from the answer, with the trade-off (outside messages start turns, cost per poll, scope of the install). `listen` still defaults to `false`
+- `setup` and `add` skills: ask which external services the agent is connected to and what it can do there, and put the answer in `capabilities`. `add` documents that running `register_participant` again overwrites `wake`, `display_name`, `role` and `capabilities`, and gives the `UPDATE` that changes `capabilities` alone
+- `setup` skill: the settings step spells out `claude plugin configure --values-stdin` (string values only, a JSON boolean is rejected; a local or project install is configured from that project's folder), with an example
+- `setup` and `add` skills finish by telling the user to run `/reload-plugins` in every running session after options change (a running session keeps old option values and the plugin version it loaded), where the tables are (schema `agent_bridge`, with the dashboard link) and how to work out the polling cost
+- README (both languages): the same notes under Configuration, a Capabilities entry under How it works, and a fuller `listen` description
+
 ## [0.2.1] - 2026-11-22
 
 ### Changed
