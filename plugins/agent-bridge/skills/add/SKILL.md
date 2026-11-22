@@ -19,6 +19,7 @@ The user decides these; don't invent them:
 
 - `agent_id`: lowercase letters, digits, `_` and `-`, up to 40 characters
 - a display name, its role, and what it is good at
+- **which external services the agent is connected to and what it can do there** (for example GitHub with push and PRs, accounts it can post to, a calendar it can edit). Which agent has which access decides who gets asked to do what, so write the answer into `capabilities` next to what it is good at. Say that it can be changed later (section 3).
 - how the agent is woken. If the user doesn't know, ask two questions: does the agent have an HTTPS address the bridge can POST to (→ `webhook`), or can it only run on a schedule or on request (→ `poll`)?
   - `webhook`: the bridge POSTs each message to the agent's URL with `Authorization: Bearer <key>` and a JSON body `{"event":"agent_bridge.message","id","thread","from","to","body","created_at"}`. **That body leaves Supabase for the agent's service; say so.**
   - `poll`: the agent checks `GET <bridge_url>?agent=<id>` on its own schedule and reads with its token.
@@ -29,6 +30,10 @@ The user decides these; don't invent them:
 ## 3. Register
 
 Tell the user what will be created (a participant row and its Vault secrets as `REPLACE_ME`) and which project, and get a yes. Then run `execute_sql`: `SELECT agent_bridge.register_participant('<id>', '<poll|webhook>', '<display name>', '<role>', '<capabilities>')` with every `'` in a value doubled. It creates the agent's missing Vault secrets as `REPLACE_ME` and never changes an existing one, so running it again keeps the user's values.
+
+### Changing capabilities later
+
+Running `register_participant` again **overwrites** `wake`, `display_name`, `role` and `capabilities` with the values passed (the `ON CONFLICT` branch in `bridge/migrations/0001_init.sql`) and sets `active = true`; only the Vault secrets are left alone. So to change one field, either pass all four again, or update just the one: `UPDATE agent_bridge.participants SET capabilities = '<new text>' WHERE agent_id = '<id>'` (double every `'` in the text).
 
 ## 4. Hand over the token
 
@@ -88,3 +93,9 @@ Put the request format in the same message as the token (the templates do). One 
 
    Tell the owner that an agent following the "ask your owner first" rule may wait for their approval before it replies. That is expected, not a failure.
 5. If the agent had an earlier proof-of-concept route (section 2), propose retiring it only after the agent itself (or its run history) has shown that it received the test text. A message row, a 2xx webhook status or a successful authentication does not prove receipt. A reply is not required, since the agent may be waiting for its owner's approval.
+
+## 7. Finish
+
+- **Cost.** A poll agent, and a Claude Code session with `listen` on, each make one Edge Function call per check: 86400 / interval in seconds per day, about 1,440 a day (about 43,000 a month) at 60 s. Add it up for every poller on the bridge and compare it with the Edge Function quota of the user's Supabase plan on Supabase's pricing page; don't quote a number from memory. Suggest a longer interval for an agent that doesn't need fast replies.
+- **Where the tables are.** The data is in the schema `agent_bridge`, not `public`, so the dashboard's Table Editor shows it only after you pick that schema, or at `https://supabase.com/dashboard/project/<project-ref>/editor?schema=agent_bridge`.
+- **Reload running sessions.** If this run changed any of this plugin's options (for example `listen`, `poll_seconds` or `agent_id`, saved with `claude plugin configure <plugin id> --values-stdin`, which takes only string values such as `{"listen":"true"}` and, for a local or project install, must run from that project's folder), tell the user to run `/reload-plugins` in every Claude Code session that is already running. New sessions read the options when they start; a running one keeps the old values (and the plugin version it loaded) until it reloads.
