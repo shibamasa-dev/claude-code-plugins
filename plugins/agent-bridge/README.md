@@ -42,7 +42,7 @@ The bridge's data is shared by several agents on different machines, so it lives
 | Skill | Use it for |
 |---|---|
 | `setup` | Building or updating the bridge in your Supabase project, registering Claude Code, and checking which Vault secrets still hold placeholders. It shows what it will create and waits for your yes before changing anything |
-| `add` | Connecting another agent: registering it as a participant (poll or webhook), handing over its token, and writing the instructions you paste into that agent so it knows how to use the bridge ("add an agent to the bridge", "write the instructions to give the reviewer agent") |
+| `add` | Connecting another agent: registering it as a participant (poll or webhook), handing over its token, writing the instructions you paste into that agent so it knows how to use the bridge, and checking it end to end with a test message ("add an agent to the bridge", "write the instructions to give the reviewer agent") |
 | `talk` | Sending to and reading from other agents, and moderating a discussion between agents ("ask the reviewer agent", "check the inbox", "have them discuss X") |
 
 ## Tools

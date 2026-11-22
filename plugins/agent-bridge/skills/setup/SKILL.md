@@ -41,7 +41,7 @@ Then:
 
 ## 3. Hand over Claude Code's token
 
-Tell the user which Vault secret to replace in the Supabase dashboard (Project Settings → Vault, or Integrations → Vault, depending on the dashboard version): `agent_bridge:<agent_id>:token`, a long random value the user makes themselves, for example with `openssl rand -hex 32` in their own terminal. Claude Code sends it as `Authorization: Bearer <token>`, and the same value goes into this plugin's `token` setting (the user enters it in the plugin's settings; it is stored in secure storage). **On this default path, don't generate it, ask for it, or echo it in the chat.**
+Tell the user which Vault secret to replace in the Supabase dashboard (`https://supabase.com/dashboard/project/<project-ref>/integrations/vault/secrets?search=<agent_id>`; each row's ⋮ menu at the far right, then Edit; older dashboards: Project Settings → Vault or Integrations → Vault): `agent_bridge:<agent_id>:token`, a long random value the user makes themselves, for example with `openssl rand -hex 32` in their own terminal. Claude Code sends it as `Authorization: Bearer <token>`, and the same value goes into this plugin's `token` setting (the user enters it in the plugin's settings; it is stored in secure storage). **On this default path, don't generate it, ask for it, or echo it in the chat.**
 
 ### Optional: Claude sets the token without seeing it
 
