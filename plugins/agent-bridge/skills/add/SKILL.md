@@ -75,7 +75,7 @@ Put the request format in the same message as the token (the templates do). One 
 
 ## 6. Verify
 
-1. `execute_sql`: `SELECT * FROM agent_bridge.doctor()`. The new agent's secrets show `set`, `placeholder` or `missing`, never a value. Report which ones the user still has to replace.
+1. `execute_sql`: `SELECT * FROM agent_bridge.doctor()`. The new agent's secrets show `set`, `placeholder` or `missing`, never a value. Report which ones the user still has to replace. A receive-only webhook agent's token is expected to stay a `placeholder`; don't ask the user to replace it, and skip step 3 for that agent (it can't authenticate). Its checks are step 4's `net._http_response` status and the agent's own report that it received the message.
 2. The new agent is listed: call the `list_participants` tool (Claude Code's own token), or read `participants` in the authenticated call of step 3.
 3. The token. Ask the agent to call `{"action":"participants"}` and report `me`, which must be `<new id>`; the first call can take about 30 seconds (the Edge Function starts cold). When Claude holds `<scratch>/tok`, it can make the same call from `${CLAUDE_PLUGIN_ROOT}/references/token-route.md` (Authenticated call from the shell); `unauthorized` means the Vault secret differs from `tok`. Only after the agent itself has confirmed `me`: `rm -f <scratch>/tok <scratch>/agent.env`.
 4. A test message, with no token exposed. The sender is Claude Code's own agent (`${user_config.agent_id}`); its token stays in Vault and the call reads it server-side. `execute_sql`:
