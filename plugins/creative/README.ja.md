@@ -51,7 +51,7 @@ SQLite では接続ごとに `img_norm(text)`（NFKC のあと小文字化）を
 | `video_routes` | 空 | 動画で試す経路の ID を同じ形で: `gemini`・`fal` |
 | `sqlite_path` | 空（データディレクトリの `image-history/history.sqlite3`） | 画像の履歴の SQLite ファイルの場所。`~` は展開し、相対パスはデータディレクトリからの相対 |
 | `database_url` | 空 | Postgres・Supabase の `postgresql://...`。設定すると履歴のサーバーは SQLite でなくここに繋ぐ。`sensitive` なので `settings.json` でなく安全な保管場所に入る |
-| `route` | 空 | 画像の履歴への経路: `direct`（同梱のサーバー）か `connector`。最初に使うときに Claude が決めて保存する。`image_routes` とは別物 |
+| `route` | 空 | 画像の履歴の置き場: `sqlite`・`postgres`（どちらも同梱のサーバー経由）か `connector`。最初に使うときに Claude が決めて保存する。`image_routes` とは別物 |
 | `connector_id` | 空 | `connector` のとき、コネクタのツール名のサーバー部分。Claude が保存する |
 | `connector_project_id` | 空 | `connector` のとき、SQL ツールが要る `project_id`（Supabase）。Claude が保存する |
 
@@ -59,8 +59,9 @@ SQLite では接続ごとに `img_norm(text)`（NFKC のあと小文字化）を
 
 ### 画像の履歴への経路
 
-- **direct**: 同梱の MCP サーバーで、SQLite か `database_url` に繋ぐ
-- **connector**: 自分の Postgres に SQL を流せる claude.ai のコネクタ（Supabase のコネクタなど）。スキーマの変更は `migrations/postgres/` のファイルをコネクタのマイグレーション用ツールで当てる。Claude はコネクタを名前ではなく、できることで探す
+- **`sqlite`**: 同梱の MCP サーバーで、SQLite のファイルに繋ぐ
+- **`postgres`**: 同梱の MCP サーバーで、`database_url` に繋ぐ。あとで `database_url` が空になっても SQLite は開かずに止まる。`route` が `sqlite` なのに `database_url` が入っているときも、両者が揃うまで止まる
+- **`connector`**: 自分の Postgres に SQL を流せる claude.ai のコネクタ（Supabase のコネクタなど）。スキーマの変更は `migrations/postgres/` のファイルをコネクタのマイグレーション用ツールで当てる。Claude はコネクタを名前ではなく、できることで探す
 
 保存した経路が使えなくなったら、Claude は止まって知らせる。別の保存先に逃げないので、履歴が 2 か所に分かれない。参照画像のプロキシはどちらの経路でもこのマシンに残る。
 
@@ -74,6 +75,7 @@ SQLite では接続ごとに `img_norm(text)`（NFKC のあと小文字化）を
 | 画像の履歴のデータベース | プラグインのデータディレクトリの `image-history/history.sqlite3`。`sqlite_path`・`database_url` で移せる |
 | 参照画像のプロキシ（JPEG、長辺 1280 px 以下） | プラグインのデータディレクトリの `image-history/references/` |
 | BGM 用のサウンドフォント | `~/.local/share/motion-video/soundfonts/`（自分で置く） |
+| uv が落とす Python パッケージ | uv 自身のキャッシュ（`uv cache dir`、ふつうは `~/.cache/uv`）。SQLite の履歴は何も落とさない。`database_url` を使う最初の起動で psycopg（約 24 MB、PyPI から）、最初のプロキシ作成で Pillow（約 28 MB）が入る。プラグインをアンインストールしても残る。消すなら `uv cache clean psycopg psycopg-binary pillow` |
 
 ## データについて
 
@@ -88,7 +90,7 @@ claude plugin uninstall creative@shibamasa-plugins --keep-data
 ## 前提
 
 - `image-generation-prompt` は使う経路: サインイン済みの Codex CLI（`codex`）か、環境変数の API キー（`GEMINI_API_KEY`・`OPENAI_API_KEY`・`FAL_KEY`）
-- 画像の履歴は [uv](https://docs.astral.sh/uv/)（MCP サーバーを起動し、プロキシ用の Pillow と Postgres 用の psycopg を入れる）。SQLite ならほかに何も要らない。`database_url` には Postgres 13 以降か Supabase。uv が無いと `history` サーバーが起動せず、プロキシのコマンドも失敗する。image-generation-prompt は履歴なしでそのまま使える
+- 画像の履歴は [uv](https://docs.astral.sh/uv/)（MCP サーバーを起動し、最初に使うときにプロキシ用の Pillow と、`database_url` があれば psycopg を落とす）。SQLite ならほかに何も要らない。`database_url` には Postgres 13 以降か Supabase。uv が無いと `history` サーバーが起動せず、プロキシのコマンドも失敗する。image-generation-prompt は履歴なしでそのまま使える
 - `motion-video` は Node.js・Chrome・ffmpeg
 
 ## テスト

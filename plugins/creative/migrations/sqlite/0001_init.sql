@@ -70,9 +70,10 @@ CREATE TABLE IF NOT EXISTS img_references (
 );
 CREATE INDEX IF NOT EXISTS img_references_role_ix ON img_references (role, attempt_id);
 
--- Triggers. A trigger that updates its own table names its columns (AFTER UPDATE OF ...) so that its
--- UPDATE never fires itself or the others again, whatever PRAGMA recursive_triggers says:
--- search_text and updated_at are in no trigger's column list.
+-- Triggers. The schema owns search_text and updated_at, as the BEFORE triggers do on Postgres: an UPDATE that
+-- writes either column itself is overwritten. Each trigger that updates its own table has a WHEN that is false once
+-- the column holds the right value, so its UPDATE ends the chain, whatever PRAGMA recursive_triggers says
+-- ('now' is the same for every statement a trigger runs).
 
 CREATE TRIGGER IF NOT EXISTS img_attempts_search_text_ai AFTER INSERT ON img_attempts
 BEGIN
@@ -84,8 +85,11 @@ BEGIN
    WHERE id = NEW.id;
 END;
 
-CREATE TRIGGER IF NOT EXISTS img_attempts_search_text_au
-AFTER UPDATE OF title, request, asset_type, style, composition, prompt, tags, notes ON img_attempts
+CREATE TRIGGER IF NOT EXISTS img_attempts_search_text_au AFTER UPDATE ON img_attempts
+WHEN NEW.search_text IS NOT img_norm(NEW.title || ' ' || NEW.request || ' ' || coalesce(NEW.asset_type, '') || ' '
+                          || coalesce(NEW.style, '') || ' ' || coalesce(NEW.composition, '') || ' '
+                          || coalesce(NEW.prompt, '') || ' ' || coalesce(NEW.tags, '') || ' '
+                          || coalesce(NEW.notes, ''))
 BEGIN
   UPDATE img_attempts
      SET search_text = img_norm(NEW.title || ' ' || NEW.request || ' ' || coalesce(NEW.asset_type, '') || ' '
@@ -95,17 +99,15 @@ BEGIN
    WHERE id = NEW.id;
 END;
 
--- updated_at on every update of a real column (Claude's own UPDATE may leave it out)
-CREATE TRIGGER IF NOT EXISTS img_attempts_updated_at AFTER UPDATE OF
-  title, request, asset_type, style, composition, prompt, route, output_paths, based_on, reuse_scope, tags, notes,
-  status, created_at ON img_attempts
+-- updated_at on every update (Claude's own UPDATE may leave it out, or set it to another value)
+CREATE TRIGGER IF NOT EXISTS img_attempts_updated_at AFTER UPDATE ON img_attempts
+WHEN NEW.updated_at IS NOT strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 BEGIN
   UPDATE img_attempts SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
 END;
 
-CREATE TRIGGER IF NOT EXISTS img_references_updated_at AFTER UPDATE OF
-  attempt_id, role, label, source_path, source_sha256, source_bytes, proxy_ref, proxy_bytes, width, height, max_edge,
-  format, notes, created_at ON img_references
+CREATE TRIGGER IF NOT EXISTS img_references_updated_at AFTER UPDATE ON img_references
+WHEN NEW.updated_at IS NOT strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 BEGIN
   UPDATE img_references SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
 END;

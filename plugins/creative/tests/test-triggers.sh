@@ -23,13 +23,21 @@ row 'other rows keep their updated_at' "$(yesno [ "$(val "SELECT updated_at FROM
 rts=$(val "SELECT updated_at FROM img_references WHERE label = 'game-update-banner-reference'")
 sql "UPDATE img_references SET role = 'none' WHERE label = 'game-update-banner-reference'" >/dev/null
 row 'updating a reference moves its updated_at' "$(yesno [ "$(val "SELECT updated_at FROM img_references WHERE label = 'game-update-banner-reference'")" \> "$rts" ])" 'yes'
+# The schema owns search_text and updated_at on both stores: a value an UPDATE writes itself does not stick
+ts=$(val "SELECT updated_at FROM img_attempts WHERE id = $first")
+sql "UPDATE img_attempts SET search_text = 'tampered', updated_at = '2000-01-01T00:00:00.000Z' WHERE id = $first" >/dev/null
+row 'an UPDATE that sets search_text itself is overwritten from the text columns' "$(yesno grep -q 'mecha raid announcement banner' <<<"$(val "SELECT search_text FROM img_attempts WHERE id = $first")")" 'yes'
+row 'an UPDATE that sets updated_at itself still moves it forward' "$(yesno [ "$(val "SELECT updated_at FROM img_attempts WHERE id = $first")" \> "$ts" ])" 'yes'
+rts=$(val "SELECT updated_at FROM img_references WHERE label = 'game-update-banner-reference'")
+sql "UPDATE img_references SET updated_at = '2000-01-01T00:00:00.000Z' WHERE label = 'game-update-banner-reference'" >/dev/null
+row 'an UPDATE that sets a reference updated_at itself still moves it forward' "$(yesno [ "$(val "SELECT updated_at FROM img_references WHERE label = 'game-update-banner-reference'")" \> "$rts" ])" 'yes'
 
 row 'changing an attempt id is rejected' "$(yesno grep -q '^ERROR: .*id cannot change' <<<"$(sql "UPDATE img_attempts SET id = 999 WHERE id = $first")")" 'yes'
 row 'an unknown status is rejected' "$(yesno grep -q '^ERROR' <<<"$(sql "UPDATE img_attempts SET status = 'done' WHERE id = $first")")" 'yes'
 row 'an unknown reference role is rejected' "$(yesno grep -q '^ERROR' <<<"$(sql "UPDATE img_references SET role = 'layout' WHERE label = 'game-update-banner-reference'")")" 'yes'
 row 'output_paths that is not a JSON array is rejected' "$(yesno grep -q '^ERROR' <<<"$(sql "INSERT INTO img_attempts (title, request, output_paths) VALUES ('x', 'y', '\"out/a.png\"')")")" 'yes'
-row 'a reference to a missing attempt is rejected' "$(yesno grep -q '^ERROR' <<<"$(sql "INSERT INTO img_references (attempt_id, source_path, source_sha256, source_bytes) VALUES (424242, 'a.png', '35545b93150d77b927d3b64bf0a1a4381ca3f2f810106d3f4c68ea6ffd7f6a4e', 1)")")" 'yes'
-row 'the same source twice on one attempt is rejected' "$(yesno grep -q '^ERROR' <<<"$(sql "INSERT INTO img_references (attempt_id, source_path, source_sha256, source_bytes) VALUES ($first, 'again.png', '35545b93150d77b927d3b64bf0a1a4381ca3f2f810106d3f4c68ea6ffd7f6a4e', 498132)")")" 'yes'
+row 'a reference to a missing attempt is rejected' "$(yesno grep -q '^ERROR' <<<"$(sql "INSERT INTO img_references (attempt_id, source_path, source_sha256, source_bytes) VALUES (424242, 'a.png', '992635f6d496233cb9a8893ed50da9b6abb4bd0c8a32edc26799b72e5c8135e9', 1)")")" 'yes'
+row 'the same source twice on one attempt is rejected' "$(yesno grep -q '^ERROR' <<<"$(sql "INSERT INTO img_references (attempt_id, source_path, source_sha256, source_bytes) VALUES ($first, 'again.png', '992635f6d496233cb9a8893ed50da9b6abb4bd0c8a32edc26799b72e5c8135e9', 498132)")")" 'yes'
 row 'deleting an attempt that a refinement builds on is rejected' "$(yesno grep -q '^ERROR' <<<"$(sql "DELETE FROM img_attempts WHERE id = $first")")" 'yes'
 sql "DELETE FROM img_attempts WHERE title = 'Original mecha announcement banner v2'" >/dev/null
 row 'deleting an attempt deletes its references' "$(val "SELECT count(*) FROM img_references WHERE label = 'mecha-announcement-v2-style-reference'")" '0'

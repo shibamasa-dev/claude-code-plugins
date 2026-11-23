@@ -23,8 +23,8 @@ sql "UPDATE img_attempts SET status = 'accepted', notes = coalesce(notes || ' ',
 row 'the feedback update keeps the earlier notes' "$(yesno grep -qF 'Reuses #1 composition only. User liked the ink style.' <<<"$(val "SELECT notes FROM img_attempts WHERE id = $id")")" 'yes'
 
 ref="INSERT INTO img_references (attempt_id, role, label, source_path, source_sha256, source_bytes, proxy_ref, proxy_bytes, width, height, max_edge, format, notes)
-     VALUES ($id, 'ROLE', '鬼ボス参考', 'upload/鬼ボス参考.png', '3d21bcdebd6d485b241d8bef7f65e4b50ab50288593e15ecfd40dcec45f361db', 3195561,
-             '3d21bcdebd6d485b-1280-q82.jpg', 343919, 1280, 720, 1280, 'jpg', NULL)
+     VALUES ($id, 'ROLE', '鬼ボス参考', 'upload/鬼ボス参考.png', '8db36a9ac96e2f633a1cdb54c7e5ff70980755e70aa6ed421d5a27285e461a21', 3195561,
+             '8db36a9ac96e2f63-1280-q82.jpg', 343919, 1280, 720, 1280, 'jpg', NULL)
      ON CONFLICT (attempt_id, source_sha256) DO UPDATE SET role = excluded.role, label = excluded.label, notes = excluded.notes"
 sql "${ref/ROLE/full_reference}" "${ref/ROLE/style_only}" >/dev/null
 row 'recording the same reference twice updates its role instead of adding a row' "$(val "SELECT count(*) || ',' || max(role) FROM img_references WHERE attempt_id = $id")" '1,style_only'

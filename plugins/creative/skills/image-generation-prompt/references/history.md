@@ -6,13 +6,13 @@ The schema is in the plugin's `migrations/` folder (one folder per database; SKI
 
 The saved settings (`route`, `connector_id`, `connector_project_id`) are printed in SKILL.md's Image history section.
 
-- **`direct`**: this plugin's MCP server, the tools `execute_sql` and `apply_migrations` of the server `history` (`mcp__plugin_creative_history__execute_sql`). It talks to SQLite, or to Postgres when the user has set `database_url`.
+- **`sqlite`** or **`postgres`**: this plugin's MCP server, the tools `execute_sql` and `apply_migrations` of the server `history` (`mcp__plugin_creative_history__execute_sql`), against the SQLite file or `database_url`. The server checks the saved store against the settings: with `postgres` and no `database_url` (or `sqlite` with one) every call fails, and that error means stop and tell the user.
 - **`connector`**: the saved connector's SQL tool (for Supabase, `execute_sql` with `project_id` = the saved project). Before the first query in a session, bring the schema up to date (section 2).
 - **Empty**: decide once, then save.
   1. If the user said the history should live in a database they reach through a claude.ai connector, or this plugin's MCP tools aren't available here, look for a connector **by what it can do, not by its name**: a tool that runs a SQL string against Postgres, and one that applies a migration. Supabase's are `execute_sql(project_id, query)` and `apply_migration(project_id, name, query)`. Ask which connector and project to use if there is more than one, then save `route=connector`, `connector_id` (the `<server>` in `mcp__<server>__<tool>`) and `connector_project_id`.
-  2. Otherwise call `apply_migrations` on this plugin's server. If it answers, save `route=direct`. Its `backend` and `database` fields say where the data is; tell the user once.
+  2. Otherwise call `apply_migrations` on this plugin's server. If it answers, save its `backend` (`sqlite` or `postgres`) as `route`. Its `database` field says where the data is; tell the user once.
   3. If neither works, stop and tell the user what is missing. Don't keep the history somewhere else.
-- Save with `echo '{"route":"direct"}' | claude plugin configure <plugin id> --values-stdin` (the plugin id is the one from `claude plugin list`). Options you leave out keep their values.
+- Save with `echo '{"route":"sqlite"}' | claude plugin configure <plugin id> --values-stdin` (the plugin id is the one from `claude plugin list`). Options you leave out keep their values.
 
 **When the saved route doesn't work**, stop and tell the user. Never fall back to another store: the history would split across two places. Change the route only when the user asks to move the data.
 
@@ -22,7 +22,7 @@ If a call fails because the connection dropped while the statement ran, the stat
 
 ## 2. Schema changes
 
-- **direct**: the server applies new migrations by itself on its first tool call in a session. Never run `ALTER` or other DDL by hand.
+- **`sqlite`, `postgres`**: the server applies new migrations by itself on its first tool call in a session. Never run `ALTER` or other DDL by hand.
 - **connector**: run `SELECT version FROM img_schema_migrations` (an error saying the table doesn't exist means nothing is applied). For each file in the plugin's `migrations/postgres/` whose name (without `.sql`) isn't listed, in name order, send the whole file through the connector's migration tool, with the file name without `.sql` as the migration name. The files are safe to apply twice.
 
 ## 3. Search before planning

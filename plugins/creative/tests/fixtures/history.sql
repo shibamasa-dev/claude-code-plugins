@@ -1,6 +1,8 @@
 -- Attempts and references taken from a real image history kept by the skill this one replaces.
 -- Rows that named people or private systems are left out; machine paths are replaced; everything else is as recorded
--- (requests in the user's words, prompts, tags, sizes and hashes). Runs on SQLite and Postgres.
+-- (requests in the user's words, prompts, tags and sizes). The images themselves are not in this repo, so
+-- source_sha256 is the sha256 of the source_path text (proxy_ref starts with its first 16 hex digits), not of a file.
+-- Runs on SQLite and Postgres.
 -- Statements end with ';' at the end of a line (tests/mcp_call.py --file splits there).
 
 INSERT INTO img_attempts (title, request, asset_type, style, composition, prompt, route, output_paths, reuse_scope, tags, notes, status)
@@ -34,15 +36,15 @@ VALUES ('Original mecha announcement banner v2',
 
 INSERT INTO img_references (attempt_id, role, label, source_path, source_sha256, source_bytes, proxy_ref, proxy_bytes, width, height, max_edge, format, notes)
 VALUES ((SELECT id FROM img_attempts WHERE title = 'Mecha raid announcement banner'), 'composition_only', 'game-update-banner-reference',
-        'upload/参考バナー.png', '35545b93150d77b927d3b64bf0a1a4381ca3f2f810106d3f4c68ea6ffd7f6a4e', 498132,
-        '35545b93150d77b9-1280-q82.jpg', 60436, 564, 307, 1280, 'jpg', 'Compact visual proxy for future recreation.');
+        'upload/参考バナー.png', '992635f6d496233cb9a8893ed50da9b6abb4bd0c8a32edc26799b72e5c8135e9', 498132,
+        '992635f6d496233c-1280-q82.jpg', 60436, 564, 307, 1280, 'jpg', 'Compact visual proxy for future recreation.');
 
 INSERT INTO img_references (attempt_id, role, label, source_path, source_sha256, source_bytes, proxy_ref, proxy_bytes, width, height, max_edge, format, notes)
 VALUES ((SELECT id FROM img_attempts WHERE title = 'Mecha raid announcement banner'), 'style_only', 'accepted-output-style-reference',
-        'out/mecha-raid-banner.png', 'df012721a956de725ebf2ddb2f155ed7f8b3ab20c344406e0d0642efa2f8e0ad', 2883580,
-        'df012721a956de72-1280-q82.jpg', 303122, 1280, 720, 1280, 'jpg', 'Compact proxy of accepted generated output for future style-only reuse: anime sci-fi promo rendering, glow, contrast, title energy, detail density.');
+        'out/mecha-raid-banner.png', '9fd436fe6a4b88e2efcbea96629c7ae92904c3d4926e21a7381ca8537d9c3d27', 2883580,
+        '9fd436fe6a4b88e2-1280-q82.jpg', 303122, 1280, 720, 1280, 'jpg', 'Compact proxy of accepted generated output for future style-only reuse: anime sci-fi promo rendering, glow, contrast, title energy, detail density.');
 
 INSERT INTO img_references (attempt_id, role, label, source_path, source_sha256, source_bytes, proxy_ref, proxy_bytes, width, height, max_edge, format, notes)
 VALUES ((SELECT id FROM img_attempts WHERE title = 'Original mecha announcement banner v2'), 'style_only', 'mecha-announcement-v2-style-reference',
-        'out/mecha-announcement-banner-v2.png', '3d21bcdebd6d485b241d8bef7f65e4b50ab50288593e15ecfd40dcec45f361db', 3195561,
-        '3d21bcdebd6d485b-1280-q82.jpg', 343919, 1280, 720, 1280, 'jpg', 'Compact proxy of generated v2 banner for future style-only reuse.');
+        'out/mecha-announcement-banner-v2.png', '8db36a9ac96e2f633a1cdb54c7e5ff70980755e70aa6ed421d5a27285e461a21', 3195561,
+        '8db36a9ac96e2f63-1280-q82.jpg', 343919, 1280, 720, 1280, 'jpg', 'Compact proxy of generated v2 banner for future style-only reuse.');

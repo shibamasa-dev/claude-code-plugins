@@ -6,12 +6,12 @@ Changelog of the creative plugin (named docs up to 0.1.4). Format: [Keep a Chang
 
 ### Added
 - Image history for image-generation-prompt: search earlier attempts before planning, record every attempt (whatever the route), and keep reference images as compact JPEG proxies with a role saying what may be reused.
-- A bundled MCP server `history` (`execute_sql`, `apply_migrations`) and migrations for SQLite and Postgres. SQLite under the plugin data directory by default; `userConfig` `sqlite_path`, `database_url`, and `route` / `connector_id` / `connector_project_id` for a claude.ai connector. Uninstalling the plugin deletes the default history unless `--keep-data` is passed.
+- A bundled MCP server `history` (`execute_sql`, `apply_migrations`) and migrations for SQLite and Postgres. SQLite under the plugin data directory by default; `userConfig` `sqlite_path`, `database_url`, `route` (`sqlite`, `postgres` or `connector`, saved by Claude on first use) and `connector_id` / `connector_project_id` for a claude.ai connector. When the saved route's setting is missing the server stops instead of opening another store, and its errors never show `database_url` or its password. Uninstalling the plugin deletes the default history unless `--keep-data` is passed.
 - `scripts/history.py proxy`: makes the proxy under the plugin data directory and prints the values to record.
 - Tests (`tests/run-all.sh`, `tests/run-postgres.sh`).
 
 ### Changed
-- The plugin now starts an MCP server, which needs [uv](https://docs.astral.sh/uv/). Without uv the `history` server fails to start; the rest of the plugin still works.
+- The plugin now starts an MCP server, which needs [uv](https://docs.astral.sh/uv/). Without uv the `history` server fails to start; the rest of the plugin still works. The SQLite history downloads no packages; psycopg is fetched into uv's cache only when `database_url` is used, and Pillow on the first proxy.
 
 ## [0.7.0] - 2026-11-23
 

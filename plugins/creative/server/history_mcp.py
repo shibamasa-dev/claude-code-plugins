@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --quiet --script
 # /// script
 # requires-python = ">=3.9"
-# dependencies = ["psycopg[binary]>=3.1"]
+# dependencies = []
 # ///
 """stdio MCP server for the creative plugin's image history.
 
@@ -9,30 +9,38 @@ Its whole job: run SQL, apply the schema migrations, and provide img_norm(text) 
 Claude writes the SQL; the rules that must hold on every write live in the schema (migrations/).
 
 Where the data lives comes from the environment, which .mcp.json fills from userConfig:
-    CREATIVE_HISTORY_DATABASE_URL  postgresql://... -> Postgres (psycopg is imported only then)
+    CREATIVE_HISTORY_ROUTE         the saved store: 'sqlite', 'postgres' or 'connector' (refuse every call: the data
+                                   lives behind a connector); empty until Claude saves it on first use
+    CREATIVE_HISTORY_DATABASE_URL  postgresql://... -> Postgres
     CREATIVE_HISTORY_SQLITE_PATH   SQLite file; empty -> $CLAUDE_PLUGIN_DATA/image-history/history.sqlite3
-    CREATIVE_HISTORY_ROUTE         'connector' -> refuse every call (the data lives behind a connector)
 The database is opened, and pending migrations applied, on the first tool call, never before
 `initialize` is answered: a host that doesn't respond must not stall the MCP handshake.
-A connection failure is reported as a tool error. The server never falls back to another store,
-which would split the data across two places.
+A connection failure is reported as a tool error, with the database_url and its password redacted. The server
+never falls back to another store, which would split the data across two places: when the saved route's setting is
+missing (route=postgres without database_url) every call fails instead.
 
-Standard library only for SQLite, so the tests run it with plain python3.
+Standard library only. psycopg, which only Postgres needs, is added at start by re-running the script through
+`uv run --with` when database_url is in use and psycopg is missing, so a SQLite user downloads nothing.
 """
 from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
 import sqlite3
 import sys
 import unicodedata
 from pathlib import Path
+from urllib.parse import unquote
 
 SERVER_NAME = "creative-history"
 SERVER_VERSION = "0.1.0"
 MIGRATIONS = Path(__file__).resolve().parent.parent / "migrations"
 MAX_ROWS = 500
 CONNECT_TIMEOUT_S = 10
+PSYCOPG = "psycopg[binary]>=3.1"
+ROUTES = ("sqlite", "postgres", "connector")
 
 TOOLS = [
     {
@@ -56,7 +64,7 @@ TOOLS = [
         "description": (
             "Apply pending schema migrations (they also run on the first tool call) and report the backend "
             "(sqlite or postgres), where the SQLite file is, and the applied schema versions. "
-            "Call it first to check that the direct route works."
+            "Call it first to check that the server reaches its store; save backend as the route."
         ),
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
@@ -105,7 +113,7 @@ class Postgres:
         try:
             import psycopg  # only Postgres users need the dependency loaded
         except ImportError:
-            raise RuntimeError("database_url is set but psycopg is missing: start the server with uv run --script")
+            raise RuntimeError(f"database_url is set but psycopg is missing: install uv, or {PSYCOPG} for this python3")
 
         self.psycopg = psycopg
         self.url = url
@@ -153,13 +161,23 @@ class Postgres:
 
 
 def open_backend():
-    if setting("CREATIVE_HISTORY_ROUTE") == "connector":
+    route = setting("CREATIVE_HISTORY_ROUTE")
+    url = setting("CREATIVE_HISTORY_DATABASE_URL")
+    if route and route not in ROUTES:
+        raise RuntimeError(f"route is {route!r}, which is none of {', '.join(ROUTES)}. Stop and ask the user where "
+                           "the image history lives; the server opens no store until route names one.")
+    if route == "connector":
         raise RuntimeError(
             "route is 'connector': this image history lives behind a claude.ai connector, so use the connector's SQL tool. "
             "Change the route only if the user asks to move the data."
         )
-    url = setting("CREATIVE_HISTORY_DATABASE_URL")
-    if url:
+    if route == "postgres" and not url:
+        raise RuntimeError("route is 'postgres' but database_url is not set. Stop and tell the user: the history lives "
+                           "in Postgres, and the server never opens SQLite in its place. Ask them to set database_url again.")
+    if route == "sqlite" and url:
+        raise RuntimeError("route is 'sqlite' but database_url is set. Stop and ask the user which store holds the "
+                           "history; the server opens neither until the two settings agree.")
+    if url:  # route=postgres, or no route saved yet
         return Postgres(url)
     p = setting("CREATIVE_HISTORY_SQLITE_PATH")
     data = os.environ.get("CLAUDE_PLUGIN_DATA", "")
@@ -251,6 +269,29 @@ def tool_apply_migrations(_args: dict) -> dict:
     }
 
 
+def redact(text: str) -> str:
+    """Keep database_url and its password out of an error message. psycopg's errors quote parts of the connection
+    string (a malformed one comes back nearly whole), so the URL, its password (decoded too) and every word of the
+    message that is a piece of the URL are replaced."""
+    url = setting("CREATIVE_HISTORY_DATABASE_URL")
+    if not url:
+        return text
+    found = [url]
+    m = re.search(r"[^/@:\s]*:([^@\s/]*)@", url)  # [scheme://]user:password@host
+    if m:
+        found.append(m.group(1))
+    m = re.search(r"(?:^|\s)password\s*=\s*('(?:[^'\\]|\\.)*'|\S+)", url)  # host=... password=...
+    if m:
+        found.append(m.group(1).strip("'"))
+    found += [unquote(f) for f in found]
+    for f in sorted({f for f in found if len(f) >= 4}, key=len, reverse=True):
+        text = text.replace(f, "[redacted]")
+    for word in set(re.split(r"[\s\"'(),]+", text)):
+        if len(word) >= 4 and word in url:
+            text = text.replace(word, "[redacted]")
+    return text
+
+
 HANDLERS = {"execute_sql": tool_execute_sql, "apply_migrations": tool_apply_migrations}
 
 
@@ -275,7 +316,7 @@ def handle(msg: dict):
             result = fn(params.get("arguments") or {})
             return {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}]}
         except Exception as e:  # SQL and connection errors go back to Claude as tool errors
-            return {"content": [{"type": "text", "text": f"{type(e).__name__}: {e}"}], "isError": True}
+            return {"content": [{"type": "text", "text": redact(f"{type(e).__name__}: {e}")}], "isError": True}
     raise LookupError(f"method not found: {method}")
 
 
@@ -284,7 +325,27 @@ def send(obj: dict):
     sys.stdout.buffer.flush()
 
 
+def ensure_psycopg():
+    """Only Postgres needs psycopg: when database_url is in use and psycopg is missing, run this script again
+    through uv with it added. Without uv the first tool call reports the missing package instead."""
+    route = setting("CREATIVE_HISTORY_ROUTE")
+    if not setting("CREATIVE_HISTORY_DATABASE_URL") or route not in ("", "postgres"):
+        return
+    if os.environ.get("CREATIVE_HISTORY_WITH_PSYCOPG"):
+        return  # already re-run once
+    try:
+        import psycopg  # noqa: F401
+        return
+    except ImportError:
+        pass
+    uv = shutil.which("uv")
+    if uv:
+        os.environ["CREATIVE_HISTORY_WITH_PSYCOPG"] = "1"
+        os.execv(uv, [uv, "run", "--quiet", "--with", PSYCOPG, "--script", os.path.abspath(__file__)])
+
+
 def main():
+    ensure_psycopg()
     for line in sys.stdin.buffer:
         if not line.strip():
             continue

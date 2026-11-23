@@ -47,7 +47,7 @@
     "route": {
       "type": "string",
       "title": "Image history route (saved by Claude)",
-      "description": "direct (the bundled MCP server) or connector (a claude.ai connector that runs SQL). Claude decides and saves this on first use. Empty means not decided yet. Not related to image_routes",
+      "description": "Where the image history lives: sqlite or postgres (through the bundled MCP server; postgres needs database_url) or connector (a claude.ai connector that runs SQL). Claude decides and saves this on first use. Empty means not decided yet. When the saved store's setting is missing, the server stops instead of opening another store. Not related to image_routes",
       "required": false,
       "default": ""
     },

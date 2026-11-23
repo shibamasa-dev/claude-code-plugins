@@ -51,7 +51,7 @@ Rules that must hold on every write are in the schema: `CHECK` constraints, fore
 | `video_routes` | empty | Route ids to try for video, the same way: `gemini`, `fal` |
 | `sqlite_path` | empty (`image-history/history.sqlite3` in the data directory) | Where the image history's SQLite file is. `~` is expanded; a relative path is relative to the data directory |
 | `database_url` | empty | `postgresql://...` for Postgres or Supabase. When set, the history server connects there instead of SQLite. `sensitive`: kept in secure storage, not in `settings.json` |
-| `route` | empty | How the image history is reached: `direct` (the bundled server) or `connector`. Claude decides on first use and saves it. Not related to `image_routes` |
+| `route` | empty | Where the image history lives: `sqlite` or `postgres` (through the bundled server) or `connector`. Claude decides on first use and saves it. Not related to `image_routes` |
 | `connector_id` | empty | With `connector`: the server part of the connector's tool names. Saved by Claude |
 | `connector_project_id` | empty | With `connector`: the `project_id` its SQL tool needs (Supabase). Saved by Claude |
 
@@ -59,8 +59,9 @@ Set them in `/plugin`, or with `echo '{"image_routes":"codex,gemini"}' | claude 
 
 ### Image history routes
 
-- **Direct**: the bundled MCP server, against SQLite or `database_url`
-- **Connector**: a claude.ai connector that runs SQL against your Postgres, such as the Supabase connector. Schema changes go through its migration tool with the files in `migrations/postgres/`. Claude finds the connector by what it can do, not by its name
+- **`sqlite`**: the bundled MCP server, against the SQLite file
+- **`postgres`**: the bundled MCP server, against `database_url`. If `database_url` is later empty, the server stops instead of opening SQLite; if `route` is `sqlite` and `database_url` is set, it stops until the two agree
+- **`connector`**: a claude.ai connector that runs SQL against your Postgres, such as the Supabase connector. Schema changes go through its migration tool with the files in `migrations/postgres/`. Claude finds the connector by what it can do, not by its name
 
 When the saved route stops working, Claude stops and tells you. It never falls back to another store, so the history doesn't split across two places. Reference proxies stay on this machine on either route.
 
@@ -74,6 +75,7 @@ When the saved route stops working, Claude stops and tells you. It never falls b
 | The image history database | `image-history/history.sqlite3` in the plugin data directory, unless `sqlite_path` or `database_url` moves it |
 | Reference image proxies (JPEG, longer edge at most 1280 px) | `image-history/references/` in the plugin data directory |
 | The soundfont for BGM | `~/.local/share/motion-video/soundfonts/`, where you put it |
+| Python packages uv downloads | uv's own cache (`uv cache dir`, usually `~/.cache/uv`). The SQLite history downloads none. The first start with `database_url` adds psycopg (about 24 MB, from PyPI), and the first proxy adds Pillow (about 28 MB). Uninstalling the plugin leaves them; `uv cache clean psycopg psycopg-binary pillow` removes them |
 
 ## Your data
 
@@ -88,7 +90,7 @@ A file at a `sqlite_path` outside that directory and a database behind `database
 ## Requirements
 
 - `image-generation-prompt`: the route you use: the Codex CLI signed in (`codex`), or an API key in the environment (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `FAL_KEY`)
-- The image history: [uv](https://docs.astral.sh/uv/) (it starts the MCP server and brings Pillow for the proxies, and psycopg for Postgres). SQLite needs nothing else; Postgres 13 or later, or Supabase, for `database_url`. Without uv the `history` server doesn't start and the proxy command fails; image-generation-prompt still works, without the history
+- The image history: [uv](https://docs.astral.sh/uv/) (it starts the MCP server, and on first use downloads Pillow for the proxies and, with `database_url`, psycopg). SQLite needs nothing else; Postgres 13 or later, or Supabase, for `database_url`. Without uv the `history` server doesn't start and the proxy command fails; image-generation-prompt still works, without the history
 - `motion-video`: Node.js, Chrome, ffmpeg
 
 ## Tests

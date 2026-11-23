@@ -34,7 +34,7 @@ from pathlib import Path
 def plugin_data() -> Path:
     data = os.environ.get("CLAUDE_PLUGIN_DATA", "").strip()
     name = os.path.basename(os.path.normpath(data)) if data else ""
-    if not data or data.startswith("${") or not (name == "creative" or name.startswith("creative-")):
+    if not data or data.startswith("${") or not (name.startswith("creative-") and len(name) > len("creative-")):
         raise SystemExit(
             "CLAUDE_PLUGIN_DATA does not name the creative plugin's data directory "
             f"(got {data!r}). Run the command exactly as SKILL.md writes it."
