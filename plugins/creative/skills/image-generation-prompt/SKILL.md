@@ -1,15 +1,36 @@
 ---
 name: image-generation-prompt
-description: Structures image-generation instructions, independent of the generation route (codex image2 / Gemini API / OpenAI Image API / fal.ai). Always use it right before generating an image, diagram, illustration, hero image, mockup, banner or icon, and turn the request into the five-section structure before handing it to the route. Also use it when redoing an image that missed the intent, when instructing an edit (inpaint / background swap), or when compositing several images. Triggers on "generate image", "edit this image", "make a diagram", "make an illustration", "make a mockup", or in Japanese 「画像生成」「図を作って」「イラスト作って」「モック作って」「この画像を編集して」.
-last_reviewed: 2026-09-07
-review_after: 2027-03-06
+description: Structures image-generation instructions, independent of the generation route (codex image2 / Gemini API / OpenAI Image API / fal.ai). Always use it right before generating an image, diagram, illustration, hero image, mockup, banner or icon, and turn the request into the five-section structure before handing it to the route. Also use it while building a page, app, deck, document or article where an image asset (hero image, icon, illustration, diagram, mock photo) would raise quality, to propose assets before anything is generated, and when redoing an image that missed the intent, when instructing an edit (inpaint / background swap), or when compositing several images. Triggers on "generate image", "edit this image", "make a diagram", "make an illustration", "make a mockup", or in Japanese 「画像生成」「図を作って」「イラスト作って」「モック作って」「この画像を編集して」.
+last_reviewed: 2026-11-23
+review_after: 2027-05-23
 ---
 
 # Building image-generation prompts
 
-**Structure the instructions here before choosing a route.** The route priority itself belongs to the user's rule file (the one that defines image-generation routes, if any). This skill only covers what to write and how.
+This skill covers when to propose images, what to write in the instructions, and which route to hand them to. Route call details are in [references/routes.md](references/routes.md).
 
 The practices below were verified on GPT Image 2-generation models (codex image2, the OpenAI Image API, and the same model via fal.ai). The benefit of structure carries over to other families such as Gemini, but details (strength of text rendering, maximum number of reference images) differ by model.
+
+## Before generating: propose, then wait for approval
+
+1. **Propose assets without being asked.** While building a page, app, deck, document or article, when an image asset (hero image, icon, illustration, diagram, mock photo) would raise its quality, propose it instead of silently falling back to CSS, SVG or emoji. Each proposal gives:
+   - how many images, and where each one goes
+   - the style (one line, or the shared style template below)
+   - the route you will use (see Routes)
+   - a rough cost: whether the route bills per image or counts against a plan the user already pays for, and roughly how much
+
+   Generating is not always the answer: small icons and simple shapes are often better as SVG or CSS. Say so when that is the case.
+2. **Generate only after the user approves.** A generation call spends quota or money and produces something that cannot be taken back. Before approval, you may design the prompt and the style template, nothing more.
+3. **Match earlier assets.** When the deliverable already has images, or the new image joins a series, look at the existing ones first and match their background, palette, line weight and typeface.
+
+## Routes
+
+Configured route order: images `${user_config.image_routes}`, video `${user_config.video_routes}`. Each is a comma-separated list of route ids (`codex`, `gemini`, `openai`, `fal`), tried in order. A value that still reads as a `${user_config...}` placeholder counts as empty. The video order applies when the user asks for a generated video clip; a video drawn in code with `motion-video` uses no route.
+
+- **Empty**: ask the user which route to use, then offer to save their answer under the key for that medium only (`image_routes` for images, `video_routes` for video): `echo '{"<key>":"<their route ids>"}' | claude plugin configure <plugin id> --values-stdin`. The command changes only the keys it is given. The plugin id is the one from `claude plugin list`; run `/reload-plugins` after saving.
+- **Set**: use the first route that is available and can do the job. When you skip a route (it is not installed, or it cannot edit or inpaint as the request needs), say which and why in the proposal.
+
+How to call each route, and how to check what it saved: [references/routes.md](references/routes.md). **After every generation, open the saved file yourself** (size, resolution, a look at it). A route's "done" message is not proof.
 
 ## The five-section structure
 
@@ -21,7 +42,7 @@ Use case: magazine editorial photo / product mockup / UI screen / diagram, etc.
 Constraints: no watermark, no logos, preserve the face, a single subject, etc.
 ```
 
-**The fifth section is the easiest to drop and the most effective.** Hand over only ideas without boundaries and the model gets creative "in directions you will regret".
+**The fifth section is the easiest to drop and the most effective. Never leave Constraints empty.** Hand over only ideas without boundaries and the model gets creative "in directions you will regret".
 
 ## Six principles
 
@@ -103,3 +124,5 @@ Constraints: no watermark, no logos, no heavy retouching, focus on a single subj
 ## Putting several images into one deliverable
 
 **Share a style template.** Fix the background, palette, line weight and typeface in one template sentence and reuse it for every image. Change only one axis per image.
+
+Save generated images in the deliverable's own folder (for example `assets/`), and give the user a clickable relative link to each. A page that blocks images from other hosts (a claude.ai Artifact, for one) needs the images published with the page.
