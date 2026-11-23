@@ -40,6 +40,9 @@ bash plugins/inventory/tests/run-postgres.sh
 
 # The agent-bridge schema tests against Postgres (a throwaway postgres:16 container); needs docker and psql
 bash plugins/agent-bridge/tests/run-postgres.sh
+
+# The creative image history tests against Postgres (a throwaway postgres:16 container); needs docker, psql and uv
+bash plugins/creative/tests/run-postgres.sh
 ```
 
 CI installs the Claude Code CLI at the version in `.github/claude-code-version` (`ci.yml` and `release.yml` both read it). To raise it, change that file in a PR; CI on the PR runs the validate and mod-test steps with the new version.

@@ -73,6 +73,10 @@ jobs:
           if [ "${{ matrix.python }}" != default ]; then
             python3 -c 'import sys; v = "%d.%d" % sys.version_info[:2]; sys.exit(0 if v == "${{ matrix.python }}" else "python3 is " + v)'
           fi
+      # The creative proxy tests run scripts/history.py under `uv run --script` (it brings Pillow)
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false
       # py_compile is not enough: a 3.10-only annotation (`str | None`) parses on 3.9 and fails only when the module runs
       - name: Execute every plugin hook and script at module level (without main)
         if: matrix.python != 'default'
@@ -93,7 +97,7 @@ jobs:
           exit $fail
 
   postgres:
-    # The inventory tests against a real Postgres: run-postgres.sh as is (a postgres:16 container, the server under uv)
+    # The inventory, agent-bridge and creative tests against a real Postgres: each run-postgres.sh as is (a postgres:16 container)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -122,3 +126,13 @@ jobs:
           echo "$out"
           if [ "$rc" != 0 ]; then echo "::error::agent-bridge run-postgres.sh exited with $rc"; exit 1; fi
           echo "$out" | grep -qE '/ 0 mismatches ====' || { echo "::error::agent-bridge run-postgres.sh reported mismatches"; exit 1; }
+      - name: creative image history tests on Postgres (fails on any mismatch)
+        run: |
+          rc=0; out=$(bash plugins/creative/tests/run-postgres.sh 2>&1) || rc=$?
+          echo "$out"
+          fail=0
+          if [ "$rc" != 0 ]; then echo "::error::creative run-postgres.sh exited with $rc"; fail=1; fi
+          echo "$out" | grep -qE '/ 0 mismatches ====' || { echo "::error::creative run-postgres.sh reported mismatches"; fail=1; }
+          # pg-file-only.sh runs only on the Postgres route, so its absence means the run fell back to SQLite or stopped early
+          echo "$out" | grep -q '▼ pg-file-only.sh' || { echo "::error::creative pg-file-only.sh did not run"; fail=1; }
+          exit $fail

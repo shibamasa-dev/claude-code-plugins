@@ -1,6 +1,6 @@
 ---
 name: image-generation-prompt
-description: Structures image-generation instructions, independent of the generation route (codex image2 / Gemini API / OpenAI Image API / fal.ai). Always use it right before generating an image, diagram, illustration, hero image, mockup, banner or icon, and turn the request into the five-section structure before handing it to the route. Also use it while building a page, app, deck, document or article where an image asset (hero image, icon, illustration, diagram, mock photo) would raise quality, to propose assets before anything is generated, and when redoing an image that missed the intent, when instructing an edit (inpaint / background swap), or when compositing several images. Triggers on "generate image", "edit this image", "make a diagram", "make an illustration", "make a mockup", or in Japanese 「画像生成」「図を作って」「イラスト作って」「モック作って」「この画像を編集して」.
+description: Structures image-generation instructions, independent of the generation route (codex image2 / Gemini API / OpenAI Image API / fal.ai). Always use it right before generating an image, diagram, illustration, hero image, mockup, banner or icon, and turn the request into the five-section structure before handing it to the route. Also use it while building a page, app, deck, document or article where an image asset (hero image, icon, illustration, diagram, mock photo) would raise quality, to propose assets before anything is generated, and when redoing an image that missed the intent, when instructing an edit (inpaint / background swap), or when compositing several images. Keeps an image history (earlier attempts and reference images) so requests like "like the last one" reuse what worked. Triggers on "generate image", "edit this image", "make a diagram", "make an illustration", "make a mockup", or in Japanese 「画像生成」「図を作って」「イラスト作って」「モック作って」「この画像を編集して」「前の画像みたいに」「このテイストで」.
 last_reviewed: 2026-11-23
 review_after: 2027-05-23
 ---
@@ -20,7 +20,7 @@ The practices below were verified on GPT Image 2-generation models (codex image2
    - a rough cost: whether the route bills per image or counts against a plan the user already pays for, and roughly how much
 
    Generating is not always the answer: small icons and simple shapes are often better as SVG or CSS. Say so when that is the case.
-2. **Generate only after the user approves.** A generation call spends quota or money and produces something that cannot be taken back. Before approval, you may design the prompt and the style template, nothing more.
+2. **Generate only after the user approves.** A generation call spends quota or money and produces something that cannot be taken back. Before approval, you may search the image history and design the prompt and the style template, nothing more. Making a reference proxy and recording an attempt come with or after the generation the user approved.
 3. **Match earlier assets.** When the deliverable already has images, or the new image joins a series, look at the existing ones first and match their background, palette, line weight and typeface.
 
 ## Routes
@@ -31,6 +31,22 @@ Configured route order: images `${user_config.image_routes}`, video `${user_conf
 - **Set**: use the first route that is available and can do the job. When you skip a route (it is not installed, or it cannot edit or inpaint as the request needs), say which and why in the proposal.
 
 How to call each route, and how to check what it saved: [references/routes.md](references/routes.md). **After every generation, open the saved file yourself** (size, resolution, a look at it). A route's "done" message is not proof.
+
+## Image history: search before generating, record every attempt
+
+Earlier attempts and reference images are kept in a database so later requests can reuse what worked. SQL forms, the route choice and reference roles: [references/history.md](references/history.md).
+
+Saved settings: route = `${user_config.route}`, connector = `${user_config.connector_id}`, project = `${user_config.connector_project_id}`. A value that still reads as a `${user_config...}` placeholder counts as empty. The schema files are in `${CLAUDE_PLUGIN_ROOT}/migrations/`.
+
+1. **Search the history first**, even for a request that sounds simple, with the request's key words. Say briefly what you found: a close earlier attempt to build on (and which part: composition, style, palette, typography, subject), or that nothing similar exists. When the user points at an earlier result ("like the last one", 「前の」「あの」「同じ感じ」), use the matching attempt unless there are several candidates.
+2. **Give every reference image a role** (`composition_only`, `style_only`, …) before using or storing it, and keep a reusable one as a compact proxy:
+
+   ```bash
+   CLAUDE_PLUGIN_DATA='${CLAUDE_PLUGIN_DATA}' uv run --quiet --script "${CLAUDE_PLUGIN_ROOT}/skills/image-generation-prompt/scripts/history.py" proxy "<image path>"
+   ```
+
+   Treat a reference as structure to learn from, not permission to copy: replace real logos, copyrighted characters, exact costumes and title copy unless the user owns them and asks for a faithful edit.
+3. **Record every attempt** after generating, whatever the route: accepted results, rejected drafts, variants, edits, and a plan when generation is blocked. A refinement is a new row that points at the attempt it builds on; never overwrite history.
 
 ## The five-section structure
 

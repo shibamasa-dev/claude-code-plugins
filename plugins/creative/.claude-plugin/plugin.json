@@ -1,7 +1,7 @@
 {
   "name": "creative",
-  "version": "0.7.0",
-  "description": "Skills for structuring image-generation prompts and rendering motion-graphics videos from code",
+  "version": "0.8.0",
+  "description": "Skills for structuring image-generation prompts, with an image history (SQLite by default, or Postgres/Supabase directly or through a claude.ai connector), and for rendering motion-graphics videos from code",
   "author": {
     "name": "shibamasa-dev"
   },
@@ -11,7 +11,9 @@
   "keywords": [
     "image-generation",
     "video",
-    "motion-graphics"
+    "motion-graphics",
+    "sqlite",
+    "postgres"
   ],
   "userConfig": {
     "image_routes": {
@@ -25,6 +27,41 @@
       "type": "string",
       "title": "Video routes, in order",
       "description": "Comma-separated route ids to try for video, first one first: gemini, fal (for example gemini). Empty means Claude asks you which route to use",
+      "required": false,
+      "default": ""
+    },
+    "sqlite_path": {
+      "type": "string",
+      "title": "Image history SQLite file",
+      "description": "Path of the image history's SQLite file (~ is expanded; a relative path is relative to the plugin data directory). Empty means image-history/history.sqlite3 in the plugin data directory, which is deleted when you uninstall the plugin from the last scope unless you pass --keep-data. Ignored when database_url is set",
+      "required": false,
+      "default": ""
+    },
+    "database_url": {
+      "type": "string",
+      "title": "Image history Postgres URL",
+      "description": "postgresql://... for Postgres or Supabase. When set, the bundled history MCP server connects here instead of SQLite. Stored in secure storage, not settings.json",
+      "required": false,
+      "sensitive": true
+    },
+    "route": {
+      "type": "string",
+      "title": "Image history route (saved by Claude)",
+      "description": "direct (the bundled MCP server) or connector (a claude.ai connector that runs SQL). Claude decides and saves this on first use. Empty means not decided yet. Not related to image_routes",
+      "required": false,
+      "default": ""
+    },
+    "connector_id": {
+      "type": "string",
+      "title": "Image history connector (saved by Claude)",
+      "description": "With route=connector: the server part of the connector's tool names, for example the <server> in mcp__<server>__execute_sql",
+      "required": false,
+      "default": ""
+    },
+    "connector_project_id": {
+      "type": "string",
+      "title": "Image history connector project ID (saved by Claude)",
+      "description": "With route=connector: the project_id (or similar target ID) the connector's SQL tool needs. Empty if it needs none",
       "required": false,
       "default": ""
     }
