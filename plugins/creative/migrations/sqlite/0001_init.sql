@@ -70,8 +70,8 @@ CREATE TABLE IF NOT EXISTS img_references (
 );
 CREATE INDEX IF NOT EXISTS img_references_role_ix ON img_references (role, attempt_id);
 
--- Triggers. The schema owns search_text and updated_at, as the BEFORE triggers do on Postgres: an UPDATE that
--- writes either column itself is overwritten. Each trigger that updates its own table has a WHEN that is false once
+-- Triggers. The schema owns search_text and updated_at, as the BEFORE triggers do on Postgres: an INSERT or UPDATE
+-- that writes either column itself is overwritten (on insert, the search_text trigger's UPDATE sets updated_at). Each trigger that updates its own table has a WHEN that is false once
 -- the column holds the right value, so its UPDATE ends the chain, whatever PRAGMA recursive_triggers says
 -- ('now' is the same for every statement a trigger runs).
 
@@ -99,11 +99,17 @@ BEGIN
    WHERE id = NEW.id;
 END;
 
--- updated_at on every update (Claude's own UPDATE may leave it out, or set it to another value)
+-- updated_at on every write (Claude's own UPDATE may leave it out, or set it to another value)
 CREATE TRIGGER IF NOT EXISTS img_attempts_updated_at AFTER UPDATE ON img_attempts
 WHEN NEW.updated_at IS NOT strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 BEGIN
   UPDATE img_attempts SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS img_references_updated_at_ai AFTER INSERT ON img_references
+WHEN NEW.updated_at IS NOT strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+BEGIN
+  UPDATE img_references SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
 END;
 
 CREATE TRIGGER IF NOT EXISTS img_references_updated_at AFTER UPDATE ON img_references

@@ -41,7 +41,7 @@ SQLite では接続ごとに `img_norm(text)`（NFKC のあと小文字化）を
 | `img_references` | 試行に付けた参照画像。`role`（`composition_only`・`style_only`・`palette_only`・`typography_only`・`subject_only`・`full_reference`・`none`）、元画像のハッシュとサイズ、プロキシのファイル名を持つ |
 | `img_v_attempts` | 検索の入口。試行と、その参照画像の role の一覧 |
 
-書き込みのたびに守るべき規則はスキーマに置いた: `CHECK` 制約、外部キー、`search_text` を更新し・更新のたびに `updated_at` を進め・`id` の変更を拒むトリガー。時刻はどちらのデータベースでもミリ秒付きの UTC テキスト。Postgres では行レベルセキュリティをポリシー無しで有効にし、Supabase の API ロール `anon`・`authenticated` があればビューの権限を外す。
+書き込みのたびに守るべき規則はスキーマに置いた: `CHECK` 制約、外部キー、挿入と更新のたびに `search_text` と `updated_at` を入れ（文が自分で書いた値は置き換える）・`id` の変更を拒むトリガー。時刻はどちらのデータベースでもミリ秒付きの UTC テキスト。Postgres では行レベルセキュリティをポリシー無しで有効にし、Supabase の API ロール `anon`・`authenticated` があればビューの権限を外す。
 
 ## 設定
 
@@ -50,7 +50,7 @@ SQLite では接続ごとに `img_norm(text)`（NFKC のあと小文字化）を
 | `image_routes` | 空 | 画像で試す経路の ID をカンマ区切りで先頭から順に: `codex`・`gemini`・`openai`・`fal`（例: `codex,gemini`）。空なら Claude が聞き、答えを保存するか尋ねる |
 | `video_routes` | 空 | 動画で試す経路の ID を同じ形で: `gemini`・`fal` |
 | `sqlite_path` | 空（データディレクトリの `image-history/history.sqlite3`） | 画像の履歴の SQLite ファイルの場所。`~` は展開し、相対パスはデータディレクトリからの相対 |
-| `database_url` | 空 | Postgres・Supabase の `postgresql://...`。設定すると履歴のサーバーは SQLite でなくここに繋ぐ。`sensitive` なので `settings.json` でなく安全な保管場所に入る |
+| `database_url` | 空 | Postgres・Supabase の `postgresql://...`。設定すると履歴のサーバーは SQLite でなくここに繋ぐ（`route` が `sqlite` で保存済みなら、両者が揃うまで止まる）。`sensitive` なので `settings.json` でなく安全な保管場所に入る |
 | `route` | 空 | 画像の履歴の置き場: `sqlite`・`postgres`（どちらも同梱のサーバー経由）か `connector`。最初に使うときに Claude が決めて保存する。`image_routes` とは別物 |
 | `connector_id` | 空 | `connector` のとき、コネクタのツール名のサーバー部分。Claude が保存する |
 | `connector_project_id` | 空 | `connector` のとき、SQL ツールが要る `project_id`（Supabase）。Claude が保存する |

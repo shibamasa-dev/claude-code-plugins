@@ -41,7 +41,7 @@ On SQLite it also registers `img_norm(text)` (NFKC, then lower case) on every co
 | `img_references` | Reference images attached to an attempt, each with a `role` (`composition_only`, `style_only`, `palette_only`, `typography_only`, `subject_only`, `full_reference`, `none`), the source's hash and size, and the proxy file name |
 | `img_v_attempts` | The search entry point: attempts with the roles of their references |
 
-Rules that must hold on every write are in the schema: `CHECK` constraints, foreign keys, triggers that refresh `search_text`, set `updated_at` on every update and reject a changed `id`. Timestamps are UTC text with milliseconds on both databases. On Postgres, row level security is enabled with no policies, and the view is revoked from the Supabase API roles `anon` and `authenticated` when those roles exist.
+Rules that must hold on every write are in the schema: `CHECK` constraints, foreign keys, triggers that set `search_text` and `updated_at` on every insert and update (a value the statement writes itself is replaced) and reject a changed `id`. Timestamps are UTC text with milliseconds on both databases. On Postgres, row level security is enabled with no policies, and the view is revoked from the Supabase API roles `anon` and `authenticated` when those roles exist.
 
 ## Configuration
 
@@ -50,7 +50,7 @@ Rules that must hold on every write are in the schema: `CHECK` constraints, fore
 | `image_routes` | empty | Route ids to try for images, comma-separated, first one first: `codex`, `gemini`, `openai`, `fal` (for example `codex,gemini`). Empty means Claude asks you, and offers to save your answer |
 | `video_routes` | empty | Route ids to try for video, the same way: `gemini`, `fal` |
 | `sqlite_path` | empty (`image-history/history.sqlite3` in the data directory) | Where the image history's SQLite file is. `~` is expanded; a relative path is relative to the data directory |
-| `database_url` | empty | `postgresql://...` for Postgres or Supabase. When set, the history server connects there instead of SQLite. `sensitive`: kept in secure storage, not in `settings.json` |
+| `database_url` | empty | `postgresql://...` for Postgres or Supabase. When set, the history server connects there instead of SQLite (with `route` saved as `sqlite`, it stops instead until the two agree). `sensitive`: kept in secure storage, not in `settings.json` |
 | `route` | empty | Where the image history lives: `sqlite` or `postgres` (through the bundled server) or `connector`. Claude decides on first use and saves it. Not related to `image_routes` |
 | `connector_id` | empty | With `connector`: the server part of the connector's tool names. Saved by Claude |
 | `connector_project_id` | empty | With `connector`: the `project_id` its SQL tool needs (Supabase). Saved by Claude |

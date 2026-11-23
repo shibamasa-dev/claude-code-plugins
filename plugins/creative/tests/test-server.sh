@@ -24,14 +24,14 @@ if is_postgres; then
 fi
 
 # A fresh install, started the way .mcp.json starts it (uv run --script): HOME, the working directory and the
-# data directory are all new and empty. After the first call, every new file is inside CLAUDE_PLUGIN_DATA, apart
+# data directory are all new and empty (UV_CACHE_DIR too: setup-uv in CI points it elsewhere). After the first call, every new file is inside CLAUDE_PLUGIN_DATA, apart
 # from uv's own cache, which must hold no packages: the SQLite route needs none.
 root=$(mktemp -d "${TMPDIR:-/tmp}/creative-fresh.XXXXXX")
 mkdir -p "$root/home" "$root/cwd" "$root/data/creative-shibamasa-plugins"
 # PYTHONDONTWRITEBYTECODE: the stock macOS python3 caches its own bytecode under ~/Library/Caches, which is the
 # interpreter's doing, not the server's
 (cd "$root/cwd" && HOME="$root/home" PYTHONDONTWRITEBYTECODE=1 CLAUDE_PLUGIN_DATA="$root/data/creative-shibamasa-plugins" \
-  CREATIVE_HISTORY_SERVER_CMD="uv run --quiet --script" python3 "$CALL" "SELECT 1") >/dev/null
+  UV_CACHE_DIR="$root/home/.cache/uv" CREATIVE_HISTORY_SERVER_CMD="uv run --quiet --script" python3 "$CALL" "SELECT 1") >/dev/null
 row 'a fresh install creates image-history/history.sqlite3 in the plugin data directory' "$(yesno [ -f "$root/data/creative-shibamasa-plugins/image-history/history.sqlite3" ])" 'yes'
 outside=$(cd "$root" && find home cwd -type f ! -path 'home/.cache/uv/*' | wc -l | tr -d ' ')
 row 'files written outside the plugin data directory and the uv cache' "$outside" '0'

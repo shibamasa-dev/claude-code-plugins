@@ -29,6 +29,7 @@ import os
 import re
 import shutil
 import sqlite3
+import subprocess
 import sys
 import unicodedata
 from pathlib import Path
@@ -341,7 +342,10 @@ def ensure_psycopg():
     uv = shutil.which("uv")
     if uv:
         os.environ["CREATIVE_HISTORY_WITH_PSYCOPG"] = "1"
-        os.execv(uv, [uv, "run", "--quiet", "--with", PSYCOPG, "--script", os.path.abspath(__file__)])
+        cmd = [uv, "run", "--quiet", "--with", PSYCOPG, "--script", os.path.abspath(__file__)]
+        if os.name == "nt":  # execv on Windows starts a new process and ends this one, which the host sees as an exit
+            sys.exit(subprocess.call(cmd))
+        os.execv(uv, cmd)
 
 
 def main():

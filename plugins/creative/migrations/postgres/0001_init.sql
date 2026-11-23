@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS img_references (
 );
 CREATE INDEX IF NOT EXISTS img_references_role_ix ON img_references (role, attempt_id);
 
--- Triggers
+-- Triggers. The schema owns search_text and updated_at: a value an INSERT or UPDATE writes itself is replaced.
 
 CREATE OR REPLACE FUNCTION img_set_updated_at() RETURNS trigger
   LANGUAGE plpgsql
@@ -111,11 +111,11 @@ CREATE TRIGGER img_attempts_search_text BEFORE INSERT OR UPDATE ON img_attempts
   FOR EACH ROW EXECUTE FUNCTION img_attempts_set_search_text();
 
 DROP TRIGGER IF EXISTS img_attempts_updated_at ON img_attempts;
-CREATE TRIGGER img_attempts_updated_at BEFORE UPDATE ON img_attempts
+CREATE TRIGGER img_attempts_updated_at BEFORE INSERT OR UPDATE ON img_attempts
   FOR EACH ROW EXECUTE FUNCTION img_set_updated_at();
 
 DROP TRIGGER IF EXISTS img_references_updated_at ON img_references;
-CREATE TRIGGER img_references_updated_at BEFORE UPDATE ON img_references
+CREATE TRIGGER img_references_updated_at BEFORE INSERT OR UPDATE ON img_references
   FOR EACH ROW EXECUTE FUNCTION img_set_updated_at();
 
 DROP TRIGGER IF EXISTS img_attempts_id_immutable ON img_attempts;

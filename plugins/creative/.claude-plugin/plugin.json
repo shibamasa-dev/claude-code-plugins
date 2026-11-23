@@ -33,7 +33,7 @@
     "sqlite_path": {
       "type": "string",
       "title": "Image history SQLite file",
-      "description": "Path of the image history's SQLite file (~ is expanded; a relative path is relative to the plugin data directory). Empty means image-history/history.sqlite3 in the plugin data directory, which is deleted when you uninstall the plugin from the last scope unless you pass --keep-data. Ignored when database_url is set",
+      "description": "Path of the image history's SQLite file (~ is expanded; a relative path is relative to the plugin data directory). Empty means image-history/history.sqlite3 in the plugin data directory, which is deleted when you uninstall the plugin from the last scope unless you pass --keep-data. Not used when database_url is set (with route=sqlite saved, the server then stops until the two agree)",
       "required": false,
       "default": ""
     },

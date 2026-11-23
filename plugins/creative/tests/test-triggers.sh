@@ -30,6 +30,12 @@ row 'an UPDATE that sets search_text itself is overwritten from the text columns
 row 'an UPDATE that sets updated_at itself still moves it forward' "$(yesno [ "$(val "SELECT updated_at FROM img_attempts WHERE id = $first")" \> "$ts" ])" 'yes'
 rts=$(val "SELECT updated_at FROM img_references WHERE label = 'game-update-banner-reference'")
 sql "UPDATE img_references SET updated_at = '2000-01-01T00:00:00.000Z' WHERE label = 'game-update-banner-reference'" >/dev/null
+old='2000-01-01T00:00:00.000Z'
+id=$(val "INSERT INTO img_attempts (title, request, search_text, updated_at) VALUES ('Imported attempt', '取り込み', 'tampered', '$old') RETURNING id")
+row 'an INSERT that sets search_text itself gets it from the text columns' "$(yesno grep -q '^imported attempt 取り込み *$' <<<"$(val "SELECT search_text FROM img_attempts WHERE id = $id")")" 'yes'
+row 'an INSERT that sets updated_at itself gets the current time' "$(yesno [ "$(val "SELECT updated_at FROM img_attempts WHERE id = $id")" \> "$old" ])" 'yes'
+sql "INSERT INTO img_references (attempt_id, source_path, source_sha256, source_bytes, updated_at) VALUES ($id, 'imported.png', '$(printf %064d 0)', 1, '$old')" >/dev/null
+row 'an INSERT that sets a reference updated_at itself gets the current time' "$(yesno [ "$(val "SELECT updated_at FROM img_references WHERE source_path = 'imported.png'")" \> "$old" ])" 'yes'
 row 'an UPDATE that sets a reference updated_at itself still moves it forward' "$(yesno [ "$(val "SELECT updated_at FROM img_references WHERE label = 'game-update-banner-reference'")" \> "$rts" ])" 'yes'
 
 row 'changing an attempt id is rejected' "$(yesno grep -q '^ERROR: .*id cannot change' <<<"$(sql "UPDATE img_attempts SET id = 999 WHERE id = $first")")" 'yes'
