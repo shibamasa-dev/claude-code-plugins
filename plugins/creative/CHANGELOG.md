@@ -2,6 +2,16 @@
 
 Changelog of the creative plugin (named docs up to 0.1.4). Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow `version` in plugin.json.
 
+## [0.7.0] - 2026-11-23
+
+### Added
+- image-generation-prompt proposes image assets when they would improve a page, app, deck, document or article (count, use, style, route, rough cost), generates only after the user approves, matches the style of earlier assets, and never leaves the Constraints section empty.
+- `userConfig` `image_routes` and `video_routes`: the route ids to try, in order (`codex`, `gemini`, `openai`, `fal`). Empty means Claude asks.
+- `references/routes.md`: how to call each route, save to an absolute path and check the saved file.
+
+### Changed
+- image-generation-prompt no longer defers the route priority to a separate rule file of the user's; it reads the routes from the plugin settings.
+
 ## [0.6.0] - 2026-11-21
 
 ### Removed

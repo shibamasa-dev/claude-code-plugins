@@ -1,6 +1,6 @@
 {
   "name": "creative",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Skills for structuring image-generation prompts and rendering motion-graphics videos from code",
   "author": {
     "name": "shibamasa-dev"
@@ -12,5 +12,21 @@
     "image-generation",
     "video",
     "motion-graphics"
-  ]
+  ],
+  "userConfig": {
+    "image_routes": {
+      "type": "string",
+      "title": "Image routes, in order",
+      "description": "Comma-separated route ids to try for images, first one first: codex, gemini, openai, fal (for example codex,gemini). Empty means Claude asks you which route to use",
+      "required": false,
+      "default": ""
+    },
+    "video_routes": {
+      "type": "string",
+      "title": "Video routes, in order",
+      "description": "Comma-separated route ids to try for video, first one first: gemini, fal (for example gemini). Empty means Claude asks you which route to use",
+      "required": false,
+      "default": ""
+    }
+  }
 }
