@@ -25,9 +25,9 @@ The practices below were verified on GPT Image 2-generation models (codex image2
 
 ## Routes
 
-Configured route order: images `${user_config.image_routes}`, video `${user_config.video_routes}`. Each is a comma-separated list of route ids (`codex`, `gemini`, `openai`, `fal`), tried in order. A value that still reads as a `${user_config...}` placeholder counts as empty.
+Configured route order: images `${user_config.image_routes}`, video `${user_config.video_routes}`. Each is a comma-separated list of route ids (`codex`, `gemini`, `openai`, `fal`), tried in order. A value that still reads as a `${user_config...}` placeholder counts as empty. The video order applies when the user asks for a generated video clip; a video drawn in code with `motion-video` uses no route.
 
-- **Empty**: ask the user which route to use, then offer to save the answer: `echo '{"image_routes":"codex,gemini"}' | claude plugin configure <plugin id> --values-stdin` (the plugin id is the one from `claude plugin list`; run `/reload-plugins` afterwards).
+- **Empty**: ask the user which route to use, then offer to save their answer under the key for that medium only (`image_routes` for images, `video_routes` for video): `echo '{"<key>":"<their route ids>"}' | claude plugin configure <plugin id> --values-stdin`. The command changes only the keys it is given. The plugin id is the one from `claude plugin list`; run `/reload-plugins` after saving.
 - **Set**: use the first route that is available and can do the job. When you skip a route (it is not installed, or it cannot edit or inpaint as the request needs), say which and why in the proposal.
 
 How to call each route, and how to check what it saved: [references/routes.md](references/routes.md). **After every generation, open the saved file yourself** (size, resolution, a look at it). A route's "done" message is not proof.

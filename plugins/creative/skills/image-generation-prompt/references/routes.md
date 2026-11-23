@@ -20,8 +20,8 @@ Save the generated image as PNG to <absolute path>/out.png."
 
 - `-s workspace-write` lets it write files; in a read-only sandbox it can't save. `-C` sets the folder it may write in, so make the save path sit inside it.
 - Don't pass `-m`: leave the model to Codex's default.
-- Cost: it counts against the user's Codex plan usage instead of a per-image charge. One image uses a large share of tokens compared with a text task, so mention it when proposing several images.
-- Needs: the Codex CLI installed and signed in (`codex --version`).
+- Cost depends on how Codex is signed in, so run `codex login status` before proposing. Signed in with a ChatGPT account, it counts against that plan's usage instead of a per-image charge. Signed in with an API key, it is billed per token on the API account. Either way one image uses a large share of tokens compared with a text task, so mention it when proposing several images.
+- Needs: the Codex CLI installed and signed in (`codex login status`).
 
 ## `gemini`: the Gemini API
 
