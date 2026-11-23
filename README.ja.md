@@ -71,7 +71,7 @@ review の設定（`review_heavy`・`review_light`・`review_auto`・`rereview_t
 
 - macOS / Linux、`python3`、`git`、`gh`
 - `motion-video` は Node.js・Chrome・ffmpeg
-- `inventory` は `uv`（MCP サーバーの起動に使う）
+- `inventory` と `creative` は `uv`（MCP サーバーの起動に使う）
 - `research` は xAI の API キーと Slack の bot token
 - `agent-bridge` は Supabase のプロジェクトと、セットアップ用の Supabase コネクタ（claude.ai のコネクタか MCP サーバー）
 

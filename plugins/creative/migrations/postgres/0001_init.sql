@@ -5,6 +5,9 @@
 -- Safe to run more than once: IF NOT EXISTS, CREATE OR REPLACE, DROP TRIGGER IF EXISTS, ON CONFLICT DO NOTHING.
 -- Objects go to the first schema on search_path (public on Supabase), hence the img_ prefix.
 --
+-- Never edit a file that has shipped: CREATE TABLE IF NOT EXISTS skips a table that exists, and the version is already
+-- recorded. A later change goes in a new file (0002_<name>.sql) that alters what exists, for example ADD COLUMN.
+--
 -- Don't write BEGIN, COMMIT or ROLLBACK in a migration file (this one or any later one): the server runs
 -- each file inside its own transaction, so it applies completely or not at all.
 --

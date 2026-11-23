@@ -88,7 +88,7 @@ claude plugin uninstall creative@shibamasa-plugins --keep-data
 ## 前提
 
 - `image-generation-prompt` は使う経路: サインイン済みの Codex CLI（`codex`）か、環境変数の API キー（`GEMINI_API_KEY`・`OPENAI_API_KEY`・`FAL_KEY`）
-- 画像の履歴は [uv](https://docs.astral.sh/uv/)（MCP サーバーを起動し、プロキシ用の Pillow と Postgres 用の psycopg を入れる）。SQLite ならほかに何も要らない。`database_url` には Postgres 13 以降か Supabase
+- 画像の履歴は [uv](https://docs.astral.sh/uv/)（MCP サーバーを起動し、プロキシ用の Pillow と Postgres 用の psycopg を入れる）。SQLite ならほかに何も要らない。`database_url` には Postgres 13 以降か Supabase。uv が無いと `history` サーバーが起動せず、プロキシのコマンドも失敗する。image-generation-prompt は履歴なしでそのまま使える
 - `motion-video` は Node.js・Chrome・ffmpeg
 
 ## テスト

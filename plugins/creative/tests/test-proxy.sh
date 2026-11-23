@@ -17,6 +17,9 @@ d = sys.argv[1]
 Image.new("RGB", (1920, 1080), (200, 30, 30)).save(f"{d}/告知バナー 参考.png")
 Image.new("RGB", (564, 307), (20, 20, 120)).save(f"{d}/small.png")
 Image.new("RGBA", (800, 800), (0, 0, 0, 0)).save(f"{d}/transparent.png")
+# An RGB PNG whose black is the transparent color (tRNS), and a JPEG carrying a comment
+Image.new("RGB", (400, 300), (0, 0, 0)).save(f"{d}/trns.png", transparency=(0, 0, 0))
+Image.new("RGB", (400, 300), (90, 90, 90)).save(f"{d}/with-comment.jpg", comment=b"source note: do not ship")
 PY
 before=$(ls "$src" | sort | tr '\n' ,)
 
@@ -35,6 +38,16 @@ row 'the earlier proxy is left as it was' "$(yesno [ "$(filesha "$CLAUDE_PLUGIN_
 row 'proxy_bytes is the size of the file written' "$(yesno [ "$(field proxy_bytes <<<"$out")" = "$(wc -c <"$CLAUDE_PLUGIN_DATA/image-history/references/$ref" | tr -d ' ')" ])" 'yes'
 row 'a 564x307 source is not enlarged' "$(proxy "$src/small.png" | python3 -c 'import json,sys; d = json.load(sys.stdin); print("%sx%s" % (d["width"], d["height"]))')" '564x307'
 row 'a transparent PNG becomes a JPEG proxy' "$(proxy "$src/transparent.png" | field format)" 'jpg'
+# look PATH...: the corner pixel of each proxy, and whether it still carries a JPEG comment
+look() { uv run --quiet --with 'pillow>=10' python3 -c 'import sys
+from PIL import Image
+for p in sys.argv[1:]:
+    with Image.open(p) as im:
+        print(im.getpixel((0, 0)), "comment" in im.info)' "$@"; }
+trns=$(proxy "$src/trns.png" | field proxy_path)
+row 'the tRNS transparent color of an RGB PNG becomes white' "$(yesno grep -Eq '^\((25[0-5]), (25[0-5]), (25[0-5])\) ' <<<"$(look "$trns")")" 'yes'
+commented=$(proxy "$src/with-comment.jpg" | field proxy_path)
+row 'a JPEG comment in the source is not copied to the proxy' "$(look "$commented" | awk '{print $NF}')" 'False'
 row 'the source folder is left as it was' "$(yesno [ "$(ls "$src" | sort | tr '\n' ,)" = "$before" ])" 'yes'
 
 fresh_data

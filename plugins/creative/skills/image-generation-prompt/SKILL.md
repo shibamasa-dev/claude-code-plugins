@@ -48,6 +48,8 @@ Saved settings: route = `${user_config.route}`, connector = `${user_config.conne
    Treat a reference as structure to learn from, not permission to copy: replace real logos, copyrighted characters, exact costumes and title copy unless the user owns them and asks for a faithful edit.
 3. **Record every attempt** after generating, whatever the route: accepted results, rejected drafts, variants, edits, and a plan when generation is blocked. A refinement is a new row that points at the attempt it builds on; never overwrite history.
 
+The history needs [uv](https://docs.astral.sh/uv/): it starts the `history` server and runs the proxy command. When the history tools are missing or the proxy command fails because uv isn't installed, tell the user once, then go on with the image work without the history. Don't keep the history anywhere else instead.
+
 ## The five-section structure
 
 ```text

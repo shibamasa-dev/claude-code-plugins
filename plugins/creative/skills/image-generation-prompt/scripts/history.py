@@ -55,7 +55,8 @@ def make_proxy(src: Path, dest: Path, max_edge: int, quality: int) -> tuple:
 
     with Image.open(src) as im:
         im = ImageOps.exif_transpose(im)
-        if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
+        # Transparency: an alpha channel, or a tRNS color in a palette, grey or RGB PNG
+        if im.mode in ("RGBA", "LA", "PA") or "transparency" in im.info:
             rgba = im.convert("RGBA")
             flat = Image.new("RGB", rgba.size, (255, 255, 255))  # JPEG has no alpha: put transparency on white
             flat.paste(rgba, mask=rgba.getchannel("A"))
@@ -63,11 +64,12 @@ def make_proxy(src: Path, dest: Path, max_edge: int, quality: int) -> tuple:
         else:
             im = im.convert("RGB")
         im.thumbnail((max_edge, max_edge))  # shrinks only, keeps the aspect ratio
+        im.info = {}  # drop every metadata block the source carried (JPEG comment, ICC profile, DPI and the like)
         dest.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=str(dest.parent), suffix=".part")
         os.close(fd)
         try:
-            im.save(tmp, "JPEG", quality=quality, optimize=True)  # no exif= : metadata is dropped
+            im.save(tmp, "JPEG", quality=quality, optimize=True)  # no exif= or comment= : nothing is copied over
             os.replace(tmp, dest)
         except BaseException:
             os.unlink(tmp)

@@ -71,7 +71,7 @@ English is the base language, and the plugins are being translated from Japanese
 
 - macOS or Linux, `python3`, `git`, `gh`
 - `motion-video` also needs Node.js, Chrome and ffmpeg
-- `inventory` also needs `uv` (to start its MCP server)
+- `inventory` and `creative` also need `uv` (to start their MCP servers)
 - `research` also needs an xAI API key and a Slack bot token
 - `agent-bridge` also needs a Supabase project and a Supabase connector (claude.ai connector or MCP server) for setup
 

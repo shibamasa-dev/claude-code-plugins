@@ -88,7 +88,7 @@ A file at a `sqlite_path` outside that directory and a database behind `database
 ## Requirements
 
 - `image-generation-prompt`: the route you use: the Codex CLI signed in (`codex`), or an API key in the environment (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `FAL_KEY`)
-- The image history: [uv](https://docs.astral.sh/uv/) (it starts the MCP server and brings Pillow for the proxies, and psycopg for Postgres). SQLite needs nothing else; Postgres 13 or later, or Supabase, for `database_url`
+- The image history: [uv](https://docs.astral.sh/uv/) (it starts the MCP server and brings Pillow for the proxies, and psycopg for Postgres). SQLite needs nothing else; Postgres 13 or later, or Supabase, for `database_url`. Without uv the `history` server doesn't start and the proxy command fails; image-generation-prompt still works, without the history
 - `motion-video`: Node.js, Chrome, ffmpeg
 
 ## Tests
