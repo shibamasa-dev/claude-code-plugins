@@ -26,7 +26,12 @@ row 'a 1920x1080 source becomes a 1280x720 proxy' "$(field width <<<"$out")x$(fi
 row 'the proxy is a JPEG in image-history/references under the data directory' "$(yesno [ -f "$CLAUDE_PLUGIN_DATA/image-history/references/$ref" ])" 'yes'
 sha=$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$src/告知バナー 参考.png")
 row 'source_sha256 is the sha256 of the Japanese-named source' "$(yesno [ "$(field source_sha256 <<<"$out")" = "$sha" ])" 'yes'
-row 'the proxy file is named by the first 16 hex of the hash' "$(yesno [ "$ref" = "${sha:0:16}.jpg" ])" 'yes'
+row 'the proxy file is named by the first 16 hex of the hash and the options' "$(yesno [ "$ref" = "${sha:0:16}-1280-q82.jpg" ])" 'yes'
+filesha() { python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$1"; }
+kept=$(filesha "$CLAUDE_PLUGIN_DATA/image-history/references/$ref")
+small=$(proxy "$src/告知バナー 参考.png" --max-edge 512 | field proxy_ref)
+row 'a proxy made with other options gets another file' "$(yesno [ "$small" != "$ref" ] && [ -f "$CLAUDE_PLUGIN_DATA/image-history/references/$small" ])" 'yes'
+row 'the earlier proxy is left as it was' "$(yesno [ "$(filesha "$CLAUDE_PLUGIN_DATA/image-history/references/$ref")" = "$kept" ])" 'yes'
 row 'proxy_bytes is the size of the file written' "$(yesno [ "$(field proxy_bytes <<<"$out")" = "$(wc -c <"$CLAUDE_PLUGIN_DATA/image-history/references/$ref" | tr -d ' ')" ])" 'yes'
 row 'a 564x307 source is not enlarged' "$(proxy "$src/small.png" | python3 -c 'import json,sys; d = json.load(sys.stdin); print("%sx%s" % (d["width"], d["height"]))')" '564x307'
 row 'a transparent PNG becomes a JPEG proxy' "$(proxy "$src/transparent.png" | field format)" 'jpg'

@@ -12,7 +12,8 @@ proxy_ref, proxy_bytes, width, height, max_edge, format). The database itself is
 server or a connector, never from here.
 
 The proxy is a JPEG whose longer edge is at most --max-edge (never enlarged), with metadata stripped, saved as
-<data>/image-history/references/<first 16 hex of the source's sha256>.jpg, so the same source gives the same file.
+<data>/image-history/references/<first 16 hex of the source's sha256>-<max edge>-q<quality>.jpg: the same source with
+the same options gives the same file, and other options give another file instead of replacing it.
 --no-proxy only hashes and measures the source and writes nothing (for a reference kept as notes only).
 
 <data> is $CLAUDE_PLUGIN_DATA, used only when it names this plugin's own directory (`creative-<marketplace>` or
@@ -93,7 +94,9 @@ def proxy(args: argparse.Namespace) -> dict:
     }
     if args.no_proxy:
         return out
-    name = f"{digest[:16]}.jpg"
+    # The encoding options are part of the name, so a proxy made with other options never replaces one that rows
+    # already point at (their width, height and size describe that file)
+    name = f"{digest[:16]}-{args.max_edge}-q{args.quality}.jpg"
     dest = data / "image-history" / "references" / name
     width, height = make_proxy(src, dest, args.max_edge, args.quality)
     out.update(proxy_ref=name, proxy_bytes=dest.stat().st_size, width=width, height=height, format="jpg",
