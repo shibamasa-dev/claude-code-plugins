@@ -10,11 +10,13 @@ S="$(cd "$(dirname "$0")/.." && pwd)/commands/dev-process/agent-review.sh"
 T=$(mktemp -d "${TMPDIR:-/tmp}/agent-review-test.XXXX")
 trap 'rm -rf "$T"' EXIT
 
-# Stubs: codex writes CODEX_TEXT to the --output-last-message file (nothing when unset), coderabbit prints CR_TEXT; both exit with *_RC
+# Stubs: codex prints CODEX_ERR on stderr and writes CODEX_TEXT to the --output-last-message file (nothing when unset),
+# coderabbit prints CR_TEXT; both exit with *_RC
 mkdir -p "$T/bin"
 cat > "$T/bin/codex" <<'SH'
 #!/bin/bash
 out=""; while [ $# -gt 0 ]; do [ "$1" = --output-last-message ] && out=$2; shift; done
+[ -n "${CODEX_ERR:-}" ] && printf '%s\n' "$CODEX_ERR" >&2
 [ -n "${CODEX_TEXT+x}" ] && printf '%s\n' "$CODEX_TEXT" > "$out"
 exit "${CODEX_RC:-0}"
 SH
@@ -27,7 +29,7 @@ chmod +x "$T/bin/codex" "$T/bin/coderabbit"
 
 # run <name> [VAR=value ...] -> runs the script in a fresh repo; stdout in $T/<name>.out, exit status in $T/<name>.rc
 run() { n=$1; shift; mkdir -p "$T/$n" && git -C "$T/$n" init -q || exit 1
-        (cd "$T/$n" && env -u CODEX_TEXT -u CODEX_RC -u CR_TEXT -u CR_RC PATH="$T/bin:$PATH" "$@" bash "$S" >"$T/$n.out" 2>/dev/null)
+        (cd "$T/$n" && env -u CODEX_TEXT -u CODEX_RC -u CODEX_ERR -u CR_TEXT -u CR_RC PATH="$T/bin:$PATH" "$@" bash "$S" >"$T/$n.out" 2>/dev/null)
         echo $? > "$T/$n.rc"; }
 fail=0
 row() { if [ "$2" = ok ]; then r=ok; else r=ng; fail=1; fi; printf '  %-60s -> %s (expect ok)  [%s]\n' "$1" "$r" "$2"; }
@@ -40,6 +42,7 @@ RULE='━━━━━━━━━━━━━━━━━━━━━━━━�
 CODEX_OK='[P2] codex finding: null check missing in parse()'
 CR_OK='coderabbit finding: rename tmp to something descriptive'
 CR_ERR='Error: authentication required. Run `coderabbit auth login`.'
+CODEX_ERR='Error: not logged in. Run `codex login`.'
 
 # 1. Both succeed: stdout is exactly the format the script printed before this change, exit 0
 run ok CODEX_TEXT="$CODEX_OK" CR_TEXT="$CR_OK"
@@ -58,12 +61,21 @@ has crfail '✅ All reviews are done!' && v="still says all reviews are done"
 [ "$(cat "$T/crfail.rc")" != 0 ] || v="exit 0"
 row 'CodeRabbit exits 1 with error text: reported as failed' "$v"
 
-# 3. Codex exits 1 and writes no output file (its own output goes to /dev/null)
-run cxfail CODEX_RC=1 CR_TEXT="$CR_OK"
+# 3. Codex exits 1 with an error on stderr and writes no output file
+run cxfail CODEX_RC=1 CODEX_ERR="$CODEX_ERR" CR_TEXT="$CR_OK"
 v=ok
 has cxfail '❌ Codex review FAILED (exit 1)' || v="no FAILED line"
+under cxfail '❌ Codex review FAILED (exit 1)' "$CODEX_ERR" || v="error text not shown under the FAILED line"
 under cxfail '🐰 CodeRabbit Review' "$CR_OK" || v="CodeRabbit findings not printed"
 has cxfail '✅ All reviews are done!' && v="still says all reviews are done"
 [ "$(cat "$T/cxfail.rc")" != 0 ] || v="exit 0"
-row 'Codex exits 1 with no output: reported as failed' "$v"
+row 'Codex exits 1 with an error on stderr: reported as failed' "$v"
+
+# 4. Codex exits 0 but writes no output file: failed on the missing file alone
+run cxnofile CR_TEXT="$CR_OK"
+v=ok
+has cxnofile '❌ Codex review FAILED (no output file)' || v="no FAILED line"
+under cxnofile '🐰 CodeRabbit Review' "$CR_OK" || v="CodeRabbit findings not printed"
+[ "$(cat "$T/cxnofile.rc")" != 0 ] || v="exit 0"
+row 'Codex exits 0 with no output file: reported as failed' "$v"
 exit $fail

@@ -5,11 +5,11 @@ Changes to the workflow plugin. The format follows [Keep a Changelog](https://ke
 ## [0.12.4] - 2026-11-23
 
 ### Fixed
-- dev-process: `agent-review.sh` reports a reviewer that exits non-zero, or writes no output file, as a failed review. It prints `❌ <Reviewer> review FAILED (<reason>)` with that reviewer's output labelled as an error instead of under its review heading, still prints the other reviewer's findings, and exits 1. Before, it judged success by whether the output file existed, and CodeRabbit's file holds its error text, so a failed run (an authentication error, for example) was printed as a finished review; a missing Codex file stopped the script before CodeRabbit's findings were printed. When both reviewers succeed, the output is unchanged (#106).
+- dev-process: `agent-review.sh` reports a reviewer that exits non-zero, or writes no output file, as a failed review. It prints `❌ <Reviewer> review FAILED (<reason>)` with that reviewer's output labelled as an error instead of under its review heading, still prints the other reviewer's findings, and exits 1. Before, it judged success by whether the output file existed, and CodeRabbit's file holds its error text, so a failed run (an authentication error, for example) was printed as a finished review; a missing Codex file stopped the script before CodeRabbit's findings were printed. Codex's console output now goes to `.context/workflow/logs/<timestamp>_codex[_<title>].log` (was discarded), and a failed Codex run shows its last 20 lines. When both reviewers succeed, the output is unchanged (#106).
 - dev-process: `review-and-fix` Phase 2 checks for a failed review first, tells the user which reviewer failed and asks whether to re-run Phase 1 or continue with the other reviewer's findings, before any finding is assessed or a fix plan made (#106).
 
 ### Added
-- `tests/test-agent-review.sh`: runs `agent-review.sh` with stub `codex` and `coderabbit` commands: both succeed (output byte-for-byte as before), CodeRabbit exits 1 with an error text, and Codex exits 1 without writing its file (#106).
+- `tests/test-agent-review.sh`: runs `agent-review.sh` with stub `codex` and `coderabbit` commands: both succeed (output byte-for-byte as before), CodeRabbit exits 1 with an error text, Codex exits 1 with an error on stderr and no file, and Codex exits 0 without writing its file (#106).
 
 ## [0.12.3] - 2026-11-20
 

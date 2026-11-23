@@ -62,13 +62,15 @@ fi
 
 CODEX_FILE="${OUT_DIR}/review/${TIMESTAMP}_review${SUFFIX}_by_codex.md"
 CODERABBIT_FILE="${OUT_DIR}/review/${TIMESTAMP}_review${SUFFIX}_by_coderabbit.md"
+# Codex writes only its last message to CODEX_FILE; its console output (where an error goes) is kept here
+CODEX_LOG="${LOG_DIR}/${TIMESTAMP}_codex${SUFFIX}.log"
 debug_log "Codex output file: $CODEX_FILE"
 debug_log "CodeRabbit output file: $CODERABBIT_FILE"
 
 # Codex review (runs in the background)
 debug_log "Starting Codex review..."
-debug_log "Codex command: codex exec '/review' --output-last-message $CODEX_FILE"
-codex exec '/review' --output-last-message "$CODEX_FILE" > /dev/null 2>&1 &
+debug_log "Codex command: codex exec '/review' --output-last-message $CODEX_FILE > $CODEX_LOG"
+codex exec '/review' --output-last-message "$CODEX_FILE" > "$CODEX_LOG" 2>&1 &
 PID1=$!
 debug_log "Codex PID: $PID1"
 
@@ -93,8 +95,8 @@ CODERABBIT_EXIT=$?
 set -e
 debug_log "CodeRabbit exit code: $CODERABBIT_EXIT"
 
-# A reviewer failed when it exited non-zero or left no output file. Its file then holds an error (CodeRabbit's
-# stderr goes into it), not review findings, so it is printed under a FAILED line and the script exits 1
+# A reviewer failed when it exited non-zero or left no output file. What it printed then is an error, not review
+# findings (CodeRabbit's file holds its stderr; Codex's is in CODEX_LOG), so it goes under a FAILED line and the script exits 1
 FAILED=""
 # failure_reason <exit code> <file> -> prints why the run failed and returns 0, or returns 1 when it succeeded
 failure_reason() {
@@ -112,14 +114,17 @@ for r in Codex CodeRabbit; do
   fi
 done
 
-# section <icon> <name> <exit code> <file>: prints one reviewer's findings, or its error under a FAILED line
+# section <icon> <name> <exit code> <file> [console log]: prints one reviewer's findings, or its error under a FAILED line
+# (the output file, else the last 20 lines of the console log)
 section() {
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   if why=$(failure_reason "$3" "$4"); then
     echo "❌ $2 review FAILED ($why)"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "Error output, not review findings:"
-    if [ -s "$4" ]; then cat "$4"; else echo "(no output)"; fi
+    if [ -s "$4" ]; then cat "$4"
+    elif [ -s "${5:-}" ]; then echo "(last lines of $5)"; tail -n 20 "$5"
+    else echo "(no output)"; fi
   else
     echo "$1 $2 Review"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -135,7 +140,7 @@ else
   echo "❌ Review failed: $FAILED. The failed output below is an error, not review findings."
 fi
 echo ""
-section "📋" Codex "$CODEX_EXIT" "$CODEX_FILE"
+section "📋" Codex "$CODEX_EXIT" "$CODEX_FILE" "$CODEX_LOG"
 echo ""
 section "🐰" CodeRabbit "$CODERABBIT_EXIT" "$CODERABBIT_FILE"
 
