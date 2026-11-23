@@ -19,10 +19,13 @@ fi
 # After the first call, every new file must be inside CLAUDE_PLUGIN_DATA.
 root=$(mktemp -d "${TMPDIR:-/tmp}/creative-fresh.XXXXXX")
 mkdir -p "$root/home" "$root/cwd" "$root/data/creative-shibamasa-plugins"
-(cd "$root/cwd" && HOME="$root/home" CLAUDE_PLUGIN_DATA="$root/data/creative-shibamasa-plugins" python3 "$CALL" "SELECT 1") >/dev/null
+# PYTHONDONTWRITEBYTECODE: the stock macOS python3 caches its own bytecode under ~/Library/Caches, which is the
+# interpreter's doing, not the server's
+(cd "$root/cwd" && HOME="$root/home" PYTHONDONTWRITEBYTECODE=1 CLAUDE_PLUGIN_DATA="$root/data/creative-shibamasa-plugins" python3 "$CALL" "SELECT 1") >/dev/null
 row 'a fresh install creates image-history/history.sqlite3 in the plugin data directory' "$(yesno [ -f "$root/data/creative-shibamasa-plugins/image-history/history.sqlite3" ])" 'yes'
 outside=$(cd "$root" && find home cwd -type f | wc -l | tr -d ' ')
 row 'files written outside the plugin data directory' "$outside" '0'
+[ "$outside" = 0 ] || (cd "$root" && find home cwd -type f | head -5 | sed 's/^/    outside: /')
 
 sql "SELECT 1" >/dev/null
 CREATIVE_HISTORY_SQLITE_PATH="$CLAUDE_PLUGIN_DATA/elsewhere/my.db" sql "SELECT 1" >/dev/null
