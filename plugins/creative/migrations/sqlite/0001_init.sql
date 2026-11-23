@@ -71,9 +71,9 @@ CREATE TABLE IF NOT EXISTS img_references (
 CREATE INDEX IF NOT EXISTS img_references_role_ix ON img_references (role, attempt_id);
 
 -- Triggers. The schema owns search_text and updated_at, as the BEFORE triggers do on Postgres: an INSERT or UPDATE
--- that writes either column itself is overwritten (on insert, the search_text trigger's UPDATE sets updated_at). Each trigger that updates its own table has a WHEN that is false once
--- the column holds the right value, so its UPDATE ends the chain, whatever PRAGMA recursive_triggers says
--- ('now' is the same for every statement a trigger runs).
+-- that writes either column itself is overwritten (on insert, the search_text trigger's UPDATE sets updated_at).
+-- Each trigger that updates its own table has a WHEN that is false once the column holds the right value, so its
+-- UPDATE ends the chain, whatever PRAGMA recursive_triggers says ('now' is the same for every statement a trigger runs).
 
 CREATE TRIGGER IF NOT EXISTS img_attempts_search_text_ai AFTER INSERT ON img_attempts
 BEGIN
