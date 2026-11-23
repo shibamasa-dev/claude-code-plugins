@@ -33,8 +33,12 @@ A workflow that runs AI reviews with multiple agents, evaluates the results, and
 
 **Actions**:
 1. Read the review results from the output of Phase 1
-2. Assess each finding as `pr-review-triage` does (read its "4.5 Evaluate and fix": findings are suggestions, checked against the actual code, validity measured rather than guessed)
-3. Label each finding for the plan below (this command's own labels): ✅ adopted = valid and in line with the project policy; ⚠️ needs review = partly valid, needs adjustment; ❌ rejected = invalid, or against the architecture policy; a valid problem that existed before this change is not fixed here, only recorded as `pr-review-triage` 4.5 says
+2. Check for a failed review first. A reviewer that exited non-zero or wrote no output gets a `❌ <Reviewer> review FAILED (<reason>)` line, its text is an error (an authentication error, for example), not findings, and the script exits 1. If there is such a line, before assessing anything or making a fix plan:
+   - Tell the user which reviewer failed and quote the first lines of its error output
+   - Ask whether to re-run the review or continue with the other reviewer's findings. The script has no single-reviewer mode, so re-running means running Phase 1 again (both reviewers). When both failed there is nothing to continue with: ask whether to re-run or stop
+   - Wait for the answer. On "continue", go on with the reviewer that succeeded only, and say in the Phase 5 summary which reviewer did not review
+3. Assess each finding as `pr-review-triage` does (read its "4.5 Evaluate and fix": findings are suggestions, checked against the actual code, validity measured rather than guessed)
+4. Label each finding for the plan below (this command's own labels): ✅ adopted = valid and in line with the project policy; ⚠️ needs review = partly valid, needs adjustment; ❌ rejected = invalid, or against the architecture policy; a valid problem that existed before this change is not fixed here, only recorded as `pr-review-triage` 4.5 says
 
 ---
 

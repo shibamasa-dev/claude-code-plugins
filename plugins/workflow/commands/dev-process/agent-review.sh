@@ -93,40 +93,56 @@ CODERABBIT_EXIT=$?
 set -e
 debug_log "CodeRabbit exit code: $CODERABBIT_EXIT"
 
-# Check the files exist (exit early if not)
-HAS_ERROR=false
-if [ -f "$CODEX_FILE" ]; then
-  debug_log "Codex file exists: OK ($(wc -c < "$CODEX_FILE") bytes)"
-else
-  error_log "Codex file does not exist: $CODEX_FILE (exit code: $CODEX_EXIT)"
-  HAS_ERROR=true
-fi
+# A reviewer failed when it exited non-zero or left no output file. Its file then holds an error (CodeRabbit's
+# stderr goes into it), not review findings, so it is printed under a FAILED line and the script exits 1
+FAILED=""
+# failure_reason <exit code> <file> -> prints why the run failed and returns 0, or returns 1 when it succeeded
+failure_reason() {
+  if [ "$1" -ne 0 ]; then echo "exit $1"
+  elif [ ! -f "$2" ]; then echo "no output file"
+  else return 1; fi
+}
+for r in Codex CodeRabbit; do
+  if [ "$r" = Codex ]; then rc=$CODEX_EXIT; f=$CODEX_FILE; else rc=$CODERABBIT_EXIT; f=$CODERABBIT_FILE; fi
+  if why=$(failure_reason "$rc" "$f"); then
+    error_log "$r review failed ($why): $f"
+    FAILED="${FAILED:+$FAILED, }$r ($why)"
+  else
+    debug_log "$r file exists: OK ($(wc -c < "$f") bytes)"
+  fi
+done
 
-if [ -f "$CODERABBIT_FILE" ]; then
-  debug_log "CodeRabbit file exists: OK ($(wc -c < "$CODERABBIT_FILE") bytes)"
-else
-  error_log "CodeRabbit file does not exist: $CODERABBIT_FILE (exit code: $CODERABBIT_EXIT)"
-  HAS_ERROR=true
-fi
-
-if [ "$HAS_ERROR" = true ]; then
-  error_log "Failed to generate the review files"
-  exit 1
-fi
+# section <icon> <name> <exit code> <file>: prints one reviewer's findings, or its error under a FAILED line
+section() {
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  if why=$(failure_reason "$3" "$4"); then
+    echo "❌ $2 review FAILED ($why)"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Error output, not review findings:"
+    if [ -s "$4" ]; then cat "$4"; else echo "(no output)"; fi
+  else
+    echo "$1 $2 Review"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    cat "$4"
+  fi
+}
 
 # Print the results
 debug_log "Printing results"
-echo "✅ All reviews are done!"
+if [ -z "$FAILED" ]; then
+  echo "✅ All reviews are done!"
+else
+  echo "❌ Review failed: $FAILED. The failed output below is an error, not review findings."
+fi
 echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "📋 Codex Review"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-cat "$CODEX_FILE"
+section "📋" Codex "$CODEX_EXIT" "$CODEX_FILE"
 echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "🐰 CodeRabbit Review"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-cat "$CODERABBIT_FILE"
+section "🐰" CodeRabbit "$CODERABBIT_EXIT" "$CODERABBIT_FILE"
 
+if [ -n "$FAILED" ]; then
+  debug_log "Script finished with failed reviews: $FAILED"
+  debug_log "=========================================="
+  exit 1
+fi
 debug_log "Script finished normally"
 debug_log "=========================================="
