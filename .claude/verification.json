@@ -1,0 +1,5 @@
+{
+  "commitGate": "observe",
+  "prChecksGate": "observe",
+  "prChecks": "python3 .github/scripts/check-repo.py --base origin/main && bash .github/scripts/check-version-bump.sh origin/main && claude plugin validate --strict ."
+}

@@ -66,10 +66,4 @@ jobs:
         env:
           BLOCKED_PATTERNS: ${{ secrets.BLOCKED_PATTERNS }}
           GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          # Review events take this file from the PR merge ref, so it can run before the script is on the default branch
-          if [ ! -f .github/scripts/leak/scan-text.py ]; then
-            echo "::notice::scan-text.py is not on the default branch yet; nothing was scanned"
-            exit 0
-          fi
-          python3 .github/scripts/leak/scan-text.py
+        run: python3 .github/scripts/leak/scan-text.py
