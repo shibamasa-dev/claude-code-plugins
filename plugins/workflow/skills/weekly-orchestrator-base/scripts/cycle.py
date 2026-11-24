@@ -95,6 +95,9 @@ def owner_repo(url):
 
 def load_config(path=None, root=None):
     root = Path(root) if root else repo_root()
+    if path and not Path(path).exists():
+        # The defaults would compute another title; a path given on purpose must exist
+        raise CycleError(f"config not found: {path}")
     p = Path(path) if path else root / CONFIG_PATH
     cfg = json.loads(json.dumps(DEFAULTS))
     if p.exists():
@@ -355,6 +358,9 @@ def exists(cfg, title, limit=200):
 # ---------- version skew ----------
 
 PLUGIN_JSON = SKILL.parent.parent / ".claude-plugin" / "plugin.json"
+# The last release that changed how a title, week or body is computed. A workflow pinned to it or later computes
+# what this copy computes, so only an older pin is a skew worth a warning (not every plugin release)
+COMPUTE_VERSION = "0.13.0"
 PIN = re.compile(r"^\s*ref:\s*['\"]?workflow--v([0-9][^\s'\"]*)", re.M)
 
 
@@ -369,10 +375,14 @@ def pin_skew(cfg):
     mine = json.loads(PLUGIN_JSON.read_text(encoding="utf-8"))["version"]
     for f in sorted(wf.glob("*.y*ml")):
         for v in PIN.findall(f.read_text(encoding="utf-8")):
-            if v != mine:
-                return (f"{f.relative_to(cfg['_root'])} runs the scripts of workflow {v}, this is {mine}: "
-                        f"set its ref to workflow--v{mine} (a skew can compute another title)")
+            if _ver(v) < _ver(COMPUTE_VERSION):
+                return (f"{f.relative_to(cfg['_root'])} runs the scripts of workflow {v}, older than {COMPUTE_VERSION} "
+                        f"(the last change to how titles and weeks are computed): set its ref to workflow--v{mine}")
     return None
+
+
+def _ver(v):
+    return tuple(int(x) for x in re.findall(r"\d+", v)[:3])
 
 
 # ---------- cron ----------

@@ -89,6 +89,11 @@ rc=$(run_create)
 row "an issue with exactly the title exists (closed): exit" "$rc" 0
 row "an issue with exactly the title exists (closed): nothing created" "$(grep -c '^create' "$T/log" 2>/dev/null || echo 0)" 0
 cp "$FX/cycles-before.json" "$T/cycles.json"
+mv "$T/cycles.json" "$T/cycles.off"   # the fake gh's issue list now fails (no file)
+rc=$(run_create)
+row "the issue list cannot be read: exit" "$( [ "$rc" -ne 0 ] && echo failed || echo "rc=$rc")" failed
+row "the issue list cannot be read: nothing created" "$(grep -c '^create' "$T/log" 2>/dev/null || echo 0)" 0
+mv "$T/cycles.off" "$T/cycles.json"
 
 echo '=== new --prev: carry-over ==='
 cy new --prev "$FX/prev-closed.json" > "$T/next.json"
@@ -154,6 +159,7 @@ cy --config "$T/badtz.json" resolve > /dev/null 2> "$T/err"; rc=$?
 row "an unknown timezone stops instead of falling back: exit" "$rc" 2
 echo '{"repo":"example-org/sample-app","goal_marker":"[Goal]","weekday":"monday"}' > "$T/typo.json"
 cy --config "$T/typo.json" resolve > /dev/null 2>&1; row "an unknown config key is refused: exit" "$?" 2
+cy --config "$T/missing.json" resolve > /dev/null 2>&1; row "a --config path that does not exist is refused: exit" "$?" 2
 row "cron: Monday 07:17 Asia/Tokyo is Sunday 22:17 UTC" "$(cy cron --weekday monday --hour 7 | tr ' ' _)" "17_22_*_*_0"
 row "the default title is the base skill's" "$(cy --config "$T/default.json" resolve --date 2026-11-24 | js 'd["title"]' | tr ' :' _.)" "Orchestrator._sample-app_2026-W48"
 printf 'See #12 and example-org/other#3, then #13.\n### Heading\n' > "$T/refs.md"
@@ -208,6 +214,9 @@ row "a second run refuses to overwrite: exit" "$( [ "$rc" -ne 0 ] && echo refuse
 row "the notes file is unchanged by the refused run" "$(grep -c '^## Weekly plan$' "$T/new/AGENTS.md")" 1
 (cd "$T/new" && python3 "$S/survey.py" --today 2026-11-24 2>&1) | grep -c 'runs the scripts of workflow' > "$T/n"
 row "matching pin: no skew warning" "$(cat "$T/n")" 0
-sed -i.bak "s/ref: workflow--v$VER/ref: workflow--v0.0.1/" "$T/new/.github/workflows/weekly-cycle-issue.yml"
+sed -i.bak "s/ref: workflow--v$VER/ref: workflow--v99.0.0/" "$T/new/.github/workflows/weekly-cycle-issue.yml"
+(cd "$T/new" && python3 "$S/survey.py" --today 2026-11-24 2>&1) | grep -c 'runs the scripts of workflow' > "$T/n"
+row "a newer pin (a later release, same computation): no skew warning" "$(cat "$T/n")" 0
+sed -i.bak "s/ref: workflow--v99.0.0/ref: workflow--v0.0.1/" "$T/new/.github/workflows/weekly-cycle-issue.yml"
 (cd "$T/new" && python3 "$S/survey.py" --today 2026-11-24 2>&1) | grep -c 'runs the scripts of workflow 0.0.1' > "$T/n"
-row "another pinned version: the survey warns" "$(cat "$T/n")" 1
+row "a pin older than the last change to the computation: the survey warns" "$(cat "$T/n")" 1

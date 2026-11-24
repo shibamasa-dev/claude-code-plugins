@@ -21,7 +21,9 @@ repo="$(get "$T/resolve.json" repo)"
 echo "Cycle issue: $title ($repo)"
 
 # Exact title over the issue list (open and closed), not the search API: its index lags behind a fresh issue
-if cy exists --title "$title" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)["exists"] else 1)'; then
+# Captured first, so a failed read stops the run (set -e) instead of reading as "no such issue"
+found="$(cy exists --title "$title")"
+if [ "$(printf '%s' "$found" | python3 -c 'import json,sys; print(json.load(sys.stdin)["exists"])')" = True ]; then
   echo "An issue titled \"$title\" already exists; not creating another."
   exit 0
 fi
