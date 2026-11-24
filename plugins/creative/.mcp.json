@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "history": {
+      "command": "uv",
+      "args": ["run", "--quiet", "--script", "${CLAUDE_PLUGIN_ROOT}/server/history_mcp.py"],
+      "env": {
+        "CREATIVE_HISTORY_DATABASE_URL": "${user_config.database_url}",
+        "CREATIVE_HISTORY_SQLITE_PATH": "${user_config.sqlite_path}",
+        "CREATIVE_HISTORY_ROUTE": "${user_config.route}"
+      }
+    }
+  }
+}
