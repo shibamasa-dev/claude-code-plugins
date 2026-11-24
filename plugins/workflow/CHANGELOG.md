@@ -2,6 +2,13 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.16.0] - 2026-11-24
+
+### Added
+- issue-ops: `scripts/stale_body_check.py measure --repos <owner/repo> …` flags open issues whose body looks stale, read-only: (A) the body's first non-empty line names a fiscal-year or round token (「令和N年度」, 「YYYY年度」, 「第N回」) that the title lacks, and (B) a 「YYYY-MM-DD 時点」 ("as of") date older than 60 days. `--show` lists the suspects, `--json` prints JSON, and a repo that cannot be listed (or a `gh` call that hangs past 60 s) is an error with exit 1, not zero issues. It never writes to GitHub.
+- issue-ops: a "Checking for stale bodies" step that runs it.
+- `tests/test-stale-body-check.sh`: a heading left on the previous year and round is the one check-A suspect, the corrected body that mentions the previous round further down is not flagged, an old "as of" date is a check-B suspect, an unlistable repo and a hanging `gh` exit 1, and the script has no write calls.
+
 ## [0.15.0] - 2026-11-24
 
 ### Added
