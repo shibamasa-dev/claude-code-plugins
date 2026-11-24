@@ -252,6 +252,16 @@ class Fill(unittest.TestCase):
         self.assertEqual(rc, 2)
         self.assertIn("checkbox", err)
 
+    def test_checkbox_dropdown_holding_an_empty_string_is_ticked(self):
+        form = edited(self.tmp, "emptybox.xlsx", [('<c r="K45" s="58" t="s"><v>20</v></c>',
+                                                   '<c r="K45" s="58" t="inlineStr"><is><t></t></is></c>')])
+        spec = write_spec(self.tmp, [{"item": "保育士等としての勤務実態の有無", "check": "有（予定）"}])
+        rc, out, err = run("fill", form, spec, self.out)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(json.loads(out)["written"][0]["cell"], "K45")
+        rc, out, err = run("verify", form, self.out, spec)
+        self.assertEqual(rc, 0, out + err)
+
     def test_value_in_an_empty_row_verifies(self):
         form = edited(self.tmp, "emptyrow.xlsx", [(r'(<row r="54"[^>]*?)>.*?</row>', r"\1/>")])
         spec = write_spec(self.tmp, [{"item": "保護者記載欄", "below": "児童名", "nth": 2, "value": "見本 太郎"}])

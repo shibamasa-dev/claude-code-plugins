@@ -35,7 +35,7 @@ The Excel file has three sheets: the form, a sheet of dropdown lists, and `記�
 | 10 | `産休・育休以外の休業の取得` | ask | Reason and period |
 | 11 | `復職（予定）年月日` | ask | Planned or done, with the date |
 | 12 | `育児のための短時間勤務制度利用有無` | ask | Planned or current, period and the shortened hours |
-| 13 | `保育士等としての勤務実態の有無` | employee file | Always tick one: `有`, `有予定` or `無` (nursery teacher, kindergarten teacher or nursery-school teacher). Most employees are `無` |
+| 13 | `保育士等としての勤務実態の有無` | employee file | Always tick one: `有`, `有（予定）` or `無` (nursery teacher, kindergarten teacher or nursery-school teacher). Most employees are `無` |
 | 14 | `（雇用契約の）満了後の更新の有無` | employee file | Fixed-term contracts only |
 | 15 | `入所内定時育休短縮可否` | ask | Whether the leave can end early if a place is offered |
 | 16 | `育休延長可否` | ask | Whether the leave can be extended |

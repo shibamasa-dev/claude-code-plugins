@@ -365,7 +365,7 @@ def locate(sh, field, filling=False, overwrite=False):
         raise FormError("field %r resolves to its own label at %s" % (field, addr(*target)))
     if how == "check":
         cur = sh.values.get(target)
-        box = norm(cur) in CHECKBOX if cur is not None else sh.has_dropdown(target)
+        box = norm(cur) in CHECKBOX if cur not in (None, "") else sh.has_dropdown(target)
         if not box:
             raise FormError("no checkbox left of %r (found %r at %s)" % (field["check"], cur, addr(*target)))
     return target
