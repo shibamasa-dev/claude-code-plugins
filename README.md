@@ -24,6 +24,7 @@ A Claude Code plugin marketplace: guard hooks and workflow skills from daily dev
 /plugin install inventory@shibamasa-plugins
 /plugin install instructions@shibamasa-plugins
 /plugin install research@shibamasa-plugins
+/plugin install hr@shibamasa-plugins
 /plugin install agent-bridge@shibamasa-plugins
 ```
 
@@ -43,6 +44,7 @@ Every plugin is independent. Install only the ones you need.
 | [inventory](plugins/inventory/README.md) | An inventory database of the things you own. Claude registers items from photos, keeps what it couldn't read as `needs_review`, and searches with NFKC-normalized text. SQLite by default, or Postgres / Supabase directly or through a claude.ai connector |
 | [instructions](plugins/instructions/README.md) | A mod that loads bundled instruction files the way Claude Code loads your `~/.claude/CLAUDE.md`, so the same working rules apply on every machine. Currently one file on reply language and linking files. No effect where managed settings or a Team / Enterprise plan seat Claude Code's built-in guard |
 | [research](plugins/research/README.md) | Skills that read X and the web. Currently `research-x`, which asks xAI's X search about the X accounts you choose, keeps clear update announcements, summarizes them in your language and tone, and posts one Slack message each. The channel history is its only state |
+| [hr](plugins/hr/README.md) | Japan-specific HR and labour admin. Currently `employee-certificate`, which fills the certificates a company issues to an employee (the employment certificate for nursery and after-school applications, proof of enrolment, separation certificates, proof of income) on the requester's Excel form, mapped by item label so a changed layout still fills, from company and employee files you keep outside the plugin |
 | [agent-bridge](plugins/agent-bridge/README.md) | Two-way messaging between Claude Code and other AI agents through a message queue you host on Supabase. Every agent uses one API with its own token and is woken by a webhook or by polling; a listening Claude Code session wakes when a message arrives. A setup skill builds the bridge in your Supabase project with placeholder Vault secrets you replace |
 
 Each plugin's README lists its skills, hooks and settings.
