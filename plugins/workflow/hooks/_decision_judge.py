@@ -94,8 +94,11 @@ _MAYBE_RE = re.compile(
 
 
 def maybe_asks(text):
+    """Also true whenever regex_asks is, so a model backend never drops what the regex would catch."""
     t = tail(text)
-    return bool(t.strip()) and not looks_like_machine_output(text) and bool(_MAYBE_RE.search(t))
+    if not t.strip() or looks_like_machine_output(text):
+        return False
+    return bool(_MAYBE_RE.search(t)) or regex_asks(text).asks
 
 
 def regex_asks(text):

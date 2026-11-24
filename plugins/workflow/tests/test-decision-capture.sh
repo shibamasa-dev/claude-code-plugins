@@ -87,6 +87,9 @@ echo '=== a model judge without a key falls back to regex ==='
 ev UserPromptSubmit s8 >/dev/null
 r=$(CLAUDE_PLUGIN_OPTION_DECISION_JUDGE=google stop s8 "$ASK"); echo "  google, no key -> $r (expect block)"
 grep -q 'fell back from google: no API key' "$T/out" && x=ok || x=ng; echo "  the reason says it fell back -> $x (expect ok)"
+ev UserPromptSubmit s9 >/dev/null
+r=$(CLAUDE_PLUGIN_OPTION_DECISION_JUDGE=google stop s9 'Please pick a deployment region.')
+echo "  google, no key, a request with no question mark -> $r (expect block)"
 
 echo '=== the hook never fails the turn ==='
 echo 'not json' | python3 "$HOOK" >/dev/null 2>&1; c=$?; echo "  broken input, exit code -> $c (expect 0)"
