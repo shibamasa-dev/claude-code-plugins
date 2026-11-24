@@ -1,7 +1,7 @@
 {
   "name": "diagram",
-  "version": "0.1.0",
-  "description": "Skills for drawing diagrams as code: one-page explanatory diagrams whose element kinds stay consistent, and notation-bound diagrams (flowchart, sequence, state, ER, C4) in Mermaid",
+  "version": "0.2.0",
+  "description": "Skills for drawing diagrams as code: one-page explanatory diagrams whose element kinds stay consistent, and notation-bound diagrams (flowchart, sequence, state, ER, C4) in Mermaid or as polished SVG, with a stepper that walks through several points on one figure",
   "author": {
     "name": "shibamasa-dev"
   },

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 500" role="img" aria-labelledby="seq-title seq-desc">
+<title id="seq-title">注文確定時の与信の流れ</title>
+<desc id="seq-desc">四角は参加者。実線の矢印は依頼、破線の矢印は応答。</desc>
+<defs>
+<marker id="seq-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="context-stroke"/></marker>
+<marker id="seq-open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0L10,5L0,10" fill="none" stroke="context-stroke" stroke-width="1.5"/></marker>
+</defs>
+<style>
+.seq-head{fill:var(--box);stroke:var(--line)}
+.seq-life{stroke:var(--line);stroke-dasharray:4 4}
+.seq-act{fill:var(--box);stroke:var(--line)}
+.seq-msg{stroke:var(--muted);fill:none}
+.seq-reply{stroke:var(--muted);fill:none;stroke-dasharray:6 4}
+.seq-fail{stroke:var(--accent)}
+.seq-frame{fill:none;stroke:var(--line)}
+.seq-tab{fill:var(--box);stroke:var(--line)}
+.seq-t{fill:var(--ink);font-size:13px}
+.seq-guard{fill:var(--muted);font-size:12px}
+</style>
+<line class="seq-life" x1="100" y1="64" x2="100" y2="490"/>
+<line class="seq-life" x1="290" y1="64" x2="290" y2="490"/>
+<line class="seq-life" x1="480" y1="64" x2="480" y2="490"/>
+<line class="seq-life" x1="670" y1="64" x2="670" y2="490"/>
+<g data-box="alt"><rect class="seq-frame" x="40" y="212" width="700" height="264"/><path class="seq-tab" d="M40,212H84V228L76,236H40Z"/><text class="seq-t" x="48" y="228">alt</text><text class="seq-guard" x="112" y="230">[10 秒以内に応答がある]</text><line class="seq-frame" x1="40" y1="364" x2="740" y2="364" stroke-dasharray="6 4"/><text class="seq-guard" x="112" y="382">[応答が無い]</text></g>
+<rect class="seq-act" x="284" y="104" width="12" height="352"/>
+<rect class="seq-act" x="474" y="144" width="12" height="268"/>
+<g data-arrow="m-order"><path class="seq-msg" d="M100,108H282" marker-end="url(#seq-ah)"/><text class="seq-t" x="191" y="100" text-anchor="middle">注文を確定する</text></g>
+<g data-arrow="m-auth-req"><path class="seq-msg" d="M296,148H472" marker-end="url(#seq-ah)"/><text class="seq-t" x="385" y="140" text-anchor="middle">与信を依頼する</text></g>
+<g data-arrow="m-auth-send"><path class="seq-msg" d="M486,188H668" marker-end="url(#seq-ah)"/><text class="seq-t" x="578" y="180" text-anchor="middle">オーソリを送る</text></g>
+<g data-arrow="m-approve"><path class="seq-reply" d="M670,268H488" marker-end="url(#seq-open)"/><text class="seq-t" x="578" y="260" text-anchor="middle">承認</text></g>
+<g data-arrow="m-auth-ok"><path class="seq-reply" d="M474,304H298" marker-end="url(#seq-open)"/><text class="seq-t" x="385" y="296" text-anchor="middle">与信 OK</text></g>
+<g data-arrow="m-done"><path class="seq-reply" d="M284,340H102" marker-end="url(#seq-open)"/><text class="seq-t" x="191" y="332" text-anchor="middle">注文完了を表示</text></g>
+<g data-arrow="m-timeout"><path class="seq-reply seq-fail" d="M474,408H298" marker-end="url(#seq-open)"/><text class="seq-t" x="385" y="400" text-anchor="middle">タイムアウト</text></g>
+<g data-arrow="m-retry"><path class="seq-reply" d="M284,448H102" marker-end="url(#seq-open)"/><text class="seq-t" x="191" y="440" text-anchor="middle">再試行を促す</text></g>
+<g data-box="shopper"><rect class="seq-head" x="25" y="20" width="150" height="44" rx="4"/><text class="seq-t" x="100" y="47" text-anchor="middle">購入者</text></g>
+<g data-box="web"><rect class="seq-head" x="215" y="20" width="150" height="44" rx="4"/><text class="seq-t" x="290" y="47" text-anchor="middle">Web ストア</text></g>
+<g data-box="pay"><rect class="seq-head" x="405" y="20" width="150" height="44" rx="4"/><text class="seq-t" x="480" y="47" text-anchor="middle">決済サービス</text></g>
+<g data-box="card"><rect class="seq-head" x="595" y="20" width="150" height="44" rx="4"/><text class="seq-t" x="670" y="47" text-anchor="middle">カード会社</text></g>
+</svg>

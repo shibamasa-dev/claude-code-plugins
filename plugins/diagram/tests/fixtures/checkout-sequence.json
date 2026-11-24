@@ -1,0 +1,10 @@
+{
+  "title": "注文確定時の与信の流れ",
+  "lead": "四角は参加者。実線の矢印は依頼、破線の矢印は応答。",
+  "svgFile": "checkout-sequence.svg",
+  "labels": { "back": "戻る", "next": "次へ", "all": "図ぜんぶを見る" },
+  "steps": [
+    { "name": "画面を止めて待つのは Web ストア", "focus": ["web", "pay", "m-auth-req", "m-auth-ok"], "here": "web", "mark": "応答まで待つ", "point": "Web ストアは決済サービスの応答が来るまで購入者に画面を返さない" },
+    { "name": "応答が無いときの扱い", "focus": ["alt", "m-timeout", "m-retry"], "here": "alt", "mark": "10 秒で打ち切る", "point": "10 秒で応答が無ければ注文は確定せず、購入者に再試行を促す" }
+  ]
+}

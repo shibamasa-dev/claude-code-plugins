@@ -1,6 +1,6 @@
 ---
 name: typed-diagram
-description: 'Draws a diagram whose notation already fixes what a box and an arrow mean: flowchart, swimlane, sequence, state, ER, component or C4, in Mermaid by default (PlantUML or draw.io when asked). Picks the type from the question the reader asks, declares in one line what a box stands for (components, process steps, actors, states or entities), checks every box against it, splits the figure in two instead of mixing kinds, and renders the result to check it. Use it for "sketch a flowchart in Mermaid", "sequence diagram", "state diagram", "ER diagram", "C4 diagram", "diagram this for the README", or in Japanese 「フロー図を作って」「業務フロー図」「シーケンス図」「状態遷移図」「ER図」「Mermaid で描いて」「README に図を入れて」「スイムレーン」. For a one-page overview or concept diagram with free layout, logos and icons, use one-page-diagram. Not for generated images or illustrations, and not for data charts.'
+description: 'Draws a diagram whose notation fixes what a box and an arrow mean: flowchart, swimlane, sequence, state, ER, component or C4. Mermaid for Markdown in a repo; polished hand-drawn SVG in HTML for proposals, client reports, slides and shared pages; PlantUML or draw.io when asked. Picks the type from the reader''s question, declares what a box stands for, checks every box against it, splits instead of mixing kinds, can step through several points on one SVG figure, and renders the result to check it. Use it for "flowchart in Mermaid", "sequence diagram", "state diagram", "ER diagram", "C4 diagram", "diagram this for the README", "a sequence diagram for the proposal", "draw it as SVG, not Mermaid", or in Japanese 「フロー図を作って」「業務フロー図」「シーケンス図」「状態遷移図」「ER図」「Mermaid で描いて」「README に図を入れて」「スイムレーン」「提案書用の図」「Mermaid じゃなくて綺麗な図で」「シーケンス図を SVG で」. For a one-page overview or concept diagram with free layout, logos and icons, use one-page-diagram. Not for generated images or data charts.'
 last_reviewed: 2026-11-21
 review_after: 2027-05-20
 ---
@@ -49,18 +49,46 @@ Edges are not boxes. Label them with what moves or happens between boxes, as an 
 
 Keep one diagram to about 12 boxes. Beyond that, split by boundary or by phase and link the parts from the caption.
 
-## 4. Output
+## 4. Output: the form follows the destination
 
-Mermaid in a fenced `mermaid` block is the default: it renders on GitHub and many Markdown viewers, and it diffs. Use PlantUML or draw.io when the user asks or the document set already uses one; the rules above stay the same.
+| Where the diagram goes | Form |
+|---|---|
+| A Markdown file that lives in a repo and is versioned (README, design doc, ADR) | Mermaid in a fenced `mermaid` block: it renders on GitHub and many Markdown viewers, and it diffs |
+| A document read as a finished piece (proposal, client report, slides, a shared page or artifact) | Hand-written SVG in HTML |
+| The user asks for PlantUML or draw.io, or the document set already uses one | That format |
 
-The diagram goes inside the document it illustrates. A standalone file goes to the path the user names, otherwise to `diagrams/<slug>.mmd` under the working directory. Files made only to check the rendering go to the session scratchpad (the system temp directory when there is none).
+When the user names a form ("as SVG", "in Mermaid"), that form wins over the table, whatever the destination. Sections 1–3 hold for every form: the same type choice, the same one-line declaration and the same box check. Only the drawing changes.
 
-[references/mermaid.md](references/mermaid.md) has the syntax per type and the mistakes that break rendering. Read it before writing Mermaid.
+**Mermaid.** [references/mermaid.md](references/mermaid.md) has the syntax per type and the mistakes that break rendering. Read it before writing Mermaid. The diagram goes inside the document it illustrates; a standalone file goes to the path the user names, otherwise to `diagrams/<slug>.mmd` under the working directory.
+
+**SVG in HTML.** Draw the notation by hand to the rules in §1–§3. [references/svg-notation.md](references/svg-notation.md) says how each notation looks in SVG (lifelines, activations, `alt` frames, state markers, decision diamonds, lanes, cardinality marks) and how to lay it out. Colors, light and dark, accessibility attributes, legend and caption follow one-page-diagram's [references/svg.md](../one-page-diagram/references/svg.md); read it first and take every color from its variables. Put the declaration from §2 in the caption or `<desc>`. Output places: inline in a host that renders HTML (an artifact, a widget, a preview pane); otherwise one self-contained HTML file at the path the user names, next to the document it illustrates, or `diagrams/<slug>.html` under the working directory.
+
+Files made only to check the rendering go to the session scratchpad (the system temp directory when there is none).
+
+### Several points on one figure (SVG only)
+
+When the reply or the document walks through two or more points on the same figure (a sequence read call by call, a state diagram with two transitions that are wrong, a flow with two decisions to review), step through them on one figure instead of drawing one figure per point. The layout and every color stay; only emphasis moves. With one point, or when each point needs different elements drawn, draw separate figures.
+
+Build it with the plugin's stepper:
+
+1. Tag the SVG: `data-box="<id>"` on the `<g>` of each box, participant, state or frame a point can focus; `data-arrow="<id>"` on the `<g>` that holds a line together with its label. Lifelines, activations and the legend can stay untagged; they are never dimmed. The SVG holds no color values: take colors from classes that use the svg.md variables (the stepper output carries their values for light and dark). No `#` followed by three or more hex characters anywhere, including `url(#...)` references: name ids like `seq-ah`, not `ab1-arrow`.
+2. Write the spec as JSON in the session scratchpad: `title`; `svg` (the markup) or `svgFile` (a path relative to the spec); optional `lead`, `source` (`{label, text}`: the request the figure answers) and `labels` (`{back, next, all}` in the reader's language); `steps`, each `{name, focus: [ids], here: <box id>, mark: <badge text>, point: <one-line conclusion>}`. `here` must be a box in `focus`; `mark` needs `here`.
+3. Run it:
+
+   ```sh
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/stepper/stepper.mjs" "<scratchpad>/steps.json" --out "<scratchpad>/steps.html" --preview "<scratchpad>/steps-preview"
+   ```
+
+   Replace `<scratchpad>` with the session scratchpad's absolute path. It refuses a spec with no title, an SVG that does not start with `<svg`, a hex or `rgb()` color value in the SVG (named colors such as `white` are not caught, so keep to the variables), a script element or event attribute, fewer than two steps, a focus id not in the SVG, or a bad `here` or `mark`, and prints why.
+4. Use the fragment (`--out`, or stdout): pass it to the host's HTML widget, or put it inside the deliverable HTML file. `--preview` writes `light.html` and `dark.html` around it; look at every step and the whole figure in both (§5).
+5. Write every point in the reply text as well, as the script's last line prints them: previews, notifications and summaries do not show the figure, and a reader who never clicks Next misses the later points. Without the script the point list is still readable.
+
+For Mermaid, or wherever HTML cannot be shown, number the points on the one figure instead (number the messages or edges they concern, or add a note per point) and list one conclusion per number under it.
 
 ## 5. Validate before delivering
 
 1. Run the box check from step 2 on the final text.
-2. **Render it.** Syntax that looks right often fails to parse. Use what is available: the host's Markdown or Mermaid preview, or the Mermaid CLI when Node.js is installed:
+2. **Render it.** For SVG in HTML, open it the way the reader will and look at it in both themes, as references/svg-notation.md (Render and look) says; with the stepper, open both preview pages and look at every step and the whole figure. For Mermaid, syntax that looks right often fails to parse. Use what is available: the host's Markdown or Mermaid preview, or the Mermaid CLI when Node.js is installed:
 
    ```sh
    npx -y @mermaid-js/mermaid-cli -i diagram.mmd -o "${TMPDIR:-/tmp}/diagram-check.svg"
