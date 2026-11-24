@@ -41,6 +41,7 @@ If you used the former `review` plugin, uninstall it and move its settings to th
 | runbook | After browser or computer-use actions, on stop, at session start | Records browser and screen-operation steps; on the first one, says to start a GIF recording (Chrome) or note key steps (tools that cannot record); stops if you forgot to write the runbook |
 | orchestrator-report | After creating or updating a PR, or writing to an issue (connector or `gh`) | If exactly one running session in the repository written to (its folder's `origin`; worktrees included) has a title starting with `🎯` and it is not this session, tells Claude to send it a one-line report with SendMessage. Once per PR / issue per session; skipped in cloud and Claude Projects sessions |
 | knowledge-freshness | Session start | Reports knowledge files past their review date in one line |
+| now-context | Prompt submit | Adds one line with the current date and time, `[now] 2026-11-24 (Tue) 14:05 JST`, so Claude knows the hour without running `date`. The time zone is `timezone` (empty: the system time zone); the day name is always English. Never blocks |
 | artifact-ledger | After Artifact | Records published Artifacts in the project's `.artifacts/` (see [Artifact ledger](#artifact-ledger)) |
 | dev-flow-gate | Before creating a PR | Blocks if the body lacks `Closes #N` / `Refs #N` (`Refs: none (verbal request)` for requests without an issue) or the `Arch-Review:` field |
 | | After creating a PR | Tells Claude the next stage (wait for reviews and CI) |
@@ -95,6 +96,7 @@ The output looks like `{"five_hour": {"used_percentage": 17, "resets_at": 179155
 | `commit_gate` | `off` | The commit gate's mode: `off`, `observe` or `enforce` (any other value is `off`). A repo's `.claude/verification.json` overrides it |
 | `commit_gate_verifiers` | empty | A regex of skill names that count as verification. Empty means `^(code-review\|(.+:)?verify-.+\|coderabbit:code-review)$` |
 | `pr_checks_gate` | `off` | The mode of the local-checks test at PR creation: `off`, `observe` or `enforce` (any other value is `off`). A repo's `.claude/verification.json` (`prChecksGate`) overrides it |
+| `timezone` | empty | IANA time zone for the now-context line (`Asia/Tokyo`, `UTC`, …). Empty means the system time zone; a name that does not resolve falls back to it and the hook says so on stderr |
 
 Available tool ids are the file names in `skills/pr-review-triage/references/tools/` (`codex`, `coderabbit`, `copilot`, `gemini`, `cursor-bugbot`).
 

@@ -41,6 +41,7 @@
 | runbook | ブラウザ・画面操作の後、停止、セッション開始 | ブラウザ・画面操作の手順を記録する。最初の操作で、GIF 録画の開始（Chrome）か要所のメモ（録画できないツール）を促す。手順書を書き忘れたら止める |
 | orchestrator-report | PR の作成・更新、issue への書き込み（コネクタか `gh`）の後 | 書き込み先のリポジトリ（フォルダの `origin` で判定。worktree を含む）で動いているセッションのうち、タイトルが `🎯` で始まるものがちょうど 1 つあり、それが自分でなければ、SendMessage で 1 行報告するよう Claude に伝える。PR / issue ごとにセッションで 1 回だけ。クラウドと Claude Projects のセッションでは動かない |
 | knowledge-freshness | セッション開始 | 見直し期限を過ぎたナレッジを 1 行で知らせる |
+| now-context | プロンプト送信 | 今の日付と時刻を 1 行足す（`[now] 2026-11-24 (Tue) 14:05 JST`）。Claude が `date` を叩かなくても時刻が分かる。時間帯は `timezone`（空ならシステムの時間帯）、曜日はいつも英語。止めることはない |
 | artifact-ledger | Artifact の後 | 公開した Artifact をプロジェクトの `.artifacts/` に記録する（[Artifact 台帳](#artifact-台帳)） |
 | dev-flow-gate | PR を作る前 | 本文に `Closes #N` / `Refs #N`（issue の無い依頼は `Refs: none (verbal request)`）と `Arch-Review:` の欄が無ければ止める |
 | | PR を作った後 | 次の段（レビューと CI を待つ）を伝える |
@@ -95,6 +96,7 @@ orchestrator-report は報告を促した PR / issue を `${CLAUDE_PLUGIN_DATA}/
 | `commit_gate` | `off` | コミットゲートのモード。`off`・`observe`・`enforce`（それ以外の値は `off`）。リポの `.claude/verification.json` が優先する |
 | `commit_gate_verifiers` | 空 | 検証として数えるスキル名の正規表現。空なら `^(code-review\|(.+:)?verify-.+\|coderabbit:code-review)$` |
 | `pr_checks_gate` | `off` | PR 作成時のローカル検査のモード。`off`・`observe`・`enforce`（それ以外の値は `off`）。リポの `.claude/verification.json`（`prChecksGate`）が優先する |
+| `timezone` | 空 | now-context の行に使う IANA の時間帯（`Asia/Tokyo`、`UTC` など）。空ならシステムの時間帯。解決できない名前もシステムの時間帯に戻し、フックが stderr にそう出す |
 
 使えるツールの id は `skills/pr-review-triage/references/tools/` のファイル名（`codex`・`coderabbit`・`copilot`・`gemini`・`cursor-bugbot`）。
 

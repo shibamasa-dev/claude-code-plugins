@@ -2,6 +2,13 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.15.0] - 2026-11-24
+
+### Added
+- New hook `now-context` (`hooks/now-context.py`, `UserPromptSubmit`): adds one line with the current date and time, `[now] YYYY-MM-DD (Day) HH:MM <zone>`, to every prompt. The session context carries the date but not the time. The day name is English whatever the locale. Always exits 0.
+- userConfig `timezone`: the IANA time zone for that line. Empty means the system time zone; a name that does not resolve falls back to the system time zone with a note on stderr.
+- `tests/test-now-context.sh`: one line of output, the hour with `timezone=UTC` against `date -u`, the system zone when empty, and exit 0 with an invalid zone.
+
 ## [0.14.0] - 2026-11-24
 
 ### Added
