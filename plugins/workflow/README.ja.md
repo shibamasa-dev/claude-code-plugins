@@ -42,6 +42,7 @@
 | orchestrator-report | PR の作成・更新、issue への書き込み（コネクタか `gh`）の後 | 書き込み先のリポジトリ（フォルダの `origin` で判定。worktree を含む）で動いているセッションのうち、タイトルが `🎯` で始まるものがちょうど 1 つあり、それが自分でなければ、SendMessage で 1 行報告するよう Claude に伝える。PR / issue ごとにセッションで 1 回だけ。クラウドと Claude Projects のセッションでは動かない |
 | knowledge-freshness | セッション開始 | 見直し期限を過ぎたナレッジを 1 行で知らせる |
 | now-context | プロンプト送信 | 今の日付と時刻を 1 行足す（`[now] 2026-11-24 (Tue) 14:05 JST`）。Claude が `date` を叩かなくても時刻が分かる。時間帯は `timezone`（空ならシステムの時間帯）、曜日はいつも英語。止めることはない |
+| decision-capture | プロンプト送信、AskUserQuestion か Bash の後、ターンを終える前 | 既定はオフ。最後の応答が文章で判断を求めていて、そのターンに AskUserQuestion も登録コマンドも使っていなければ、Stop を 1 回だけ止める（`enforce`）か、記録だけする（`observe`） |
 | artifact-ledger | Artifact の後 | 公開した Artifact をプロジェクトの `.artifacts/` に記録する（[Artifact 台帳](#artifact-台帳)） |
 | dev-flow-gate | PR を作る前 | 本文に `Closes #N` / `Refs #N`（issue の無い依頼は `Refs: none (verbal request)`）と `Arch-Review:` の欄が無ければ止める |
 | | PR を作った後 | 次の段（レビューと CI を待つ）を伝える |
@@ -74,6 +75,24 @@ pr-checks（PR を出す前のローカル検査）:
 - **PR 本文のファイル**: `gh pr create` の呼び出し自身が本文として指す未追跡ファイル（`--body-file` / `-F`）は指紋から外す。検査のあとでリポの中に本文を書いても、通った記録は消えない。検査のときにすでにあった本文ファイルのために、`run` は未追跡ファイルごとに（10 個まで）そのファイルだけを外した指紋も記録する。だから、あとで本文を直しても（dev-flow-gate に差し戻されたときなど）記録は消えない。ファイルはディスク上の同じファイルかどうかで照合するので、大文字小文字を区別しないファイルシステムでの別の綴りや、そのファイルへのシンボリックリンクでも通る。ほかに外すものは無い。ignore されていない未追跡ファイルの追加・変更・削除は変更として数える（ignore するか、検査をやり直す）。本文をリポの外に置けば、この問題は起きない。
 - **コスト**: `off` では、PR 作成 1 回につきローカルの git の読み取りが 2〜4 回（ある計測で約 40 ms）。ほかのコマンドでは何も動かない。どのモードでもネットワークには出ない。
 
+decision-capture（文章のまま止まった問い）:
+
+- **何を問うか**: ターンの終わりに、最後の応答（`last_assistant_message`）が文章で「選ぶ・承認する・方針を決める」ことを求めているか。複数のセッションを並行して使っていると、文章の問いは見落とされやすい。そのターンに AskUserQuestion を使った、`decision_register_command` の最初の `{` より前で始まる Bash コマンドを実行した、すでに 1 回止めた、`stop_hook_active` が立っている、のどれかなら通す。Claude Code の scratchpad を作業フォルダにしているときも通す。
+- **モード**: `decision_capture` が `off`（既定。何も動かず何も書かない）、`observe`（止めない。止めるはずだった回を判定方式と点数つきでセッションの状態ファイルに残す）、`enforce`（Stop を 1 回止め、AskUserQuestion、設定があれば登録コマンド、`dismiss` コマンドを示す）。
+- **見送り**: `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/decision-capture.py" dismiss --session <id> --why "<理由>"`（止めたときのメッセージに `CLAUDE_PLUGIN_DATA=...` 付きで出る）。同じセッションで `decision_stop_limit` 回（既定 3）続けて見送ると、そのセッションでは 12 時間止めない。AskUserQuestion か登録コマンドを使うと数え直す。サンドボックスの中の Bash からだと、プラグインデータへの書き込みはサンドボックスの外でやり直しが要ることがある。
+- **判定**（`decision_judge`）: `regex`（既定）は末尾の空でない 6 行を日本語と英語のパターンで見て、外へ何も送らない。`openai`（OpenAI Decisions API）・`typesafe`（TypeSafe Jev）・`google`（Gemini Decisions API）は、緩い下ふるい（疑問符、「ください」、"which" など）に掛かった応答だけ、末尾 1500 字をその会社へ鍵（`decision_openai_api_key`・`decision_typesafe_api_key`・`decision_google_api_key`）付きで送る。1 回 2 秒で打ち切る。鍵が無い・タイムアウト・HTTP エラー・応答の形が違う、のどれでも `regex` に戻り、止めたときのメッセージにそう出る。全文が JSON か 1 つのコードフェンスだけの応答は数えない。
+- **しきい値**: 会社ごとに点数の出方が違うので、既定値も会社ごとに持つ。`decision_judge_threshold` で上書きできる。既定値の測り方（正解付きの実際の応答。非公開のデータは載せない）:
+
+  | 判定 | 既定 | 測り方 |
+  |---|---|---|
+  | `regex` | — | 正解付きの応答 29 件（判断を求める 15・求めない 14）で、15 件中 6 件を拾い、誤検知 0 |
+  | `openai` | 0.9 | 正解付きの応答 66 件（誤検知 0・見逃し 6）と、無作為の 150 件から見積もった 1 日約 24 回で決めた。このプラグインの問い方で 29 件に掛け直すと、15 件中 15 件・誤検知 14 件中 0 |
+  | `typesafe` | 0.97 | 同じ 66 件（誤検知 0・見逃し 14）と、同じ 150 件から見積もった 1 日約 10 回で決めた。このプラグインの問い方で 29 件に掛け直すと、15 件中 9 件・誤検知 0（この少ない件数では 0.7 で 15 件中 15 件・誤検知 0。止める回数は測っていない） |
+  | `google` | 0.8 | 29 件だけで測った: 15 件中 15 件・誤検知 14 件中 0（0.85 だと 10 件）。1 日に止める回数は測っていない |
+
+  `tests/eval-decision-judge.py` で、判定を `tests/fixtures/decision-capture/ask_dataset.json`（公開用の組。実際の応答の固有名と私的な中身を書き換えたもの）か `--dataset` で渡した組に掛けて点数を出せる。公開用の組（27 件、判断を求めるのは 13 件）に既定のしきい値で掛けると、`regex` 13 件中 6 件、`openai` 13 件中 13 件、`typesafe` 13 件中 7 件、`google` 13 件中 13 件で、どれも誤検知は 14 件中 0。正解付きのデータに英語の応答は無いので、英語の拾い率は測っていない。
+- **状態**: `${CLAUDE_PLUGIN_DATA}/decision-capture/<セッション>.json`（ターンの印、止めた回数と見送りの回数、判定の記録）。30 日で消す。
+
 orchestrator-report は報告を促した PR / issue を `${CLAUDE_PLUGIN_DATA}/orchestrator-report/<session_id>.json` に記録する（30 日より古いファイルは書き込みのときに消す）。
 
 ## mod
@@ -97,6 +116,12 @@ orchestrator-report は報告を促した PR / issue を `${CLAUDE_PLUGIN_DATA}/
 | `commit_gate_verifiers` | 空 | 検証として数えるスキル名の正規表現。空なら `^(code-review\|(.+:)?verify-.+\|coderabbit:code-review)$` |
 | `pr_checks_gate` | `off` | PR 作成時のローカル検査のモード。`off`・`observe`・`enforce`（それ以外の値は `off`）。リポの `.claude/verification.json`（`prChecksGate`）が優先する |
 | `timezone` | 空 | now-context の行に使う IANA の時間帯（`Asia/Tokyo`、`UTC` など）。空ならシステムの時間帯。解決できない名前もシステムの時間帯に戻し、フックが stderr にそう出す |
+| `decision_capture` | `off` | decision-capture のモード。`off`・`observe`・`enforce`（それ以外の値は `off`） |
+| `decision_register_command` | 空 | 判断を記録する先のコマンドの雛形（`{key}` と `{decision}` を含む）。最初の `{` より前で始まる Bash コマンドを記録とみなす。空なら AskUserQuestion だけを勧める |
+| `decision_stop_limit` | 3 | この回数続けて見送ると、そのセッションでは 12 時間止めない |
+| `decision_judge` | `regex` | `regex`・`openai`・`typesafe`・`google`（フックの decision-capture を参照） |
+| `decision_judge_threshold` | 空 | 判定の既定しきい値（0〜1）を上書きする。空なら openai 0.9、typesafe 0.97、google 0.8 |
+| `decision_openai_api_key` / `decision_typesafe_api_key` / `decision_google_api_key` | 空 | 機密。その判定を選んだときだけ使う鍵 |
 
 使えるツールの id は `skills/pr-review-triage/references/tools/` のファイル名（`codex`・`coderabbit`・`copilot`・`gemini`・`cursor-bugbot`）。
 
@@ -154,7 +179,7 @@ reviews:
 
 | 何か | 置き場 | アンインストールで消えるか |
 |---|---|---|
-| フックの状態（handoff の入口、issue-writeback、dev-flow-gate、orchestrator-report、commit-gate、pr-checks の拒否回数） | `${CLAUDE_PLUGIN_DATA}/<機能>/`（`~/.claude/plugins/data/<プラグイン ID>/`） | 消える（最後の scope から外したとき。`--keep-data` を付ければ残る） |
+| フックの状態（handoff の入口、issue-writeback、dev-flow-gate、orchestrator-report、commit-gate、decision-capture、pr-checks の拒否回数） | `${CLAUDE_PLUGIN_DATA}/<機能>/`（`~/.claude/plugins/data/<プラグイン ID>/`） | 消える（最後の scope から外したとき。`--keep-data` を付ければ残る） |
 | 変数なしで動いたスクリプトが書いた同じ状態 | `~/.claude/state/workflow/<機能>/` | 消えない |
 | `HANDOFF_STATE_DIR` を設定したときの handoff の入口 | そのディレクトリ | 消えない |
 | pr-checks の通過記録とログ | `<git common dir>/workflow-pr-checks.json` と `.log.jsonl` | 消えない（クローンに属する） |
