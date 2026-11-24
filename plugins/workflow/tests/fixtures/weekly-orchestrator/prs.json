@@ -1,0 +1,46 @@
+[
+ {
+  "number": 60,
+  "title": "Parse quoted fields (#12)",
+  "headRefName": "feat/quoted-fields",
+  "isDraft": false,
+  "reviewDecision": "CHANGES_REQUESTED",
+  "closingIssuesReferences": [
+   {
+    "number": 12,
+    "repository": {
+     "name": "sample-app",
+     "owner": {
+      "login": "example-org"
+     }
+    }
+   }
+  ]
+ },
+ {
+  "number": 61,
+  "title": "Bump the test runner",
+  "headRefName": "chore/runner",
+  "isDraft": true,
+  "reviewDecision": null,
+  "closingIssuesReferences": []
+ },
+ {
+  "number": 62,
+  "title": "Share the parser (example-org/sample-cli#12)",
+  "headRefName": "feat/share",
+  "isDraft": false,
+  "reviewDecision": null,
+  "closingIssuesReferences": [
+   {
+    "number": 10,
+    "repository": {
+     "name": "sample-cli",
+     "owner": {
+      "login": "example-org"
+     }
+    }
+   }
+  ]
+ }
+]

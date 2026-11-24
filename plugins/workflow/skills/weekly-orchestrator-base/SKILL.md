@@ -7,12 +7,16 @@ review_after: 2027-05-18
 
 # weekly-orchestrator-base — base practices for an orchestrator
 
-**Split with the project skill**: this skill holds only the practices that are the same in every project.
-The cycle boundary (weekday, submission), the shared-resource table, scripts that gather status, how to build reports,
-and issue titles and auto-creation belong to the project skill. The project makes these practices concrete and adds to them,
+**Split with the project skill**: this skill holds the practices that are the same in every project, and the scripts
+that gather the situation and compute the cycle issue (see "Scripts and the repo's config"). The repo's differences in
+those (cycle weekday, title, timezone, boundary, goal marker) live in its `.claude/weekly-orchestrator.json`.
+The cycle boundary's meaning (when and who closes), the shared-resource table, how to build reports and extra sections
+belong to the project skill. The project makes these practices concrete and adds to them,
 and for the concrete parts (per-resource locks, extra fields, and so on) follow the project. If the project skill contains
 something that contradicts a base practice (routing delegation, the don'ts), do not silently pick one; ask the user.
 A repository without a project skill uses "Defaults when the repository has no project skill" below.
+To give a repository its orchestrator (config, project skill template, weekly-issue workflow), use the
+`weekly-orchestrator-setup` skill.
 
 ## Role
 
@@ -45,18 +49,38 @@ How the orchestrator itself is kept. This is the same in every project.
 
 ## Defaults when the repository has no project skill
 
-When the repository has its own orchestrator skill, its values override these.
+When the repository has its own orchestrator skill or `.claude/weekly-orchestrator.json`, their values override these.
 
-- **Cycle**: one week (Monday to Sunday)
+- **Cycle**: one week (Monday to Sunday, UTC)
 - **Cycle issue title**: `Orchestrator: <repo> <YYYY>-W<ww>` (ISO week, e.g. `Orchestrator: my-repo 2026-W42`). Create it following `issue-ops` if none exists for the current week
-- **Gathering the situation**: the plan section of the cycle issue plus the reports received (batch reports and reports from other sessions). Nothing else is collected automatically
+- **Gathering the situation**: `survey.py` (below), the plan section of the cycle issue, and the reports received (batch reports and reports from other sessions)
 - **Close-out boundary**: `**Cutoff**:` at the end of the cycle
+
+## Scripts and the repo's config
+
+Python 3.9+, standard library only, read-only: they call `gh` (never the GitHub MCP) and print; every write is still
+yours, following `issue-ops`. Run them from the repo's root. Their settings come from `.claude/weekly-orchestrator.json`
+(keys, defaults and examples in `references/config.md`); without that file the defaults above apply.
+
+| Command | What it prints |
+|---|---|
+| `python3 "${CLAUDE_PLUGIN_ROOT}/skills/weekly-orchestrator-base/scripts/survey.py"` | The cycle (this cycle's issue and Plan status, where the previous cycle ended), goals with children done / waiting for a design review / last child update, issues under no goal, minimum-bar candidates (Start/Target date, Priority), open PRs, what the previous cycle left, and warnings to clear first |
+| `python3 "${CLAUDE_PLUGIN_ROOT}/skills/weekly-orchestrator-base/scripts/cycle.py" resolve` | This cycle's title and dates |
+| `python3 "${CLAUDE_PLUGIN_ROOT}/skills/weekly-orchestrator-base/scripts/cycle.py" new` | Title and body (empty plan section) for this cycle's issue; `--date YYYY-MM-DD` for another day's cycle |
+| `python3 "${CLAUDE_PLUGIN_ROOT}/skills/weekly-orchestrator-base/scripts/cycle.py" new --prev "$TMPDIR/prev.json"` | The cycle a week after a closed one (resolved like any other day, so it is the title the workflow computes), its unchecked minimum bar carried over. Add `--into "$TMPDIR/cur.json"` to get an existing issue's body with only the plan section replaced (only a `Draft` plan section: it refuses a `Confirmed` one or one without a Plan status line, another title, or a body without the markers) |
+| `python3 "${CLAUDE_PLUGIN_ROOT}/skills/weekly-orchestrator-base/scripts/cycle.py" exists --title "<title>"` | Whether an issue (open or closed) has exactly this title |
+| `python3 "${CLAUDE_PLUGIN_ROOT}/skills/weekly-orchestrator-base/scripts/cycle.py" boundary "$TMPDIR/prev.json"` | Where the next cycle starts counting: `Tally start`, else `Cutoff` / `Submitted` (time only), else the close time |
+| `python3 "${CLAUDE_PLUGIN_ROOT}/skills/weekly-orchestrator-base/scripts/cycle.py" refs <file>` | Bare `#N` references (exit 1), for a plan that spans repos and must write `owner/repo#N` |
+
+`prev.json` / `cur.json` are `gh issue view <n> -R <owner/repo> --json title,body,closedAt`. The weekly-issue workflow
+(placed by `weekly-orchestrator-setup`) runs `scripts/create-cycle-issue.sh`, which uses the same `cycle.py`, so the
+title the workflow creates and the one you compute are always the same. Do not compute a cycle title or date by hand.
 
 ## Steps
 
 ### 1. Make the plan
 
-How to gather the situation (which issues, PRs, and records of the previous cycle to look at) follows the project skill (without one, the defaults above). From what you gathered, decide in this order.
+How to gather the situation (which issues, PRs, and records of the previous cycle to look at) follows the project skill (without one, the defaults above); start from `survey.py` and clear its warnings first. If this cycle's issue does not exist yet, build it with `cycle.py new` and create it following `issue-ops`. From what you gathered, decide in this order.
 
 1. **Fill in "Goal progress"**: one row for every open goal, rebuilt from the goal list (not from the previous cycle's plan), including goals that are blocked or have not moved. Lines of work the project tracks outside issues may get a row too
 2. **Choose the targets**: from the goal issues and their child issues, choose what to advance this cycle
@@ -114,7 +138,10 @@ The project decides the boundary (weekday, submission) and whether to use "cutof
    - The first line is the boundary time: `- **Cutoff**: YYYY-MM-DD HH:MM` (or `- **Submitted**: …`). The close time does not substitute for it (if there is a gap, the work in between falls into neither cycle)
    - Then the status of the minimum bar and where the pushed items went (carried over to the next cycle / returned to an issue / dropped)
    - When the next cycle starts counting from something other than the boundary, add `- **Tally start**: YYYY-MM-DD HH:MM`
-2. The next cycle's issue: **if one with the same title already exists (auto-created, etc.), do not create another.** Replace **only the plan section (between the markers)** of that issue (writing following `issue-ops`), and keep everything outside it (auto-creation notes, etc.). If the plan section is already filled in before you replace it (plan status is `Confirmed`), do not rewrite it; ask the user. If there is no such issue, create one following `issue-ops`
+2. The next cycle's issue: **if one with the same title already exists (auto-created, etc.), do not create another.** Replace **only the plan section (between the markers)** of that issue (writing following `issue-ops`), and keep everything outside it (auto-creation notes, etc.). If the plan section is already filled in before you replace it (plan status is `Confirmed`), do not rewrite it; ask the user. If there is no such issue, create one following `issue-ops`. With the scripts:
+   1. Save the closed issue: `gh issue view <closed> -R <owner/repo> --json title,body,closedAt > "$TMPDIR/prev.json"`
+   2. `cycle.py new --prev "$TMPDIR/prev.json"` gives the next title and body
+   3. `cycle.py exists --title "<that title>"`: when it exists, save it as `$TMPDIR/cur.json` the same way and use `cycle.py new --prev "$TMPDIR/prev.json" --into "$TMPDIR/cur.json"` (it stops on anything but a `Draft` plan section: ask the user); when it does not, create the issue from step 2's output
 3. After closing out, the context is heavy, so suggest a `/clear` (step 6) before starting the next plan
 
 ### 6. Clearing the context
@@ -142,11 +169,11 @@ No other session takes over. The user clears this same session with `/clear` whe
 
 ## What the project skill adds
 
-These override "Defaults when the repository has no project skill".
+These override "Defaults when the repository has no project skill". What the scripts compute is set in
+`.claude/weekly-orchestrator.json`, not in the project skill:
 
-- The cycle boundary (weekday, submission), and whether the first line of `## Result` uses `**Cutoff**:` or `**Submitted**:`
-- The means of gathering the situation (scripts, issues to look at), the cycle issue title, and whether it is auto-created
-- Headings and fields added to the plan section (milestones, the plan for the previous report, etc.)
+- In the config: the cycle's weekday and timezone, the cycle issue title, whether the first line of `## Result` uses `**Cutoff**:` or `**Submitted**:`, the goal marker, the repos the survey reads, headings added inside the plan section (`plan_extra`) and text outside it (`footer`), and the Issue Fields an auto-created issue gets
+- In the project skill: what the boundary means (when and who closes; a weekday, or a submission), sources of the situation beyond `survey.py` (other issues, files, databases), and whether the cycle issue is auto-created
 - The shared-resource table and per-resource locks
 - Project-specific lines for "Read first" and "Rules" in delegation prompts
 - Reporting tasks done within the cycle, such as reports

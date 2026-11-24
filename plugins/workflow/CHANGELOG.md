@@ -2,6 +2,19 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.13.0] - 2026-11-24
+
+### Added
+- weekly-orchestrator-base: `scripts/cycle.py` computes a cycle issue's title, week and body in one place: `resolve` (the cycle a day or instant belongs to), `new` (the body built from `references/plan-section.md`; `--prev` builds the cycle a week after a closed one, resolved like any other day so a previous title off the anchor weekday still gives the workflow's title, and carries its unchecked minimum bar; `--into` replaces only a `Draft` plan section of an existing issue and refuses a `Confirmed` one, one without a Plan status line, another title or a body without the markers), `exists` (an issue with exactly the title, open or closed, from the issue list rather than the search index; a list that fills `--limit` without a match is an error, not "no such issue"), `boundary` (`Tally start`, then `Cutoff` / `Submitted` with a time, then the close time), `refs` (bare `#N`) and `cron`. It prints only; writes still follow issue-ops.
+- weekly-orchestrator-base: `scripts/survey.py` gathers the situation through `gh` / GraphQL (no GitHub MCP): the cycle and its Plan status, where the previous cycle ended, goals with children done, open children waiting for a design review and the last child update (a parent in another repo is never matched by number alone), issues under no goal, minimum-bar candidates (Start/Target date, Priority), open PRs, the previous cycle's leftovers, and warnings (an open-PR or issue list that fills its limit, `Arch Review: Pending`, a goal with more children than it read, 100 or more open issues, a missing or still-open cycle issue, the workflow pinned to another plugin version).
+- weekly-orchestrator-base: `scripts/create-cycle-issue.sh`, what the weekly-issue workflow runs: builds the issue with `cycle.py`, skips when an issue has exactly its title (and stops when the list cannot be read), creates it, and sets the config's Issue Fields best effort (a failure to read the new issue's id or to set the fields only warns). A title whose date does not exist (`2026-02-30`, `W99`) is not a cycle issue, and a PR's `owner/other#N` or a closing reference in another repo is not linked to this repo's `#N`.
+- weekly-orchestrator-base: a repo's differences (title format and older formats, anchor weekday and lead days, timezone, period, `Cutoff` or `Submitted`, goal marker, extra repos, headings added inside the plan section, a footer, Issue Field names and values) go in `.claude/weekly-orchestrator.json`; `references/config.md` lists the keys and defaults. Without the file the base defaults apply.
+- New skill `weekly-orchestrator-setup`: sets up a repo's orchestrator once. `scripts/scaffold.py` places a project orchestrator skill template, `.github/workflows/weekly-cycle-issue.yml` (cron computed from the config's timezone, scripts pinned to the plugin release with `ref: workflow--v<version>`) and a "Weekly plan" section in `AGENTS.md` / `CLAUDE.md`, and never overwrites.
+- `tests/test-weekly-orchestrator.sh`: the cycle a day belongs to, the next cycle's title equal to the title resolved a week later for every weekday and three cycle shapes, no date arithmetic in the workflow, dedup by exact title, carry-over, splicing and its refusals, the boundary read order, legacy titles, config errors, the survey against hand-written GraphQL fixtures (goal marker from config and its fallback, warnings), and the scaffold and its version pin.
+
+### Changed
+- weekly-orchestrator-base: SKILL.md lists the scripts and the config, step 1 starts from `survey.py`, step 5 builds the next cycle with `cycle.py`, and "What the project skill adds" says which parts now live in the config.
+
 ## [0.12.4] - 2026-11-23
 
 ### Fixed

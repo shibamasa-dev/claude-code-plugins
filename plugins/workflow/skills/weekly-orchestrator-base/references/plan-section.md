@@ -29,7 +29,9 @@ Replacing the whole body with the template erases the notes outside. That is why
 
 ## Template (the base shape)
 
-Projects may add headings and fields (milestones, the plan for the previous report, etc.). Do not remove the base headings.
+`scripts/cycle.py` builds every cycle issue's plan section from this template, so repos do not copy it. Projects add headings
+and fields (milestones, the plan for the previous report, etc.) through the config's `plan_extra` (`references/config.md`).
+Do not remove the base headings.
 Fill in `{period}` to match the project's cycle.
 
 ```markdown

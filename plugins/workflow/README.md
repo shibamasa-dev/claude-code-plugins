@@ -22,7 +22,8 @@ If you used the former `review` plugin, uninstall it and move its settings to th
 | `issue-ops` | Conventions from filing an issue to closing it (how to write the body, writing results back before closing) |
 | `session-wrap` | Checks for leftovers before closing a session and leaves a handoff for the next one |
 | `context-diet` | Measures and trims the context loaded at every session start |
-| `weekly-orchestrator-base` | A base for a repository's one long-lived orchestrator session (title starting with `🎯 <repo>`, pinned and used every day): runs a weekly plan → delegate → check → close loop, sends PR work to child sessions and read-only checks to subagents, and keeps its state in the cycle issue so a manual `/clear` loses nothing. Has defaults (weekly cycle, issue title) for repos without their own orchestrator skill |
+| `weekly-orchestrator-base` | A base for a repository's one long-lived orchestrator session (title starting with `🎯 <repo>`, pinned and used every day): runs a weekly plan → delegate → check → close loop, sends PR work to child sessions and read-only checks to subagents, and keeps its state in the cycle issue so a manual `/clear` loses nothing. Has defaults (weekly cycle, issue title) for repos without their own orchestrator skill. Ships the scripts that gather the situation (`survey.py`) and compute the cycle issue's title, week and body (`cycle.py`), driven by the repo's `.claude/weekly-orchestrator.json` |
+| `weekly-orchestrator-setup` | Sets up a repository's orchestrator once: asks for the cycle settings, writes `.claude/weekly-orchestrator.json`, and places a project orchestrator skill template, the weekly cycle-issue GitHub Actions workflow and a three-line "Weekly plan" section in `AGENTS.md` or `CLAUDE.md` |
 | `choice-board` | When you have to decide something for each of 10 or more items, puts them on a board page instead of in chat: one row per item with its options (the recommended one marked) and a memo, saved to the Artifact database so Claude reads the choices back. One board per project, reused across rounds. Needs the Artifact tools (Claude Code connected to claude.ai) |
 
 ## Hooks
@@ -137,6 +138,10 @@ A label starting with `!` is a negative match ([configuration](https://docs.code
 2. Whether this setting can be applied organization-wide (otherwise use a per-repo `.coderabbit.yaml`)
 3. Whether Codex can be excluded from auto review by a label (if not, Codex runs on light PRs too)
 
+### Orchestrator config (`.claude/weekly-orchestrator.json`)
+
+`weekly-orchestrator-base`'s scripts read a repo's cycle settings from `.claude/weekly-orchestrator.json`: the cycle issue title (and older formats), the weekday the title carries and how the week is cut, the timezone, `Cutoff` or `Submitted`, the goal marker, extra repos, headings added to the plan section, a footer, and the Issue Fields an auto-created cycle issue gets. Without the file a Monday-to-Sunday UTC week titled `Orchestrator: <repo> <YYYY>-W<ww>` applies. The keys and examples are in [`skills/weekly-orchestrator-base/references/config.md`](skills/weekly-orchestrator-base/references/config.md). `weekly-orchestrator-setup` writes it and pins the weekly-issue workflow to the plugin release (`ref: workflow--v<version>`); update that ref when you update the plugin (the survey warns when they differ).
+
 ### Where files go
 
 | What | Where | Uninstalling the plugin removes it |
@@ -148,6 +153,7 @@ A label starting with `!` is a negative match ([configuration](https://docs.code
 | Runbooks and their raw logs | `RUNBOOK_ROOT`, default `~/.claude/runbooks/` | No (they are your documents) |
 | Artifact ledger | `.artifacts/` at the project root (see Storage) | No |
 | review-and-fix reviews, fix plans and debug log | `.context/workflow/review/`, `plan/` and `logs/` in the repo; the command adds `.context/` to `.git/info/exclude` | No |
+| Orchestrator files placed by `weekly-orchestrator-setup`: `.claude/weekly-orchestrator.json`, `.claude/skills/<name>/SKILL.md`, `.github/workflows/weekly-cycle-issue.yml`, a section in `AGENTS.md` / `CLAUDE.md` | the repo, to be committed (`survey.py` and `cycle.py` write nothing) | No |
 | Usage limits (rate-limits mod) | `/tmp/claude-<uid>/rate-limits.json` | No (temporary) |
 
 ```bash
