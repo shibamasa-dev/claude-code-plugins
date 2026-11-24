@@ -1,6 +1,6 @@
 {
   "name": "workflow",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "Skills, an acceptance-check agent and hooks for the development flow from request to merge (including how PR reviews are routed and awaited), issue operations, session handoffs and runbook recording, plus a mod that writes usage limits to a file",
   "author": {
     "name": "shibamasa-dev"
@@ -63,6 +63,13 @@
       "type": "string",
       "title": "Skills that count as verification (regex)",
       "description": "Regex of skill names whose run counts as review or verification for the commit gate. Empty means ^(code-review|(.+:)?verify-.+|coderabbit:code-review)$. A repo's .claude/verification.json \"verifiers\" overrides this",
+      "required": false,
+      "default": ""
+    },
+    "timezone": {
+      "type": "string",
+      "title": "Time zone for the now-context line",
+      "description": "IANA time zone name (e.g. Asia/Tokyo, UTC, America/New_York) used by the now-context hook, which adds the current date and time to every prompt. Empty means the system time zone; a name that does not resolve also falls back to it",
       "required": false,
       "default": ""
     },
