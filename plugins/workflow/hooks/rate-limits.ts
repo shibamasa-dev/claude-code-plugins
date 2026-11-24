@@ -2,7 +2,10 @@ import type { EngineInterface, Register, SessionRateLimit } from 'claude-code'
 
 // Write the usage limits (rate limits) to /tmp/claude-<uid>/rate-limits.json.
 // An external script that watches the remaining weekly quota reads it. Format:
-// {"five_hour": {"used_percentage": 17, "resets_at": 1791553800, "seen_at": 1791552278}, "seven_day": {...}}
+// {"five_hour": {"used_percentage": 17, "resets_at": 1791553800, "seen_at": 1791552278},
+//  "seven_day": {"used_percentage": 75, "resets_at": 1791615600, "seen_at": 1791552278,
+//                "burn_rate": 0.499, "projected_surplus": 14.5, "stage": "none"}}
+// seven_day also carries a projection computed as of its seen_at (see project()).
 
 const KINDS = ['five_hour', 'seven_day'] as const
 type Kind = (typeof KINDS)[number]
@@ -26,6 +29,37 @@ const isNewer = (next: Window, prev: Window | undefined): boolean =>
   prev === undefined ||
   next.resets_at > prev.resets_at ||
   (next.resets_at === prev.resets_at && next.used_percentage > prev.used_percentage)
+
+// Weekly surplus projection, as of the window's seen_at:
+//   hours_left        = (resets_at - seen_at) / 3600
+//   burn_rate         = used / hours elapsed this week (%/hour); the weekly average 100/168 while under 1 hour has passed
+//   projected_surplus = (100 - used) - hours_left * burn_rate * RESERVE   (percentage points left at the reset)
+//   stage             = 'high' at SURPLUS_HIGH or more, 'low' at SURPLUS_LOW or more, else 'none'
+// RESERVE adds 20% to the projected need. A window whose reset has passed gets no projection.
+const WEEK_HOURS = 168
+const MIN_ELAPSED_HOURS = 1
+const RESERVE = 1.2
+const SURPLUS_HIGH = 30
+const SURPLUS_LOW = 15
+type Projection = { burn_rate: number; projected_surplus: number; stage: 'high' | 'low' | 'none' }
+
+const round = (v: number, digits: number) => Math.round(v * 10 ** digits) / 10 ** digits
+
+const project = (w: Window): Projection | undefined => {
+  const hoursLeft = (w.resets_at - w.seen_at) / 3600
+  if (hoursLeft <= 0) return undefined
+  const elapsed = WEEK_HOURS - hoursLeft
+  const rate = elapsed >= MIN_ELAPSED_HOURS ? w.used_percentage / elapsed : 100 / WEEK_HOURS
+  const surplus = 100 - w.used_percentage - hoursLeft * rate * RESERVE
+  const stage = surplus >= SURPLUS_HIGH ? 'high' : surplus >= SURPLUS_LOW ? 'low' : 'none'
+  return { burn_rate: round(rate, 3), projected_surplus: round(surplus, 1), stage }
+}
+
+// The stored window: the three measured fields, plus the projection for seven_day (recomputed on every write)
+const stored = (k: Kind, w: Window) => {
+  const base: Window = { used_percentage: w.used_percentage, resets_at: w.resets_at, seen_at: w.seen_at }
+  return k === 'seven_day' ? { ...base, ...project(base) } : base
+}
 
 const toWindows = (limits: readonly SessionRateLimit[], seenAt: number): Snapshot => {
   const out: Snapshot = {}
@@ -92,8 +126,13 @@ async function exportLimits($: EngineInterface, limits: readonly SessionRateLimi
   // Inside the private directory no other user can place anything. Write a temp file and mv -f it (rename is atomic).
   // On failure remove the tmp and do nothing (never fall back to writing directly; the next measure retries).
   const tmp = `${file}.${seenAt}.${Math.random().toString(36).slice(2, 8)}.tmp`
+  const out: Record<string, unknown> = {}
+  for (const k of KINDS) {
+    const w = merged[k]
+    if (w !== undefined) out[k] = stored(k, w)
+  }
   try {
-    await $.fs.write(tmp, JSON.stringify(merged))
+    await $.fs.write(tmp, JSON.stringify(out))
     const moved = await $.process.run(['mv', '-f', tmp, file])
     if (moved.exitCode === 0) return
   } catch {

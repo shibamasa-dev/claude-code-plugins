@@ -2,6 +2,12 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.17.0] - 2026-11-24
+
+### Added
+- rate-limits mod: `seven_day` in `/tmp/claude-<uid>/rate-limits.json` also carries a weekly surplus projection as of its `seen_at`: `burn_rate` (% per hour so far this week, the weekly average while under an hour has passed), `projected_surplus` (`(100 - used) - hours_left × burn_rate × 1.2`) and `stage` (`high` ≥ 30, `low` ≥ 15, else `none`). Recomputed on every write; none for a window whose reset has passed. `used_percentage`, `resets_at` and `seen_at` are unchanged, and `five_hour` is unchanged.
+- `hooks/rate-limits.test.ts`: high, low and no surplus, the measured fields kept as they are, and no projection after the reset.
+
 ## [0.16.0] - 2026-11-24
 
 ### Added

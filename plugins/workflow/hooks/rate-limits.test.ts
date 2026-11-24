@@ -54,11 +54,17 @@ const world = (on: On, files: Record<string, string> = {}, dir: 'ok' | 'missing'
 }
 const read = (s: { files: Record<string, string> }) => JSON.parse(s.files[FILE] ?? 'null')
 const win = (used_percentage: number, resets_at: number, seen_at = NOW) => ({ used_percentage, resets_at, seen_at })
+// seven_day as written: the three measured fields plus the projection. The expected projection values are worked out
+// by hand from the formula in rate-limits.ts (hours_left = (resets_at - seen_at) / 3600, burn_rate = used / (168 - hours_left),
+// projected_surplus = (100 - used) - hours_left * burn_rate * 1.2), not taken from the code's output.
+const week = (used: number, resets_at: number, burn_rate: number, projected_surplus: number, stage: string) =>
+  ({ ...win(used, resets_at), burn_rate, projected_surplus, stage })
 
 test('measure writes five_hour and seven_day in the expected format', async ($, on) => {
   const s = world(on)
   await $.session.measure(measure([limit('five_hour', 17, FIVE), limit('seven_day', 75, SEVEN)]))
-  expect(read(s)).toEqual({ five_hour: win(17, 1791553800), seven_day: win(75, 1791615600) })
+  // 17.589 hours left, 150.411 elapsed: 75 / 150.411 = 0.499 %/h, 25 - 17.589 * 0.499 * 1.2 = 14.5
+  expect(read(s)).toEqual({ five_hour: win(17, 1791553800), seven_day: week(75, 1791615600, 0.499, 14.5, 'none') })
   expect(Object.keys(s.files)).toEqual([FILE]) // no temp file is left behind
 })
 
@@ -80,7 +86,9 @@ test('a new week (larger resets_at) replaces even with lower usage', async ($, o
   const old = { five_hour: win(30, 1791553800, NOW - 100), seven_day: win(75, 1791615600, NOW - 100) }
   const s = world(on, { [FILE]: JSON.stringify(old) })
   await $.session.measure(measure([limit('seven_day', 2, '2026-10-17T16:00:00+09:00')]))
-  expect(read(s)).toEqual({ five_hour: old.five_hour, seven_day: win(2, 1792220400) })
+  // resets_at is 185.6 hours after seen_at, so under 1 hour of the week has passed: the weekly average 100 / 168 = 0.595 %/h,
+  // and 98 - 185.589 * 0.595 * 1.2 = -34.6
+  expect(read(s)).toEqual({ five_hour: old.five_hour, seven_day: week(2, 1792220400, 0.595, -34.6, 'none') })
 })
 
 test('ignores kinds other than five_hour / seven_day', async ($, on) => {
@@ -135,4 +143,40 @@ test('if mv fails, does not write the real path and removes the temp file', asyn
   await $.session.measure(measure([limit('five_hour', 17, FIVE)]))
   expect(s.files).toEqual({})
   expect(s.ran.some(a => a[0] === 'rm')).toBe(true)
+})
+
+test('seven_day gets stage high when the projected surplus is 30 or more', async ($, on) => {
+  const s = world(on)
+  await $.session.measure(measure([limit('seven_day', 40, SEVEN)]))
+  // 40 / 150.411 = 0.266 %/h, 60 - 17.589 * 0.266 * 1.2 = 54.4
+  expect(read(s)).toEqual({ seven_day: week(40, 1791615600, 0.266, 54.4, 'high') })
+})
+
+test('seven_day gets stage low when the projected surplus is 15 to 30', async ($, on) => {
+  const s = world(on)
+  await $.session.measure(measure([limit('seven_day', 70, SEVEN)]))
+  // 70 / 150.411 = 0.465 %/h, 30 - 17.589 * 0.465 * 1.2 = 20.2
+  expect(read(s)).toEqual({ seven_day: week(70, 1791615600, 0.465, 20.2, 'low') })
+})
+
+test('seven_day gets stage none when the projected surplus is under 15', async ($, on) => {
+  const s = world(on)
+  await $.session.measure(measure([limit('seven_day', 75, SEVEN)]))
+  expect(read(s).seven_day.stage).toBe('none')
+  expect(read(s).seven_day.projected_surplus).toBe(14.5)
+})
+
+test('the measured fields keep their names and values next to the projection', async ($, on) => {
+  const s = world(on)
+  await $.session.measure(measure([limit('five_hour', 17, FIVE), limit('seven_day', 40, SEVEN)]))
+  const out = read(s)
+  expect(out.five_hour).toEqual(win(17, 1791553800)) // five_hour gets no projection
+  const { used_percentage, resets_at, seen_at } = out.seven_day
+  expect({ used_percentage, resets_at, seen_at }).toEqual(win(40, 1791615600))
+})
+
+test('a seven_day window whose reset has passed gets no projection', async ($, on) => {
+  const s = world(on)
+  await $.session.measure(measure([limit('seven_day', 90, '2026-10-09T22:00:00+09:00')]))
+  expect(read(s)).toEqual({ seven_day: win(90, 1791550800) })
 })

@@ -82,7 +82,7 @@ orchestrator-report は報告を促した PR / issue を `${CLAUDE_PLUGIN_DATA}/
 |---|---|
 | `rate-limits` | 使用枠（5時間・週）を `/tmp/claude-<uid>/rate-limits.json` に書き出す。`<uid>` は `id -u`。週の残り枠を外のスクリプトが見張る用 |
 
-出力は `{"five_hour": {"used_percentage": 17, "resets_at": 1791553800, "seen_at": 1791552278}, "seven_day": {...}}`（`resets_at`・`seen_at` は epoch 秒）。枠ごとに `resets_at` が大きい方、同じなら `used_percentage` が大きい方を残す（ベストエフォート。プロセス間のロックは無いので、並列セッションがほぼ同時に書くと一時的に古い値へ戻ることがあり、次に使用率が動いたときに直る）。値が変わらなければ書かない。出力先は本人専用（700）のディレクトリで、無ければ作る。リンク・他人所有・700 以外なら何も書かない。中で一時ファイルに書いて `mv -f` で置き換える（失敗したら書かない）。mod が動くのは Claude Code の CLI（`$.process` を使うため）。0.3.0 で devtools（今の repo-setup）から移した。
+出力は `{"five_hour": {"used_percentage": 17, "resets_at": 1791553800, "seen_at": 1791552278}, "seven_day": {...}}`（`resets_at`・`seen_at` は epoch 秒）。`seven_day` には週の余剰の見込みも入る。その `seen_at` 時点で計算し、書くたびに計算し直す。`burn_rate`（今週ここまでの使用率 ÷ 経過時間。% / 時。経過が 1 時間未満なら週平均の 100/168）、`projected_surplus`（リセット時に残る見込みのポイント数。`(100 - used) - 残り時間 × burn_rate × 1.2`。1.2 は 2 割の予備）、`stage`（30 以上で `high`、15 以上で `low`、それ以外は `none`）。リセット時刻を過ぎた枠には付けない。計測した 3 つの項目は名前も値も変えない。余剰をどう使うかは、ファイルを読むスクリプトが決める。枠ごとに `resets_at` が大きい方、同じなら `used_percentage` が大きい方を残す（ベストエフォート。プロセス間のロックは無いので、並列セッションがほぼ同時に書くと一時的に古い値へ戻ることがあり、次に使用率が動いたときに直る）。値が変わらなければ書かない。出力先は本人専用（700）のディレクトリで、無ければ作る。リンク・他人所有・700 以外なら何も書かない。中で一時ファイルに書いて `mv -f` で置き換える（失敗したら書かない）。mod が動くのは Claude Code の CLI（`$.process` を使うため）。0.3.0 で devtools（今の repo-setup）から移した。
 
 ## 設定（userConfig）
 
