@@ -34,21 +34,22 @@ Layouts and templates are in [references/data-files.md](references/data-files.md
 
 1. **Pin down the request.** Which certificate, for which employee, for whom (municipality, school, landlord, the employee), and by when. For a separation certificate, also which items the employee asked for (step 1 of [references/other-certificates.md](references/other-certificates.md)).
 
-2. **Get the latest form.** Read the requester's notes in `hr/municipalities/` first. Then find the current form on the requester's own website, check the fiscal year or revision date on the page, and tell the user the URL and date before downloading. Ask the user for the file when the site needs a login, has only a PDF or paper form, or you cannot tell which form is current. How to search: [references/data-files.md](references/data-files.md#finding-the-latest-form). A requester with no form of its own: [references/other-certificates.md](references/other-certificates.md).
+2. **Get the latest form and its rules.** Read the requester's notes in `hr/municipalities/` first. Then find the current form on the requester's own website, check the fiscal year or revision date on the page, and tell the user the URL and date before downloading. Ask the user for the file when the site needs a login, has only a PDF or paper form, or you cannot tell which form is current. How to search: [references/data-files.md](references/data-files.md#finding-the-latest-form). A requester with no form of its own: [references/other-certificates.md](references/other-certificates.md). Read the form's own instructions every year as well (the `記載要領` sheet, and any guidance PDF on the same page): rules such as the order of the work-record months, whether hours include breaks, or which certification dates are accepted are set there and can change, and last year's copy may have followed them wrongly.
 
-3. **Map the form.** Run `inspect FORM` and match its items to the standard layout in [references/standard-form.md](references/standard-form.md). Write a spec (JSON) that locates every field by item label and, inside the item, by a nearby text (`right_of`, `left_of`, `below`, `check`). Run `read FORM SPEC`: every field must resolve to the empty input you meant. An error naming candidates means a label repeats; add `nth` or `item_nth` rather than guessing.
+3. **Map the form.** Run `inspect FORM` and match its items to the standard layout in [references/standard-form.md](references/standard-form.md). Never reuse cell addresses from last year's notes or memory; they drift and are easy to get wrong. Write a spec (JSON) that locates every field by item label and, inside the item, by a nearby text (`right_of`, `left_of`, `below`, `check`). Run `read FORM SPEC`: every field must resolve to the empty input you meant. An error naming candidates means a label repeats; add `nth` or `item_nth` rather than guessing.
 
 4. **Fill in what is known.** Values come from three places, in this order:
    - the company and employee files;
-   - last year's copy: run `read LAST_YEAR.xlsx SPEC` with this year's spec (or last year's spec from `hr/issued/`). Carry over values that do not change from year to year (company, name, birth date, hire date, contract type, hours) and show the user what you carried over;
+   - last year's copy: run `read LAST_YEAR.xlsx SPEC` with this year's spec (or last year's spec from `hr/issued/`). Carry over values that do not change from year to year (company, name, birth date, hire date, contract type, hours) and show the user what you carried over. Never carry over the work record or the certification date, and when last year's copy and its notes disagree, ask instead of picking one;
    - nothing else. A value with no source is a question for step 5, not a blank you fill with a likely answer.
 
 5. **Ask for what only the person knows**, in one list, and wait for the answers:
-   - the certification date (証明日);
-   - the last three months of the work record (就労実績): days and hours per month, paid leave counted as days, breaks and overtime counted as hours;
-   - the employment type when it is not plain employment, for example officer (役員) or self-employed (自営業主);
+   - the certification date (証明日), within the window the requester accepts (some accept any date from a fixed day of the year for a current-status report; say which window applies);
+   - the last three months of the work record (就労実績): days and hours per month for the months actually worked (not the pay months), paid leave counted as days, breaks and overtime counted as hours. The standard instructions put the newest month in the first column;
+   - the employment type when it is not plain employment: a company's representative director is usually an officer (`役員`), not self-employed (`自営業主`), but the notes rarely say, so ask;
    - leave taken or planned, and short-hours arrangements, if any;
-   - the children and the facility, if the form has a guardian section (保護者記載欄);
+   - the children and the facility, if the form has a guardian section (保護者記載欄), and whether the children's birth years go in the Western or the Japanese calendar when the form doesn't say;
+   - text the form came with in an input (a sample sentence in the remarks, a printed addressee): keep it or clear it. Clearing is a field with `"value": ""` and `--overwrite`;
    - anything the employee file leaves open, and anything that differs from last year.
 
 6. **Fill and save.** Run `fill FORM SPEC OUT`. It writes a copy and never changes FORM. It refuses a cell that already holds a value; pass `--overwrite` only when you mean to replace it. Name OUT after the certificate, the employee key and the date, and save it in the folder the user names (default: the working folder).

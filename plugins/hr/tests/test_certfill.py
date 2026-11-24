@@ -273,6 +273,11 @@ class Verify(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertFalse(checks["value 事業所名 (Z4)"])
 
+    def test_detects_a_duplicate_cell(self):
+        rc, checks = self.tamper('<c r="Z5" s="366"/>', '<c r="Z5" s="366"/><c r="Z4" s="366"/>')
+        self.assertEqual(rc, 1)
+        self.assertFalse(checks["no cell address appears twice"])
+
     def test_detects_a_lost_dropdown(self):
         # what an openpyxl round trip does to the checkbox and dropdown lists
         rc, checks = self.tamper(r"<x14:dataValidation .*?</x14:dataValidation>", "", regex=True)
@@ -309,6 +314,107 @@ class CarryOver(unittest.TestCase):
         self.assertEqual(raw_cell(out_path, "I19"), "見本 花子")
         self.assertEqual(raw_cell(out_path, "AD19"), 1990.0)
         self.assertEqual(raw_cell(out_path, "I23"), "☑")
+
+
+def municipal_variant(path):
+    """A municipal variant of the standard form, built the way real municipal downloads differ from it
+    (seen on a real case, values replaced): no dropdowns at all, so month and day inputs are plain single
+    cells; the sheet name ends in a full-width space; the addressee and a remarks boilerplate come prefilled;
+    the 内職 checkbox and label sit one column further left; an extra sheet carries a drawing. All values
+    are synthetic."""
+    with zipfile.ZipFile(STANDARD) as z, zipfile.ZipFile(path, "w") as w:
+        for info in z.infolist():
+            data = z.read(info.filename)
+            if info.filename == SHEET:
+                x = data.decode("utf-8")
+                x = re.sub(r"<x14:dataValidations\b.*?</x14:dataValidations>", "", x, flags=re.S)
+                x = re.sub(r"<dataValidations\b.*?</dataValidations>", "", x, flags=re.S)
+                for old, new in [
+                    ('<c r="B2" s="360"/>', '<c r="B2" s="360" t="inlineStr"><is><t>架空市長</t></is></c>'),
+                    ('<c r="I50" s="168"/>', '<c r="I50" s="168" t="inlineStr"><is><t>【架空の定型文】</t></is></c>'),
+                    ('<c r="T24" s="53"/>', '<c r="T24" s="47" t="s"><v>20</v></c>'),
+                    ('<c r="U24" s="47" t="s"><v>20</v></c>', '<c r="U24" s="52" t="s"><v>65</v></c>'),
+                    ('<c r="V24" s="52" t="s"><v>65</v></c>', '<c r="V24" s="53"/>'),
+                ]:
+                    assert x.count(old) == 1, old
+                    x = x.replace(old, new)
+                data = x.encode("utf-8")
+            elif info.filename == "xl/workbook.xml":
+                data = data.replace('name="標準的な様式"'.encode("utf-8"), 'name="標準的な様式\u3000"'.encode("utf-8"), 1)
+            w.writestr(info, data)
+        w.writestr("xl/drawings/drawing1.xml", b"<xdr:wsDr/>")
+
+
+class MunicipalVariant(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.form = os.path.join(self.tmp, "municipal.xlsx")
+        municipal_variant(self.form)
+        self.out = os.path.join(self.tmp, "out.xlsx")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+
+    def test_single_cell_inputs_without_dropdowns(self):
+        with zipfile.ZipFile(self.form) as z:
+            self.assertNotIn("dataValidation", z.read(SHEET).decode("utf-8"))
+        rc, out, err = run("read", self.form, write_spec(self.tmp, FIELDS, sheet="標準的な様式"), "--json")
+        self.assertEqual(rc, 0, err)
+        self.assertEqual([x["cell"] for x in json.loads(out)], STANDARD_CELLS)
+
+    def test_moved_checkbox_follows_its_label(self):
+        spec = write_spec(self.tmp, [{"item": "雇用の形態", "check": "内職"}])
+        rc, out, err = run("read", self.form, spec, "--json")
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(json.loads(out)[0]["cell"], "T24")
+
+    def test_prefilled_cells_need_overwrite_and_can_be_cleared(self):
+        spec = write_spec(self.tmp, [{"item": "宛", "left_of": "宛", "value": "別市長"}])
+        rc, _, err = run("fill", self.form, spec, self.out)
+        self.assertEqual(rc, 2)
+        self.assertIn("--overwrite", err)
+        spec = write_spec(self.tmp, [{"item": "備考欄", "value": ""}])
+        rc, _, err = run("fill", self.form, spec, self.out, "--overwrite")
+        self.assertEqual(rc, 0, err)
+        self.assertIsNone(raw_cell(self.out, "I50"))
+        rc, out, err = run("verify", self.form, self.out, spec)
+        self.assertEqual(rc, 0, out + err)
+
+    def test_fill_keeps_every_other_part(self):
+        fields = [f for f in FIELDS if f["item"] != "宛"]
+        spec = write_spec(self.tmp, fields)
+        rc, _, err = run("fill", self.form, spec, self.out)
+        self.assertEqual(rc, 0, err)
+        rc, out, err = run("verify", self.form, self.out, spec)
+        self.assertEqual(rc, 0, out + err)
+        self.assertEqual(raw_cell(self.out, "AH19"), 4.0)  # birth month, a plain single cell here
+        with zipfile.ZipFile(self.form) as a, zipfile.ZipFile(self.out) as b:
+            self.assertEqual(a.read("xl/drawings/drawing1.xml"), b.read("xl/drawings/drawing1.xml"))
+
+
+class AttributeOrder(unittest.TestCase):
+    def test_cell_with_style_before_address_is_replaced_not_duplicated(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            form = os.path.join(tmp, "order.xlsx")
+            with zipfile.ZipFile(STANDARD) as z, zipfile.ZipFile(form, "w") as w:
+                for info in z.infolist():
+                    data = z.read(info.filename)
+                    if info.filename == SHEET:
+                        data = data.replace(b'<c r="Z4" s="366"/>', b'<c s="366" r="Z4"/>', 1)
+                    w.writestr(info, data)
+            out = os.path.join(tmp, "out.xlsx")
+            spec = write_spec(tmp, [{"item": "事業所名", "value": "サンプル商事株式会社"}])
+            rc, _, err = run("fill", form, spec, out)
+            self.assertEqual(rc, 0, err)
+            with zipfile.ZipFile(out) as z:
+                sheet = z.read(SHEET).decode("utf-8")
+            self.assertEqual(len(re.findall(r'<c\b[^>]*\sr="Z4"', sheet)), 1)
+            self.assertIn('s="366"', re.search(r'<c\b[^>]*\sr="Z4"[^>]*>', sheet).group(0))
+            rc, out_text, err = run("verify", form, out, spec)
+            self.assertEqual(rc, 0, out_text + err)
+        finally:
+            shutil.rmtree(tmp)
 
 
 class Inspect(unittest.TestCase):

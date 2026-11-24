@@ -279,8 +279,10 @@ def _is_input(sh, rc):
 
 
 def _step(sh, start, delta, field, strict):
-    """The cell next to a text in one direction. Plain empty spacer cells (not merged, no dropdown)
-    are skipped up to the first input; a text cell on the way is an error, not an input."""
+    """The cell next to a text in one direction. Plain empty cells (not merged, no dropdown) are
+    skipped up to the first merged or dropdown input. When a plain (unmerged) label comes first, the
+    first plain empty cell was the input after all: forms without dropdowns have single-cell inputs,
+    such as the month between the 年 and 月 labels."""
     first = None
     r, c = start
     while 1 <= r <= sh.max_row and 1 <= c <= sh.max_col:
@@ -289,7 +291,11 @@ def _step(sh, start, delta, field, strict):
             first = rc
         if _is_input(sh, rc):
             v = sh.values.get(rc)
-            if strict and isinstance(v, str) and norm(v) and norm(v) not in CHECKBOX:
+            is_text = isinstance(v, str) and norm(v) and norm(v) not in CHECKBOX
+            boxed = rc in sh.merged or sh.has_dropdown(rc)  # a box that may hold a filled-in value
+            if is_text and rc != first and not boxed:
+                return first
+            if strict and is_text:
                 raise FormError("the cell next to the text of %r holds %r at %s: a label, or a value already "
                                 "filled in. Try another direction (right_of / left_of / below), or pass "
                                 "--overwrite to replace a value" % (field, norm(v), addr(*rc)))
@@ -403,7 +409,8 @@ def _cell_xml(a, style, value):
 
 
 def _cell_re(a):
-    return re.compile(r'<c r="%s"(?=[\s/>])[^>]*?(?:/>|>.*?</c>)' % a, re.S)
+    # attributes may come in any order (<c s="1" r="A1"/> is as valid as <c r="A1" s="1"/>)
+    return re.compile(r'<c\b(?=[^>]*\sr="%s")[^>]*?(?:/>|>.*?</c>)' % a, re.S)
 
 
 def set_cell(xml, r, c, value):
@@ -413,7 +420,7 @@ def set_cell(xml, r, c, value):
         style = re.search(r'\ss="(\d+)"', m.group(0)[:m.group(0).find(">") + 1])
         new = _cell_xml(a, style.group(1) if style else None, value)
         return xml[:m.start()] + new + xml[m.end():]
-    row = re.search(r'<row r="%d"(?=[\s/>])[^>]*?(/>|>(.*?)</row>)' % r, xml, re.S)
+    row = re.search(r'<row\b(?=[^>]*\sr="%d")[^>]*?(/>|>(.*?)</row>)' % r, xml, re.S)
     if not row:
         raise FormError("row %d does not exist in the sheet XML; fill this cell by hand" % r)
     new = _cell_xml(a, None, value)
@@ -421,7 +428,7 @@ def set_cell(xml, r, c, value):
         start = row.group(0)[:-2] + ">"
         return xml[:row.start()] + start + new + "</row>" + xml[row.end():]
     body_start = row.start(2)
-    for cm in re.finditer(r'<c r="([A-Z]+)\d+"', row.group(2)):
+    for cm in re.finditer(r'<c\b[^>]*\sr="([A-Z]+)\d+"', row.group(2)):
         if col_to_num(cm.group(1)) > c:
             pos = body_start + cm.start()
             return xml[:pos] + new + xml[pos:]
@@ -495,6 +502,9 @@ def verify(form, out, spec_path):
     check("same package parts", sorted(src.names) == sorted(dst.names))
     changed = [n for n in others if n in dst.names and src.read(n) != dst.read(n)]
     check("other parts byte-identical", not changed, ", ".join(changed))
+    refs = re.findall(r'<c\b[^>]*\sr="([A-Z]+\d+)"', sh_dst.xml)
+    dups = sorted(set(x for x in refs if refs.count(x) > 1))
+    check("no cell address appears twice", not dups, ", ".join(dups))
     for tag in ("<x14:dataValidation ", "<dataValidation ", "<mergeCell "):
         a, b = sh_src.xml.count(tag), sh_dst.xml.count(tag)
         check("count of %s kept" % tag.strip("< "), a == b, "%d -> %d" % (a, b))

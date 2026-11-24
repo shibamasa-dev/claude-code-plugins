@@ -68,6 +68,8 @@ form_checked:        # YYYY-MM-DD and the revision or fiscal year shown on that 
 seal: required / not required / unknown
 submit: through the facility / by the applicant / online / by mail
 deadline:
+certification_date:  # which dates are accepted, e.g. within 3 months of the application
+work_record:         # the requester's rules, e.g. newest month first, hours include breaks
 notes:               # anything else: original only, no mail, extra sheets
 ```
 

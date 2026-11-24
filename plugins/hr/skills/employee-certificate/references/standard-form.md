@@ -29,7 +29,7 @@ The Excel file has three sheets: the form, a sheet of dropdown lists, and `記�
 | 5 | `雇用の形態` | employee file, confirm | Officers (`役員`) and the self-employed (`自営業主`, `自営業専従者`, `家族従業者`) are their own options; ask when the file doesn't say |
 | 6 | `就労時間(固定就労の場合)` | employee file | Weekday checkboxes (`below` the day), monthly total and breaks, days per month and week, start and end times on weekdays, Saturdays, Sundays and holidays |
 | 6 | `就労時間(変則就労の場合)` | employee file | For shift work without fixed hours: monthly or weekly total, days, the main shift |
-| 7 | `就労実績` | ask | The last three months: days per month (paid leave counted as worked days) and hours per month (breaks and overtime included). If leave covers those months, the three months before the leave |
+| 7 | `就労実績` | ask | The last three months actually worked (not pay months), **newest month in the first column**: days per month (paid leave counted as worked days) and hours per month (breaks set by the work rules and overtime included). If leave covers those months, the three months before the leave. Never copy last year's figures: they may have left out breaks or used the old order |
 | 8 | `産前･産後休業の取得` | ask | Planned or current, with the period |
 | 9 | `育児休業の取得` | ask | Planned, current or finished, with the period |
 | 10 | `産休・育休以外の休業の取得` | ask | Reason and period |
@@ -41,9 +41,13 @@ The Excel file has three sheets: the form, a sheet of dropdown lists, and `記�
 | 16 | `育休延長可否` | ask | Whether the leave can be extended |
 | 17 | `単身赴任期間（予定含む）` | ask | Leave the end blank when it is open |
 | 18 | `備考欄` | ask | Anything the items above can't carry, for example required early arrival |
-| 19 | `保護者記載欄` | ask | Children's names, birth dates, facility, in use or applied for. Written by the guardian; fill it only when the user (who is that guardian) gives the values |
+| 19 | `保護者記載欄` | ask | Children's names, birth dates, facility, in use or applied for. Written by the guardian; fill it only when the user (who is that guardian) gives the values. The form asks for Western-calendar years elsewhere but not here; follow the municipality's guidance or ask |
 
-Items 8 to 17 stay blank when they don't apply. Don't tick a box to say "not applicable" unless the form has that option.
+Items 8 to 17 stay blank when they don't apply. Item 14 is for fixed-term contracts only. Don't tick a box to say "not applicable" unless the form has that option.
+
+## Municipal variants
+
+Seen in municipal downloads of the standard form: no dropdowns at all (month and day inputs are then plain single cells), a sheet name with a trailing full-width space, a filled-in sample sheet (`記入見本`) with drawings, the addressee or a remarks template already filled in, and an option moved a column. Label mapping and `fill` handle all of these; prefilled inputs need a decision (keep, or clear with `--overwrite`).
 
 ## Simplified version
 

@@ -24,7 +24,7 @@ Exit codes: 0 ok, 1 a verify check failed, 2 an error (the message says what to 
 }
 ```
 
-`sheet` is optional (default: the first sheet). Each field has an `item` and at most one locator.
+`sheet` is optional (default: the first sheet). Sheet names also match after normalization, so `"標準的な様式"` finds a sheet whose name ends in a full-width space. Each field has an `item` and at most one locator.
 
 | Key | Meaning |
 |---|---|
@@ -83,4 +83,4 @@ Field patterns that resolve on the standard layout (values are placeholders):
 ]}
 ```
 
-The three months of the work record are `nth` 1, 2 and 3 of `年`, `月`, `日/月` and `時間/月`.
+The three months of the work record are `nth` 1, 2 and 3 of `年`, `月`, `日/月` and `時間/月`, left to right; the standard instructions put the newest month at `nth` 1.
