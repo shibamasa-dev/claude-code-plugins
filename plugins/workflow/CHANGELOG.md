@@ -2,6 +2,12 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.14.0] - 2026-11-24
+
+### Added
+- New agent `acceptance-verifier` (`agents/acceptance-verifier.md`, invoked as `workflow:acceptance-verifier`): a read-only check of a PR or deliverable against its acceptance criteria. It reads the issue with `--json` (bare `--comments` prints nothing on an issue with no comments), fetches every top-level and inline review with `--paginate` and compares the count with GraphQL `reviewThreads.totalCount`, sorts each finding against the code, runs the tests itself with caches off, judges whether the tests represent production data, never prints a secret's value, re-checks right before writing, and returns a fixed-format report in its final response (progress only goes to `main` through `SendMessage`).
+- pr-review-triage: before the merge decision, run `acceptance-verifier` on the PR when the linked issue has acceptance criteria, and re-check its ❌ rows before deciding.
+
 ## [0.13.0] - 2026-11-24
 
 ### Added

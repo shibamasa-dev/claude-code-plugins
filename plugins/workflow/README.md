@@ -26,6 +26,12 @@ If you used the former `review` plugin, uninstall it and move its settings to th
 | `weekly-orchestrator-setup` | Sets up a repository's orchestrator once: asks for the cycle settings, writes `.claude/weekly-orchestrator.json`, and places a project orchestrator skill template, the weekly cycle-issue GitHub Actions workflow and a three-line "Weekly plan" section in `AGENTS.md` or `CLAUDE.md` |
 | `choice-board` | When you have to decide something for each of 10 or more items, puts them on a board page instead of in chat: one row per item with its options (the recommended one marked) and a memo, saved to the Artifact database so Claude reads the choices back. One board per project, reused across rounds. Needs the Artifact tools (Claude Code connected to claude.ai) |
 
+## Agents
+
+| Agent | Use it for |
+|---|---|
+| `acceptance-verifier` | Checks a PR or deliverable against the linked issue's acceptance criteria before the merge or send-back decision: reads the issue and every review (top-level and inline, paginated), sorts each finding against the actual code, runs the tests itself with caches off, and returns a fixed-format report (review evaluation, ✅/❌ per criterion with the command behind it, merge recommendation, out-of-scope notes) in its final response. Read-only: it never edits, commits, pushes or writes to GitHub. `pr-review-triage` runs it before the merge decision when the linked issue has acceptance criteria. Invoke it as `workflow:acceptance-verifier` |
+
 ## Hooks
 
 | Hook | When | What it does |
