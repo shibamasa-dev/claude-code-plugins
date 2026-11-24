@@ -61,13 +61,18 @@ def parse_xml(data):
         raise FormError("the workbook XML is broken (%s)" % e)
 
 
+def _xml_encoding(data):
+    """Package parts are UTF-8 or UTF-16 (ECMA-376), with or without a byte order mark."""
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return "utf-16"
+    if data[:2] in (b"<\x00", b"\x00<"):
+        return "utf-16-le" if data[:1] == b"<" else "utf-16-be"
+    return "utf-8-sig" if data[:3] == b"\xef\xbb\xbf" else "utf-8"
+
+
 def _decode_xml(data):
-    """Package parts are UTF-8 or UTF-16 (ECMA-376); decode before looking for a DTD, so a UTF-16
-    part can't hide one from a byte search."""
-    if data[:2] in (b"\xff\xfe", b"\xfe\xff") or data[:2] in (b"<\x00", b"\x00<"):
-        enc = "utf-16" if data[:2] in (b"\xff\xfe", b"\xfe\xff") else ("utf-16-le" if data[:1] == b"<" else "utf-16-be")
-    else:
-        enc = "utf-8-sig"
+    """Decode before looking for a DTD, so a UTF-16 part can't hide one from a byte search."""
+    enc = _xml_encoding(data)
     try:
         return data.decode(enc)
     except UnicodeDecodeError as e:
@@ -125,10 +130,11 @@ def _text_of(el):
 
 
 class Sheet:
-    def __init__(self, name, path, xml):
+    def __init__(self, name, path, xml, encoding):
         self.name = name
         self.path = path
         self.xml = xml
+        self.encoding = encoding  # fill writes the part back as it came, to match its declaration
         self.values = {}      # (r, c) -> value (str or number)
         self.formulas = set()
         self.merged = {}      # (r, c) of every merged cell -> (r1, c1, r2, c2)
@@ -194,8 +200,9 @@ class Workbook:
             if not hits:
                 raise FormError("no sheet named %r; sheets: %s" % (name, ", ".join(s[0] for s in self.sheets)))
             sname, path = hits[0]
-        xml = _decode_xml(self.read(path))
-        sh = Sheet(sname, path, xml)
+        data = self.read(path)
+        xml = _decode_xml(data)
+        sh = Sheet(sname, path, xml, _xml_encoding(data))
         root = parse_xml(xml)
         for c in root.iter("{%s}c" % NS["m"]):
             r, col = parse_addr(c.get("r"))
@@ -497,7 +504,7 @@ def fill(form, spec_path, out, overwrite=False):
     try:
         with zipfile.ZipFile(tmp, "w") as zout:
             for info in wb.zf.infolist():
-                data = xml.encode("utf-8") if info.filename == sh.path else wb.read(info.filename)
+                data = xml.encode(sh.encoding) if info.filename == sh.path else wb.read(info.filename)
                 zout.writestr(info, data)
         os.replace(tmp, out)
     except BaseException:

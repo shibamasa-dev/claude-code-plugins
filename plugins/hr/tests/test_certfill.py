@@ -493,6 +493,22 @@ class AttributeOrder(unittest.TestCase):
         finally:
             shutil.rmtree(tmp)
 
+    def test_utf16_sheet_is_written_back_in_utf16(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            form = edited(tmp, "u16.xlsx", [('encoding="UTF-8"', 'encoding="UTF-16"')], encoding="utf-16")
+            out = os.path.join(tmp, "out.xlsx")
+            spec = write_spec(tmp, [{"item": "事業所名", "value": "サンプル商事株式会社"}])
+            rc, _, err = run("fill", form, spec, out)
+            self.assertEqual(rc, 0, err)
+            with zipfile.ZipFile(out) as z:
+                data = z.read(SHEET)
+            self.assertIn("サンプル商事株式会社", data.decode("utf-16"))
+            rc, out_text, err = run("verify", form, out, spec)
+            self.assertEqual(rc, 0, out_text + err)
+        finally:
+            shutil.rmtree(tmp)
+
 
 class Inspect(unittest.TestCase):
     def test_lists_sheets_and_inputs(self):
