@@ -40,7 +40,7 @@ The plugin has no settings and no hooks, and keeps nothing in its plugin data di
 
 - Logos and concept icons are downloaded while drawing (svgl, Devicon, gilbarbara/logos, Lucide), so that step needs network access. Without it the skill uses text labels and says so. The finished file embeds its icons and needs no network
 - An SVG shown in Markdown through an image tag picks light or dark from the color scheme the embedding page declares, or from the system theme when it declares none. That can differ from the theme the page shows
-- The stepper refuses a figure that contains a `#` followed by three or more hex characters, because that reads as a color value. An id reference such as `url(#ab1-arrow)` matches too, so name ids so they do not look like colors
+- The stepper refuses a figure with a script element or an event attribute, and one that contains a `#` followed by three or more hex characters, because that reads as a color value. An id reference such as `url(#ab1-arrow)` matches too, so name ids so they do not look like colors
 - Mermaid's C4 diagrams are experimental; on GitHub the skill draws a C4 level as a flowchart unless you ask for the C4 syntax
 
 ## Requirements

@@ -57,7 +57,7 @@ Keep one diagram to about 12 boxes. Beyond that, split by boundary or by phase a
 | A document read as a finished piece (proposal, client report, slides, a shared page or artifact) | Hand-written SVG in HTML |
 | The user asks for PlantUML or draw.io, or the document set already uses one | That format |
 
-Sections 1–3 hold for every form: the same type choice, the same one-line declaration and the same box check. Only the drawing changes.
+When the user names a form ("as SVG", "in Mermaid"), that form wins over the table, whatever the destination. Sections 1–3 hold for every form: the same type choice, the same one-line declaration and the same box check. Only the drawing changes.
 
 **Mermaid.** [references/mermaid.md](references/mermaid.md) has the syntax per type and the mistakes that break rendering. Read it before writing Mermaid. The diagram goes inside the document it illustrates; a standalone file goes to the path the user names, otherwise to `diagrams/<slug>.mmd` under the working directory.
 
@@ -76,10 +76,10 @@ Build it with the plugin's stepper:
 3. Run it:
 
    ```sh
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/stepper/stepper.mjs" <scratchpad>/steps.json --out <scratchpad>/steps.html --preview <scratchpad>/steps-preview
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/stepper/stepper.mjs" "<scratchpad>/steps.json" --out "<scratchpad>/steps.html" --preview "<scratchpad>/steps-preview"
    ```
 
-   It refuses a spec with no title, an SVG that does not start with `<svg`, a color value in the SVG, fewer than two steps, a focus id not in the SVG, or a bad `here` or `mark`, and prints why.
+   Replace `<scratchpad>` with the session scratchpad's absolute path. It refuses a spec with no title, an SVG that does not start with `<svg`, a hex or `rgb()` color value in the SVG (named colors such as `white` are not caught, so keep to the variables), a script element or event attribute, fewer than two steps, a focus id not in the SVG, or a bad `here` or `mark`, and prints why.
 4. Use the fragment (`--out`, or stdout): pass it to the host's HTML widget, or put it inside the deliverable HTML file. `--preview` writes `light.html` and `dark.html` around it; look at every step and the whole figure in both (§5).
 5. Write every point in the reply text as well, as the script's last line prints them: previews, notifications and summaries do not show the figure, and a reader who never clicks Next misses the later points. Without the script the point list is still readable.
 

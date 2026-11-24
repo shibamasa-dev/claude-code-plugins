@@ -88,10 +88,10 @@ When the reply or the document makes two or more points about the same picture (
 3. Run it:
 
    ```sh
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/stepper/stepper.mjs" <scratchpad>/steps.json --out <scratchpad>/steps.html --preview <scratchpad>/steps-preview
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/stepper/stepper.mjs" "<scratchpad>/steps.json" --out "<scratchpad>/steps.html" --preview "<scratchpad>/steps-preview"
    ```
 
-   It refuses a spec with no title, an SVG that does not start with `<svg`, a color value in the SVG, fewer than two steps, a focus id not in the SVG, or a bad `here` or `mark`, and prints why.
+   Replace `<scratchpad>` with the session scratchpad's absolute path. It refuses a spec with no title, an SVG that does not start with `<svg`, a hex or `rgb()` color value in the SVG (named colors such as `white` are not caught, so keep to the variables), a script element or event attribute, fewer than two steps, a focus id not in the SVG, or a bad `here` or `mark`, and prints why.
 4. Use the fragment (`--out`, or stdout): pass it to the host's HTML widget, or put it inside the deliverable HTML file. `--preview` writes `light.html` and `dark.html` around it; look at every step and the whole figure in both (§7).
 5. Write every point in the reply text as well, as the script's last line prints them: previews, notifications and summaries do not show the figure, and a reader who never clicks Next misses the later points. Without the script the point list is still readable.
 

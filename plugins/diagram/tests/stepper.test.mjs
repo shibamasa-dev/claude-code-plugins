@@ -28,6 +28,8 @@ const refusals = [
   ["svg not starting with <svg", (s) => (s.svg = `<div>${s.svg}</div>`), /does not start with <svg/],
   ["hard-coded hex color", (s) => (s.svg = s.svg.replace('d="M474,408H298"', 'd="M474,408H298" stroke="#cf222e"')), /color value/],
   ["hard-coded rgb color", (s) => (s.svg = s.svg.replace('d="M474,408H298"', 'd="M474,408H298" stroke="rgb(207,34,46)"')), /color value/],
+  ["script element in the svg", (s) => (s.svg = s.svg.replace("</svg>", "<script>alert(1)</script></svg>")), /script element or an event attribute/],
+  ["event attribute in the svg", (s) => (s.svg = s.svg.replace('<g data-box="web">', '<g data-box="web" onclick="alert(1)">')), /script element or an event attribute/],
   ["fewer than 2 steps", (s) => (s.steps = s.steps.slice(0, 1)), /Fewer than 2 steps/],
   ["focus id missing from the svg", (s) => s.steps[1].focus.push("m-refund"), /focus id m-refund/],
   ["here is an arrow, not a box", (s) => { s.steps[0].here = "m-auth-req"; }, /here m-auth-req is not a data-box/],

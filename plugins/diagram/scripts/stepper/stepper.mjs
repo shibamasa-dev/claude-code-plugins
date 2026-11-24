@@ -35,6 +35,7 @@ export function check(spec) {
   if (!svg.trim().startsWith("<svg")) errors.push("svg does not start with <svg.");
   if (HEX_OR_RGB.test(svg))
     errors.push("svg contains a color value (#... or rgb(...)). Set colors through classes that use the theme variables. An id reference such as url(#ab1-arrow) also matches: rename the id so no 3+ hex characters follow the #.");
+  if (/<script\b|\son[a-z]+\s*=\s*["']/i.test(svg)) errors.push("svg contains a script element or an event attribute (onload=...). The figure is markup only; the stepper adds the script.");
   const boxes = [...svg.matchAll(/data-box="([^"]+)"/g)].map((m) => m[1]);
   const arrows = [...svg.matchAll(/data-arrow="([^"]+)"/g)].map((m) => m[1]);
   const ids = new Set([...boxes, ...arrows]);
