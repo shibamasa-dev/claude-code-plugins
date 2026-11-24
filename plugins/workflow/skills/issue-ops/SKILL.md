@@ -182,6 +182,16 @@ Recurrence is for classification and filtering, not an execution trigger. **Real
 - **Put only "things that don't change until close" in the body.** Measured values, achievement rates, and "how far it has come" change on re-runs, so write how to get them (path, reproduction command) in the body and put the values, dated, in comments (e.g. an achievement rate can change not only its numerator but also its denominator on a re-run). Expected values, mapping tables, and real samples define what is correct and don't change, so they go inline in the body.
 - Verify by machine: after rewriting, grep the body for keywords like `old design` or `why it was rewritten`.
 
+### Checking for stale bodies
+
+Bodies drift when only the title or the comments get updated. To find suspects across repos (for example in a weekly review, or before delegating work from a backlog), run:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/issue-ops/scripts/stale_body_check.py" measure --repos <owner>/<repo> [<owner>/<repo> ...] --show
+```
+
+It is read-only and reports two kinds of suspect: (A) the body's first line names a fiscal year or round (「令和N年度」, 「YYYY年度」, 「第N回」) that the title does not, and (B) a self-declared 「YYYY-MM-DD 時点」 ("as of") date older than 60 days (`--stale-days`). A suspect is not a verdict: read the body, the comments and related PRs before rewriting anything, and rewrite the body only by the rules above. An exit status of 1 means an issue list could not be read, not that nothing was found.
+
 ### Recording rules when closing an issue (all issues)
 
 Even after closing, issues are referenced from other issues and other agents (agents read the body with one `issue_read` call and miss scattered comments). **Put the conclusion in the body, not in comments**:
