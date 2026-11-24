@@ -30,7 +30,7 @@ If you used the former `review` plugin, uninstall it and move its settings to th
 
 | Agent | Use it for |
 |---|---|
-| `acceptance-verifier` | Checks a PR or deliverable against the linked issue's acceptance criteria before the merge or send-back decision: reads the issue and every review (top-level and inline, paginated), sorts each finding against the actual code, runs the tests itself with caches off, and returns a fixed-format report (review evaluation, ✅/❌ per criterion with the command behind it, merge recommendation, out-of-scope notes) in its final response. Read-only: it never edits, commits, pushes or writes to GitHub. `pr-review-triage` runs it before the merge decision when the linked issue has acceptance criteria. Invoke it as `workflow:acceptance-verifier` |
+| `acceptance-verifier` | Checks a PR or deliverable against the linked issue's acceptance criteria before the merge or send-back decision: reads each linked issue and every review (review bodies, inline and conversation comments, paginated), sorts each finding against the actual code, runs the tests itself with caches off, and returns a fixed-format report (review evaluation, ✅/❌ per criterion with the command behind it, merge recommendation, out-of-scope notes) in its final response. Read-only: it never edits, commits, pushes or writes to GitHub. `pr-review-triage` runs it before the merge decision when a linked issue has acceptance criteria. Invoke it as `workflow:acceptance-verifier` |
 
 ## Hooks
 
