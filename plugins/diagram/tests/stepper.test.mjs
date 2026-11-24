@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { check, build, THEME } from "../scripts/stepper/stepper.mjs";
+import { check, build, dimTargets, THEME } from "../scripts/stepper/stepper.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const STEPPER = path.join(here, "../scripts/stepper/stepper.mjs");
@@ -64,12 +64,28 @@ test("every step's name and point are in the markup without the script", () => {
   }
 });
 
-test("two fragments on one page get different root ids", () => {
-  const a = fixture();
-  const b = fixture();
-  b.title = "別の図";
+test("two fragments of the same spec get different root ids", () => {
   const id = (html) => html.match(/<div class="fs" id="([^"]+)"/)[1];
-  assert.notEqual(id(build(a)), id(build(b)));
+  assert.notEqual(id(build(fixture())), id(build(fixture())));
+});
+
+// A minimal element tree for dimTargets: name is for reading the result, tag is the data-box / data-arrow id
+const el = (name, tag, ...children) => ({ name, children, getAttribute: (a) => (a === "data-box" && tag) || null });
+const names = (els) => els.map((e) => e.name).sort();
+
+test("a container holding the current point fades only its own parts", () => {
+  // A team band (tagged) holding two systems; the point is one of the systems
+  const svg = el("svg", null,
+    el("band", "team", el("band-rect", null), el("band-label", null), el("box-a", "crm", el("a-rect", null)), el("box-b", "erp", el("b-rect", null))),
+    el("lifeline", null));
+  assert.deepEqual(names(dimTargets(svg, ["crm"])), ["band-label", "band-rect", "box-b"]);
+});
+
+test("a container outside the point fades once, not again inside", () => {
+  const svg = el("svg", null,
+    el("band", "team", el("band-rect", null), el("box-a", "crm", el("a-rect", null))),
+    el("box-c", "billing", el("c-rect", null)));
+  assert.deepEqual(names(dimTargets(svg, ["billing"])), ["band"]);
 });
 
 test("--preview writes a light and a dark page", () => {

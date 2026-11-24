@@ -12,11 +12,13 @@
 // - Colors are the theme variables of skills/one-page-diagram/references/svg.md, carried in the fragment itself for
 //   light and dark, instead of a chat-widget host's variables, so the fragment works inline and in a standalone file.
 // - Messages and button labels are in English; `labels` in the spec overrides the buttons.
-// - Each fragment finds its own root by id (several fragments on one page no longer pick each other's root), the
+// - Each fragment finds its own root by a unique id (several fragments on one page no longer pick each other's root),
+//   a container that holds the current point fades only its own parts (the original faded the point with it), the
 //   step data inlined into the script cannot close the script tag, and the figure's own font sizes are left alone.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
 
 const HEX_OR_RGB = /#[0-9a-fA-F]{3,8}\b|rgba?\(/;
 
@@ -54,15 +56,44 @@ export function check(spec) {
 
 const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const vars = (t) => Object.entries(t).map(([k, v]) => `--${k}:${v}`).join(";");
-// A stable id per fragment, so two fragments on one page each find their own root
-const fragmentId = (spec) => {
-  let h = 0;
-  for (const c of JSON.stringify([spec.title, spec.steps])) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return `fs-${h.toString(36)}`;
-};
+// Which elements to fade for one step. Runs in the browser (inlined into the fragment's script) and in the tests,
+// so it uses only children and getAttribute. A tagged element outside the focus fades as a whole, unless it contains
+// a focused element: then only its own untagged parts fade, so the focused element inside stays at full strength.
+// Tagged elements inside a faded whole are not faded again (opacity would compound). Untagged elements outside any
+// tagged one (lifelines, legend) never fade.
+export function dimTargets(root, focus) {
+  const tagOf = (el) => (el.getAttribute ? el.getAttribute("data-box") ?? el.getAttribute("data-arrow") : null);
+  const kids = (el) => Array.from(el.children || []);
+  const hasTag = (el) => kids(el).some((c) => tagOf(c) != null || hasTag(c));
+  const hasFocus = (el) => kids(el).some((c) => focus.includes(tagOf(c)) || hasFocus(c));
+  const out = [];
+  const own = (el) => {
+    for (const c of kids(el)) {
+      if (tagOf(c) != null) continue;
+      if (hasTag(c)) own(c);
+      else out.push(c);
+    }
+  };
+  const walk = (el) => {
+    for (const c of kids(el)) {
+      const t = tagOf(c);
+      if (t == null || focus.includes(t)) {
+        walk(c);
+      } else if (hasFocus(c)) {
+        own(c);
+        walk(c);
+      } else {
+        out.push(c);
+      }
+    }
+  };
+  walk(root);
+  return out;
+}
 
 export function build(spec) {
-  const id = fragmentId(spec);
+  // Unique per fragment, so two fragments on one page (even of the same spec) each find their own root
+  const id = `fs-${randomUUID().slice(0, 8)}`;
   const labels = { back: "Back", next: "Next", all: "Whole figure", ...spec.labels };
   const steps = spec.steps.map((s) => ({ focus: s.focus, here: s.here ?? null, mark: s.mark ?? null }));
   const list = spec.steps
@@ -109,12 +140,15 @@ ${spec.svg}
 (()=>{const root=document.getElementById(${JSON.stringify(id)});if(!root||root.classList.contains("js"))return;root.classList.add("js");
 const steps=${JSON.stringify(steps).replace(/</g, "\\u003c")};const svg=root.querySelector("svg");const items=[...root.querySelectorAll("li[data-step]")];
 const NS="http://www.w3.org/2000/svg";let i=0,all=false;
+${dimTargets.toString()}
 svg.querySelectorAll("[data-arrow] text").forEach(t=>{const b=t.getBBox();const r=document.createElementNS(NS,"rect");r.setAttribute("class","fs-pill");r.setAttribute("x",b.x-5);r.setAttribute("y",b.y-2);r.setAttribute("width",b.width+10);r.setAttribute("height",b.height+4);r.setAttribute("rx",4);t.before(r);});
 function draw(){root.classList.toggle("fs-step",!all);items.forEach((li,k)=>li.classList.toggle("on",!all&&k===i));
 svg.querySelectorAll(".fs-badge,.fs-badge-bg").forEach(e=>e.remove());
-svg.querySelectorAll("[data-box],[data-arrow]").forEach(g=>{g.classList.remove("fs-on","fs-hot","fs-here","fs-dim");if(all)return;
-const isBox=g.dataset.box!==undefined;const id=isBox?g.dataset.box:g.dataset.arrow;const on=steps[i].focus.includes(id);
-g.classList.add(on?(isBox?"fs-on":"fs-hot"):"fs-dim");
+svg.querySelectorAll(".fs-dim").forEach(e=>e.classList.remove("fs-dim"));
+if(!all)dimTargets(svg,steps[i].focus).forEach(e=>e.classList.add("fs-dim"));
+svg.querySelectorAll("[data-box],[data-arrow]").forEach(g=>{g.classList.remove("fs-on","fs-hot","fs-here");if(all)return;
+const isBox=g.dataset.box!==undefined;const id=isBox?g.dataset.box:g.dataset.arrow;if(!steps[i].focus.includes(id))return;
+g.classList.add(isBox?"fs-on":"fs-hot");
 if(isBox&&id===steps[i].here){g.classList.add("fs-here");if(steps[i].mark){const b=g.getBBox();const t=document.createElementNS(NS,"text");t.setAttribute("class","fs-badge");t.setAttribute("x",b.x+6);t.setAttribute("y",b.y+b.height+15);t.textContent=steps[i].mark;g.appendChild(t);const w=t.getBBox().width;const bg=document.createElementNS(NS,"rect");bg.setAttribute("class","fs-badge-bg");bg.setAttribute("x",b.x);bg.setAttribute("y",b.y+b.height+3);bg.setAttribute("width",w+12);bg.setAttribute("height",16);bg.setAttribute("rx",3);t.before(bg);}}});
 root.querySelector(".fs-point").textContent=all?"":items[i].querySelector(".pt").textContent;
 root.querySelector(".fs-pos").textContent=all?${JSON.stringify(labels.all)}:(i+1)+" / "+steps.length;}
