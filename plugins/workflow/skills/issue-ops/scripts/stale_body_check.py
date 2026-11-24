@@ -59,11 +59,12 @@ AS_OF_STALE_DAYS = 60
 GH_TIMEOUT = 60
 
 
-def _tokens(text: str) -> dict[str, set[str]]:
+def _tokens(text: str) -> dict[str, set[int]]:
+    """Values as numbers, so 「第1回」 and 「第01回」 are the same round."""
     return {
-        "era_year": {m.group(1) for m in _ERA_YEAR.finditer(text)},
-        "seireki_year": {m.group(1) for m in _SEIREKI_YEAR.finditer(text)},
-        "round": {m.group(1) for m in _ROUND.finditer(text)},
+        "era_year": {int(m.group(1)) for m in _ERA_YEAR.finditer(text)},
+        "seireki_year": {int(m.group(1)) for m in _SEIREKI_YEAR.finditer(text)},
+        "round": {int(m.group(1)) for m in _ROUND.finditer(text)},
     }
 
 
