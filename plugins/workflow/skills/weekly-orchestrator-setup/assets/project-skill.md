@@ -1,6 +1,6 @@
 ---
 name: __SKILL_NAME__
-description: Orchestrator for __REPO__ that runs one cycle (plan, batch and delegate, verify, close out) on top of weekly-orchestrator-base. Does not implement. [TODO: one line on what this repo's cycle is for, then trigger phrases in the user's language, e.g. "plan this week", "close the week", "resume the plan"]
+description: Orchestrator for __REPO__ that runs one cycle (plan, batch and delegate, verify, close out) on top of weekly-orchestrator-base. Does not implement. [TODO - one line on what this repo's cycle is for, then trigger phrases in the user's language, e.g. "plan this week", "close the week", "resume the plan"]
 ---
 
 # __SKILL_NAME__ — the cycle of __REPO__

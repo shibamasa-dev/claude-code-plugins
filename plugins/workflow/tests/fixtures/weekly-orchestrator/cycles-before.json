@@ -26,5 +26,12 @@
   "state": "CLOSED",
   "closedAt": "2026-10-01T00:00:00Z",
   "body": ""
+ },
+ {
+  "number": 8,
+  "title": "sample weekly 2026-02-30",
+  "state": "CLOSED",
+  "closedAt": "2026-03-01T00:00:00Z",
+  "body": "A typo in the date."
  }
 ]

@@ -37,7 +37,10 @@ if [ "$(cat "$T/fields.json")" = "[]" ]; then
   exit 0
 fi
 number="${url##*/}"
-id="$(gh issue view "$number" -R "$repo" --json id | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+if ! id="$(gh issue view "$number" -R "$repo" --json id | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"; then
+  echo "::warning::Issue Fields were not set on $url (its id could not be read); the issue itself was created."
+  exit 0
+fi
 python3 - "$T/fields.json" > "$T/query.graphql" <<'PY'
 import json, sys
 fields = json.load(open(sys.argv[1]))

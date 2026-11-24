@@ -30,6 +30,7 @@ ISSUES_QUERY = """query($owner:String!,$name:String!){repository(owner:$owner,na
   ... on IssueFieldSingleSelectValue{name field{... on IssueFieldSingleSelect{name}}}
   ... on IssueFieldDateValue{value field{... on IssueFieldDate{name}}}}}}}}}"""
 PAGE = 100
+PR_LIMIT = 200
 
 
 def main_checkout(root):
@@ -74,8 +75,10 @@ def collect(cfg, warn):
         owner, name = repo.split("/")
         issues = json.loads(run(["gh", "api", "graphql", "-f", f"query={ISSUES_QUERY}",
                                  "-F", f"owner={owner}", "-F", f"name={name}"]))
-        prs = json.loads(run(["gh", "pr", "list", "-R", repo, "--state", "open", "--json",
+        prs = json.loads(run(["gh", "pr", "list", "-R", repo, "--state", "open", "--limit", str(PR_LIMIT), "--json",
                               "number,title,headRefName,isDraft,reviewDecision,closingIssuesReferences"]))
+        if len(prs) >= PR_LIMIT:
+            warn.append(f"{repo} has {PR_LIMIT} or more open PRs; the survey reads only the first {PR_LIMIT}")
         data.append({"repo": repo, "issues": issues["data"]["repository"]["issues"]["nodes"], "prs": prs})
     return data
 
@@ -97,10 +100,18 @@ def local_date(cfg, ts):
     return dt.datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(cfg["_tz"]).date()
 
 
-def linked(pr):
-    nums = {r["number"] for r in pr.get("closingIssuesReferences") or []}
+def linked(pr, repo):
+    """Numbers of this repo's issues the PR closes or names in its title (owner/other#N is another repo's)."""
+    nums = set()
+    for r in pr.get("closingIssuesReferences") or []:
+        rr = r.get("repository") or {}
+        name = f"{(rr.get('owner') or {}).get('login', '')}/{rr.get('name', '')}"
+        if not rr or name.lower() == repo.lower():
+            nums.add(r["number"])
     # Only the title: the body's #N also matches mentions such as acceptance criteria
-    nums |= {int(n) for n in re.findall(r"#(\d+)", pr["title"])}
+    for full, n in re.findall(r"([\w.-]+/[\w.-]+)?#(\d+)", pr["title"]):
+        if not full or full.lower() == repo.lower():
+            nums.add(int(n))
     return sorted(nums)
 
 
@@ -142,7 +153,7 @@ def render_repo(cfg, r, today, end, skip, multi, warn):
 
     prs_by = {}
     for p in r["prs"]:
-        for n in linked(p):
+        for n in linked(p, repo):
             prs_by.setdefault(n, []).append(p["number"])
 
     def tag(i):
@@ -231,7 +242,7 @@ def render_repo(cfg, r, today, end, skip, multi, warn):
 
     print(f"\n### Open PRs (review left: gh pr view <N> -R {repo} --comments)")
     for p in r["prs"]:
-        links = ", ".join(ref(n) for n in linked(p)) or "no issue reference"
+        links = ", ".join(ref(n) for n in linked(p, repo)) or "no issue reference"
         rd = p.get("reviewDecision") or "no review decision"
         print(f"- {ref(p['number'])} {clean(p['title'])} ({clean(p['headRefName'])}{', draft' if p.get('isDraft') else ''}, {rd}, {links})")
     if not r["prs"]:
@@ -312,7 +323,7 @@ def main(argv=None):
         cfg = load_config(a.config)
         warn = [w for w in [pin_skew(cfg)] if w]
         data = collect(cfg, warn)
-        cycles = cycle_issues(cfg)
+        cycles = cycle_issues(cfg, warn=warn)
         day = dt.date.fromisoformat(a.today) if a.today else today_in(cfg)
         render(cfg, data, cycles, day, warn)
     except (CycleError, subprocess.CalledProcessError) as e:

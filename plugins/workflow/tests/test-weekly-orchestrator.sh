@@ -28,7 +28,7 @@ case "\$1 \$2" in
   "pr list") cat "$FX/prs.json" ;;
   "issue list") cat "$T/cycles.json" ;;
   "issue create") echo "create \$*" >> "$T/log"; echo "https://github.com/example-org/sample-app/issues/99" ;;
-  "issue view") echo '{"id":"I_fake99"}' ;;
+  "issue view") [ -f "$T/viewfail" ] && exit 1; echo '{"id":"I_fake99"}' ;;
   *) echo "fake gh: unexpected \$*" >&2; exit 1 ;;
 esac
 EOF
@@ -79,6 +79,10 @@ row "only a similar title exists (\"... retro\"): exit" "$rc" 0
 row "only a similar title exists: issue created" "$(grep -c '^create' "$T/log" 2>/dev/null || echo 0)" 1
 row "the created title is the resolved one" "$(grep -c -- '--title sample weekly 2026-11-23 --body-file' "$T/log")" 1
 row "issue_fields set with the next Monday as the date" "$(grep -c 'dateValue: "2026-11-30"' "$T/log")" 1
+touch "$T/viewfail"; rc=$(run_create)
+row "the new issue's id cannot be read: still exit" "$rc" 0
+row "the new issue's id cannot be read: issue created, fields skipped" "$(grep -c '^create' "$T/log")/$(grep -c '^fields' "$T/log")" 1/0
+rm -f "$T/viewfail"
 python3 - "$T/cycles.json" <<'PY'
 import json, sys
 p = sys.argv[1]; c = json.load(open(p))
@@ -95,9 +99,9 @@ row "the issue list cannot be read: exit" "$( [ "$rc" -ne 0 ] && echo failed || 
 row "the issue list cannot be read: nothing created" "$(grep -c '^create' "$T/log" 2>/dev/null || echo 0)" 0
 mv "$T/cycles.off" "$T/cycles.json"
 
-(cd "$T/repo" && python3 "$S/cycle.py" exists --title "sample weekly 2099-01-05" --limit 4 > /dev/null 2>&1); rc=$?
-row "no match but the list filled --limit: an error, not \"no such issue\"" "$rc" 2
 (cd "$T/repo" && python3 "$S/cycle.py" exists --title "sample weekly 2099-01-05" --limit 5 > /dev/null 2>&1); rc=$?
+row "no match but the list filled --limit: an error, not \"no such issue\"" "$rc" 2
+(cd "$T/repo" && python3 "$S/cycle.py" exists --title "sample weekly 2099-01-05" --limit 6 > /dev/null 2>&1); rc=$?
 row "no match and the list ended before --limit: exit" "$rc" 0
 
 echo '=== new --prev: carry-over ==='
@@ -162,6 +166,8 @@ printf '{"title":"Plan example-org/sample-app 2026-W47","body":""}' > "$T/rt.jso
 row "a title with {repo} is read back" "$(cy --config "$T/repotitle.json" new --prev "$T/rt.json" | js 'd["title"]' | tr ' /' '_.')" Plan_example-org.sample-app_2026-W48
 echo '{"repo":"example-org/sample-app","title":"Plan {date} {start}"}' > "$T/badph.json"
 cy --config "$T/badph.json" resolve > /dev/null 2>&1; row "a title placeholder that cannot be read back is refused: exit" "$?" 2
+printf '{"title":"sample weekly 2026-02-30","body":""}' > "$T/baddate.json"
+cy new --prev "$T/baddate.json" > /dev/null 2>&1; row "a title with a date that does not exist is not a cycle issue: exit" "$?" 2
 printf '{"title":"Release notes 2026-11-16","body":""}' > "$T/other.json"
 cy new --prev "$T/other.json" > /dev/null 2>&1; row "a title that is not a cycle issue's is refused: exit" "$?" 2
 echo '{"repo":"example-org/sample-app","timezone":"Mars/Olympus"}' > "$T/badtz.json"
@@ -192,6 +198,8 @@ row "warning: a goal with more than 100 children" "$(has '#20 has 120 children; 
 sect() { awk -v h="$1" 'index($0, h) == 1 {on=1; next} /^#/ {on=0} on' "$T/survey.txt"; }
 row "a minimum-bar candidate by Target date" "$(sect '#### Start date or Target date' | grep -c '^- #12 Parse quoted fields (High, Target date: 2026-11-27, PR #60)')" 1
 row "a minimum-bar candidate by Priority" "$(sect '#### Priority High' | grep -c '^- #12 ')" 1
+row "a PR naming another repo's #12 is not linked to this repo's #12" "$(grep -c 'PR #60, #62\|PR #62' "$T/survey.txt")" 0
+row "a PR closing another repo's #10 is not linked to this repo's #10" "$(grep '^- #10 ' "$T/survey.txt" | grep -c 'PR #62')" 0
 row "a Start date after the cycle is not a candidate" "$(sect '#### Start date or Target date' | grep -c '#21')" 0
 row "a Start date inside the cycle is a candidate" "$(sect '#### Start date or Target date' | grep -c '^- #40 ')" 1
 row "the cycle issue itself is not listed as work" "$(grep -c '^- #50 ' "$T/survey.txt")" 0

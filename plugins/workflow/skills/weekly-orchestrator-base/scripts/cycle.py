@@ -195,10 +195,13 @@ def parse_title(cfg, title):
         m = _title_pattern(fmt, cfg).fullmatch(title.strip())
         if not m:
             continue
-        if m.groupdict().get("date"):
-            return dt.date.fromisoformat(m.group("date"))
-        return dt.date.fromisocalendar(int(m.group("y")), int(m.group("w")),
-                                       WEEKDAYS.index(cfg["anchor_weekday"]) + 1)
+        try:
+            if m.groupdict().get("date"):
+                return dt.date.fromisoformat(m.group("date"))
+            return dt.date.fromisocalendar(int(m.group("y")), int(m.group("w")),
+                                           WEEKDAYS.index(cfg["anchor_weekday"]) + 1)
+        except ValueError:  # the shape matches but the date does not exist (2026-02-30, W99): not a cycle issue
+            continue
     return None
 
 
@@ -346,13 +349,16 @@ def boundary(cfg, issue):
 
 # ---------- GitHub (read only) ----------
 
-def cycle_issues(cfg, limit=200):
+def cycle_issues(cfg, limit=1000, warn=None):
     """Every issue (open or closed) whose title parses as a cycle issue's, newest anchor last.
 
     Uses the issue list, not the search API: the search index lags and can miss an issue created a moment ago.
+    A list that fills `limit` may have cut off older cycles; that goes to `warn` when given.
     """
     issues = json.loads(run(["gh", "issue", "list", "-R", cfg["repo"], "--state", "all", "--limit", str(limit),
                              "--json", "number,title,state,closedAt,body"]))
+    if warn is not None and len(issues) >= limit:
+        warn.append(f"{cfg['repo']} has {limit} or more issues; older cycle issues may be missing from the survey")
     out = [dict(i, anchor=parse_title(cfg, i["title"])) for i in issues]
     return sorted([i for i in out if i["anchor"]], key=lambda i: (i["anchor"], i["number"]))
 

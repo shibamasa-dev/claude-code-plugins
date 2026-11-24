@@ -1,6 +1,6 @@
 ---
 name: weekly-orchestrator-setup
-description: One-time set-up of a repository's orchestrator (the 🎯 session that runs weekly-orchestrator-base): asks for the repo's cycle settings, writes .claude/weekly-orchestrator.json, then places a project orchestrator skill template, the weekly cycle-issue GitHub Actions workflow and a three-line "Weekly plan" section in AGENTS.md or CLAUDE.md, and checks the title the scripts compute. Use when a repo has no orchestrator yet and the user wants one, or in Japanese 「新しいリポでオーケストレータを立ち上げて」「🎯 セッションを作って」「このリポにオーケストレータを入れて」「週次の計画 issue を自動で起票したい」「オーケストレータの初期設定」. Not for running a cycle (that is weekly-orchestrator-base and the project skill).
+description: One-time set-up of a repository's orchestrator (the 🎯 session that runs weekly-orchestrator-base). Asks for the repo's cycle settings, writes .claude/weekly-orchestrator.json, then places a project orchestrator skill template, the weekly cycle-issue GitHub Actions workflow and a three-line "Weekly plan" section in AGENTS.md or CLAUDE.md, and checks the title the scripts compute. Use when a repo has no orchestrator yet and the user wants one, or in Japanese 「新しいリポでオーケストレータを立ち上げて」「🎯 セッションを作って」「このリポにオーケストレータを入れて」「週次の計画 issue を自動で起票したい」「オーケストレータの初期設定」. Not for running a cycle (that is weekly-orchestrator-base and the project skill).
 last_reviewed: 2026-11-24
 review_after: 2027-05-24
 ---
