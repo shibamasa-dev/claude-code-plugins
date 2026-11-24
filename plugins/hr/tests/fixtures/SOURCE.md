@@ -13,6 +13,6 @@ The simplified form ships with the Monday to Friday checkboxes of item 6 already
 
 ## Synthetic data
 
-`last-year-simple.xlsx` stands in for "last year's certificate": `cfa-simple.xlsx` with the synthetic values of `spec-lastyear.json` written by `certfill.py fill` (and checked by rendering it with LibreOffice). The tests check its cells against the raw sheet XML, not through `certfill.py`.
+`last-year-simple.xlsx` stands in for "last year's certificate": `cfa-simple.xlsx` with the synthetic values of `spec-lastyear.json` written by `certfill.py fill`, checked by rendering it with LibreOffice. The tests check its cells against the raw sheet XML, not through `certfill.py`. Credit for this edited copy: 「就労証明書（簡易版）標準的な様式」（こども家庭庁）（https://www.cfa.go.jp/policies/hoiku/shugyoshomeisho）を加工して作成 (filled in with synthetic values by the hr plugin's tests).
 
 Everything under `company/` and every value in `spec-*.json` is **synthetic**: invented names, a fictional address and an all-zero phone number, made up for the tests. No real company, person, child or municipality. A real filled case (with personal values replaced) will replace or join them when one is available.

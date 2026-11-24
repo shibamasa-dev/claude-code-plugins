@@ -184,6 +184,10 @@ class Fill(unittest.TestCase):
         self.assertEqual(open(STANDARD, "rb").read(), before)
         rc, _, err = run("fill", STANDARD, self.spec, STANDARD)
         self.assertEqual(rc, 2)
+        same = os.path.join(os.path.dirname(STANDARD), ".", os.path.basename(STANDARD))
+        rc, _, err = run("fill", STANDARD, self.spec, same)
+        self.assertEqual(rc, 2)
+        self.assertEqual(open(STANDARD, "rb").read(), before)
 
     def test_refuses_to_overwrite_a_value(self):
         run("fill", STANDARD, self.spec, self.out)
@@ -195,6 +199,8 @@ class Fill(unittest.TestCase):
         rc, _, err = run("fill", self.out, spec, again, "--overwrite")
         self.assertEqual(rc, 0, err)
         self.assertEqual(raw_cell(again, "Z4"), "別の名前")
+        rc, out, err = run("verify", self.out, again, spec)
+        self.assertEqual(rc, 0, out + err)
 
     def test_refuses_a_formula_cell(self):
         # the dropdown-list sheet computes its year column: C2 is =YEAR(TODAY()) under the header 年
@@ -325,6 +331,22 @@ class Inspect(unittest.TestCase):
             rc, _, err = run("inspect", form)
             self.assertEqual(rc, 2)
             self.assertIn("DTD", err)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_rejects_a_huge_merged_range(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            form = os.path.join(tmp, "huge.xlsx")
+            with zipfile.ZipFile(STANDARD) as z, zipfile.ZipFile(form, "w") as w:
+                for info in z.infolist():
+                    data = z.read(info.filename)
+                    if info.filename == SHEET:
+                        data = data.replace(b'<mergeCell ref="B1:AJ1"/>', b'<mergeCell ref="A1:XFD1048576"/>', 1)
+                    w.writestr(info, data)
+            rc, _, err = run("inspect", form)
+            self.assertEqual(rc, 2)
+            self.assertIn("A1:XFD1048576", err)
         finally:
             shutil.rmtree(tmp)
 

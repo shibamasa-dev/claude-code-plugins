@@ -71,4 +71,4 @@ Whoever issues the paper decides where it belongs. Certificates a company issues
 bash plugins/hr/tests/run-all.sh
 ```
 
-Offline. The fixtures are the official standard and simplified forms of the Children and Families Agency (unmodified, Public Data License 1.0) and synthetic company and employee data; see `tests/fixtures/SOURCE.md`.
+Offline. The fixtures are the official standard and simplified forms of the Children and Families Agency (Public Data License 1.0), kept as published, one copy of the simplified form filled with synthetic values, and synthetic company and employee data; see `tests/fixtures/SOURCE.md`.

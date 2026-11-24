@@ -25,6 +25,7 @@ missing is an error that lists the candidates, never a first hit.
 """
 import argparse
 import json
+import os
 import posixpath
 import re
 import sys
@@ -36,6 +37,7 @@ from xml.sax.saxutils import escape
 NS = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+MAX_MERGE_CELLS = 10000  # a form field never spans more; a huge range would only eat memory
 CHECKBOX = {"□", "☐", "☑", "☒", "■"}
 CHECKED = "☑"
 UNCHECKED = "□"
@@ -115,9 +117,14 @@ class Sheet:
         self.values = {}      # (r, c) -> value (str or number)
         self.formulas = set()
         self.merged = {}      # (r, c) of every merged cell -> (r1, c1, r2, c2)
-        self.validated = set()
+        self.validated = []   # (r1, c1, r2, c2) of each dropdown range, kept as rectangles
+        self.cells = set()    # every cell the sheet XML lists
         self.max_row = 0
         self.max_col = 0
+
+    def has_dropdown(self, rc):
+        r, c = rc
+        return any(r1 <= r <= r2 and c1 <= c <= c2 for r1, c1, r2, c2 in self.validated)
 
     def anchor(self, r, c):
         rng = self.merged.get((r, c))
@@ -177,6 +184,7 @@ class Workbook:
         root = parse_xml(xml)
         for c in root.iter("{%s}c" % NS["m"]):
             r, col = parse_addr(c.get("r"))
+            sh.cells.add((r, col))
             sh.max_row = max(sh.max_row, r)
             sh.max_col = max(sh.max_col, col)
             t = c.get("t")
@@ -200,6 +208,8 @@ class Workbook:
             a, b = mc.get("ref").split(":")
             r1, c1 = parse_addr(a)
             r2, c2 = parse_addr(b)
+            if (r2 - r1 + 1) * (c2 - c1 + 1) > MAX_MERGE_CELLS:
+                raise FormError("merged range %s is larger than any form field; refusing the workbook" % mc.get("ref"))
             for rr in range(r1, r2 + 1):
                 for cc in range(c1, c2 + 1):
                     sh.merged[(rr, cc)] = (r1, c1, r2, c2)
@@ -211,9 +221,7 @@ class Workbook:
                 ends = part.split(":")
                 r1, c1 = parse_addr(ends[0])
                 r2, c2 = parse_addr(ends[-1])
-                for rr in range(r1, r2 + 1):
-                    for cc in range(c1, c2 + 1):
-                        sh.validated.add((rr, cc))
+                sh.validated.append((r1, c1, r2, c2))
         return sh
 
 
@@ -267,7 +275,7 @@ def block_of(sh, item_rc):
 
 def _is_input(sh, rc):
     v = sh.values.get(rc)
-    return v not in (None, "") or rc in sh.merged or rc in sh.validated
+    return v not in (None, "") or rc in sh.merged or sh.has_dropdown(rc)
 
 
 def _step(sh, start, delta, field, strict):
@@ -472,7 +480,8 @@ def verify(form, out, spec_path):
     def check(name, ok, detail=""):
         checks.append({"check": name, "ok": bool(ok), "detail": detail})
 
-    rows = resolve(sh_src, spec)
+    # lenient on FORM too: a prefilled form replaced with --overwrite holds text where the inputs are
+    rows = resolve(sh_src, spec, strict=False)
     moved = [(k, addr(*a), addr(*b)) for (k, _, a), (_, _, b) in zip(rows, resolve(sh_dst, spec, strict=False)) if a != b]
     check("labels resolve to the same cells in OUT", not moved, "; ".join("%s %s->%s" % m for m in moved))
     for key, f, rc in rows:
@@ -498,26 +507,25 @@ def inspect(form, sheet=None):
     wb = Workbook(form)
     sh = wb.sheet(sheet)
     rows = {}
-    for r in range(1, sh.max_row + 1):
-        for c in range(1, sh.max_col + 1):
-            if not sh.is_anchor(r, c):
+    for r, c in sorted(sh.cells | {sh.anchor(*rc) for rc in sh.merged}):
+        if not sh.is_anchor(r, c):
+            continue
+        v = sh.values.get((r, c))
+        merged = (r, c) in sh.merged
+        dropdown = sh.has_dropdown((r, c))
+        if v is None or v == "":
+            if not (merged or dropdown):
                 continue
-            v = sh.values.get((r, c))
-            merged = (r, c) in sh.merged
-            if v is None or v == "":
-                if not (merged or (r, c) in sh.validated):
-                    continue
-                kind, text = "input", ""
-            elif isinstance(v, str) and norm(v) in CHECKBOX:
-                kind, text = "checkbox", norm(v)
-            elif (r, c) in sh.formulas:
-                kind, text = "formula", v
-            else:
-                kind, text = ("text" if isinstance(v, str) else "value"), v
-            r1, c1, r2, c2 = sh.bounds(r, c)
-            span = addr(r, c) if (r1, c1) == (r2, c2) else "%s:%s" % (addr(r1, c1), addr(r2, c2))
-            rows.setdefault(r, []).append({"cell": span, "kind": kind, "text": text,
-                                           "dropdown": (r, c) in sh.validated})
+            kind, text = "input", ""
+        elif isinstance(v, str) and norm(v) in CHECKBOX:
+            kind, text = "checkbox", norm(v)
+        elif (r, c) in sh.formulas:
+            kind, text = "formula", v
+        else:
+            kind, text = ("text" if isinstance(v, str) else "value"), v
+        r1, c1, r2, c2 = sh.bounds(r, c)
+        span = addr(r, c) if (r1, c1) == (r2, c2) else "%s:%s" % (addr(r1, c1), addr(r2, c2))
+        rows.setdefault(r, []).append({"cell": span, "kind": kind, "text": text, "dropdown": dropdown})
     return {"sheet": sh.name, "sheets": [s[0] for s in wb.sheets], "rows": rows}
 
 
@@ -581,7 +589,7 @@ def main(argv=None):
                 for x in res:
                     print("%-6s %s = %r" % (x["cell"], x["key"], x["value"]))
         elif args.cmd == "fill":
-            if args.out == args.form:
+            if os.path.realpath(args.out) == os.path.realpath(args.form):
                 raise FormError("OUT must differ from FORM; the form itself is never modified")
             print(json.dumps(fill(args.form, args.spec, args.out, args.overwrite), ensure_ascii=False, indent=1))
         elif args.cmd == "verify":
