@@ -1,0 +1,14 @@
+{
+ "repo": "example-org/sample-app",
+ "title": "sample weekly {date}",
+ "legacy_titles": ["Orchestrator: sample-app {iso_week}"],
+ "anchor_weekday": "monday",
+ "lead_days": 2,
+ "timezone": "Asia/Tokyo",
+ "period": "{date} to {end}",
+ "goal_marker": "[Goal]",
+ "issue_fields": [
+  {"fieldId": "FIELD_PRIORITY", "singleSelectOptionId": "OPTION_MEDIUM"},
+  {"fieldId": "FIELD_TARGET", "dateValue": "{next}"}
+ ]
+}

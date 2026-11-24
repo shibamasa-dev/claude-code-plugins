@@ -1,0 +1,30 @@
+[
+ {
+  "number": 45,
+  "title": "sample weekly 2026-11-16",
+  "state": "CLOSED",
+  "closedAt": "2026-11-23T03:00:00Z",
+  "body": "<!-- weekly-orchestrator:plan -->\n## Plan for this cycle (2026-11-16 to 2026-11-20)\n\n**Plan status**: Confirmed 2026-11-16\n\n### Goal progress\n| Goal | Children done | Current work | Next move / blocked reason |\n|---|---|---|---|\n| #10 | 2/5 | batch 1 | #12 |\n\n### Minimum bar (must finish by the end of the cycle; a floor, not a ceiling)\n- [x] Merge the reader for plain fields (#9)\n- [ ] (carried over) Parse quoted fields (#12)\n- [ ] Write the install page (#21)\n  - only the macOS part is needed\n\n### Batches (units of execution)\n| # | Batch | Entry issue | Shared resources | Order | PRs | Run via | Status |\n|---|---|---|---|---|---|---|---|\n| 1 | Reader | #9 | none | - | 1 | start_session reader | Done |\n| 2 | Quoted fields | #12 | none | after 1 | 1 | start_session quoted | PR #60 |\n\n### Resume point\n- Next: wait for batch 2\n<!-- /weekly-orchestrator:plan -->\n\nNotes kept by the auto-creation workflow.\n\n## Result\n- **Tally start**: 2026-11-23 08:00\n- **Cutoff**: 2026-11-23 09:30\n- Minimum bar: met 1 / 3\n- [ ] This checkbox is in the result and is not carried\n"
+ },
+ {
+  "number": 44,
+  "title": "Orchestrator: sample-app 2026-W46",
+  "state": "CLOSED",
+  "closedAt": "2026-11-16T01:00:00Z",
+  "body": "<!-- weekly-orchestrator:plan -->\n**Plan status**: Confirmed 2026-11-09\n<!-- /weekly-orchestrator:plan -->\n"
+ },
+ {
+  "number": 51,
+  "title": "sample weekly 2026-11-23 retro",
+  "state": "OPEN",
+  "closedAt": null,
+  "body": "A retrospective, not a cycle issue."
+ },
+ {
+  "number": 7,
+  "title": "Set up CI",
+  "state": "CLOSED",
+  "closedAt": "2026-10-01T00:00:00Z",
+  "body": ""
+ }
+]

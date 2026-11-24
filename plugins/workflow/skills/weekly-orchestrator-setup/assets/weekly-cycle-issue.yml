@@ -1,0 +1,44 @@
+name: Weekly cycle issue
+
+# Creates this cycle's issue for the orchestrator, as a safety net, when no issue has exactly its title.
+# Normally the orchestrator opens the next cycle when it closes the previous one. The body is the empty plan
+# section; the plan itself is written by the orchestrator after the user's OK.
+# Title, week and body come from the weekly-orchestrator-base scripts (the same ones the orchestrator runs) and
+# .claude/weekly-orchestrator.json; this file computes no dates.
+
+on:
+  schedule:
+    # UTC. Generated from the config's timezone for __RUN_AT__. The minute is off the top of the hour, the
+    # busiest time for scheduled runs (GitHub may drop queued runs then). A run hours late still falls in the
+    # same cycle, because the cycle is resolved from the run's own time.
+    - cron: "__CRON__"
+  workflow_dispatch:
+
+# A scheduled run and a manual run could both see "no issue yet" and both create one (check-then-create).
+# One group, never cancelled: the later run waits, then finds the issue the first one created.
+concurrency:
+  group: weekly-cycle-issue
+  cancel-in-progress: false
+
+jobs:
+  create-issue:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      # The scripts, pinned to the workflow plugin release this repo was set up with. Keep the ref equal to
+      # the installed plugin's version (the survey warns when they differ); a skew can make the two compute
+      # different titles.
+      - uses: actions/checkout@v4
+        with:
+          repository: shibamasa-dev/claude-code-plugins
+          ref: __KIT_REF__
+          path: .weekly-orchestrator-kit
+          sparse-checkout: plugins/workflow/skills/weekly-orchestrator-base
+          persist-credentials: false
+      - name: Create this cycle's issue unless it exists
+        run: bash .weekly-orchestrator-kit/plugins/workflow/skills/weekly-orchestrator-base/scripts/create-cycle-issue.sh

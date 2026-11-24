@@ -1,0 +1,278 @@
+{
+ "data": {
+  "repository": {
+   "issues": {
+    "nodes": [
+     {
+      "number": 10,
+      "title": "[Goal] Ship the CSV importer",
+      "updatedAt": "2026-11-18T03:00:00Z",
+      "parent": null,
+      "subIssuesSummary": {
+       "total": 5,
+       "completed": 2
+      },
+      "subIssues": {
+       "nodes": [
+        {
+         "updatedAt": "2026-11-10T01:00:00Z"
+        },
+        {
+         "updatedAt": "2026-11-20T23:30:00Z"
+        },
+        {
+         "updatedAt": "2026-11-12T05:00:00Z"
+        }
+       ]
+      },
+      "issueFieldValues": {
+       "nodes": [
+        {
+         "name": "Medium",
+         "field": {
+          "name": "Priority"
+         }
+        }
+       ]
+      }
+     },
+     {
+      "number": 11,
+      "title": "Design the column mapping",
+      "updatedAt": "2026-11-19T02:00:00Z",
+      "parent": {
+       "number": 10,
+       "parent": null
+      },
+      "subIssuesSummary": {
+       "total": 0,
+       "completed": 0
+      },
+      "subIssues": {
+       "nodes": []
+      },
+      "issueFieldValues": {
+       "nodes": [
+        {
+         "name": "Pending",
+         "field": {
+          "name": "Arch Review"
+         }
+        },
+        {
+         "name": "Medium",
+         "field": {
+          "name": "Priority"
+         }
+        }
+       ]
+      }
+     },
+     {
+      "number": 12,
+      "title": "Parse quoted fields",
+      "updatedAt": "2026-11-20T23:30:00Z",
+      "parent": {
+       "number": 10,
+       "parent": null
+      },
+      "subIssuesSummary": {
+       "total": 1,
+       "completed": 0
+      },
+      "subIssues": {
+       "nodes": [
+        {
+         "updatedAt": "2026-11-15T00:00:00Z"
+        }
+       ]
+      },
+      "issueFieldValues": {
+       "nodes": [
+        {
+         "name": "High",
+         "field": {
+          "name": "Priority"
+         }
+        },
+        {
+         "value": "2026-11-27",
+         "field": {
+          "name": "Target date"
+         }
+        }
+       ]
+      }
+     },
+     {
+      "number": 13,
+      "title": "Handle a BOM at the start of the file",
+      "updatedAt": "2026-11-15T00:00:00Z",
+      "parent": {
+       "number": 12,
+       "parent": {
+        "number": 10
+       }
+      },
+      "subIssuesSummary": {
+       "total": 0,
+       "completed": 0
+      },
+      "subIssues": {
+       "nodes": []
+      },
+      "issueFieldValues": {
+       "nodes": []
+      }
+     },
+     {
+      "number": 20,
+      "title": "[Goal] Publish the docs site",
+      "updatedAt": "2026-11-01T00:00:00Z",
+      "parent": null,
+      "subIssuesSummary": {
+       "total": 120,
+       "completed": 30
+      },
+      "subIssues": {
+       "nodes": [
+        {
+         "updatedAt": "2026-10-01T00:00:00Z"
+        },
+        {
+         "updatedAt": "2026-10-02T00:00:00Z"
+        }
+       ]
+      },
+      "issueFieldValues": {
+       "nodes": [
+        {}
+       ]
+      }
+     },
+     {
+      "number": 21,
+      "title": "Write the install page",
+      "updatedAt": "2026-10-02T00:00:00Z",
+      "parent": {
+       "number": 20,
+       "parent": null
+      },
+      "subIssuesSummary": {
+       "total": 0,
+       "completed": 0
+      },
+      "subIssues": {
+       "nodes": []
+      },
+      "issueFieldValues": {
+       "nodes": [
+        {
+         "value": "2026-12-10",
+         "field": {
+          "name": "Start date"
+         }
+        }
+       ]
+      }
+     },
+     {
+      "number": 30,
+      "title": "Clean up the build scripts",
+      "updatedAt": "2026-11-05T00:00:00Z",
+      "parent": null,
+      "subIssuesSummary": {
+       "total": 1,
+       "completed": 0
+      },
+      "subIssues": {
+       "nodes": [
+        {
+         "updatedAt": "2026-11-05T00:00:00Z"
+        }
+       ]
+      },
+      "issueFieldValues": {
+       "nodes": []
+      }
+     },
+     {
+      "number": 31,
+      "title": "Drop the unused lint step",
+      "updatedAt": "2026-11-05T00:00:00Z",
+      "parent": {
+       "number": 30,
+       "parent": null
+      },
+      "subIssuesSummary": {
+       "total": 0,
+       "completed": 0
+      },
+      "subIssues": {
+       "nodes": []
+      },
+      "issueFieldValues": {
+       "nodes": [
+        {
+         "name": "Low",
+         "field": {
+          "name": "Priority"
+         }
+        }
+       ]
+      }
+     },
+     {
+      "number": 40,
+      "title": "Follow-up from a closed epic",
+      "updatedAt": "2026-11-02T00:00:00Z",
+      "parent": {
+       "number": 39,
+       "parent": null
+      },
+      "subIssuesSummary": {
+       "total": 0,
+       "completed": 0
+      },
+      "subIssues": {
+       "nodes": []
+      },
+      "issueFieldValues": {
+       "nodes": [
+        {
+         "value": "2026-11-25",
+         "field": {
+          "name": "Start date"
+         }
+        }
+       ]
+      }
+     },
+     {
+      "number": 50,
+      "title": "sample weekly 2026-11-23",
+      "updatedAt": "2026-11-22T22:20:00Z",
+      "parent": null,
+      "subIssuesSummary": {
+       "total": 0,
+       "completed": 0
+      },
+      "subIssues": {
+       "nodes": []
+      },
+      "issueFieldValues": {
+       "nodes": [
+        {
+         "name": "Medium",
+         "field": {
+          "name": "Priority"
+         }
+        }
+       ]
+      }
+     }
+    ]
+   }
+  }
+ }
+}

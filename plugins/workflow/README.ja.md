@@ -22,7 +22,8 @@
 | `issue-ops` | issue の起票から close までの規約（本文の書き方、close 前の結果の書き戻し） |
 | `session-wrap` | セッションを閉じる前の残件確認と、次回への引き継ぎ |
 | `context-diet` | セッション開始時に毎回積まれるコンテキストを実測して減らす |
-| `weekly-orchestrator-base` | リポジトリごとに 1 つ置く長寿命のオーケストレータセッション（タイトルが `🎯 <リポ名>` で始まり、ピン留めして毎日使う）の土台。週単位で「計画 → 委譲 → 確認 → 締め」を回し、PR になる作業は子セッションへ、読むだけの調査・検証は subagent へ出す。状態はサイクル issue に置くので、手動の `/clear` で何も失わない。専用のオーケストレータスキルが無いリポ向けの既定（週単位のサイクル・issue のタイトル）も持つ |
+| `weekly-orchestrator-base` | リポジトリごとに 1 つ置く長寿命のオーケストレータセッション（タイトルが `🎯 <リポ名>` で始まり、ピン留めして毎日使う）の土台。週単位で「計画 → 委譲 → 確認 → 締め」を回し、PR になる作業は子セッションへ、読むだけの調査・検証は subagent へ出す。状態はサイクル issue に置くので、手動の `/clear` で何も失わない。専用のオーケストレータスキルが無いリポ向けの既定（週単位のサイクル・issue のタイトル）も持つ。状況を集めるスクリプト（`survey.py`）と、サイクル issue のタイトル・週・本文を計算するスクリプト（`cycle.py`）を同梱し、値はリポの `.claude/weekly-orchestrator.json` から読む |
+| `weekly-orchestrator-setup` | リポにオーケストレータを 1 回だけ用意する。サイクルの設定を聞いて `.claude/weekly-orchestrator.json` を書き、プロジェクト用オーケストレータスキルの雛形・週次のサイクル issue を起票する GitHub Actions workflow・`AGENTS.md` か `CLAUDE.md` の 3 行の「Weekly plan」節を置く |
 | `choice-board` | 10 個以上の項目それぞれについて決める必要があるとき、チャットではなくボードのページに出す。1 項目 1 行で、選択肢（推奨に印）とメモを並べ、Artifact のデータベースに保存して Claude が読み戻す。ボードは 1 プロジェクト 1 つを使い回す。Artifact のツール（claude.ai に接続した Claude Code）が必要 |
 
 ## フック
@@ -137,6 +138,10 @@ reviews:
 2. この設定を組織単位で入れられるか（入れられなければリポごとの `.coderabbit.yaml`）
 3. Codex をラベルで自動レビューから外せるか（外せなければ軽い PR でも Codex は走る）
 
+### オーケストレータの設定（`.claude/weekly-orchestrator.json`）
+
+`weekly-orchestrator-base` のスクリプトは、リポのサイクルの設定を `.claude/weekly-orchestrator.json` から読む。サイクル issue のタイトル（と旧形式）、タイトルの日付の曜日と週の切り方、タイムゾーン、`Cutoff` か `Submitted` か、ゴールの目印、追加で読むリポ、計画の節に足す見出し、末尾の注記、自動起票した issue に付ける Issue Fields。ファイルが無ければ、月曜〜日曜（UTC）の週で、タイトル `Orchestrator: <repo> <YYYY>-W<ww>` になる。キーと例は [`skills/weekly-orchestrator-base/references/config.md`](skills/weekly-orchestrator-base/references/config.md)。`weekly-orchestrator-setup` がこのファイルを書き、週次 issue の workflow をプラグインのリリースに固定する（`ref: workflow--v<version>`）。プラグインを更新したらこの ref も合わせる（食い違うと survey が警告する）。
+
 ### ファイルの置き場
 
 | 何か | 置き場 | アンインストールで消えるか |
@@ -148,6 +153,7 @@ reviews:
 | runbook と生ログ | `RUNBOOK_ROOT`、既定は `~/.claude/runbooks/` | 消えない（自分の文書） |
 | Artifact 台帳 | プロジェクトのルートの `.artifacts/`（保存先の節） | 消えない |
 | review-and-fix のレビュー結果・修正計画・デバッグログ | リポの `.context/workflow/review/`・`plan/`・`logs/`。コマンドが `.context/` を `.git/info/exclude` に足す | 消えない |
+| `weekly-orchestrator-setup` が置くオーケストレータのファイル: `.claude/weekly-orchestrator.json`・`.claude/skills/<名前>/SKILL.md`・`.github/workflows/weekly-cycle-issue.yml`・`AGENTS.md` / `CLAUDE.md` の節 | リポ（コミットするもの。`survey.py` と `cycle.py` は何も書かない） | 消えない |
 | 利用上限（rate-limits mod） | `/tmp/claude-<uid>/rate-limits.json` | 消えない（一時ファイル） |
 
 ```bash
