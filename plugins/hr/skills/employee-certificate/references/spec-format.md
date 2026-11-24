@@ -6,7 +6,7 @@
 |---|---|
 | `inspect FORM [--sheet NAME] [--json]` | Prints the sheet row by row: text cells as `A1[text]`, empty inputs as `A1:C1 _`, dropdowns `▼`, checkboxes `□`/`☑`, formulas `=`. Lists every sheet; the first one is shown unless `--sheet` names another (read an instructions sheet such as `記載要領` this way) |
 | `read FORM SPEC [--json]` | Resolves every field and prints `cell key = value`. On a blank form, use it to check the mapping; on last year's copy, to collect values to carry over |
-| `fill FORM SPEC OUT [--overwrite]` | Writes the values into a copy at OUT. Refuses: a cell that already holds a value (without `--overwrite`), a formula cell, a target that is a label, two fields on one cell, OUT equal to FORM |
+| `fill FORM SPEC OUT [--overwrite]` | Writes the values into a copy at OUT (built next to it and moved into place when complete). Refuses: a field without `value`, a cell that already holds a value (without `--overwrite`), a formula cell, a target that is a label (even with `--overwrite`), two fields on one cell, OUT that is FORM under any name. Its output lists each cell written and, under `was`, any value it replaced |
 | `verify FORM OUT SPEC [--json]` | Reads OUT back and checks each value against the spec, that the labels still resolve to the same cells, that no other cell or file in the package changed, and that the counts of dropdowns and merged cells are the same. Exit 0 only when every check is `ok` |
 
 Exit codes: 0 ok, 1 a verify check failed, 2 an error (the message says what to change).
@@ -38,9 +38,9 @@ Exit codes: 0 ok, 1 a verify check failed, 2 an error (the message says what to 
 | `date` | `"YYYY-MM-DD"`: shorthand for three fields, the inputs left of `年`, `月` and `日` (with `nth` when the item has a start and an end date). Years are written in the Western calendar, as the standard form asks |
 | `key` | A name shown in the output, useful when one item has several fields |
 
-**The item's block** runs from the label's row down to the row before the next label in the same column, and from the label's column to the right edge. Texts are searched only inside it, so `年` under one item never matches the `年` of another.
+**The item's block** runs from the label's row down to the row before the next label in the same column, and from the label's column to the right edge. Texts are searched only inside it, so `年` under one item never matches the `年` of another below it. There is no boundary to the right: when two items sit side by side (a start and an end date in one row), the right one's texts are in the left one's block too, so pick with `nth`.
 
-**Next to a text** means the nearest input in that direction. Plain empty spacer cells (not merged, no dropdown) are skipped; a label on the way is an error.
+**Next to a text** means the nearest input in that direction. Plain empty spacer cells (not merged, no dropdown) are skipped; when a plain text cell comes first, the first empty cell was a single-cell input. Text in a plain cell always counts as a label: `fill` never writes over it, even with `--overwrite`. Only boxes (merged cells and dropdowns) take a replaced value.
 
 Write numbers as numbers (`2026`, `20`, `160.5`): the year, month, day and hour cells of the standard form are numeric dropdowns.
 
@@ -51,7 +51,8 @@ Write numbers as numbers (`2026`, `20`, `160.5`): the year, month, day and hour 
 | `item 'X' is ambiguous (n matches: ...)` | Add `item_nth`, or use the item's own block (for example the person's birth date as `{"item": "本人氏名", "date": ...}`, since `生年月日` also heads each child's column) |
 | `text 'X' is ambiguous` | Add `nth` (counted top to bottom, then left to right inside the block) |
 | `item 'X' not found; similar: ...` | Copy the label as `inspect` prints it |
-| `the cell next to ... is the label ...` | Use another direction; a column header usually needs `below` |
+| `the cell next to ... is the label ...` | Use another direction; a column header usually needs `below`. A value printed in a plain cell can't be replaced; leave it or fill by hand |
+| `field ... has no value` | Add `value`; `"value": ""` clears a cell on purpose |
 | `... already holds ...` | The form came prefilled, or the field points at the wrong cell. Check with `read`; use `--overwrite` only to replace a prefilled value on purpose |
 | `no checkbox left of ...` | The option has no `□` cell in front of it; read the row with `inspect` |
 | `... holds a formula` | The form computes that cell; fill its inputs instead |

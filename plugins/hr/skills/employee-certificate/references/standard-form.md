@@ -25,7 +25,7 @@ The Excel file has three sheets: the form, a sheet of dropdown lists, and `記�
 | 1 | `業種` | company.md | One checkbox; `その他（ ）` with text when none fits |
 | 2 | `フリガナ` / `本人氏名` / `生年月日` | employee file | The birth date sits in the `本人氏名` row: use `{"item": "本人氏名", "date": ...}` |
 | 3 | `雇用(予定)期間等` | employee file | `無期`: start date only. `有期`: start and end (`nth` 1 and 2) |
-| 4 | `本人就労先事業所` | employee file | Name and address only when the employee works somewhere other than the issuer's address |
+| 4 | `本人就労先事業所` | employee file | Two separate checks: the name only when it differs from the issuer's name, the address only when it differs from the issuer's address (the main workplace if there are several; where the person mostly is while working if there is no workplace) |
 | 5 | `雇用の形態` | employee file, confirm | Officers (`役員`) and the self-employed (`自営業主`, `自営業専従者`, `家族従業者`) are their own options; ask when the file doesn't say |
 | 6 | `就労時間(固定就労の場合)` | employee file | Weekday checkboxes (`below` the day), monthly total and breaks, days per month and week, start and end times on weekdays, Saturdays, Sundays and holidays |
 | 6 | `就労時間(変則就労の場合)` | employee file | For shift work without fixed hours: monthly or weekly total, days, the main shift |
@@ -35,7 +35,7 @@ The Excel file has three sheets: the form, a sheet of dropdown lists, and `記�
 | 10 | `産休・育休以外の休業の取得` | ask | Reason and period |
 | 11 | `復職（予定）年月日` | ask | Planned or done, with the date |
 | 12 | `育児のための短時間勤務制度利用有無` | ask | Planned or current, period and the shortened hours |
-| 13 | `保育士等としての勤務実態の有無` | employee file | Whether the person works as a nursery teacher or similar |
+| 13 | `保育士等としての勤務実態の有無` | employee file | Always tick one: `有`, `有予定` or `無` (nursery teacher, kindergarten teacher or nursery-school teacher). Most employees are `無` |
 | 14 | `（雇用契約の）満了後の更新の有無` | employee file | Fixed-term contracts only |
 | 15 | `入所内定時育休短縮可否` | ask | Whether the leave can end early if a place is offered |
 | 16 | `育休延長可否` | ask | Whether the leave can be extended |
@@ -43,7 +43,7 @@ The Excel file has three sheets: the form, a sheet of dropdown lists, and `記�
 | 18 | `備考欄` | ask | Anything the items above can't carry, for example required early arrival |
 | 19 | `保護者記載欄` | ask | Children's names, birth dates, facility, in use or applied for. Written by the guardian; fill it only when the user (who is that guardian) gives the values. The form asks for Western-calendar years elsewhere but not here; follow the municipality's guidance or ask |
 
-Items 8 to 17 stay blank when they don't apply. Item 14 is for fixed-term contracts only. Don't tick a box to say "not applicable" unless the form has that option.
+Items 8 to 12 and 14 to 17 stay blank when they don't apply; item 13 always gets an answer. Item 14 is for fixed-term contracts only. Don't tick a box to say "not applicable" unless the form has that option.
 
 ## Municipal variants
 

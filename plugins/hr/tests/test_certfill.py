@@ -46,6 +46,23 @@ def raw_cell(xlsx, ref):
     return float(v)
 
 
+def edited(tmp, name, edits, part=SHEET, encoding="utf-8"):
+    """A copy of the standard form with (old, new) text replacements in one package part."""
+    path = os.path.join(tmp, name)
+    with zipfile.ZipFile(STANDARD) as z, zipfile.ZipFile(path, "w") as w:
+        for info in z.infolist():
+            data = z.read(info.filename)
+            if info.filename == part:
+                text = data.decode("utf-8")
+                for old, new in edits:
+                    text2 = re.sub(old, new, text, count=1, flags=re.S)
+                    assert text2 != text, old
+                    text = text2
+                data = text.encode(encoding)
+            w.writestr(info, data)
+    return path
+
+
 def write_spec(tmp, fields, sheet=None):
     path = os.path.join(tmp, "spec-%d.json" % len(os.listdir(tmp)))
     spec = {"fields": fields}
@@ -188,6 +205,57 @@ class Fill(unittest.TestCase):
         rc, _, err = run("fill", STANDARD, self.spec, same)
         self.assertEqual(rc, 2)
         self.assertEqual(open(STANDARD, "rb").read(), before)
+        form = os.path.join(self.tmp, "form.xlsx")
+        shutil.copy(STANDARD, form)
+        link = os.path.join(self.tmp, "link.xlsx")
+        os.link(form, link)  # one file, two names
+        rc, _, err = run("fill", form, self.spec, link)
+        self.assertEqual(rc, 2)
+        self.assertEqual(open(form, "rb").read(), before)
+
+    def test_overwrite_never_replaces_a_label_in_a_plain_cell(self):
+        form = edited(self.tmp, "label.xlsx", [('<c r="Z4" s="366"/>', '<c r="Z4" s="366" t="inlineStr"><is><t>所在地</t></is></c>'),
+                                               (r'<mergeCell ref="Z4:AK4"/>', "")])
+        spec = write_spec(self.tmp, [{"item": "事業所名", "value": "サンプル商事株式会社"}])
+        rc, _, err = run("fill", form, spec, self.out, "--overwrite")
+        self.assertEqual(rc, 2)
+        self.assertIn("Z4", err)
+
+    def test_field_without_value_is_refused(self):
+        spec = write_spec(self.tmp, [{"item": "事業所名"}])
+        rc, _, _ = run("fill", STANDARD, spec, self.out)
+        self.assertEqual(rc, 2)
+        self.assertFalse(os.path.exists(self.out))
+
+    def test_impossible_date_is_refused(self):
+        spec = write_spec(self.tmp, [{"item": "証明日", "date": "2026-02-30"}])
+        rc, _, _ = run("fill", STANDARD, spec, self.out)
+        self.assertEqual(rc, 2)
+
+    def test_spec_that_is_not_an_object_is_refused(self):
+        path = os.path.join(self.tmp, "list.json")
+        with open(path, "w") as fh:
+            fh.write("[]")
+        rc, _, err = run("read", STANDARD, path)
+        self.assertEqual(rc, 2, err)
+
+    def test_checkbox_option_needs_a_box(self):
+        # an empty single cell left of the option, with a plain label before it: no box to tick
+        form = edited(self.tmp, "nobox.xlsx", [('<c r="I23" s="45" t="s"><v>20</v></c>', '<c r="I23" s="45"/>'),
+                                               ('<mergeCell ref="C23:H24"/>', ""),
+                                               (r"<x14:dataValidations\b.*?</x14:dataValidations>", "")])
+        spec = write_spec(self.tmp, [{"item": "雇用の形態", "check": "正社員"}])
+        rc, _, err = run("read", form, spec)
+        self.assertEqual(rc, 2)
+        self.assertIn("checkbox", err)
+
+    def test_value_in_an_empty_row_verifies(self):
+        form = edited(self.tmp, "emptyrow.xlsx", [(r'(<row r="54"[^>]*?)>.*?</row>', r"\1/>")])
+        spec = write_spec(self.tmp, [{"item": "保護者記載欄", "below": "児童名", "nth": 2, "value": "見本 太郎"}])
+        rc, _, err = run("fill", form, spec, self.out)
+        self.assertEqual(rc, 0, err)
+        rc, out, err = run("verify", form, self.out, spec)
+        self.assertEqual(rc, 0, out + err)
 
     def test_refuses_to_overwrite_a_value(self):
         run("fill", STANDARD, self.spec, self.out)
@@ -196,8 +264,9 @@ class Fill(unittest.TestCase):
         rc, _, err = run("fill", self.out, spec, again)
         self.assertEqual(rc, 2)
         self.assertIn("--overwrite", err)
-        rc, _, err = run("fill", self.out, spec, again, "--overwrite")
+        rc, out, err = run("fill", self.out, spec, again, "--overwrite")
         self.assertEqual(rc, 0, err)
+        self.assertEqual(json.loads(out)["written"][0]["was"], "サンプル商事株式会社")
         self.assertEqual(raw_cell(again, "Z4"), "別の名前")
         rc, out, err = run("verify", self.out, again, spec)
         self.assertEqual(rc, 0, out + err)
@@ -277,6 +346,15 @@ class Verify(unittest.TestCase):
         rc, checks = self.tamper('<c r="Z5" s="366"/>', '<c r="Z5" s="366"/><c r="Z4" s="366"/>')
         self.assertEqual(rc, 1)
         self.assertFalse(checks["no cell address appears twice"])
+
+    def test_value_that_reads_as_a_label_still_verifies(self):
+        # "事業所" finds the label 事業所名 by prefix; written into Z4 it would match exactly on OUT
+        spec = write_spec(self.tmp, [{"item": "事業所", "value": "事業所"}])
+        out = os.path.join(self.tmp, "label-like.xlsx")
+        rc, _, err = run("fill", STANDARD, spec, out)
+        self.assertEqual(rc, 0, err)
+        rc, text, err = run("verify", STANDARD, out, spec)
+        self.assertEqual(rc, 0, text + err)
 
     def test_detects_a_lost_dropdown(self):
         # what an openpyxl round trip does to the checkbox and dropdown lists
@@ -393,26 +471,22 @@ class MunicipalVariant(unittest.TestCase):
 
 
 class AttributeOrder(unittest.TestCase):
-    def test_cell_with_style_before_address_is_replaced_not_duplicated(self):
+    def test_cell_is_replaced_not_duplicated_whatever_the_attribute_form(self):
         tmp = tempfile.mkdtemp()
         try:
-            form = os.path.join(tmp, "order.xlsx")
-            with zipfile.ZipFile(STANDARD) as z, zipfile.ZipFile(form, "w") as w:
-                for info in z.infolist():
-                    data = z.read(info.filename)
-                    if info.filename == SHEET:
-                        data = data.replace(b'<c r="Z4" s="366"/>', b'<c s="366" r="Z4"/>', 1)
-                    w.writestr(info, data)
-            out = os.path.join(tmp, "out.xlsx")
-            spec = write_spec(tmp, [{"item": "事業所名", "value": "サンプル商事株式会社"}])
-            rc, _, err = run("fill", form, spec, out)
-            self.assertEqual(rc, 0, err)
-            with zipfile.ZipFile(out) as z:
-                sheet = z.read(SHEET).decode("utf-8")
-            self.assertEqual(len(re.findall(r'<c\b[^>]*\sr="Z4"', sheet)), 1)
-            self.assertIn('s="366"', re.search(r'<c\b[^>]*\sr="Z4"[^>]*>', sheet).group(0))
-            rc, out_text, err = run("verify", form, out, spec)
-            self.assertEqual(rc, 0, out_text + err)
+            for i, cell in enumerate(['<c s="366" r="Z4"/>', "<c r='Z4' s='366'/>"]):
+                with self.subTest(cell=cell):
+                    form = edited(tmp, "attr%d.xlsx" % i, [('<c r="Z4" s="366"/>', cell)])
+                    out = os.path.join(tmp, "out%d.xlsx" % i)
+                    spec = write_spec(tmp, [{"item": "事業所名", "value": "サンプル商事株式会社"}])
+                    rc, _, err = run("fill", form, spec, out)
+                    self.assertEqual(rc, 0, err)
+                    with zipfile.ZipFile(out) as z:
+                        sheet = z.read(SHEET).decode("utf-8")
+                    self.assertEqual(len(re.findall(r'<c\b[^>]*\sr=["\']Z4["\']', sheet)), 1)
+                    self.assertIn('s="366"', re.search(r'<c\b[^>]*\sr="Z4"[^>]*>', sheet).group(0))
+                    rc, out_text, err = run("verify", form, out, spec)
+                    self.assertEqual(rc, 0, out_text + err)
         finally:
             shutil.rmtree(tmp)
 
@@ -437,6 +511,28 @@ class Inspect(unittest.TestCase):
             rc, _, err = run("inspect", form)
             self.assertEqual(rc, 2)
             self.assertIn("DTD", err)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_rejects_a_dtd_in_utf16(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            form = edited(tmp, "dtd16.xlsx", [(r'^<\?xml[^>]*\?>', '<?xml version="1.0" encoding="UTF-16"?><!DOCTYPE x [<!ENTITY a "aaaa">]>')],
+                          part="xl/sharedStrings.xml", encoding="utf-16")
+            rc, _, err = run("inspect", form)
+            self.assertEqual(rc, 2)
+            self.assertIn("DTD", err)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_shows_a_formula_without_a_cached_value(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            form = edited(tmp, "nocache.xlsx", [(r"(<f ca=\"1\">YEAR\(TODAY\(\)\)</f>)<v>\d+</v>", r"\1")],
+                          part="xl/worksheets/sheet2.xml")
+            rc, out, err = run("inspect", form, "--sheet", "プルダウンリスト")
+            self.assertEqual(rc, 0, err)
+            self.assertRegex(out, r"\bC2 =")
         finally:
             shutil.rmtree(tmp)
 

@@ -24,11 +24,13 @@ whitespace removed; an exact match wins, otherwise a unique prefix match. Anythi
 missing is an error that lists the candidates, never a first hit.
 """
 import argparse
+import datetime
 import json
 import os
 import posixpath
 import re
 import sys
+import tempfile
 import unicodedata
 import zipfile
 import xml.etree.ElementTree as ET
@@ -49,14 +51,27 @@ class FormError(Exception):
 
 def parse_xml(data):
     """ElementTree without DTDs: a form downloaded from a website is not trusted to be benign."""
-    if isinstance(data, str):
-        data = data.encode("utf-8")
-    if b"<!DOCTYPE" in data or b"<!ENTITY" in data:
+    if isinstance(data, bytes):
+        data = _decode_xml(data)
+    if "<!DOCTYPE" in data or "<!ENTITY" in data:
         raise FormError("the workbook XML declares a DTD or entities; refusing to parse it")
     try:
         return ET.fromstring(data)
     except ET.ParseError as e:
         raise FormError("the workbook XML is broken (%s)" % e)
+
+
+def _decode_xml(data):
+    """Package parts are UTF-8 or UTF-16 (ECMA-376); decode before looking for a DTD, so a UTF-16
+    part can't hide one from a byte search."""
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff") or data[:2] in (b"<\x00", b"\x00<"):
+        enc = "utf-16" if data[:2] in (b"\xff\xfe", b"\xfe\xff") else ("utf-16-le" if data[:1] == b"<" else "utf-16-be")
+    else:
+        enc = "utf-8-sig"
+    try:
+        return data.decode(enc)
+    except UnicodeDecodeError as e:
+        raise FormError("the workbook XML is not valid %s (%s)" % (enc, e))
 
 
 # ---------- addresses ----------
@@ -179,7 +194,7 @@ class Workbook:
             if not hits:
                 raise FormError("no sheet named %r; sheets: %s" % (name, ", ".join(s[0] for s in self.sheets)))
             sname, path = hits[0]
-        xml = self.read(path).decode("utf-8")
+        xml = _decode_xml(self.read(path))
         sh = Sheet(sname, path, xml)
         root = parse_xml(xml)
         for c in root.iter("{%s}c" % NS["m"]):
@@ -216,7 +231,7 @@ class Workbook:
             sh.max_row = max(sh.max_row, r2)
             sh.max_col = max(sh.max_col, c2)
         for sq in re.findall(r"<(?:xm:)?sqref>([^<]+)</(?:xm:)?sqref>", xml) + \
-                re.findall(r'<dataValidation\b[^>]*\ssqref="([^"]+)"', xml):
+                [m[1] for m in re.findall(r'<dataValidation\b[^>]*\ssqref=(["\'])(.+?)\1', xml)]:
             for part in sq.split():
                 ends = part.split(":")
                 r1, c1 = parse_addr(ends[0])
@@ -278,11 +293,15 @@ def _is_input(sh, rc):
     return v not in (None, "") or rc in sh.merged or sh.has_dropdown(rc)
 
 
-def _step(sh, start, delta, field, strict):
+def _step(sh, start, delta, field, filling, overwrite):
     """The cell next to a text in one direction. Plain empty cells (not merged, no dropdown) are
     skipped up to the first merged or dropdown input. When a plain (unmerged) label comes first, the
     first plain empty cell was the input after all: forms without dropdowns have single-cell inputs,
-    such as the month between the 年 and 月 labels."""
+    such as the month between the 年 and 月 labels.
+
+    Text in a plain cell is always taken for a label, so fill and verify pick the same cell whatever
+    the cell holds. When filling, text there is refused even with --overwrite (a printed label is
+    never replaced), and text in a box (merged or dropdown) is replaced only with --overwrite."""
     first = None
     r, c = start
     while 1 <= r <= sh.max_row and 1 <= c <= sh.max_col:
@@ -295,10 +314,13 @@ def _step(sh, start, delta, field, strict):
             boxed = rc in sh.merged or sh.has_dropdown(rc)  # a box that may hold a filled-in value
             if is_text and rc != first and not boxed:
                 return first
-            if strict and is_text:
-                raise FormError("the cell next to the text of %r holds %r at %s: a label, or a value already "
-                                "filled in. Try another direction (right_of / left_of / below), or pass "
-                                "--overwrite to replace a value" % (field, norm(v), addr(*rc)))
+            if filling and is_text and not boxed:
+                raise FormError("the cell next to the text of %r is the label %r at %s. Try another direction "
+                                "(right_of / left_of / below); a value printed in a plain cell can't be "
+                                "replaced, fill it by hand" % (field, norm(v), addr(*rc)))
+            if filling and is_text and not overwrite:
+                raise FormError("the cell next to the text of %r already holds %r at %s. Check the field with "
+                                "read; pass --overwrite to replace a prefilled value" % (field, norm(v), addr(*rc)))
             return rc
         r1, c1, r2, c2 = sh.bounds(*rc)
         r, c = (r2 + 1 if delta[0] > 0 else r1 - 1 if delta[0] < 0 else r,
@@ -308,9 +330,9 @@ def _step(sh, start, delta, field, strict):
     return first
 
 
-def locate(sh, field, strict=True):
-    """Return the anchor (r, c) of the cell a field points at. strict: a blank form, where the
-    target must not be a label (read and verify run on filled files and pass strict=False)."""
+def locate(sh, field, filling=False, overwrite=False):
+    """Return the anchor (r, c) of the cell a field points at. filling: refuse a target that holds a
+    label, or a value unless overwrite (read and verify run on filled files and don't refuse)."""
     item = field.get("item")
     if not item:
         raise FormError("field without item: %r" % field)
@@ -327,16 +349,17 @@ def locate(sh, field, strict=True):
         how, text_rc = "right_of", item_rc
     r1, c1, r2, c2 = sh.bounds(*text_rc)
     if how == "right_of":
-        target = _step(sh, (r1, c2 + 1), (0, 1), field, strict)
+        target = _step(sh, (r1, c2 + 1), (0, 1), field, filling, overwrite)
     elif how == "below":
-        target = _step(sh, (r2 + 1, c1), (1, 0), field, strict)
+        target = _step(sh, (r2 + 1, c1), (1, 0), field, filling, overwrite)
     else:
-        target = _step(sh, (r1, c1 - 1), (0, -1), field, strict)
+        target = _step(sh, (r1, c1 - 1), (0, -1), field, filling, overwrite)
     if target == text_rc:
         raise FormError("field %r resolves to its own label at %s" % (field, addr(*target)))
     if how == "check":
         cur = sh.values.get(target)
-        if not (cur is None or norm(cur) in CHECKBOX):
+        box = norm(cur) in CHECKBOX if cur is not None else sh.has_dropdown(target)
+        if not box:
             raise FormError("no checkbox left of %r (found %r at %s)" % (field["check"], cur, addr(*target)))
     return target
 
@@ -347,8 +370,12 @@ def expand(fields):
     for f in fields:
         if "date" in f:
             m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})$", str(f["date"]))
+            try:
+                datetime.date(*map(int, m.groups())) if m else None
+            except ValueError:
+                m = None
             if not m:
-                raise FormError("date must be YYYY-MM-DD: %r" % f)
+                raise FormError("date must be a real date as YYYY-MM-DD: %r" % f)
             base = {k: v for k, v in f.items() if k not in ("date", "nth")}
             for unit, num in zip(("年", "月", "日"), m.groups()):
                 g = dict(base, left_of=unit, value=int(num))
@@ -378,16 +405,20 @@ def load_spec(path):
             spec = json.load(fh)
     except (OSError, ValueError) as e:
         raise FormError("cannot read spec %s: %s" % (path, e))
-    if not isinstance(spec.get("fields"), list):
+    if not isinstance(spec, dict) or not isinstance(spec.get("fields"), list):
         raise FormError("spec needs a fields list")
     return spec
 
 
-def resolve(sh, spec, strict=True):
+def resolve(sh, spec, filling=False, overwrite=False):
     rows = []
     seen = {}
     for f in expand(spec["fields"]):
-        rc = locate(sh, f, strict)
+        if not isinstance(f, dict):
+            raise FormError("each field must be an object: %r" % (f,))
+        if filling and "value" not in f:
+            raise FormError("field %r has no value; write \"value\": \"\" to clear a cell on purpose" % (f,))
+        rc = locate(sh, f, filling, overwrite)
         key = f.get("key") or f["item"]
         if rc in seen:
             raise FormError("%s and %s both point at %s" % (seen[rc], key, addr(*rc)))
@@ -410,17 +441,17 @@ def _cell_xml(a, style, value):
 
 def _cell_re(a):
     # attributes may come in any order (<c s="1" r="A1"/> is as valid as <c r="A1" s="1"/>)
-    return re.compile(r'<c\b(?=[^>]*\sr="%s")[^>]*?(?:/>|>.*?</c>)' % a, re.S)
+    return re.compile(r'<c\b(?=[^>]*\sr=(["\'])%s\1)[^>]*?(?:/>|>.*?</c>)' % a, re.S)
 
 
 def set_cell(xml, r, c, value):
     a = addr(r, c)
     m = _cell_re(a).search(xml)
     if m:
-        style = re.search(r'\ss="(\d+)"', m.group(0)[:m.group(0).find(">") + 1])
+        style = re.search(r'\ss=["\'](\d+)["\']', m.group(0)[:m.group(0).find(">") + 1])
         new = _cell_xml(a, style.group(1) if style else None, value)
         return xml[:m.start()] + new + xml[m.end():]
-    row = re.search(r'<row\b(?=[^>]*\sr="%d")[^>]*?(/>|>(.*?)</row>)' % r, xml, re.S)
+    row = re.search(r'<row\b(?=[^>]*\sr=["\']%d["\'])[^>]*?(/>|>(.*?)</row>)' % r, xml, re.S)
     if not row:
         raise FormError("row %d does not exist in the sheet XML; fill this cell by hand" % r)
     new = _cell_xml(a, None, value)
@@ -428,7 +459,7 @@ def set_cell(xml, r, c, value):
         start = row.group(0)[:-2] + ">"
         return xml[:row.start()] + start + new + "</row>" + xml[row.end():]
     body_start = row.start(2)
-    for cm in re.finditer(r'<c\b[^>]*\sr="([A-Z]+)\d+"', row.group(2)):
+    for cm in re.finditer(r'<c\b[^>]*\sr=["\']([A-Z]+)\d+["\']', row.group(2)):
         if col_to_num(cm.group(1)) > c:
             pos = body_start + cm.start()
             return xml[:pos] + new + xml[pos:]
@@ -440,7 +471,7 @@ def fill(form, spec_path, out, overwrite=False):
     wb = Workbook(form)
     spec = load_spec(spec_path)
     sh = wb.sheet(spec.get("sheet"))
-    rows = resolve(sh, spec, strict=not overwrite)
+    rows = resolve(sh, spec, filling=True, overwrite=overwrite)
     xml = sh.xml
     report = []
     for key, f, (r, c) in rows:
@@ -454,12 +485,24 @@ def fill(form, spec_path, out, overwrite=False):
         if isinstance(f.get("value"), bool) and not is_box and cur not in (None, ""):
             raise FormError("%s (%s) is not a checkbox" % (key, addr(r, c)))
         xml = set_cell(xml, r, c, value)
-        report.append({"key": key, "cell": addr(r, c), "value": value})
+        entry = {"key": key, "cell": addr(r, c), "value": value}
+        if cur not in (None, "") and not is_box:
+            entry["was"] = cur  # shown so a replaced prefilled value (or a mis-aimed field) is seen
+        report.append(entry)
     parse_xml(xml)  # still well-formed
-    with zipfile.ZipFile(out, "w") as zout:
-        for info in wb.zf.infolist():
-            data = xml.encode("utf-8") if info.filename == sh.path else wb.read(info.filename)
-            zout.writestr(info, data)
+    # write next to OUT and move it into place only when complete, so a failure never truncates an
+    # existing OUT (or FORM, when the two are one file under different names)
+    fd, tmp = tempfile.mkstemp(prefix=".certfill-", suffix=".xlsx", dir=os.path.dirname(os.path.abspath(out)))
+    os.close(fd)
+    try:
+        with zipfile.ZipFile(tmp, "w") as zout:
+            for info in wb.zf.infolist():
+                data = xml.encode("utf-8") if info.filename == sh.path else wb.read(info.filename)
+                zout.writestr(info, data)
+        os.replace(tmp, out)
+    except BaseException:
+        os.unlink(tmp)
+        raise
     return {"sheet": sh.name, "out": out, "written": report}
 
 
@@ -468,7 +511,7 @@ def fill(form, spec_path, out, overwrite=False):
 def _strip_cells(xml, addrs):
     for a in addrs:
         xml = _cell_re(a).sub("", xml)
-    return xml
+    return re.sub(r"<row\b([^>]*?)>\s*</row>", r"<row\1/>", xml)  # fill may open an empty <row/>
 
 
 def _same(a, b):
@@ -487,10 +530,9 @@ def verify(form, out, spec_path):
     def check(name, ok, detail=""):
         checks.append({"check": name, "ok": bool(ok), "detail": detail})
 
-    # lenient on FORM too: a prefilled form replaced with --overwrite holds text where the inputs are
-    rows = resolve(sh_src, spec, strict=False)
-    moved = [(k, addr(*a), addr(*b)) for (k, _, a), (_, _, b) in zip(rows, resolve(sh_dst, spec, strict=False)) if a != b]
-    check("labels resolve to the same cells in OUT", not moved, "; ".join("%s %s->%s" % m for m in moved))
+    # resolve on FORM only, where fill resolved: OUT holds the new values, which could read as labels.
+    # The labels themselves are covered by "other cells of the sheet unchanged".
+    rows = resolve(sh_src, spec)
     for key, f, rc in rows:
         want = cell_value(f, None)
         got = sh_dst.values.get(rc)
@@ -502,7 +544,7 @@ def verify(form, out, spec_path):
     check("same package parts", sorted(src.names) == sorted(dst.names))
     changed = [n for n in others if n in dst.names and src.read(n) != dst.read(n)]
     check("other parts byte-identical", not changed, ", ".join(changed))
-    refs = re.findall(r'<c\b[^>]*\sr="([A-Z]+\d+)"', sh_dst.xml)
+    refs = [m[1] for m in re.findall(r'<c\b[^>]*\sr=(["\'])([A-Z]+\d+)\1', sh_dst.xml)]
     dups = sorted(set(x for x in refs if refs.count(x) > 1))
     check("no cell address appears twice", not dups, ", ".join(dups))
     for tag in ("<x14:dataValidation ", "<dataValidation ", "<mergeCell "):
@@ -523,14 +565,14 @@ def inspect(form, sheet=None):
         v = sh.values.get((r, c))
         merged = (r, c) in sh.merged
         dropdown = sh.has_dropdown((r, c))
-        if v is None or v == "":
+        if (r, c) in sh.formulas:
+            kind, text = "formula", "" if v is None else v
+        elif v is None or v == "":
             if not (merged or dropdown):
                 continue
             kind, text = "input", ""
         elif isinstance(v, str) and norm(v) in CHECKBOX:
             kind, text = "checkbox", norm(v)
-        elif (r, c) in sh.formulas:
-            kind, text = "formula", v
         else:
             kind, text = ("text" if isinstance(v, str) else "value"), v
         r1, c1, r2, c2 = sh.bounds(r, c)
@@ -592,14 +634,16 @@ def main(argv=None):
             wb = Workbook(args.form)
             spec = load_spec(args.spec)
             sh = wb.sheet(spec.get("sheet"))
-            res = [{"key": k, "cell": addr(*rc), "value": sh.values.get(rc)} for k, _, rc in resolve(sh, spec, strict=False)]
+            res = [{"key": k, "cell": addr(*rc), "value": sh.values.get(rc)} for k, _, rc in resolve(sh, spec)]
             if args.json:
                 print(json.dumps(res, ensure_ascii=False, indent=1))
             else:
                 for x in res:
                     print("%-6s %s = %r" % (x["cell"], x["key"], x["value"]))
         elif args.cmd == "fill":
-            if os.path.realpath(args.out) == os.path.realpath(args.form):
+            same = os.path.samefile(args.out, args.form) if os.path.exists(args.out) else \
+                os.path.realpath(args.out) == os.path.realpath(args.form)
+            if same:
                 raise FormError("OUT must differ from FORM; the form itself is never modified")
             print(json.dumps(fill(args.form, args.spec, args.out, args.overwrite), ensure_ascii=False, indent=1))
         elif args.cmd == "verify":
