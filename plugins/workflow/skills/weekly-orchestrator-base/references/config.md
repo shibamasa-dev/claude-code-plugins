@@ -9,7 +9,7 @@ computed one way. Without the file every key takes its default below, which is t
 | Key | Default | Meaning |
 |---|---|---|
 | `repo` | `$GITHUB_REPOSITORY`, then `git remote get-url origin` | `owner/name` where the cycle issues live |
-| `title` | `Orchestrator: {repo_name} {iso_week}` | Cycle issue title. Must contain `{date}` (the anchor day, `YYYY-MM-DD`) or `{iso_week}` (`YYYY-Www` of the anchor day); may contain `{repo_name}` |
+| `title` | `Orchestrator: {repo_name} {iso_week}` | Cycle issue title. Must contain `{date}` (the anchor day, `YYYY-MM-DD`) or `{iso_week}` (`YYYY-Www` of the anchor day); may contain `{repo_name}` and `{repo}`, and no other placeholder (a title must parse back to its cycle) |
 | `legacy_titles` | `[]` | Older title formats that still count as cycle issues (read, never written) |
 | `anchor_weekday` | `monday` | Weekday of the day the title carries (the cycle's first day, or its due day) |
 | `lead_days` | `0` | Days before the anchor day that already belong to its cycle. A day `d` belongs to the cycle whose anchor `A` has `A - lead_days <= d < A - lead_days + 7` |
@@ -24,7 +24,7 @@ computed one way. Without the file every key takes its default below, which is t
 | `fields` | `{"priority": "Priority", "arch_review": "Arch Review", "start": "Start date", "target": "Target date"}` | Names of the Issue Fields the survey reads |
 | `issue_fields` | `[]` | Values the workflow sets on an issue it creates, best effort: `{"fieldId": …, "singleSelectOptionId": …}` or `{"fieldId": …, "dateValue": "{next}"}` |
 
-Placeholders in `title`, `period`, `plan_extra`, `footer` and `dateValue`: `{date}` (anchor day), `{start}`
+Placeholders in `period`, `plan_extra`, `footer` and `dateValue` (`title` takes only the four above): `{date}` (anchor day), `{start}`
 (`{date}` minus `lead_days`), `{end}` (`{start}` + 6 days), `{next}` (`{date}` + 7 days, the next cycle's anchor),
 `{iso_week}`, `{repo_name}`, `{repo}`.
 

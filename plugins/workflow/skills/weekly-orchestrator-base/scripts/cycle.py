@@ -29,6 +29,7 @@ except ImportError:  # pragma: no cover - Python < 3.9
 SKILL = Path(__file__).resolve().parent.parent
 TEMPLATE = SKILL / "references" / "plan-section.md"
 CONFIG_PATH = Path(".claude") / "weekly-orchestrator.json"
+TITLE_PLACEHOLDERS = {"{date}", "{iso_week}", "{repo_name}", "{repo}"}
 WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
 DEFAULTS = {
@@ -124,6 +125,11 @@ def load_config(path=None, root=None):
         raise CycleError("boundary must be Cutoff or Submitted")
     if "{date}" not in cfg["title"] and "{iso_week}" not in cfg["title"]:
         raise CycleError("title must contain {date} or {iso_week}")
+    for fmt in [cfg["title"]] + list(cfg["legacy_titles"]):
+        # Only placeholders a title can be parsed back from; another one would make cycle issues unrecognizable
+        extra = set(re.findall(r"\{[a-z_]+\}", fmt)) - TITLE_PLACEHOLDERS
+        if extra:
+            raise CycleError(f"title {fmt!r} uses {sorted(extra)}; a title may use only {sorted(TITLE_PLACEHOLDERS)}")
     try:
         cfg["_tz"] = ZoneInfo(cfg["timezone"])
     except (ZoneInfoNotFoundError, ValueError):
@@ -167,7 +173,7 @@ def title_for(cfg, anchor):
 
 
 def _title_pattern(fmt, cfg):
-    parts = re.split(r"(\{date\}|\{iso_week\}|\{repo_name\})", fmt)
+    parts = re.split(r"(\{date\}|\{iso_week\}|\{repo_name\}|\{repo\})", fmt)
     out = []
     for p in parts:
         if p == "{date}":
@@ -176,6 +182,8 @@ def _title_pattern(fmt, cfg):
             out.append(r"(?P<y>\d{4})-W(?P<w>\d{2})")
         elif p == "{repo_name}":
             out.append(re.escape(cfg["repo"].split("/")[-1]))
+        elif p == "{repo}":
+            out.append(re.escape(cfg["repo"]))
         else:
             out.append(re.escape(p))
     return re.compile("".join(out))
@@ -349,10 +357,15 @@ def cycle_issues(cfg, limit=200):
     return sorted([i for i in out if i["anchor"]], key=lambda i: (i["anchor"], i["number"]))
 
 
-def exists(cfg, title, limit=200):
+def exists(cfg, title, limit=1000):
+    """Issues with exactly this title. A list that fills `limit` may have cut the match off, so that is an error,
+    not "no such issue" (a negative answer here makes the workflow create a duplicate)."""
     issues = json.loads(run(["gh", "issue", "list", "-R", cfg["repo"], "--state", "all", "--limit", str(limit),
                              "--json", "number,title,state"]))
-    return [i for i in issues if i["title"] == title]
+    hits = [i for i in issues if i["title"] == title]
+    if not hits and len(issues) >= limit:
+        raise CycleError(f"the issue list reached {limit} issues, so a missing title is not proven; raise --limit")
+    return hits
 
 
 # ---------- version skew ----------
@@ -418,6 +431,7 @@ def main(argv=None):
             p.add_argument("--prev", help="the closed cycle issue (JSON); builds the cycle after it with carry-over")
             p.add_argument("--into", help="the existing issue for that cycle (JSON); replace only its plan section")
     p = sub.add_parser("exists"); p.add_argument("--title", required=True)
+    p.add_argument("--limit", type=int, default=1000, help="issues to read (default 1000); reaching it with no match is an error")
     p = sub.add_parser("boundary"); p.add_argument("issue")
     p = sub.add_parser("refs"); p.add_argument("file")
     p = sub.add_parser("cron")
@@ -458,7 +472,7 @@ def main(argv=None):
                 out = splice(out, _read_json(a.into))
             print(json.dumps(out, ensure_ascii=False, indent=1))
         elif a.cmd == "exists":
-            hits = exists(cfg, a.title)
+            hits = exists(cfg, a.title, a.limit)
             print(json.dumps({"exists": bool(hits), "issues": hits}, ensure_ascii=False))
         elif a.cmd == "boundary":
             at, src = boundary(cfg, _read_json(a.issue))

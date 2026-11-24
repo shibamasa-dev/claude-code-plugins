@@ -23,7 +23,8 @@ from cycle import (CycleError, anchor_for, boundary, carry_over, cycle_issues, i
 
 ISSUES_QUERY = """query($owner:String!,$name:String!){repository(owner:$owner,name:$name){
  issues(states:OPEN,first:100){nodes{
- number title updatedAt parent{number parent{number}} subIssuesSummary{total completed}
+ number title updatedAt parent{number repository{nameWithOwner} parent{number repository{nameWithOwner}}}
+ subIssuesSummary{total completed}
  subIssues(first:100){nodes{updatedAt}}
  issueFieldValues(first:20){nodes{
   ... on IssueFieldSingleSelectValue{name field{... on IssueFieldSingleSelect{name}}}
@@ -112,6 +113,17 @@ def render_repo(cfg, r, today, end, skip, multi, warn):
     # Cycle issues are the orchestrator's own, not work (also one the cycle list has not caught up with yet)
     issues = [i for i in r["issues"] if i["number"] not in skip and not parse_title(cfg, i["title"])]
     nums = {i["number"] for i in issues}
+
+    def local(p):
+        """The parent when it is in this repo (an issue number alone would match another repo's issue)."""
+        if p and (p.get("repository") or {}).get("nameWithOwner", repo).lower() == repo.lower():
+            return p
+        return None
+
+    def parent_ref(p):
+        other = (p.get("repository") or {}).get("nameWithOwner")
+        return f"{other}#{p['number']}" if other and not local(p) else ref(p["number"])
+
     if cfg["goal_marker"]:
         goals = [i for i in issues if cfg["goal_marker"] in i["title"]]
         how = f"title contains {cfg['goal_marker']}"
@@ -121,11 +133,11 @@ def render_repo(cfg, r, today, end, skip, multi, warn):
     goal_nums = {g["number"] for g in goals}
 
     def goal_of(i):
-        p = i.get("parent")
+        p = local(i.get("parent"))
         while p:  # up to two levels: a grandchild still counts when the middle parent is closed
             if p["number"] in goal_nums:
                 return p["number"]
-            p = p.get("parent")
+            p = local(p.get("parent"))
         return None
 
     prs_by = {}
@@ -179,20 +191,24 @@ def render_repo(cfg, r, today, end, skip, multi, warn):
     loose_nums = {i["number"] for i in loose}
     under = {}
     for i in loose:
-        p = i.get("parent")
+        p = local(i.get("parent"))
         if p and p["number"] in loose_nums:
             under.setdefault(p["number"], []).append(i)
 
     def tree(i, depth, gated):
         p = i.get("parent")
-        note = f", parent {ref(p['number'])} is closed" if depth == 0 and p and p["number"] not in nums else ""
+        note = ""
+        if depth == 0 and p and not local(p):
+            note = f", parent {parent_ref(p)} in another repo"
+        elif depth == 0 and p and p["number"] not in nums:
+            note = f", parent {ref(p['number'])} is closed"
         gate = f", parent is {F['arch_review']}: Pending" if gated else ""
         print(f"{'  ' * depth}- {ref(i['number'])} {clean(i['title'])} ({tag(i)}{note}{gate})")
         for c in sorted(under.get(i["number"], []), key=lambda x: x["number"]):
             tree(c, depth + 1, gated or fields(i).get(F["arch_review"]) == "Pending")
 
     for i in sorted(loose, key=lambda x: x["number"]):
-        p = i.get("parent")
+        p = local(i.get("parent"))
         if not (p and p["number"] in loose_nums):
             tree(i, 0, False)
     if not loose:

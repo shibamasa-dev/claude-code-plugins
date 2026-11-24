@@ -42,7 +42,10 @@
       "updatedAt": "2026-11-19T02:00:00Z",
       "parent": {
        "number": 10,
-       "parent": null
+       "parent": null,
+       "repository": {
+        "nameWithOwner": "example-org/sample-app"
+       }
       },
       "subIssuesSummary": {
        "total": 0,
@@ -74,7 +77,10 @@
       "updatedAt": "2026-11-20T23:30:00Z",
       "parent": {
        "number": 10,
-       "parent": null
+       "parent": null,
+       "repository": {
+        "nameWithOwner": "example-org/sample-app"
+       }
       },
       "subIssuesSummary": {
        "total": 1,
@@ -111,7 +117,13 @@
       "parent": {
        "number": 12,
        "parent": {
-        "number": 10
+        "number": 10,
+        "repository": {
+         "nameWithOwner": "example-org/sample-app"
+        }
+       },
+       "repository": {
+        "nameWithOwner": "example-org/sample-app"
        }
       },
       "subIssuesSummary": {
@@ -156,7 +168,10 @@
       "updatedAt": "2026-10-02T00:00:00Z",
       "parent": {
        "number": 20,
-       "parent": null
+       "parent": null,
+       "repository": {
+        "nameWithOwner": "example-org/sample-app"
+       }
       },
       "subIssuesSummary": {
        "total": 0,
@@ -202,7 +217,10 @@
       "updatedAt": "2026-11-05T00:00:00Z",
       "parent": {
        "number": 30,
-       "parent": null
+       "parent": null,
+       "repository": {
+        "nameWithOwner": "example-org/sample-app"
+       }
       },
       "subIssuesSummary": {
        "total": 0,
@@ -228,7 +246,10 @@
       "updatedAt": "2026-11-02T00:00:00Z",
       "parent": {
        "number": 39,
-       "parent": null
+       "parent": null,
+       "repository": {
+        "nameWithOwner": "example-org/sample-app"
+       }
       },
       "subIssuesSummary": {
        "total": 0,
@@ -269,6 +290,28 @@
          }
         }
        ]
+      }
+     },
+     {
+      "number": 41,
+      "title": "Port the importer to the CLI",
+      "updatedAt": "2026-11-20T00:00:00Z",
+      "parent": {
+       "number": 10,
+       "repository": {
+        "nameWithOwner": "example-org/sample-cli"
+       },
+       "parent": null
+      },
+      "subIssuesSummary": {
+       "total": 0,
+       "completed": 0
+      },
+      "subIssues": {
+       "nodes": []
+      },
+      "issueFieldValues": {
+       "nodes": []
       }
      }
     ]

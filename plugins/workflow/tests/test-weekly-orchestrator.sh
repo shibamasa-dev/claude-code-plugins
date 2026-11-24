@@ -95,6 +95,11 @@ row "the issue list cannot be read: exit" "$( [ "$rc" -ne 0 ] && echo failed || 
 row "the issue list cannot be read: nothing created" "$(grep -c '^create' "$T/log" 2>/dev/null || echo 0)" 0
 mv "$T/cycles.off" "$T/cycles.json"
 
+(cd "$T/repo" && python3 "$S/cycle.py" exists --title "sample weekly 2099-01-05" --limit 4 > /dev/null 2>&1); rc=$?
+row "no match but the list filled --limit: an error, not \"no such issue\"" "$rc" 2
+(cd "$T/repo" && python3 "$S/cycle.py" exists --title "sample weekly 2099-01-05" --limit 5 > /dev/null 2>&1); rc=$?
+row "no match and the list ended before --limit: exit" "$rc" 0
+
 echo '=== new --prev: carry-over ==='
 cy new --prev "$FX/prev-closed.json" > "$T/next.json"
 body() { js 'd["body"]' < "$T/next.json"; }
@@ -152,6 +157,11 @@ printf '{"title":"sample report 2026-11-26","body":""}' > "$T/offday.json"
 a=$(cy --config "$T/due.json" new --prev "$T/offday.json" | js 'd["title"]' | tr ' ' _)
 b=$(cy --config "$T/due.json" resolve --date 2026-12-03 | js 'd["title"]' | tr ' ' _)
 row "a previous title off the anchor weekday gives the workflow's title for the next week" "$(yes_no "$a" "$b")" ok
+echo '{"repo":"example-org/sample-app","title":"Plan {repo} {iso_week}"}' > "$T/repotitle.json"
+printf '{"title":"Plan example-org/sample-app 2026-W47","body":""}' > "$T/rt.json"
+row "a title with {repo} is read back" "$(cy --config "$T/repotitle.json" new --prev "$T/rt.json" | js 'd["title"]' | tr ' /' '_.')" Plan_example-org.sample-app_2026-W48
+echo '{"repo":"example-org/sample-app","title":"Plan {date} {start}"}' > "$T/badph.json"
+cy --config "$T/badph.json" resolve > /dev/null 2>&1; row "a title placeholder that cannot be read back is refused: exit" "$?" 2
 printf '{"title":"Release notes 2026-11-16","body":""}' > "$T/other.json"
 cy new --prev "$T/other.json" > /dev/null 2>&1; row "a title that is not a cycle issue's is refused: exit" "$?" 2
 echo '{"repo":"example-org/sample-app","timezone":"Mars/Olympus"}' > "$T/badtz.json"
@@ -173,6 +183,8 @@ row "survey exits" "$rc" 0
 has() { grep -cF -- "$1" "$T/survey.txt"; }
 row "goal marker from config: [Goal] issues are goals" "$(has '- #10 [Goal] Ship the CSV importer (children 2/5 done, 1 open children Arch Review: Pending')" 1
 row "goal marker from config: an issue with sub-issues but no marker is not a goal" "$(grep -c '^- #30 ' "$T/survey.txt")" 1
+row "a child of another repo's #10 is not listed under this repo's goal #10" "$(grep -c '^  - #41 ' "$T/survey.txt")" 0
+row "it is listed under no goal, with its parent's repo" "$(has '- #41 Port the importer to the CLI (no Priority, parent example-org/sample-cli#10 in another repo)')" 1
 row "a grandchild is listed under its goal" "$(has '  - #13 Handle a BOM at the start of the file (no Priority, via #12)')" 1
 row "the last child update is the newest, in the config's timezone" "$(has 'last child update 2026-11-21 (3 days ago)')" 1
 row "warning: Arch Review Pending" "$(has '#11 is Arch Review: Pending')" 1
