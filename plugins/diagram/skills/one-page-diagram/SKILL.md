@@ -26,7 +26,7 @@ Ask one question: does an existing notation already fix what a box and an arrow 
 
 A software subject does not by itself mean typed-diagram or C4: a one-page explainer of a software system follows this skill's rules. Switch to C4 only when the user asks for C4 or the deliverable is a formal architecture document set.
 
-When the user asks for Mermaid, use typed-diagram: Mermaid cannot nest, band and place freely the way this skill needs.
+When the user asks for Mermaid, use typed-diagram: Mermaid cannot nest, band and place freely the way this skill needs. A sequence, state or flow diagram for a proposal or client document also goes to typed-diagram, which draws it as polished SVG as well as Mermaid.
 
 ## 1. Decide whether a diagram earns its place
 
@@ -79,13 +79,31 @@ Write this down before placing anything (in your working notes, not in the deliv
 - A Markdown document the user will version: a fenced Mermaid block through typed-diagram, or the SVG saved next to the document and referenced as an image.
 - A diagram the user will keep editing by hand: offer an editable format such as Excalidraw or draw.io.
 
+### Several points on one figure
+
+When the reply or the document makes two or more points about the same picture (two weak spots in one architecture, two hand-offs in one organization), step through them on the one figure instead of drawing it again per point. The layout and every color stay; only emphasis moves: the elements of the current point get a thicker outline, the rest fade, and the starting element can carry a short badge. Use it only with two or more points. When each point needs different elements drawn, draw separate figures.
+
+1. Tag the SVG: `data-box="<id>"` on the `<g>` of each box or band a point can focus; `data-arrow="<id>"` on the `<g>` that holds an arrow together with its label. Untagged elements (legend, caption, background) are never dimmed. The SVG holds no color values: take colors from classes that use the variables in [references/svg.md](references/svg.md); the stepper output carries their values for light and dark. No `#` followed by three or more hex characters anywhere, including `url(#...)` references: name ids like `ov-ah`, not `ab1-arrow`.
+2. Write the spec as JSON in the session scratchpad: `title`; `svg` (the markup) or `svgFile` (a path relative to the spec); optional `lead`, `source` (`{label, text}`: the request the figure answers) and `labels` (`{back, next, all}` in the reader's language); `steps`, each `{name, focus: [ids], here: <box id>, mark: <badge text>, point: <one-line conclusion>}`. `here` must be a box in `focus`; `mark` needs `here`.
+3. Run it:
+
+   ```sh
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/stepper/stepper.mjs" <scratchpad>/steps.json --out <scratchpad>/steps.html --preview <scratchpad>/steps-preview
+   ```
+
+   It refuses a spec with no title, an SVG that does not start with `<svg`, a color value in the SVG, fewer than two steps, a focus id not in the SVG, or a bad `here` or `mark`, and prints why.
+4. Use the fragment (`--out`, or stdout): pass it to the host's HTML widget, or put it inside the deliverable HTML file. `--preview` writes `light.html` and `dark.html` around it; look at every step and the whole figure in both (§7).
+5. Write every point in the reply text as well, as the script's last line prints them: previews, notifications and summaries do not show the figure, and a reader who never clicks Next misses the later points. Without the script the point list is still readable.
+
+Where HTML cannot be shown (Mermaid only, a static image, a printed document), number the points on the one figure as §3 does for a demoted sequence, and list one conclusion per number under it.
+
 Downloaded icons, screenshots and any generator script are working files: keep them in the session scratchpad (the system temp directory when there is none), not next to the deliverable.
 
 ## 7. Validate before delivering
 
 1. **Same-kind check**: for every row, group and layer that presents a set, read out the tags. All the same, or fix it.
 2. **Legend check**: the legend lists every kind, every semantic style, every concept icon and the arrow meaning. Nothing appears in the diagram that the legend does not explain.
-3. **Render and look**: open the result the way the reader will (the host's preview, a browser, or a headless screenshot such as `chrome --headless --screenshot="${TMPDIR:-/tmp}/diagram-check.png" --window-size=1600,1000 file.html`) and look at it in both themes. When headless Chrome cannot start (a sandboxed shell often blocks it), serve the folder on localhost and open it with the host's browser tool. Check that every label fits its box, no arrow crosses text, nothing is clipped, and every icon is visible on its background.
+3. **Render and look**: open the result the way the reader will (the host's preview, a browser, or a headless screenshot such as `chrome --headless --screenshot="${TMPDIR:-/tmp}/diagram-check.png" --window-size=1600,1000 file.html`) and look at it in both themes. When headless Chrome cannot start (a sandboxed shell often blocks it), serve the folder on localhost and open it with the host's browser tool. Check that every label fits its box, no arrow crosses text, nothing is clipped, and every icon is visible on its background. With the stepper, open both preview pages and look at every step and the whole figure.
 4. Fix what you find and render again, twice at most. Then deliver, and name any defect that remains.
 
 When you could not render it, say "not visually checked" in the reply. Do not describe the diagram's look as verified.

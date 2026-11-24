@@ -9,11 +9,13 @@ Take every color from a CSS custom property, so one file carries both themes. Ne
   :root {
     --bg: #ffffff; --ink: #1f2328; --muted: #656d76;
     --line: #8c959f; --box: #f6f8fa; --accent: #0969da;
+    --pill: #eaeef2; --badge: #0969da; --badge-ink: #ffffff;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #0d1117; --ink: #e6edf3; --muted: #8d96a0;
       --line: #6e7681; --box: #161b22; --accent: #4493f8;
+      --pill: #21262d; --badge: #4493f8; --badge-ink: #0d1117;
     }
   }
   body { background: var(--bg); }
@@ -29,6 +31,8 @@ Take every color from a CSS custom property, so one file carries both themes. Ne
   }
 </style>
 ```
+
+`--pill`, `--badge` and `--badge-ink` are for the stepper (several points on one figure, see SKILL.md): the background of an arrow label while points are stepped through, and the badge on the current point's box. A static figure does not need them. The stepper carries these values in its own output, so a figure it steps through takes its colors from classes that use these variables and holds no color values of its own.
 
 `color` on the `<svg>` is what `currentColor` resolves to, so stroke-only concept icons follow the theme. The values above are a neutral default. When the project has its own design tokens, or the host supplies theme variables, use those instead.
 
