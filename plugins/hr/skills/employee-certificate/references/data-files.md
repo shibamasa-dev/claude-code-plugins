@@ -47,7 +47,7 @@ weekdays:                # e.g. Mon Tue Wed Thu Fri
 hours_weekday:           # e.g. 09:00-18:00, break 60
 hours_saturday:
 hours_sunday_holiday:
-monthly_hours:
+monthly_hours:           # contracted hours a month, breaks set by the work rules included, overtime excluded (item 6)
 days_per_month:
 days_per_week:
 nursery_teacher: no
