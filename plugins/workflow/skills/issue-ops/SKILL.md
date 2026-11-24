@@ -190,7 +190,7 @@ Bodies drift when only the title or the comments get updated. To find suspects a
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/issue-ops/scripts/stale_body_check.py" measure --repos <owner>/<repo> [<owner>/<repo> ...] --show
 ```
 
-It is read-only and reports two kinds of suspect: (A) the body's first line names a fiscal year or round (「令和N年度」, 「YYYY年度」, 「第N回」) that the title does not, and (B) a self-declared 「YYYY-MM-DD 時点」 ("as of") date older than 60 days (`--stale-days`). A suspect is not a verdict: read the body, the comments and related PRs before rewriting anything, and rewrite the body only by the rules above. An exit status of 1 means an issue list could not be read, not that nothing was found.
+It is read-only and reports two kinds of suspect: (A) the title and the body's first line both name a fiscal year or round of the same kind (「令和N年度」, 「YYYY年度」, 「第N回」) and the first line has a value the title lacks (a kind the title does not name is not checked), and (B) a self-declared 「YYYY-MM-DD 時点」 ("as of") date older than 60 days (`--stale-days`). A suspect is not a verdict: read the body, the comments and related PRs before rewriting anything, and rewrite the body only by the rules above. An exit status of 1 means an issue list could not be read, not that nothing was found.
 
 ### Recording rules when closing an issue (all issues)
 
