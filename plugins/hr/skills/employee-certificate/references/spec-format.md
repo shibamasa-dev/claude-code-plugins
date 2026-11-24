@@ -7,7 +7,7 @@
 | `inspect FORM [--sheet NAME] [--json]` | Prints the sheet row by row: text cells as `A1[text]`, empty inputs as `A1:C1 _`, dropdowns `▼`, checkboxes `□`/`☑`, formulas `=`. Lists every sheet; the first one is shown unless `--sheet` names another (read an instructions sheet such as `記載要領` this way) |
 | `read FORM SPEC [--json]` | Resolves every field and prints `cell key = value`. On a blank form, use it to check the mapping; on last year's copy, to collect values to carry over |
 | `fill FORM SPEC OUT [--overwrite]` | Writes the values into a copy at OUT (built next to it and moved into place when complete). Refuses: a field without `value`, a cell that already holds a value (without `--overwrite`), a formula cell, a target that is a label (even with `--overwrite`), two fields on one cell, OUT that is FORM under any name. Its output lists each cell written and, under `was`, any value it replaced |
-| `verify FORM OUT SPEC [--json]` | Reads OUT back and checks each value against the spec, that the labels still resolve to the same cells, that no other cell or file in the package changed, and that the counts of dropdowns and merged cells are the same. Exit 0 only when every check is `ok` |
+| `verify FORM OUT SPEC [--json]` | Resolves the spec on FORM (where `fill` resolved it), then reads OUT back and checks each value against the spec, that no other cell (labels included) or file in the package changed, that no cell address appears twice, and that the counts of dropdowns and merged cells are the same. Exit 0 only when every check is `ok` |
 
 Exit codes: 0 ok, 1 a verify check failed, 2 an error (the message says what to change).
 

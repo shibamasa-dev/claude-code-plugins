@@ -238,6 +238,9 @@ class Fill(unittest.TestCase):
             fh.write("[]")
         rc, _, err = run("read", STANDARD, path)
         self.assertEqual(rc, 2, err)
+        spec = write_spec(self.tmp, ["事業所名"])  # a field that is not an object
+        rc, _, err = run("read", STANDARD, spec)
+        self.assertEqual(rc, 2, err)
 
     def test_checkbox_option_needs_a_box(self):
         # an empty single cell left of the option, with a plain label before it: no box to tick

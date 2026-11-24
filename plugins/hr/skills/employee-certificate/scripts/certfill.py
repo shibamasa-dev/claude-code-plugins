@@ -368,6 +368,8 @@ def expand(fields):
     """Turn date and check shorthands into plain fields with a value."""
     out = []
     for f in fields:
+        if not isinstance(f, dict):
+            raise FormError("each field must be an object: %r" % (f,))
         if "date" in f:
             m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})$", str(f["date"]))
             try:
@@ -414,8 +416,6 @@ def resolve(sh, spec, filling=False, overwrite=False):
     rows = []
     seen = {}
     for f in expand(spec["fields"]):
-        if not isinstance(f, dict):
-            raise FormError("each field must be an object: %r" % (f,))
         if filling and "value" not in f:
             raise FormError("field %r has no value; write \"value\": \"\" to clear a cell on purpose" % (f,))
         rc = locate(sh, f, filling, overwrite)
@@ -641,7 +641,7 @@ def main(argv=None):
                 for x in res:
                     print("%-6s %s = %r" % (x["cell"], x["key"], x["value"]))
         elif args.cmd == "fill":
-            same = os.path.samefile(args.out, args.form) if os.path.exists(args.out) else \
+            same = os.path.samefile(args.out, args.form) if os.path.exists(args.out) and os.path.exists(args.form) else \
                 os.path.realpath(args.out) == os.path.realpath(args.form)
             if same:
                 raise FormError("OUT must differ from FORM; the form itself is never modified")
