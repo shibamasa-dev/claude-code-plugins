@@ -26,6 +26,12 @@
 | `weekly-orchestrator-setup` | リポにオーケストレータを 1 回だけ用意する。サイクルの設定を聞いて `.claude/weekly-orchestrator.json` を書き、プロジェクト用オーケストレータスキルの雛形・週次のサイクル issue を起票する GitHub Actions workflow・`AGENTS.md` か `CLAUDE.md` の 3 行の「Weekly plan」節を置く |
 | `choice-board` | 10 個以上の項目それぞれについて決める必要があるとき、チャットではなくボードのページに出す。1 項目 1 行で、選択肢（推奨に印）とメモを並べ、Artifact のデータベースに保存して Claude が読み戻す。ボードは 1 プロジェクト 1 つを使い回す。Artifact のツール（claude.ai に接続した Claude Code）が必要 |
 
+## エージェント
+
+| エージェント | 使いどころ |
+|---|---|
+| `acceptance-verifier` | マージか差し戻しかを決める前に、PR や納品物を紐づく issue の受け入れ基準に照らして確かめる。issue と全レビュー（レビュー本文・inline・会話コメント、ページ送りで全件）を読み、指摘を実際のコードと突き合わせて分類し、テストをキャッシュ無しで自分で回し、定型のレポート（レビュー評価・基準ごとの ✅/❌ と根拠のコマンド・マージの推奨・スコープ外の気づき）を最終応答で返す。読み取り専用で、編集・コミット・push・GitHub への書き込みはしない。紐づく issue（複数あればそれぞれ）に受け入れ基準があれば、`pr-review-triage` がマージ判断の前に呼ぶ。呼び名は `workflow:acceptance-verifier` |
+
 ## フック
 
 | フック | いつ | 何をするか |
