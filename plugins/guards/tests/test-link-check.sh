@@ -53,6 +53,10 @@ row "absolute path in the scratchpad" "$(probe "See [o]($SCRATCH/out.png).")" pa
 row "absolute path in an added directory" "$(probe "See [n]($ADDED/notes.md).")" pass
 row "relative path escaping the working directory" "$(probe 'See [r](../outside/runbook.md).')" block
 row "link inside a code block or inline code" "$(probe $'```\n[x](docs/missing.md)\n```\nand `[y](docs/missing.md)`')" pass
+row "longer closing fence and unclosed fence" "$(probe $'~~~\n[x](docs/missing.md)\n~~~~\nok\n```\n[y](docs/missing.md)')" pass
+row "inline code with double backticks" "$(probe 'See ``[x](docs/missing.md)``.')" pass
+row "tel: link ignored" "$(probe 'Call [t](tel:12345).')" pass
+row "non-ASCII path that does not exist" "$(probe 'See [x](資料/仕様.md).')" block
 row "placeholder target with no letter or digit" "$(probe 'See [x](…).')" pass
 
 echo '=== when it stays quiet ==='

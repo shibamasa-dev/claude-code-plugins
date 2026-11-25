@@ -8,8 +8,10 @@ clicked. This hook finds such links and blocks Stop once, so Claude fixes the re
 
 What counts:
   - Markdown links `[label](target)` (and `![alt](target)`) outside code blocks and inline code.
-  - Skipped: URLs (`scheme://...`, `mailto:` and other `scheme:` targets), in-app anchors (`#...`),
-    targets with no letter or digit (a placeholder such as `…`).
+  - Skipped: URLs (`scheme://...`, `mailto:`, `tel:` and other `scheme:` targets), in-app anchors (`#...`),
+    targets with no letter or digit in any script (a placeholder such as `…`).
+  - Code follows CommonMark: a closing fence is at least as long as the opening one, an unclosed fence runs
+    to the end, and inline code may use several backticks.
   - A `#fragment`, a `:line` or `:line:col` suffix is dropped and %-escapes (`%28`, `%20`) are decoded.
   - Paths in backticks are not checked: in replies they are mostly commands, system paths and paths on
     other machines.
@@ -34,8 +36,9 @@ from urllib.parse import unquote
 
 KEEP_DAYS = 30
 MAX_LISTED = 8
-FENCE = re.compile(r"^[ \t]*(`{3,}|~{3,}).*?^[ \t]*\1[ \t]*$", re.M | re.S)
-INLINE = re.compile(r"`[^`\n]*`")
+FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+FENCE_CLOSE = re.compile(r"^ {0,3}(`{3,}|~{3,})[ \t]*$")
+INLINE = re.compile(r"(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)", re.S)
 LINK = re.compile(r"!?\[[^\]\n]*\]\((<[^>\n]+>|[^)\s]+)(?:\s+\"[^\"\n]*\")?\)")
 SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 LINE_SUFFIX = re.compile(r":\d+(?::\d+)?$")
@@ -46,9 +49,27 @@ def mode() -> str:
     return m if m in ("enforce", "observe", "off") else "enforce"
 
 
+def strip_fences(text: str) -> str:
+    """Drop fenced code blocks: a closing fence uses the opening character and is at least as long;
+    an unclosed fence runs to the end of the text (CommonMark)."""
+    out, fence = [], None
+    for line in text.split("\n"):
+        if fence:
+            m = FENCE_CLOSE.match(line)
+            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence):
+                fence = None
+            continue
+        m = FENCE_OPEN.match(line)
+        if m:
+            fence = m.group(1)
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
 def link_targets(text: str) -> list:
     """Path targets of the Markdown links in text, normalized, in order, without duplicates."""
-    body = INLINE.sub("", FENCE.sub("", text))
+    body = INLINE.sub("", strip_fences(text))
     out = []
     for m in LINK.finditer(body):
         t = m.group(1)
@@ -56,11 +77,13 @@ def link_targets(text: str) -> list:
             t = t[1:-1]
         if t.startswith("#") or "://" in t:
             continue
-        # "README.md:42" looks like a scheme to the regex; it is a path when what follows is a line number
-        if SCHEME.match(t) and not LINE_SUFFIX.search(t):
+        # "README.md:42" looks like a scheme to the regex; it is a path when the part before ":" has a "." or "/"
+        # and what follows is a line number. "tel:12345" stays a scheme
+        m = SCHEME.match(t)
+        if m and not (re.search(r"[./]", m.group(0)) and LINE_SUFFIX.search(t)):
             continue
         t = unquote(LINE_SUFFIX.sub("", t.split("#", 1)[0]))
-        if not re.search(r"[A-Za-z0-9_]", t) or t in out:
+        if not re.search(r"\w", t) or t in out:
             continue
         out.append(t)
     return out
