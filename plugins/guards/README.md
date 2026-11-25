@@ -19,6 +19,7 @@ Hooks that stop Claude Code before it does something you can't undo.
 | bash-guard (publish-guard) | Before Bash, and before the GitHub connector's tools that write issue / PR text | Off until `publish_patterns` is set. Checks the text about to be published (title, body, body files, heredocs) against your private-value patterns. Denies a match headed for a public repo, naming the pattern number and the place but never the matched text. A private or internal repo passes silently; when the repo or its visibility can't be determined, the call passes with a note |
 | repo-structure-guard | Before Write | Active only when a rules file exists. Blocks writes that break the repo layout rules (for example, a new `.md` directly under `docs/` or a script directly under `scripts/`) |
 | git-freshness | After Bash, and after a merge through the GitHub connector | After a merge, fast-forwards (`--ff-only`) the PR's base branch if you have it checked out (the default branch if the base is unknown). If it can't, it only tells you; it never blocks. For connector merges, only when the local clone is the same repo |
+| link-check | Stop (desktop app only) | When Claude's last reply links a file that the desktop app's file pane cannot open, stops it once and asks for a fix: a file that doesn't exist (for example one that is only on another branch, or a path relative to the wrong folder) or one outside the working directory, the added directories and the scratchpad. Only Markdown links `[label](path)` outside code count; URLs, `#…` anchors, a `#fragment` and a `:line` suffix are handled. With `link_check=observe` it only records the fire |
 
 ## Configuration
 
@@ -28,6 +29,7 @@ Change settings with `/plugin configure guards@shibamasa-plugins` (or `/config`)
 |---|---|---|
 | `worktree_dirs` | empty | Folders where you keep worktrees (comma-separated, e.g. `~/.worktrees`). Recursive deletes inside them are allowed, and paths whose merge state can't be determined (missing, or hidden behind a variable) are blocked. Even when empty, deleting an unmerged worktree is blocked anywhere |
 | `publish_patterns` | empty | Turns publish-guard on. A JSON array of regexes on one line, for example `["acme-internal", "(?i)acme-[a-z]+-private"]`. Each is matched line by line against issue / PR text before it is published; write `(?i)` into a pattern to ignore case. Stored as a sensitive value (in your system's credential store, not `settings.json`). It does not appear in `/config`: set it with `/plugin configure guards@shibamasa-plugins`, or at install time with `--config 'publish_patterns=["acme-internal"]'`. A value that is not a JSON array disables the check with a note; an entry that is not a valid regex is skipped and named by its number |
+| `link_check` | `enforce` | link-check mode. `enforce` stops Claude once per reply; `observe` only appends the fire (time, session ID, the targets) to a daily file in `${CLAUDE_PLUGIN_DATA}/link-check/`, kept 30 days; `off` does nothing |
 
 You can also pass values at install time: `claude plugin install guards@shibamasa-plugins --config worktree_dirs=~/.worktrees`. Hooks receive them as environment variables `CLAUDE_PLUGIN_OPTION_<KEY>` (e.g. `CLAUDE_PLUGIN_OPTION_WORKTREE_DIRS`).
 
@@ -51,7 +53,7 @@ Copy [`examples/repo-structure.md`](examples/repo-structure.md) to one of these 
 
 ### Where files go
 
-The only file the plugin writes is publish-guard's visibility cache, `repo-visibility.json` in `${CLAUDE_PLUGIN_DATA}` (`~/.claude/plugins/data/<plugin id>/`). Uninstalling the plugin from the last scope it is installed in deletes it, unless you pass `--keep-data`; nothing is lost either way, since the hook asks GitHub again.
+The plugin writes two things, both in `${CLAUDE_PLUGIN_DATA}` (`~/.claude/plugins/data/<plugin id>/`): publish-guard's visibility cache `repo-visibility.json`, and, only with `link_check=observe`, link-check's daily records in `link-check/` (files older than 30 days are removed on the next record). Uninstalling the plugin from the last scope it is installed in deletes both, unless you pass `--keep-data`; nothing needed is lost, since the hook asks GitHub again.
 
 ## Merges
 
@@ -88,6 +90,13 @@ Also worth knowing:
 - The visibility cache (`repo-visibility.json` in the plugin's data directory) holds the names of the repos that had a match, private ones included, in plain text
 - A `publish_patterns` value that is not valid JSON is reported only when a publishing command runs
 - With the guard off, the hook still starts before each GitHub connector write call (a few tens of milliseconds) and does nothing
+
+link-check:
+
+- The added directories are not part of the Stop hook input; link-check reads them from the session transcript's `environment` entry, which is not a documented format. When that entry (or the scratchpad path) is missing, a linked file that exists outside the working directory passes, and only missing files fire
+- Only the final reply of a turn is checked (the Stop input carries no earlier text), and only Markdown links; a bare path in backticks is not checked
+- It checks whether the file exists, not whether the link is the one you meant
+- It runs only when `CLAUDE_CODE_ENTRYPOINT` is `claude-desktop`; a `claude -p` run started from a desktop session inherits that value and is checked too
 
 ## Requirements
 

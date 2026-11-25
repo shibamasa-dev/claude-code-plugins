@@ -1,7 +1,7 @@
 {
   "name": "guards",
-  "version": "0.9.0",
-  "description": "Hooks that stop destructive Bash operations, deletion of unmerged worktrees and pushes from a branch behind the default branch, `gh issue view --comments` without `--json` (gh-comments-guard) and `pip freeze` (pip-freeze-guard), and bring the local merge-target branch up to date after a merge. Optional publish-guard: checks issue / PR text against your own list of private-value patterns before it is published to a public repo. Repo layout rules apply only when you add a rule file",
+  "version": "0.10.0",
+  "description": "Hooks that stop destructive Bash operations, deletion of unmerged worktrees and pushes from a branch behind the default branch, `gh issue view --comments` without `--json` (gh-comments-guard) and `pip freeze` (pip-freeze-guard), and bring the local merge-target branch up to date after a merge. Optional publish-guard: checks issue / PR text against your own list of private-value patterns before it is published to a public repo. Repo layout rules apply only when you add a rule file. In the desktop app, link-check stops Claude once when its last reply links a file the file pane cannot open",
   "author": {
     "name": "shibamasa-dev"
   },
@@ -29,6 +29,13 @@
       "sensitive": true,
       "required": false,
       "default": ""
+    },
+    "link_check": {
+      "type": "string",
+      "title": "link-check mode (enforce / observe / off)",
+      "description": "Desktop app only. enforce: when Claude's last reply links a file the file pane cannot open (missing, or outside the working directory, added directories and scratchpad), stop it once and ask for a fix. observe: only record the fire in the plugin's data directory. off: do nothing",
+      "required": false,
+      "default": "enforce"
     }
   }
 }
