@@ -2,6 +2,15 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.18.0] - 2026-11-24
+
+### Added
+- New hook `decision-capture` (`hooks/decision-capture.py`, on `UserPromptSubmit`, `PostToolUse` for `AskUserQuestion` / `Bash`, and `Stop`). Off by default. When the last reply asks the user to decide something in prose and the turn neither used AskUserQuestion nor ran the configured registration command, `enforce` blocks Stop once (offering AskUserQuestion, the registration command and a `dismiss` command) and `observe` only records it. It passes on `stop_hook_active`, a turn it already blocked, and a scratchpad working folder, and goes quiet in a session for 12 hours after `decision_stop_limit` dismissals in a row. State is per session in `${CLAUDE_PLUGIN_DATA}/decision-capture/`. Always exits 0.
+- `hooks/_decision_judge.py`: `asks_decision(text, backend)` with a local `regex` judge (the default; Japanese and English patterns on the last six lines; sends nothing out) and three opt-in model judges, `openai` (OpenAI Decisions API), `typesafe` (TypeSafe Jev) and `google` (Gemini Decisions API), each with its own default threshold (0.9, 0.97, 0.8). A model judge sends only the last 1500 characters, only past a loose pre-filter, with a 2-second timeout, and falls back to `regex` on a missing key or any error.
+- userConfig `decision_capture`, `decision_register_command`, `decision_stop_limit`, `decision_judge`, `decision_judge_threshold`, and the sensitive `decision_openai_api_key`, `decision_typesafe_api_key`, `decision_google_api_key`.
+- `tests/test-decision-capture.sh`: a prose question blocks once, `stop_hook_active` and a second Stop in the turn pass, AskUserQuestion and the registration command pass (another command of the same tool does not), `off` writes nothing, `observe` records without blocking, dismissals in a row stop blocking until AskUserQuestion resets the count, a model judge without a key falls back to `regex`, and broken input exits 0.
+- `tests/eval-decision-judge.py` and `tests/fixtures/decision-capture/ask_dataset.json`: scores a judge against hand-labelled real replies with proper nouns and private details rewritten. The README lists how each default threshold was measured.
+
 ## [0.17.0] - 2026-11-24
 
 ### Added
