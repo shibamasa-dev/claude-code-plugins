@@ -24,6 +24,7 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 /plugin install inventory@shibamasa-plugins
 /plugin install instructions@shibamasa-plugins
 /plugin install research@shibamasa-plugins
+/plugin install hr@shibamasa-plugins
 /plugin install agent-bridge@shibamasa-plugins
 ```
 
@@ -43,6 +44,7 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 | [inventory](plugins/inventory/README.ja.md) | 手持ちの物の在庫DB。Claude が写真から登録し、読めなかった項目は `needs_review` に残し、NFKC 正規化した検索で引ける。既定は SQLite、Postgres / Supabase にも直結かコネクタ経由で置ける |
 | [instructions](plugins/instructions/README.ja.md) | 同梱した指示ファイルを `~/.claude/CLAUDE.md` と同じ扱いで読み込ませる mod。同じ作業ルールがどのマシンでも効く。今は返答の言語とファイルのリンクの 1 ファイルだけ。managed settings や Team / Enterprise のプランで Claude Code の組み込みガードが入る環境では効かない |
 | [research](plugins/research/README.ja.md) | X や Web を読むスキル群。今は `research-x` だけ。選んだ X アカウントについて xAI の X 検索に問い合わせ、はっきりしたアップデート告知だけを、指定した言語と口調で要約し、1 件ずつ Slack に流す。状態はチャンネルの履歴だけで持つ |
+| [hr](plugins/hr/README.ja.md) | 日本向けの人事・労務の事務。今は `employee-certificate` だけ。会社が社員に出す証明書（保育園・学童の申込みに付ける就労証明書、在籍証明書、退職証明書、収入証明）を、先方の Excel 様式に項目名で対応づけて記入する（レイアウトが変わっても埋まる）。会社と社員のデータはプラグインの外に置いた利用者のファイルから読む |
 | [agent-bridge](plugins/agent-bridge/README.ja.md) | 自分の Supabase に置くメッセージキューを通して、Claude Code とほかの AI エージェントが双方向にやり取りする。どのエージェントも自分のトークンで同じ API を使い、webhook かポーリングで起こされる。待ち受け中の Claude Code セッションはメッセージが届くと起きる。セットアップ用のスキルが、Supabase プロジェクトにブリッジを作り、Vault の秘密をダミー値で登録する（本物はあとで入れる） |
 
 スキル・フックの一覧と設定は、各プラグインの README にある。

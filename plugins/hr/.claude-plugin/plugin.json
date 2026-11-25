@@ -1,0 +1,27 @@
+{
+  "name": "hr",
+  "version": "0.1.0",
+  "description": "Japan-specific HR and labour admin skills. Currently employee-certificate, which fills the certificates a company issues to an employee (the employment certificate for nursery and after-school applications on the municipality's Excel form, proof of enrolment, separation certificates under Labour Standards Act Art. 22, proof of income) by item label, from company and employee files you keep outside the plugin",
+  "author": {
+    "name": "shibamasa-dev"
+  },
+  "homepage": "https://github.com/shibamasa-dev/claude-code-plugins/tree/main/plugins/hr",
+  "repository": "https://github.com/shibamasa-dev/claude-code-plugins",
+  "license": "MIT",
+  "keywords": [
+    "hr",
+    "japan",
+    "certificate",
+    "excel",
+    "labour"
+  ],
+  "userConfig": {
+    "company_dir": {
+      "type": "string",
+      "title": "Company folder",
+      "description": "Folder with your company and employee files (company.md, hr/employees/, hr/municipalities/, hr/issued/). Empty means ~/.claude/company. Kept outside the plugin, so uninstalling leaves it alone",
+      "required": false,
+      "default": ""
+    }
+  }
+}
