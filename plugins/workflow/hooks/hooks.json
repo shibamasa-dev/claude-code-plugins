@@ -43,10 +43,6 @@
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/now-context.py\""
-          },
-          {
-            "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/decision-capture.py\""
           }
         ]
       }
@@ -69,10 +65,6 @@
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/commit_gate.py\""
-          },
-          {
-            "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/decision-capture.py\""
           }
         ]
       }
@@ -139,15 +131,6 @@
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/commit_gate.py\""
-          }
-        ]
-      },
-      {
-        "matcher": "^(AskUserQuestion|Bash)$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/decision-capture.py\""
           }
         ]
       }

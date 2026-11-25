@@ -2,6 +2,12 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.19.0] - 2026-11-25
+
+### Removed
+- The `decision-capture` hook (`hooks/decision-capture.py`, `hooks/_decision_judge.py`) and its `UserPromptSubmit`, `PostToolUse` (`AskUserQuestion` / `Bash`) and `Stop` entries in `hooks/hooks.json`. The feature is incomplete: the decision inbox it was meant to feed does not exist yet, and it will come back redesigned. Settings saved for its userConfig keys (`decision_capture`, `decision_register_command`, `decision_stop_limit`, `decision_judge`, `decision_judge_threshold`, `decision_openai_api_key`, `decision_typesafe_api_key`, `decision_google_api_key`) are now ignored, and files it left under `${CLAUDE_PLUGIN_DATA}/decision-capture/` are no longer read or cleaned up.
+- `tests/test-decision-capture.sh`, `tests/eval-decision-judge.py` and `tests/fixtures/decision-capture/`.
+
 ## [0.18.0] - 2026-11-24
 
 ### Added

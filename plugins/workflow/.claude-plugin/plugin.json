@@ -1,6 +1,6 @@
 {
   "name": "workflow",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "description": "Skills, an acceptance-check agent and hooks for the development flow from request to merge (including how PR reviews are routed and awaited), issue operations, session handoffs and runbook recording, plus a mod that writes usage limits to a file",
   "author": {
     "name": "shibamasa-dev"
@@ -72,63 +72,6 @@
       "description": "IANA time zone name (e.g. Asia/Tokyo, UTC, America/New_York) used by the now-context hook, which adds the current date and time to every prompt. Empty means the system time zone; a name that does not resolve also falls back to it",
       "required": false,
       "default": ""
-    },
-    "decision_capture": {
-      "type": "string",
-      "title": "Decision capture mode (off / observe / enforce)",
-      "description": "off does nothing. observe never blocks and records in the hook's state when a reply would have been blocked. enforce blocks Stop once when the last reply asks for a decision in prose and the turn neither used AskUserQuestion nor ran the registration command",
-      "required": false,
-      "default": "off"
-    },
-    "decision_register_command": {
-      "type": "string",
-      "title": "Command that records a decision",
-      "description": "Optional template of a command that records a decision somewhere you track them, with {key} and {decision} placeholders (for example mytool decisions add --key {key} --decision {decision}). A Bash command that starts with the part before the first { counts as recording. Empty means the block only suggests AskUserQuestion",
-      "required": false,
-      "default": ""
-    },
-    "decision_stop_limit": {
-      "type": "number",
-      "title": "Dismissals in a row before decision capture goes quiet",
-      "description": "After this many dismissals in a row in one session, decision capture stops blocking in that session for 12 hours. Using AskUserQuestion or the registration command resets the count",
-      "required": false,
-      "default": 3,
-      "min": 1
-    },
-    "decision_judge": {
-      "type": "string",
-      "title": "Judge for decision capture (regex / openai / typesafe / google)",
-      "description": "regex uses local patterns and sends nothing out. openai (OpenAI Decisions API), typesafe (TypeSafe Jev) and google (Gemini Decisions API) send the last 1500 characters of a reply that passes a loose pre-filter to that vendor, with the key below; without a key or on any error they fall back to regex",
-      "required": false,
-      "default": "regex"
-    },
-    "decision_judge_threshold": {
-      "type": "string",
-      "title": "Judge threshold override",
-      "description": "A number between 0 and 1. A reply counts as asking for a decision when the vendor's score is at least this. Empty means the vendor's default (openai 0.9, typesafe 0.97, google 0.8)",
-      "required": false,
-      "default": ""
-    },
-    "decision_openai_api_key": {
-      "type": "string",
-      "title": "OpenAI API key for the decision judge",
-      "description": "Used only when decision_judge is openai",
-      "required": false,
-      "sensitive": true
-    },
-    "decision_typesafe_api_key": {
-      "type": "string",
-      "title": "TypeSafe API key for the decision judge",
-      "description": "Used only when decision_judge is typesafe",
-      "required": false,
-      "sensitive": true
-    },
-    "decision_google_api_key": {
-      "type": "string",
-      "title": "Gemini API key for the decision judge",
-      "description": "Used only when decision_judge is google",
-      "required": false,
-      "sensitive": true
     },
     "pr_checks_gate": {
       "type": "string",
