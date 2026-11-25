@@ -19,6 +19,7 @@ Claude Code の作業を、取り返しがつかなくなる前に止めるフ�
 | bash-guard（publish-guard） | Bash の前、および GitHub コネクタの issue / PR 本文を書くツールの前 | `publish_patterns` を設定するまで動かない。公開しようとしている文面（タイトル・本文・本文ファイル・ヒアドキュメント）を、自分で登録した非公開値のパターンと照らす。公開リポ宛てで一致したら止め、何番目のパターンがどこで一致したかだけを伝える（一致した文字列は出さない）。非公開・internal のリポ宛ては何も出さずに通す。宛先のリポや公開範囲が分からないときは、注記を付けて通す |
 | repo-structure-guard | Write の前 | ルールファイルを置いたときだけ効く。リポ構成のルール違反の書き込み（`docs/` 直下の .md・`scripts/` 直下のスクリプトの新規作成）を止める |
 | git-freshness | Bash の後・GitHub コネクタでマージした後 | マージの後、PR のマージ先ブランチをいま開いていれば `--ff-only` で最新にする（マージ先が分からなければ既定ブランチ）。できないときは知らせるだけ（止めはしない）。コネクタのマージは、手元の clone が同じリポのときだけ |
+| link-check | Stop（デスクトップアプリのみ） | Claude の最後の返答に、デスクトップアプリのファイルペインで開けないファイルへのリンクがあれば、1 回だけ止めて直させる。存在しないファイル（別ブランチにしか無い、基準のフォルダを取り違えた相対パスなど）と、作業ディレクトリ・追加したディレクトリ・scratchpad の外のファイルが対象。数えるのはコードの外の Markdown リンク `[label](path)` だけで、URL・`#…` のアンカー・`#fragment`・`:行番号` は扱える。`link_check=observe` なら記録するだけ |
 
 ## 設定
 
@@ -28,6 +29,7 @@ Claude Code の作業を、取り返しがつかなくなる前に止めるフ�
 |---|---|---|
 | `worktree_dirs` | 空 | worktree をまとめて置くフォルダ（カンマ区切り、例 `~/.worktrees`）。ここの配下は再帰削除を通し、未マージか判定できないパス（存在しない・変数で行き先が分からない）は止める。空でも、未マージ worktree の削除は置き場に関係なく止める |
 | `publish_patterns` | 空 | publish-guard を有効にする。正規表現の JSON 配列を 1 行で書く（例 `["acme-internal", "(?i)acme-[a-z]+-private"]`）。issue / PR の文面を公開する前に 1 行ずつ照らす。大文字小文字を区別しないときはパターンに `(?i)` を書く。sensitive な値として保存される（`settings.json` ではなく OS の資格情報ストア）。`/config` には出ないので、`/plugin configure guards@shibamasa-plugins` で設定するか、入れるときに `--config 'publish_patterns=["acme-internal"]'` で渡す。JSON 配列でない値のときはチェックせず注記を出す。正規表現として読めない要素は飛ばし、何番目かを伝える |
+| `link_check` | `enforce` | link-check の動き方。`enforce` は返答ごとに 1 回止める。`observe` は検出を `${CLAUDE_PLUGIN_DATA}/link-check/`（変数が無いときは `~/.claude/state/guards/link-check/`）の日ごとのファイルに追記するだけ（時刻・セッション ID・対象。30 日残す）。`off` は何もしない |
 
 `claude plugin install guards@shibamasa-plugins --config worktree_dirs=~/.worktrees` のように入れるときに渡してもよい。値はフックに環境変数 `CLAUDE_PLUGIN_OPTION_<KEY>`（例 `CLAUDE_PLUGIN_OPTION_WORKTREE_DIRS`）で渡る。
 
@@ -51,7 +53,7 @@ Claude Code の作業を、取り返しがつかなくなる前に止めるフ�
 
 ### ファイルの置き場
 
-プラグインが書くファイルは publish-guard の公開範囲のキャッシュ、`${CLAUDE_PLUGIN_DATA}`（`~/.claude/plugins/data/<プラグイン ID>/`）の `repo-visibility.json` だけ。最後の scope からアンインストールすると消える（`--keep-data` を付ければ残る）。消えてもフックが GitHub に聞き直すので困らない。
+プラグインが書くのは 2 つで、どちらも `${CLAUDE_PLUGIN_DATA}`（`~/.claude/plugins/data/<プラグイン ID>/`）の中。publish-guard の公開範囲のキャッシュ `repo-visibility.json` と、`link_check=observe` のときだけ link-check の日ごとの記録 `link-check/`（30 日を過ぎたファイルは次の記録のときに消す）。最後の scope からアンインストールすると両方消える（`--keep-data` を付ければ残る）。消えてもフックが GitHub に聞き直すので困らない。
 
 ## マージの扱い
 
@@ -88,6 +90,13 @@ publish-guard が捕まえるのは、コマンドの文面に書かれた非公
 - 公開範囲のキャッシュ（プラグインのデータフォルダの `repo-visibility.json`）には、一致があったリポの名前が、非公開のものも含めて平文で入る
 - `publish_patterns` が JSON として読めないことは、公開するコマンドを実行したときにだけ伝える
 - ガードが無効でも、GitHub コネクタの書き込みツールの前にはフックが起動する（数十ミリ秒。何もしない）
+
+link-check:
+
+- 追加したディレクトリは Stop フックの入力に無いので、セッションのトランスクリプトの `environment` の項目から読む（公開された形式ではない）。その項目（または scratchpad のパス）が無いときは、作業ディレクトリの外に実在するファイルへのリンクは通し、存在しないファイルだけを止める
+- 見るのはターンの最後の返答だけ（Stop の入力にそれより前の文は無い）で、Markdown リンクだけ。バッククォートで囲んだだけのパスは見ない
+- 見るのはファイルがあるかどうかで、意図したファイルへのリンクかどうかは分からない
+- `CLAUDE_CODE_ENTRYPOINT` が `claude-desktop` のときだけ動く。デスクトップのセッションから起動した `claude -p` はこの値を引き継ぐので、そこでも動く
 
 ## 前提
 

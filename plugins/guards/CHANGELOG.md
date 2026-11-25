@@ -2,6 +2,11 @@
 
 Changes to the guards plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
 
+## [0.10.0] - 2026-11-25
+
+### Added
+- link-check, a Stop hook for the desktop app. When Claude's last reply has a Markdown file link the file pane cannot open (the file doesn't exist, or it is outside the working directory, the added directories and the scratchpad), it blocks Stop once with the targets and how to fix them (`git show <ref>:<path>` into the scratchpad and `SendUserFile`, a GitHub blob URL pinned to a commit SHA, or copying the file into the scratchpad). The added directories come from the transcript's `environment` entry; without it, existing files outside the working directory pass. New option `link_check` (`enforce` by default, `observe`, `off`); `observe` writes daily records under `${CLAUDE_PLUGIN_DATA}/link-check/`, kept 30 days. Never runs outside the desktop app, never calls a model or the network, and exits 0 on its own errors.
+
 ## [0.9.0] - 2026-11-19
 
 ### Added
