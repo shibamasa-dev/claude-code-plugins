@@ -59,6 +59,7 @@ echo '=== when it stays quiet ==='
 row "stop_hook_active (already continued once)" "$(probe 'See [x](docs/missing.md).' true)" pass
 row "no environment entry: existing outside path passes" "$(probe "See [r]($OUTSIDE/runbook.md)." false "$BARE")" pass
 row "no environment entry: missing path still fires" "$(probe 'See [x](docs/missing.md).' false "$BARE")" block
+row "malformed input exits 0 silently" "$(out=$(echo 'not json' | python3 "$HOOK" 2>&1); rc=$?; [ "$rc" = 0 ] && [ -z "$out" ] && echo pass || echo crash)" pass
 row "not the desktop app" "$(CLAUDE_CODE_ENTRYPOINT=cli probe 'See [x](docs/missing.md).')" pass
 
 echo '=== modes ==='

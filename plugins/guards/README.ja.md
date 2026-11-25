@@ -29,7 +29,7 @@ Claude Code の作業を、取り返しがつかなくなる前に止めるフ�
 |---|---|---|
 | `worktree_dirs` | 空 | worktree をまとめて置くフォルダ（カンマ区切り、例 `~/.worktrees`）。ここの配下は再帰削除を通し、未マージか判定できないパス（存在しない・変数で行き先が分からない）は止める。空でも、未マージ worktree の削除は置き場に関係なく止める |
 | `publish_patterns` | 空 | publish-guard を有効にする。正規表現の JSON 配列を 1 行で書く（例 `["acme-internal", "(?i)acme-[a-z]+-private"]`）。issue / PR の文面を公開する前に 1 行ずつ照らす。大文字小文字を区別しないときはパターンに `(?i)` を書く。sensitive な値として保存される（`settings.json` ではなく OS の資格情報ストア）。`/config` には出ないので、`/plugin configure guards@shibamasa-plugins` で設定するか、入れるときに `--config 'publish_patterns=["acme-internal"]'` で渡す。JSON 配列でない値のときはチェックせず注記を出す。正規表現として読めない要素は飛ばし、何番目かを伝える |
-| `link_check` | `enforce` | link-check の動き方。`enforce` は返答ごとに 1 回止める。`observe` は検出を `${CLAUDE_PLUGIN_DATA}/link-check/` の日ごとのファイルに追記するだけ（時刻・セッション ID・対象。30 日残す）。`off` は何もしない |
+| `link_check` | `enforce` | link-check の動き方。`enforce` は返答ごとに 1 回止める。`observe` は検出を `${CLAUDE_PLUGIN_DATA}/link-check/`（変数が無いときは `~/.claude/state/guards/link-check/`）の日ごとのファイルに追記するだけ（時刻・セッション ID・対象。30 日残す）。`off` は何もしない |
 
 `claude plugin install guards@shibamasa-plugins --config worktree_dirs=~/.worktrees` のように入れるときに渡してもよい。値はフックに環境変数 `CLAUDE_PLUGIN_OPTION_<KEY>`（例 `CLAUDE_PLUGIN_OPTION_WORKTREE_DIRS`）で渡る。
 
