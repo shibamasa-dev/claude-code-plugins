@@ -42,7 +42,6 @@ If you used the former `review` plugin, uninstall it and move its settings to th
 | orchestrator-report | After creating or updating a PR, or writing to an issue (connector or `gh`) | If exactly one running session in the repository written to (its folder's `origin`; worktrees included) has a title starting with `🎯` and it is not this session, tells Claude to send it a one-line report with SendMessage. Once per PR / issue per session; skipped in cloud and Claude Projects sessions |
 | knowledge-freshness | Session start | Reports knowledge files past their review date in one line |
 | now-context | Prompt submit | Adds one line with the current date and time, `[now] 2026-11-24 (Tue) 14:05 JST`, so Claude knows the hour without running `date`. The time zone is `timezone` (empty: the system time zone); the day name is always English. Never blocks |
-| decision-capture | Prompt submit, after AskUserQuestion or Bash, before ending a turn | Off by default. When the last reply asks you to decide something in prose and the turn neither used AskUserQuestion nor ran your registration command, blocks Stop once (`enforce`) or only records it (`observe`) |
 | artifact-ledger | After Artifact | Records published Artifacts in the project's `.artifacts/` (see [Artifact ledger](#artifact-ledger)) |
 | dev-flow-gate | Before creating a PR | Blocks if the body lacks `Closes #N` / `Refs #N` (`Refs: none (verbal request)` for requests without an issue) or the `Arch-Review:` field |
 | | After creating a PR | Tells Claude the next stage (wait for reviews and CI) |
@@ -75,24 +74,6 @@ pr-checks (local checks before the PR):
 - **The PR body file**: an untracked file that the `gh pr create` call itself names as its body (`--body-file` / `-F`) is left out of the fingerprint, so writing the body inside the repo after the checks ran does not undo the pass. For a body file that was already there when the checks ran, `run` also records, for each untracked file (up to 10), the fingerprint with that one file left out, so editing the body afterwards (after dev-flow-gate rejected it, say) does not undo the pass either. The file is matched as the same file on disk, so another spelling on a case-insensitive filesystem or a symlink to it works. Nothing else is exempt: any other new, changed or deleted untracked file that is not ignored counts as a change (ignore it, or run the checks again). A path outside the repo avoids the question.
 - **Cost**: in `off`, two to four local git reads on a PR creation (about 40 ms in one measurement) and nothing on any other command; no network call in any mode.
 
-decision-capture (prose questions that wait for you):
-
-- **What it asks**: at the end of a turn, does the last reply (`last_assistant_message`) ask you to choose, approve or set a direction, in prose? A question asked in prose is easy to miss when you run several sessions. Passes when the turn used AskUserQuestion, ran a Bash command in the foreground that starts with `decision_register_command` up to its first `{` (one started with `run_in_background` has not finished registering, so it does not count), already blocked once, or when `stop_hook_active` is set; also in a Claude Code scratchpad working folder.
-- **Modes**: `decision_capture` = `off` (the default: nothing runs and nothing is written), `observe` (never blocks; records each would-be block with its judge and score in the session's state file) or `enforce` (blocks Stop once, offering AskUserQuestion, the registration command when set, and a `dismiss` command).
-- **Dismissing**: run the `dismiss` command the block message prints, whole. It starts with a `CLAUDE_PLUGIN_DATA=...` prefix; without it the dismissal is written elsewhere and does not count. After `decision_stop_limit` dismissals in a row in one session (default 3) it stays quiet in that session for 12 hours; AskUserQuestion or the registration command resets the count. From a sandboxed Bash, the dismiss write to plugin data may need a retry outside the sandbox.
-- **Judge** (`decision_judge`): `regex` (the default) uses local patterns, Japanese and English, on the last six non-empty lines, and sends nothing out. `openai` (OpenAI Decisions API), `typesafe` (TypeSafe Jev) and `google` (Gemini Decisions API) send the last 1500 characters of the reply to that vendor with its key (`decision_openai_api_key`, `decision_typesafe_api_key`, `decision_google_api_key`), only when a loose pre-filter matches (a question mark, "please", "which" …). Each call has a 2-second timeout. No key, a timeout, an HTTP error or a response of another shape falls back to `regex`, and the block message says so. A reply that is all JSON or one code fence never counts.
-- **Thresholds**: the vendors' scores are not comparable, so each has its own default; `decision_judge_threshold` overrides it. How each default was measured (labelled real replies; the private data is not published):
-
-  | Judge | Default | How it was measured |
-  |---|---|---|
-  | `regex` | — | 29 hand-labelled replies (15 ask, 14 do not): 6 of 15 caught, 0 false positives |
-  | `openai` | 0.9 | Chosen on 66 hand-labelled replies (0 false positives, 6 misses) and an estimate of about 24 blocks a day from 150 random replies. Re-run with this plugin's prompt on 29 hand-labelled replies: 15 of 15 caught, 0 of 14 false positives |
-  | `typesafe` | 0.97 | Chosen on the same 66 replies (0 false positives, 14 misses) for about 10 blocks a day on the same 150 random replies. Re-run with this plugin's prompt on 29 hand-labelled replies: 9 of 15 caught, 0 false positives (0.7 caught 15 of 15 with 0 false positives on that small set; its block rate was not measured) |
-  | `google` | 0.8 | 29 hand-labelled replies only: 15 of 15 caught, 0 of 14 false positives (0.85 caught 10). Block rate per day not measured |
-
-  `tests/eval-decision-judge.py` scores a judge against `tests/fixtures/decision-capture/ask_dataset.json` (the published set: real replies with proper nouns and private details rewritten) or a dataset you pass with `--dataset`. On the published set (27 replies, 13 ask) at the defaults: `regex` 6 of 13, `openai` 13 of 13, `typesafe` 7 of 13, `google` 13 of 13, each with 0 of 14 false positives. English replies are not in the labelled data, so English recall is unmeasured.
-- **State**: `${CLAUDE_PLUGIN_DATA}/decision-capture/<session>.json` (turn mark, block and dismissal counts, the judged verdicts), removed after 30 days.
-
 orchestrator-report keeps the PRs and issues it already asked about in `${CLAUDE_PLUGIN_DATA}/orchestrator-report/<session_id>.json` (files older than 30 days are removed when it writes).
 
 ## Mods
@@ -116,12 +97,6 @@ The output looks like `{"five_hour": {"used_percentage": 17, "resets_at": 179155
 | `commit_gate_verifiers` | empty | A regex of skill names that count as verification. Empty means `^(code-review\|(.+:)?verify-.+\|coderabbit:code-review)$` |
 | `pr_checks_gate` | `off` | The mode of the local-checks test at PR creation: `off`, `observe` or `enforce` (any other value is `off`). A repo's `.claude/verification.json` (`prChecksGate`) overrides it |
 | `timezone` | empty | IANA time zone for the now-context line (`Asia/Tokyo`, `UTC`, …). Empty means the system time zone; a name that does not resolve falls back to it and the hook says so on stderr |
-| `decision_capture` | `off` | decision-capture's mode: `off`, `observe` or `enforce` (any other value is `off`) |
-| `decision_register_command` | empty | A command template with `{key}` and `{decision}` that records a decision where you track them; a Bash command starting with the part before the first `{` counts as recording. Empty: the block only suggests AskUserQuestion |
-| `decision_stop_limit` | 3 | Dismissals in a row after which decision-capture stays quiet in that session for 12 hours |
-| `decision_judge` | `regex` | `regex`, `openai`, `typesafe` or `google` (see decision-capture under Hooks) |
-| `decision_judge_threshold` | empty | Overrides the judge's default threshold (0 to 1). Empty: openai 0.9, typesafe 0.97, google 0.8 |
-| `decision_openai_api_key` / `decision_typesafe_api_key` / `decision_google_api_key` | empty | Sensitive. The key for that judge, used only when it is selected |
 
 Available tool ids are the file names in `skills/pr-review-triage/references/tools/` (`codex`, `coderabbit`, `copilot`, `gemini`, `cursor-bugbot`).
 
@@ -179,7 +154,7 @@ A label starting with `!` is a negative match ([configuration](https://docs.code
 
 | What | Where | Uninstalling the plugin removes it |
 |---|---|---|
-| Hook state: handoff entries, issue-writeback, dev-flow-gate, orchestrator-report, commit-gate, decision-capture, the pr-checks denial count | `${CLAUDE_PLUGIN_DATA}/<feature>/` (`~/.claude/plugins/data/<plugin id>/`) | Yes, from the last scope it is installed in, unless you pass `--keep-data` |
+| Hook state: handoff entries, issue-writeback, dev-flow-gate, orchestrator-report, commit-gate, the pr-checks denial count | `${CLAUDE_PLUGIN_DATA}/<feature>/` (`~/.claude/plugins/data/<plugin id>/`) | Yes, from the last scope it is installed in, unless you pass `--keep-data` |
 | The same state written by a script run without the variable | `~/.claude/state/workflow/<feature>/` | No |
 | handoff entries with `HANDOFF_STATE_DIR` set | that directory | No |
 | pr-checks passes and their log | `<git common dir>/workflow-pr-checks.json` and `.log.jsonl` | No (they belong to the clone) |
