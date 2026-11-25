@@ -21,7 +21,7 @@ run() { PATH="$T:$PATH" python3 "$SCRIPT" "$@"; }
 echo '=== title and heading name different years and rounds ==='
 OUT=$(run measure --repos example-org/example-repo --show --json); CODE=$?
 [ "$CODE" = 0 ] && r=ok || r=ng; echo "  exit $CODE -> $r (expect ok)"
-python3 - "$OUT" <<'PY'
+python3 - "$OUT" <<'PY' || exit 1
 import json, sys
 d = json.loads(sys.argv[1])
 a = [h["number"] for h in d["hits"] if any(r.startswith("A:") for r in h["reasons"])]
@@ -39,7 +39,7 @@ run measure --repos example-org/missing >/dev/null 2>&1; CODE=$?
 
 echo '=== gh that hangs is an error, not zero issues ==='
 # prints the real output of a repo with no open issues, then hangs: without the timeout it would report 0 and exit 0
-python3 - "$SCRIPT" "$T" <<'PY'
+python3 - "$SCRIPT" "$T" <<'PY' || exit 1
 import contextlib, importlib.util, io, json, os, sys
 script, tmp = sys.argv[1], sys.argv[2]
 spec = importlib.util.spec_from_file_location("stale_body_check", script)
@@ -56,6 +56,17 @@ with contextlib.redirect_stdout(out):
     rc = mod.main()
 print(f"  exit -> {rc} (expect 1)")
 print(f"  errors -> {len(json.loads(out.getvalue())['errors'])} (expect 1)")
+PY
+
+echo '=== the same number written with a leading zero is the same round ==='
+python3 - "$SCRIPT" <<'PY' || exit 1
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("stale_body_check", sys.argv[1])
+mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+r = mod.check_token_mismatch("令和8年度 第1回 申請", "令和8年度 第01回 申請")
+print(f"  title 第1回, heading 第01回: reasons -> {len(r)} (expect 0)")
+r = mod.check_token_mismatch("令和8年度 第1回 申請", "令和8年度 第02回 申請")
+print(f"  title 第1回, heading 第02回: reasons -> {len(r)} (expect 1)")
 PY
 
 echo '=== the script never writes to GitHub ==='
