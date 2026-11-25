@@ -77,9 +77,9 @@ pr-checks（PR を出す前のローカル検査）:
 
 decision-capture（文章のまま止まった問い）:
 
-- **何を問うか**: ターンの終わりに、最後の応答（`last_assistant_message`）が文章で「選ぶ・承認する・方針を決める」ことを求めているか。複数のセッションを並行して使っていると、文章の問いは見落とされやすい。そのターンに AskUserQuestion を使った、`decision_register_command` の最初の `{` より前で始まる Bash コマンドを実行した、すでに 1 回止めた、`stop_hook_active` が立っている、のどれかなら通す。Claude Code の scratchpad を作業フォルダにしているときも通す。
+- **何を問うか**: ターンの終わりに、最後の応答（`last_assistant_message`）が文章で「選ぶ・承認する・方針を決める」ことを求めているか。複数のセッションを並行して使っていると、文章の問いは見落とされやすい。そのターンに AskUserQuestion を使った、`decision_register_command` の最初の `{` より前で始まる Bash コマンドを前景で実行した（`run_in_background` で始めたものは登録が終わっていないので数えない）、すでに 1 回止めた、`stop_hook_active` が立っている、のどれかなら通す。Claude Code の scratchpad を作業フォルダにしているときも通す。
 - **モード**: `decision_capture` が `off`（既定。何も動かず何も書かない）、`observe`（止めない。止めるはずだった回を判定方式と点数つきでセッションの状態ファイルに残す）、`enforce`（Stop を 1 回止め、AskUserQuestion、設定があれば登録コマンド、`dismiss` コマンドを示す）。
-- **見送り**: `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/decision-capture.py" dismiss --session <id> --why "<理由>"`（止めたときのメッセージに `CLAUDE_PLUGIN_DATA=...` 付きで出る）。同じセッションで `decision_stop_limit` 回（既定 3）続けて見送ると、そのセッションでは 12 時間止めない。AskUserQuestion か登録コマンドを使うと数え直す。サンドボックスの中の Bash からだと、プラグインデータへの書き込みはサンドボックスの外でやり直しが要ることがある。
+- **見送り**: 止めたときのメッセージに出る `dismiss` コマンドを、そのまま丸ごと実行する。先頭に `CLAUDE_PLUGIN_DATA=...` が付いていて、これを外すと見送りが別の場所に書かれ、数に入らない。同じセッションで `decision_stop_limit` 回（既定 3）続けて見送ると、そのセッションでは 12 時間止めない。AskUserQuestion か登録コマンドを使うと数え直す。サンドボックスの中の Bash からだと、プラグインデータへの書き込みはサンドボックスの外でやり直しが要ることがある。
 - **判定**（`decision_judge`）: `regex`（既定）は末尾の空でない 6 行を日本語と英語のパターンで見て、外へ何も送らない。`openai`（OpenAI Decisions API）・`typesafe`（TypeSafe Jev）・`google`（Gemini Decisions API）は、緩い下ふるい（疑問符、「ください」、"which" など）に掛かった応答だけ、末尾 1500 字をその会社へ鍵（`decision_openai_api_key`・`decision_typesafe_api_key`・`decision_google_api_key`）付きで送る。1 回 2 秒で打ち切る。鍵が無い・タイムアウト・HTTP エラー・応答の形が違う、のどれでも `regex` に戻り、止めたときのメッセージにそう出る。全文が JSON か 1 つのコードフェンスだけの応答は数えない。
 - **しきい値**: 会社ごとに点数の出方が違うので、既定値も会社ごとに持つ。`decision_judge_threshold` で上書きできる。既定値の測り方（正解付きの実際の応答。非公開のデータは載せない）:
 

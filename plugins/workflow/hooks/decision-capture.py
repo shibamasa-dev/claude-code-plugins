@@ -128,8 +128,10 @@ def on_post_tool_use(inp):
         mark = "asked_ui"
     elif tool == "Bash":
         prefix = register_prefix()
-        cmd = " ".join(str((inp.get("tool_input") or {}).get("command", "")).split())
-        if not prefix or not cmd.startswith(prefix):
+        ti = inp.get("tool_input") or {}
+        cmd = " ".join(str(ti.get("command", "")).split())
+        # started in the background: PostToolUse fires before the command has registered anything
+        if not prefix or not cmd.startswith(prefix) or ti.get("run_in_background"):
             return
         mark = "registered"
     else:

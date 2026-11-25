@@ -9,6 +9,9 @@ trap 'rm -rf "$T"' EXIT
 export DECISION_CAPTURE_STATE_DIR="$T/state"
 export CLAUDE_PLUGIN_OPTION_DECISION_CAPTURE=enforce CLAUDE_PLUGIN_OPTION_DECISION_JUDGE=regex
 unset CLAUDE_PLUGIN_OPTION_DECISION_REGISTER_COMMAND CLAUDE_PLUGIN_OPTION_DECISION_STOP_LIMIT
+# keys from the caller's environment would make the model-judge rows below call the vendor
+unset CLAUDE_PLUGIN_OPTION_DECISION_OPENAI_API_KEY CLAUDE_PLUGIN_OPTION_DECISION_TYPESAFE_API_KEY \
+  CLAUDE_PLUGIN_OPTION_DECISION_GOOGLE_API_KEY
 
 ASK=$'## 次の一手\n\n| 案 | 中身 |\n|---|---|\n| A | 設定を分ける |\n| B | 1 つにまとめる |\n\nA で進めてよいですか？'
 REPORT=$'## 結果\n\nPR を作成し、CI は全部通りました。レビュー待ちです。'
@@ -60,6 +63,9 @@ r=$(stop s4 "$ASK"); echo "  after the registration command -> $r (expect pass)"
 ev UserPromptSubmit s4 >/dev/null
 ev PostToolUse s4 'tool_name="Bash"' 'tool_input={"command": "tracker decisions list"}' >/dev/null
 r=$(stop s4 "$ASK"); echo "  another command of the same tool -> $r (expect block)"
+ev UserPromptSubmit s4 >/dev/null
+ev PostToolUse s4 'tool_name="Bash"' 'tool_input={"command": "tracker decisions add --key db_split --decision x", "run_in_background": true}' >/dev/null
+r=$(stop s4 "$ASK"); echo "  the registration command started in the background -> $r (expect block)"
 unset CLAUDE_PLUGIN_OPTION_DECISION_REGISTER_COMMAND
 
 echo '=== modes ==='
@@ -90,6 +96,20 @@ grep -q 'fell back from google: no API key' "$T/out" && x=ok || x=ng; echo "  th
 ev UserPromptSubmit s9 >/dev/null
 r=$(CLAUDE_PLUGIN_OPTION_DECISION_JUDGE=google stop s9 'Please pick a deployment region.')
 echo "  google, no key, a request with no question mark -> $r (expect block)"
+
+echo '=== a malformed model response falls back to regex ==='
+python3 - "$(dirname "$HOOK")" <<'PY' || exit 1
+import sys
+sys.path.insert(0, sys.argv[1])
+import _decision_judge as j
+for backend, res in (("openai", {"answers": [None]}), ("google", {"answers": {"kind": None}})):
+    j._post = lambda *a, res=res, **k: res
+    try:
+        r = "fallback" if j.asks_decision("Which do you prefer, A or B?", backend, key="k").fell_back else "none"
+    except Exception as e:
+        r = type(e).__name__
+    print(f"  {backend} answer is null -> {r} (expect fallback)")
+PY
 
 echo '=== the hook never fails the turn ==='
 echo 'not json' | python3 "$HOOK" >/dev/null 2>&1; c=$?; echo "  broken input, exit code -> $c (expect 0)"

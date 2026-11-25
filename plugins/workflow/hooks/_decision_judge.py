@@ -167,7 +167,7 @@ def openai_score(text, key, timeout):
         if a.get("type") != "choice":
             raise JudgeError(f"answer type {a.get('type')}")
         return float(next(x["probability"] for x in a["probabilities"] if x["value"] == "decide"))
-    except (KeyError, TypeError, ValueError, IndexError, StopIteration):
+    except (KeyError, TypeError, ValueError, IndexError, StopIteration, AttributeError):
         raise JudgeError("unexpected response") from None
 
 
@@ -193,7 +193,7 @@ def google_score(text, key, timeout):
         if a.get("type") != "choice":
             raise JudgeError(f"answer type {a.get('type')}")
         return float(a["probabilities"]["decide"])
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError, AttributeError):
         raise JudgeError("unexpected response") from None
 
 
