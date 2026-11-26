@@ -99,6 +99,11 @@ git clone -q --filter=blob:none --no-checkout "file://$T/hang/origin.git" "$T/ha
 git -C "$T/hang/clone" remote set-url origin ssh://nohost.invalid/x.git
 s0=$SECONDS; det "$T/hang/clone" '' 'GIT_SSH_COMMAND=sleep 40; :' >/dev/null
 row 'transport hangs 40 s: returns within about 5 s' "$([ $((SECONDS - s0)) -le 15 ] && echo bounded || echo "$((SECONDS - s0)) s")" 'bounded'
+rm -f "$T/net"; det "$T/hang/clone" '' "GIT_SSH_COMMAND=touch $T/net; false" >/dev/null
+row 'blob fetch timed out: the next run stays offline' "$([ -f "$T/net" ] && echo network || echo cached)" 'cached'
+# partial clone with origin reachable: AGENTS.md's blob is fetched on demand and its line applies
+git clone -q --filter=blob:none --no-checkout "file://$T/hang/origin.git" "$T/hang/clone2" 2>/dev/null || exit 1
+row 'partial clone, origin reachable: the default branch line wins' "$(det "$T/hang/clone2")" 'coderabbit/0'
 # partial clone with origin unreachable: a failed blob fetch is cached like a failed lookup, so the next run stays offline
 w=$(base partoff 'review-heavy: coderabbit' 'review-heavy: none'); git -C "$T/partoff/origin.git" config uploadpack.allowFilter true
 git clone -q --filter=blob:none --no-checkout "file://$T/partoff/origin.git" "$T/partoff/clone" 2>/dev/null || exit 1

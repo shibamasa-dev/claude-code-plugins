@@ -35,6 +35,7 @@
 | full-test-gate の記録（プロジェクトごとの最後の全体テスト） | `${CLAUDE_PLUGIN_DATA}/full-test/`（`~/.claude/plugins/data/<プラグイン ID>/`） | 消える（最後の scope から外したとき。`--keep-data` を付ければ残る） |
 | `FULL_TEST_STATE_DIR` を設定したとき、または `CLAUDE_PLUGIN_DATA` なしで動いたときの同じ記録 | そのディレクトリ、または `~/.claude/state/testing/full-test/` | 消えない |
 | `origin` を引けなかった印 | `<git common dir>/full-test-gate-origin-miss` | 消えない |
+| origin が最後に答えた既定ブランチと、そのときのコミット | `<git common dir>/full-test-gate-origin-head` | 消えない |
 | `testcase-generator` のテストケース | リポに既にあるテストケースのファイルの隣、無ければ `docs/testcases/<テーマ>.md`。読むだけで残さないならセッションの scratchpad | 消えない |
 
 ```bash
@@ -45,7 +46,7 @@ claude plugin uninstall testing@shibamasa-plugins --keep-data
 
 ## 制限
 
-既定ブランチから設定を読むチェック（full-test-gate）が防ぐのは、ブランチの中身（コミットしたファイル・push したブランチ）で変えられるものまで。手元の git の設定と環境変数は信頼し、既定ブランチは `origin` のものを正とする。fork で作業する場合は `upstream` ではなく fork の既定ブランチになる。origin の既定ブランチが分からないとき（使える手元の `origin/HEAD` が無く、origin にも届かない）、チェックは動かず、その旨を出し、origin に聞き直すのは 1 時間以上あとになる。手元の `origin/HEAD` は、origin が認めたあと、それが指すブランチが動いていない間はネットワークに出ずに使う。fetch でそのブランチが動くと（たとえば既定ブランチの改名後に、古い名前でブランチが push されたとき）、次の呼び出しで origin に一度聞き、そのとき origin に届かなければ手元の答えを使い続ける。部分クローン（partial clone）で設定ファイルの中身が手元に無いときは 5 秒以内で取りにいき、失敗したら読めない扱いにして、取り直すのは 1 時間以上あとになる。プロジェクトの `.claude/settings.json` はプラグインを無効にでき（`enabledPlugins`）、セッションの環境変数も設定できる（`env`）。このファイルを変える PR は人が差分を見る必要がある。止められるのは managed settings だけ。
+既定ブランチから設定を読むチェック（full-test-gate）が防ぐのは、ブランチの中身（コミットしたファイル・push したブランチ）で変えられるものまで。手元の git の設定と環境変数は信頼し、既定ブランチは `origin` のものを正とする。fork で作業する場合は `upstream` ではなく fork の既定ブランチになる。origin の既定ブランチが分からないとき（使える手元の `origin/HEAD` が無く、origin にも届かない）、チェックは動かず、その旨を出し、origin に聞き直すのは 1 時間以上あとになる。手元の `origin/HEAD` は、origin が認めたあと、それが指すブランチが動いていない間はネットワークに出ずに使う。fetch でそのブランチが動くと（たとえば既定ブランチの改名後に、古い名前でブランチが push されたとき）、次の呼び出しで origin に一度聞く。そのとき origin に届かないか、同じチェックのネットワーク処理が過去 1 時間以内に失敗していれば手元の答えを使い続けるので、origin が答えるまでは、古い既定ブランチの名前で push されたブランチが設定を与えうる。部分クローン（partial clone）で設定ファイルの中身が手元に無いときは 5 秒以内で取りにいき、失敗したら読めない扱いにして、取り直すのは 1 時間以上あとになる。プロジェクトの `.claude/settings.json` はプラグインを無効にでき（`enabledPlugins`）、セッションの環境変数も設定できる（`env`）。このファイルを変える PR は人が差分を見る必要がある。止められるのは managed settings だけ。
 
 ## 前提
 

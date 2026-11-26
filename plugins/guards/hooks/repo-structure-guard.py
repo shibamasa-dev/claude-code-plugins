@@ -148,8 +148,8 @@ def default_branch(root: str):
     while origin named it and the ref it names has not moved since (HEAD_FILE).
     Otherwise origin is asked (ls-remote): after a fetch moved that ref (a branch pushed under the old default's name
     after a rename), on the first call, or when origin/HEAD is missing or dangles. A success rewrites the local
-    origin/HEAD and HEAD_FILE; a failure is cached for MISS_TTL and keeps the local answer (a stale one is fine: the
-    older rules apply). A dangling origin/HEAD (its ref was pruned) is not fetched by name, since that name may now be
+    origin/HEAD and HEAD_FILE; a failure (or one within MISS_TTL before, when origin is not asked) keeps the local
+    answer (a stale one is fine: the older rules apply). A dangling origin/HEAD (its ref was pruned) is not fetched by name, since that name may now be
     any pushed branch. A missing origin/<name> is fetched once into that ref, so a single-branch clone (whose refspec
     does not cover name) gets it too. origin/main or origin/master is never guessed, since a pushed branch that is not
     the default would then supply the rules."""

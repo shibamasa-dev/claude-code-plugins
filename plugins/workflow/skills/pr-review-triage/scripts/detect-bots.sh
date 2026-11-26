@@ -35,7 +35,7 @@ root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 # (detect-bots-origin-head in the git common dir holds "<name> <sha>"). Otherwise origin is asked (ls-remote, no prompt): after a
 # fetch moved that ref (a branch pushed under the old default's name after a rename), on the first run, or when origin/HEAD is
 # missing or dangles; a success rewrites the local origin/HEAD. A failed network attempt is remembered for an hour (the mtime of
-# detect-bots-origin-miss in the git common dir) and keeps the local answer (a stale one is fine). origin/main or origin/master
+# detect-bots-origin-miss in the git common dir); then, and within that hour, the local answer is kept (a stale one is fine). origin/main or origin/master
 # is never guessed: when the default branch cannot be told, exit 4 (the caller asks).
 # A missing origin/<name> is fetched once into that ref (explicit, so a single-branch clone gets it too).
 # Without an origin remote no PR exists, so the working tree is read.

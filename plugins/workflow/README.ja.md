@@ -158,6 +158,7 @@ reviews:
 | 変数なしで動いたスクリプトが書いた同じ状態 | `~/.claude/state/workflow/<機能>/` | 消えない |
 | `HANDOFF_STATE_DIR` を設定したときの handoff の入口 | そのディレクトリ | 消えない |
 | pr-checks の通過記録とログ | `<git common dir>/workflow-pr-checks.json` と `.log.jsonl` | 消えない（クローンに属する） |
+| detect-bots の `origin` に届かなかった印と、origin が最後に答えた既定ブランチとそのときのコミット | `<git common dir>/detect-bots-origin-miss` と `detect-bots-origin-head` | 消えない（クローンに属する） |
 | runbook と生ログ | `RUNBOOK_ROOT`、既定は `~/.claude/runbooks/` | 消えない（自分の文書） |
 | Artifact 台帳 | プロジェクトのルートの `.artifacts/`（保存先の節） | 消えない |
 | review-and-fix のレビュー結果・修正計画・デバッグログ | リポの `.context/workflow/review/`・`plan/`・`logs/`。コマンドが `.context/` を `.git/info/exclude` に足す | 消えない |
@@ -201,7 +202,7 @@ artifact-ledger フックは、プロジェクトのルートの `.artifacts/` �
 - orchestrator-report はオーケストレータを `claude agents --json` で探す。これはプロセスが動いているセッションしか返さないため、オーケストレータのプロセスが動いていない間（アプリの再起動後、そのセッションを開き直すまで等）は報告を促さない
 - クラウドのセッションと Claude Projects のセッションは、手元のオーケストレータに報告しない（手元のセッションへメッセージを送れないため）
 - 既定ブランチから設定を読むチェック（pr-review-triage の `review-*:` 行）が防ぐのは、ブランチの中身（コミットしたファイル・push したブランチ）で変えられるものまで。手元の git の設定と環境変数は信頼し、既定ブランチは `origin` のものを正とする。fork で作業する場合は `upstream` ではなく fork の既定ブランチになる。
-- origin の既定ブランチが分からないとき（使える手元の `origin/HEAD` が無く、origin にも届かない）、チェックは動かず、その旨を出し、origin に聞き直すのは 1 時間以上あとになる。手元の `origin/HEAD` は、origin が認めたあと、それが指すブランチが動いていない間はネットワークに出ずに使う。fetch でそのブランチが動くと（たとえば既定ブランチの改名後に、古い名前でブランチが push されたとき）、次の呼び出しで origin に一度聞き、そのとき origin に届かなければ手元の答えを使い続ける。部分クローン（partial clone）で設定ファイルの中身が手元に無いときは 5 秒以内で取りにいき、失敗したら読めない扱いにして、取り直すのは 1 時間以上あとになる。
+- origin の既定ブランチが分からないとき（使える手元の `origin/HEAD` が無く、origin にも届かない）、チェックは動かず、その旨を出し、origin に聞き直すのは 1 時間以上あとになる。手元の `origin/HEAD` は、origin が認めたあと、それが指すブランチが動いていない間はネットワークに出ずに使う。fetch でそのブランチが動くと（たとえば既定ブランチの改名後に、古い名前でブランチが push されたとき）、次の呼び出しで origin に一度聞く。そのとき origin に届かないか、同じチェックのネットワーク処理が過去 1 時間以内に失敗していれば手元の答えを使い続けるので、origin が答えるまでは、古い既定ブランチの名前で push されたブランチが設定を与えうる。部分クローン（partial clone）で設定ファイルの中身が手元に無いときは 5 秒以内で取りにいき、失敗したら読めない扱いにして、取り直すのは 1 時間以上あとになる。
 - `origin/<既定>` やその上のファイルを読めないときは、リポの `review-*:` 行を飛ばして stderr にその旨を出し、userConfig、次に既定値を使う（`review-heavy` には既定値が無いので `detect-bots.sh` は終了コード 4 で終わる）。取得済みの `origin/<既定>` は、origin より古くてもそのまま読む。
 - commit-gate は忘れ防止の後押しであって、意図して避ける人への壁ではない。既定の検証スキルの正規表現はどの `verify-*` スキルも受け入れ、コミットするブランチで足したスキルも含む。`Verification: none — <理由>` も常に通る。それ以上を求めるリポは、既定ブランチの `.claude/verification.json` に `verifiers` を書く。ローカルでの証跡の偽造（イベントをフックに流し込む、状態ファイルを書き換える）は守る範囲の外。
 - commit-gate はリポのファイルをローカルの `origin/HEAD` からしか読まないので、呼び出しごとの処理はネットワークに出ない。`origin/HEAD` が無いときは、セッション開始時に origin に一度だけ聞いて保存する（リポごとに 1 時間に 1 回まで）。ただし userConfig でゲートをオンにしているか、リポの HEAD か作業ツリーに `.claude/verification.json` があるときに限る。git は `GIT_TERMINAL_PROMPT=0` で、ssh はユーザー自身のコマンド（`GIT_SSH_COMMAND`・`core.sshCommand`・`GIT_SSH`）に BatchMode を付けて動かすので、パスワード待ちで止まることはない。それまではゲートしない（`git remote set-head origin --auto` でも直る）。既定ブランチでだけオンにしていて、手元にまだマージしていないリポは、マージするかユーザーがオンにするまで見えない。

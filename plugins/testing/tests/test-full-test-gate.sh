@@ -154,6 +154,11 @@ w=$(repo partial "$BASE_CFG"); git -C "$T/partial/origin.git" config uploadpack.
 git clone -q --filter=blob:none --no-checkout "file://$T/partial/origin.git" "$T/partial/clone" 2>/dev/null && mv "$T/partial/origin.git" "$T/partial/gone.git" || exit 1
 err=$(cd "$T/partial/clone" && python3 "$H" status 2>&1 >/dev/null)
 row 'partial clone offline: a note that the config cannot be read'  "$(printf '%s' "$err" | grep -q 'cannot read' && echo note || echo quiet)" note
+# partial clone with origin reachable: the config blob is fetched on demand and applies
+w=$(repo partok "$BASE_CFG"); git -C "$T/partok/origin.git" config uploadpack.allowFilter true
+git clone -q --filter=blob:none --no-checkout "file://$T/partok/origin.git" "$T/partok/clone" 2>/dev/null || exit 1
+rm -rf "$FULL_TEST_STATE_DIR"; (cd "$T/partok/clone" && python3 "$H" run >/dev/null 2>&1)
+row 'partial clone, origin reachable: run uses the default command' "$(ran "$T/partok/clone")" base
 # partial clone with origin unreachable: a failed blob fetch is cached like a failed lookup, so the next call stays offline
 w=$(repo partoff "$BASE_CFG"); git -C "$T/partoff/origin.git" config uploadpack.allowFilter true
 git clone -q --filter=blob:none --no-checkout "file://$T/partoff/origin.git" "$T/partoff/clone" 2>/dev/null || exit 1

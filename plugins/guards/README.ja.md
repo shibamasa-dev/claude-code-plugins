@@ -53,7 +53,7 @@ Claude Code の作業を、取り返しがつかなくなる前に止めるフ�
 
 ### ファイルの置き場
 
-プラグインが書くのは 2 つで、どちらも `${CLAUDE_PLUGIN_DATA}`（`~/.claude/plugins/data/<プラグイン ID>/`）の中。publish-guard の公開範囲のキャッシュ `repo-visibility.json` と、`link_check=observe` のときだけ link-check の日ごとの記録 `link-check/`（30 日を過ぎたファイルは次の記録のときに消す）。最後の scope からアンインストールすると両方消える（`--keep-data` を付ければ残る）。消えてもフックが GitHub に聞き直すので困らない。
+プラグインが書くのは 2 つで、どちらも `${CLAUDE_PLUGIN_DATA}`（`~/.claude/plugins/data/<プラグイン ID>/`）の中。publish-guard の公開範囲のキャッシュ `repo-visibility.json` と、`link_check=observe` のときだけ link-check の日ごとの記録 `link-check/`（30 日を過ぎたファイルは次の記録のときに消す）。最後の scope からアンインストールすると両方消える（`--keep-data` を付ければ残る）。消えてもフックが GitHub に聞き直すので困らない。repo-structure-guard はクローンごとに git common dir に小さなファイルを 2 つ置き、アンインストールしても残る。`repo-structure-guard-origin-miss`（更新時刻が最後に `origin` に届かなかった時刻）と `repo-structure-guard-origin-head`（origin が最後に答えた既定ブランチと、そのときのコミット）。
 
 ## マージの扱い
 
@@ -63,7 +63,7 @@ Claude Code の作業を、取り返しがつかなくなる前に止めるフ�
 
 guards は Claude の誤操作を減らすための安全網で、悪意のある操作を止めるサンドボックスではない。フックが解析できない形で組み立てたコマンドは通ることがある。
 
-既定ブランチから設定を読むチェック（repo-structure-guard）が防ぐのは、ブランチの中身（コミットしたファイル・push したブランチ）で変えられるものまで。手元の git の設定と環境変数は信頼し、既定ブランチは `origin` のものを正とする。fork で作業する場合は `upstream` ではなく fork の既定ブランチになる。origin の既定ブランチが分からないとき（使える手元の `origin/HEAD` が無く、origin にも届かない）、チェックは動かず、その旨を出し、origin に聞き直すのは 1 時間以上あとになる。手元の `origin/HEAD` は、origin が認めたあと、それが指すブランチが動いていない間はネットワークに出ずに使う。fetch でそのブランチが動くと（たとえば既定ブランチの改名後に、古い名前でブランチが push されたとき）、次の呼び出しで origin に一度聞き、そのとき origin に届かなければ手元の答えを使い続ける。部分クローン（partial clone）で設定ファイルの中身が手元に無いときは 5 秒以内で取りにいき、失敗したら読めない扱いにして、取り直すのは 1 時間以上あとになる。プロジェクトの `.claude/settings.json` はプラグインを無効にでき（`enabledPlugins`）、セッションの環境変数も設定できる（`env`）。このファイルを変える PR は人が差分を見る必要がある。止められるのは managed settings だけ。
+既定ブランチから設定を読むチェック（repo-structure-guard）が防ぐのは、ブランチの中身（コミットしたファイル・push したブランチ）で変えられるものまで。手元の git の設定と環境変数は信頼し、既定ブランチは `origin` のものを正とする。fork で作業する場合は `upstream` ではなく fork の既定ブランチになる。origin の既定ブランチが分からないとき（使える手元の `origin/HEAD` が無く、origin にも届かない）、チェックは動かず、その旨を出し、origin に聞き直すのは 1 時間以上あとになる。手元の `origin/HEAD` は、origin が認めたあと、それが指すブランチが動いていない間はネットワークに出ずに使う。fetch でそのブランチが動くと（たとえば既定ブランチの改名後に、古い名前でブランチが push されたとき）、次の呼び出しで origin に一度聞く。そのとき origin に届かないか、同じチェックのネットワーク処理が過去 1 時間以内に失敗していれば手元の答えを使い続けるので、origin が答えるまでは、古い既定ブランチの名前で push されたブランチが設定を与えうる。部分クローン（partial clone）で設定ファイルの中身が手元に無いときは 5 秒以内で取りにいき、失敗したら読めない扱いにして、取り直すのは 1 時間以上あとになる。プロジェクトの `.claude/settings.json` はプラグインを無効にでき（`enabledPlugins`）、セッションの環境変数も設定できる（`env`）。このファイルを変える PR は人が差分を見る必要がある。止められるのは managed settings だけ。
 
 publish-guard が捕まえるのは、コマンドの文面に書かれた非公開値で、実行して初めて現れる値は捕まえない。次のものは見えない。
 
