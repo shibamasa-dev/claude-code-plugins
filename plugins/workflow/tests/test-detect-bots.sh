@@ -95,7 +95,7 @@ row 'tag named origin/main: a second run makes no network call' "$([ -f "$T/net"
 w=$(base hang 'review-light: claude' 'review-heavy: none'); g() { git -C "$w" -c user.name=t -c user.email=t@t "$@"; }
 g checkout -q main && printf '%s\n' 'review-heavy: coderabbit' > "$w/AGENTS.md" && g add AGENTS.md && g commit -qm agents && g push -q origin main || exit 1
 git -C "$T/hang/origin.git" config uploadpack.allowFilter true
-git clone -q --filter=blob:none --no-checkout "file://$T/hang/origin.git" "$T/hang/clone" 2>/dev/null && det "$T/hang/clone" --light >/dev/null || exit 1
+git clone -q --filter=blob:none --no-checkout "file://$T/hang/origin.git" "$T/hang/clone" 2>/dev/null && [ "$(det "$T/hang/clone" --light | tr -d '\n')" = claude/0 ] || exit 1
 git -C "$T/hang/clone" remote set-url origin ssh://nohost.invalid/x.git
 s0=$SECONDS; det "$T/hang/clone" '' 'GIT_SSH_COMMAND=sleep 40; :' >/dev/null
 row 'transport hangs 40 s: returns within about 5 s' "$([ $((SECONDS - s0)) -le 15 ] && echo bounded || echo "$((SECONDS - s0)) s")" 'bounded'
