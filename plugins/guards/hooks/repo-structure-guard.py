@@ -117,7 +117,9 @@ def _show(root: str, spec: str):
     rc, oid = _git(root, "rev-parse", "--verify", "--quiet", spec)
     if rc != 0:
         return 1, ""
-    if _git(root, "rev-list", "--objects", "--missing=print", oid.strip())[1].startswith("?"):  # never fetches
+    # Present only when rev-list prints the oid itself: "?<oid>" (missing), or an error with no output (git before 2.46
+    # rejects a missing tip), both mean "not local". It never fetches
+    if _git(root, "rev-list", "--objects", "--missing=print", oid.strip())[1].strip() != oid.strip():
         return _net(root, "show", spec) if _net_allowed(root) else (1, "")
     return _git(root, "show", spec)
 

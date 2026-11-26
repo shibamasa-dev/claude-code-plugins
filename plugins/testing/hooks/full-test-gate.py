@@ -180,7 +180,9 @@ def _show(top, spec):
     rc, oid = git(top, "rev-parse", "--verify", "--quiet", spec)
     if rc != 0:
         return 1, ""
-    if git(top, "rev-list", "--objects", "--missing=print", oid)[1].startswith("?"):  # never fetches
+    # Present only when rev-list prints the oid itself: "?<oid>" (missing), or an error with no output (git before 2.46
+    # rejects a missing tip), both mean "not local". It never fetches
+    if git(top, "rev-list", "--objects", "--missing=print", oid)[1] != oid:
         return _net(top, "show", spec) if _net_allowed(top) else (1, "")
     return git(top, "show", spec)
 

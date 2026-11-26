@@ -47,10 +47,13 @@ net() {  # net <git args...>: a network git command, no prompt, killed after 5 s
 }
 show() {  # show <rev:path>: the blob's text; a blob missing from a partial clone is fetched only through net, not within the hour
   o=$(git -C "$root" rev-parse --verify --quiet "$1" 2>/dev/null) || return 1
-  case $(git -C "$root" rev-list --objects --missing=print "$o" 2>/dev/null) in
-    \?*) [ "$net_ok" = 1 ] && net show "$1" ;;
-    *) git -C "$root" show "$1" 2>/dev/null ;;
-  esac
+  # Local only when rev-list prints the oid itself: "?<oid>" (missing), or an error with no output (git before 2.46 rejects
+  # a missing tip), both mean "not local". It never fetches
+  if [ "$(git -C "$root" rev-list --objects --missing=print "$o" 2>/dev/null)" = "$o" ]; then
+    git -C "$root" show "$1" 2>/dev/null
+  else
+    [ "$net_ok" = 1 ] && net show "$1"
+  fi
 }
 ref=
 if git -C "$root" remote get-url origin >/dev/null 2>&1; then
