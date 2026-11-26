@@ -95,6 +95,12 @@ probe "$w/docs/a.md" >/dev/null; git -C "$w" remote set-url origin ssh://nohost.
 probe "$w/docs/b.md" "GIT_SSH_COMMAND=touch $R/net; false" >/dev/null
 row 'tag named origin/main: a second Write makes no network call'  "$([ -f "$R/net" ] && echo network || echo cached)" cached
 rm -f "$R/net"
+# A fetch that moves origin/main while origin is being asked (here the transport moves it) leaves the answer unconfirmed
+w=$(repo racing base.md sneaky.md); git -C "$w" remote set-url origin "ssh://localhost$R/racing/origin.git"
+probe "$w/docs/a.md" GIT_SSH_VARIANT=simple "GIT_SSH_COMMAND=f() { git -C $w update-ref refs/remotes/origin/main feat; sh -c \"\$2\"; }; f" >/dev/null
+rm -f "$R/net"; probe "$w/docs/b.md" "GIT_SSH_COMMAND=touch $R/net; false" >/dev/null
+row 'ref moved while origin was asked: the next Write asks again'   "$([ -f "$R/net" ] && echo network || echo cached)" network
+rm -f "$R/net"
 # partial clone with origin reachable: the rule blob is fetched on demand and applies
 w=$(repo partok base.md sneaky.md); git -C "$R/partok/origin.git" config uploadpack.allowFilter true
 git clone -q --filter=blob:none --no-checkout "file://$R/partok/origin.git" "$R/partok/clone" 2>/dev/null || exit 1

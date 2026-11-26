@@ -204,10 +204,17 @@ def _confirmed(top, name):
         return False
 
 
-def _confirm(top, name):
+def _remote_refs(top):
+    """{refname: sha} of refs/remotes/origin/*, read before asking origin: the stamp records a ref as it was before the
+    answer, so a fetch that moves it while origin is being asked makes the next call ask again."""
+    out = git(top, "for-each-ref", "--format=%(refname) %(objectname)", "refs/remotes/origin/")[1]
+    return dict(line.split(" ", 1) for line in out.splitlines() if " " in line)
+
+
+def _confirm(top, name, sha):
     try:
         with open(_common_file(top, HEAD_FILE), "w") as f:
-            f.write(_head_stamp(top, name) + "\n")
+            f.write(f"{name} {sha}\n")
     except OSError:
         pass
 
@@ -233,6 +240,7 @@ def default_branch(top):
     if rc == 0 and ref.startswith("refs/remotes/origin/") and _has_ref(top, ref[len("refs/remotes/origin/"):]):
         name = ref[len("refs/remotes/origin/"):]
     if not (name and _confirmed(top, name)) and git(top, "remote", "get-url", "origin")[0] == 0 and _net_allowed(top):
+        before = _remote_refs(top)
         rc, out = _net(top, "ls-remote", "--symref", "origin", "HEAD")
         m = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", out, re.M) if rc == 0 else None
         if m:
@@ -244,8 +252,9 @@ def default_branch(top):
         # An explicit destination, so a single-branch clone (whose refspec does not cover name) still gets origin/<name>
         _net(top, "fetch", "--quiet", "origin", "--", f"+refs/heads/{name}:refs/remotes/origin/{name}")
     _DEFAULT[top] = f"origin/{name}" if name and _has_ref(top, name) else None
-    if asked and _DEFAULT[top]:
-        _confirm(top, asked)
+    if asked and _DEFAULT[top] and before.get(f"refs/remotes/origin/{asked}"):
+        # A ref fetched just now is not stamped: the next call asks once more and stamps it then
+        _confirm(top, asked, before[f"refs/remotes/origin/{asked}"])
     return _DEFAULT[top]
 
 

@@ -104,6 +104,11 @@ row 'blob fetch timed out: the next run stays offline' "$([ -f "$T/net" ] && ech
 # partial clone with origin reachable: AGENTS.md's blob is fetched on demand and its line applies
 git clone -q --filter=blob:none --no-checkout "file://$T/hang/origin.git" "$T/hang/clone2" 2>/dev/null || exit 1
 row 'partial clone, origin reachable: the default branch line wins' "$(det "$T/hang/clone2")" 'coderabbit/0'
+# A fetch that moves origin/main while origin is being asked (here the transport moves it) leaves the answer unconfirmed
+w=$(base racing 'review-heavy: coderabbit' 'review-heavy: none'); git -C "$w" remote set-url origin "ssh://localhost$T/racing/origin.git"
+det "$w" '' GIT_SSH_VARIANT=simple "GIT_SSH_COMMAND=f() { git -C $w update-ref refs/remotes/origin/main feat; sh -c \"\$2\"; }; f" >/dev/null
+rm -f "$T/net"; det "$w" '' "GIT_SSH_COMMAND=touch $T/net; false" >/dev/null
+row 'ref moved while origin was asked: the next run asks again' "$([ -f "$T/net" ] && echo network || echo cached)" 'network'
 # partial clone with origin unreachable: a failed blob fetch is cached like a failed lookup, so the next run stays offline
 w=$(base partoff 'review-heavy: coderabbit' 'review-heavy: none'); git -C "$T/partoff/origin.git" config uploadpack.allowFilter true
 git clone -q --filter=blob:none --no-checkout "file://$T/partoff/origin.git" "$T/partoff/clone" 2>/dev/null || exit 1

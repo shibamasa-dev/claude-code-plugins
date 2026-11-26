@@ -68,6 +68,8 @@ if git -C "$root" remote get-url origin >/dev/null 2>&1; then
   stamp() { printf '%s %s' "$1" "$(git -C "$root" rev-parse --verify --quiet "refs/remotes/origin/$1" 2>/dev/null)"; }
   asked=
   if { [ -z "$name" ] || [ "$(cat "$head" 2>/dev/null)" != "$(stamp "$name")" ]; } && [ "$net_ok" = 1 ]; then
+    # The stamp records the ref as it was before the answer, so a fetch that moves it meanwhile makes the next run ask again
+    before=$(git -C "$root" for-each-ref --format='%(refname) %(objectname)' refs/remotes/origin/ 2>/dev/null)
     asked=$(net ls-remote --symref origin HEAD | sed -n 's|^ref: refs/heads/\([^[:space:]]*\)[[:space:]]*HEAD$|\1|p')
     if [ -n "$asked" ]; then
       name=$asked
@@ -84,7 +86,9 @@ if git -C "$root" remote get-url origin >/dev/null 2>&1; then
   git -C "$root" rev-parse --verify --quiet "$ref" >/dev/null || [ "$net_ok" = 0 ] \
     || net fetch --quiet origin -- "+refs/heads/$name:$ref" >/dev/null
   if git -C "$root" rev-parse --verify --quiet "$ref" >/dev/null; then
-    [ -n "$asked" ] && { stamp "$name"; echo; } > "$head" 2>/dev/null
+    sha=$(printf '%s\n' "${before:-}" | awk -v r="$ref" '$1 == r { print $2 }')
+    # A ref fetched just now is not stamped: the next run asks once more and stamps it then
+    [ -n "$asked" ] && [ -n "$sha" ] && printf '%s %s\n' "$name" "$sha" > "$head" 2>/dev/null
   else
     echo "detect-bots: cannot read origin/$name; skipping the repo's review-* lines" >&2
   fi

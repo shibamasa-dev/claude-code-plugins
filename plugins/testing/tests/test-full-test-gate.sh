@@ -154,6 +154,12 @@ w=$(repo partial "$BASE_CFG"); git -C "$T/partial/origin.git" config uploadpack.
 git clone -q --filter=blob:none --no-checkout "file://$T/partial/origin.git" "$T/partial/clone" 2>/dev/null && mv "$T/partial/origin.git" "$T/partial/gone.git" || exit 1
 err=$(cd "$T/partial/clone" && python3 "$H" status 2>&1 >/dev/null)
 row 'partial clone offline: a note that the config cannot be read'  "$(printf '%s' "$err" | grep -q 'cannot read' && echo note || echo quiet)" note
+# A fetch that moves origin/main while origin is being asked (here the transport moves it) leaves the answer unconfirmed
+w=$(repo racing "$BASE_CFG"); echo b >> "$w/src/a"; g "$w" commit -qam work; g "$w" remote set-url origin "ssh://localhost$T/racing/origin.git"
+pre "$w" GIT_SSH_VARIANT=simple "GIT_SSH_COMMAND=f() { git -C $w update-ref refs/remotes/origin/main feat; sh -c \"\$2\"; }; f" ls >/dev/null
+pre "$w" "$NET_ENV" ls >/dev/null
+row 'ref moved while origin was asked: the next call asks again'   "$(net)" network
+
 # partial clone with origin reachable: the config blob is fetched on demand and applies
 w=$(repo partok "$BASE_CFG"); git -C "$T/partok/origin.git" config uploadpack.allowFilter true
 git clone -q --filter=blob:none --no-checkout "file://$T/partok/origin.git" "$T/partok/clone" 2>/dev/null || exit 1

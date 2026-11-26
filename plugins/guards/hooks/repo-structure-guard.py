@@ -137,10 +137,17 @@ def _confirmed(root: str, name: str) -> bool:
         return False
 
 
-def _confirm(root: str, name: str) -> None:
+def _remote_refs(root: str) -> dict:
+    """{refname: sha} of refs/remotes/origin/*, read before asking origin: the stamp records a ref as it was before the
+    answer, so a fetch that moves it while origin is being asked makes the next call ask again."""
+    out = _git(root, "for-each-ref", "--format=%(refname) %(objectname)", "refs/remotes/origin/")[1]
+    return dict(line.split(" ", 1) for line in out.splitlines() if " " in line)
+
+
+def _confirm(root: str, name: str, sha: str) -> None:
     try:
         with open(_common_file(root, HEAD_FILE), "w") as f:
-            f.write(_head_stamp(root, name) + "\n")
+            f.write(f"{name} {sha}\n")
     except OSError:
         pass
 
@@ -162,6 +169,7 @@ def default_branch(root: str):
     if rc == 0 and ref.startswith("refs/remotes/origin/") and _has_ref(root, ref):
         name = ref[len("refs/remotes/origin/"):]
     if not (name and _confirmed(root, name)) and _net_allowed(root):
+        before = _remote_refs(root)
         rc, out = _net(root, "ls-remote", "--symref", "origin", "HEAD")
         m = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", out, re.M) if rc == 0 else None
         if m:
@@ -174,8 +182,9 @@ def default_branch(root: str):
     ref = f"refs/remotes/origin/{name}"
     if not _has_ref(root, ref) and _net_allowed(root):
         _net(root, "fetch", "--quiet", "origin", "--", f"+refs/heads/{name}:{ref}")
-    if asked and _has_ref(root, ref):
-        _confirm(root, asked)
+    if asked and before.get(ref):
+        # A ref fetched just now is not stamped: the next call asks once more and stamps it then
+        _confirm(root, asked, before[ref])
     return name
 
 
