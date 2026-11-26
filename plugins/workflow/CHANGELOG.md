@@ -2,6 +2,14 @@
 
 Changes to the workflow plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are plugin.json's `version`.
 
+## [0.19.1] - 2026-11-26
+
+### Fixed
+- pr-review-triage's `detect-bots.sh` reads the local `origin/HEAD` without a network call only while origin has confirmed it and the branch it names has not moved since (`<git common dir>/detect-bots-origin-head` holds the name and commit). After a fetch moves that branch, for example a branch pushed under the old default's name once the default was renamed and the old branch deleted on origin, the next call asks origin once, so the pushed branch no longer supplies the `review-*:` lines. When origin cannot be reached then, the local answer is kept. The first call after this update asks origin once per clone, and so does the first call after each fetch that moves the default branch (one `ls-remote`, about half a second against GitHub); a locally set `origin/HEAD` is reset to origin's answer whenever origin is asked; within an hour of a failed network attempt by the same check origin is not asked and the local answer is kept. The stamp records the branch as it was before origin was asked, so a fetch that moves it meanwhile makes the next call ask again; a failed blob probe (git before 2.46 rejects a missing tip) counts as not local (#86).
+- `detect-bots.sh`: a fetched tag or branch named `origin/<default>` no longer hides a valid `origin/HEAD`: `symbolic-ref` is read in full and `refs/remotes/origin/` stripped, instead of `--short`, which printed `remotes/origin/<default>` and made every call ask origin (#86).
+- `detect-bots.sh`: the 5-second limit on a network git call now covers its children. git runs in its own process group, which is killed on timeout, so an ssh child that keeps the output pipe open no longer holds `$(...)` (a transport hanging 40 s made one run take 80 s) (#86).
+- `detect-bots.sh`: in a partial clone (`--filter=blob:none`) whose `CLAUDE.md` / `AGENTS.md` blob is not local, the blob is fetched with a 5-second limit and a failure is cached for an hour like a failed default-branch lookup, so later calls report it unreadable without touching the network instead of refetching on every call (#86).
+
 ## [0.19.0] - 2026-11-25
 
 ### Removed

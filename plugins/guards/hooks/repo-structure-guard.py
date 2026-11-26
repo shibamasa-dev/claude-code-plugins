@@ -70,6 +70,7 @@ def _git(root: str, *args: str):
 
 
 MISS_FILE = "repo-structure-guard-origin-miss"  # in the git common dir; its mtime is the last failed network attempt
+HEAD_FILE = "repo-structure-guard-origin-head"   # in the git common dir: "<name> <sha>" of origin/<name> when origin last named it
 MISS_TTL = 3600                                  # seconds before origin is tried again after a failure
 
 
@@ -77,8 +78,12 @@ def _has_ref(root: str, ref: str) -> bool:
     return _git(root, "rev-parse", "--verify", "--quiet", ref)[0] == 0
 
 
+def _common_file(root: str, name: str) -> str:
+    return os.path.join(_git(root, "rev-parse", "--path-format=absolute", "--git-common-dir")[1].strip(), name)
+
+
 def _miss_path(root: str) -> str:
-    return os.path.join(_git(root, "rev-parse", "--path-format=absolute", "--git-common-dir")[1].strip(), MISS_FILE)
+    return _common_file(root, MISS_FILE)
 
 
 def _net_allowed(root: str) -> bool:
@@ -106,25 +111,81 @@ def _net(root: str, *args: str):
     return rc, out
 
 
+def _show(root: str, spec: str):
+    """`git show <spec>` that does not wait on the network each call: a blob missing from a partial clone is fetched only
+    through _net (a failure cached for MISS_TTL), and within MISS_TTL of a failure it is unreadable at once."""
+    rc, oid = _git(root, "rev-parse", "--verify", "--quiet", spec)
+    if rc != 0:
+        return 1, ""
+    # Present only when rev-list prints the oid itself: "?<oid>" (missing), or an error with no output (git before 2.46
+    # rejects a missing tip), both mean "not local". It never fetches
+    if _git(root, "rev-list", "--objects", "--missing=print", oid.strip())[1].strip() != oid.strip():
+        return _net(root, "show", spec) if _net_allowed(root) else (1, "")
+    return _git(root, "show", spec)
+
+
+def _head_stamp(root: str, name: str) -> str:
+    """The stamp for origin/<name> as it is now: origin's answer is reused only while that ref has not moved."""
+    return f"{name} {_git(root, 'rev-parse', '--verify', '--quiet', f'refs/remotes/origin/{name}')[1].strip()}"
+
+
+def _confirmed(root: str, name: str) -> bool:
+    try:
+        with open(_common_file(root, HEAD_FILE)) as f:
+            return f.read().strip() == _head_stamp(root, name)
+    except OSError:
+        return False
+
+
+def _remote_refs(root: str) -> dict:
+    """{refname: sha} of refs/remotes/origin/*, read before asking origin: the stamp records a ref as it was before the
+    answer, so a fetch that moves it while origin is being asked makes the next call ask again."""
+    out = _git(root, "for-each-ref", "--format=%(refname) %(objectname)", "refs/remotes/origin/")[1]
+    return dict(line.split(" ", 1) for line in out.splitlines() if " " in line)
+
+
+def _confirm(root: str, name: str, sha: str) -> None:
+    try:
+        with open(_common_file(root, HEAD_FILE), "w") as f:
+            f.write(f"{name} {sha}\n")
+    except OSError:
+        pass
+
+
 def default_branch(root: str):
-    """origin's default branch name, or None when it cannot be told. The local origin/HEAD when the ref it names exists
-    locally (no network; a stale one is fine); else ask origin once (ls-remote) and cache a success as the local
-    origin/HEAD; a failure is cached for MISS_TTL. A dangling origin/HEAD (its ref was pruned) is not fetched by name,
-    since that name may now be any pushed branch.
-    origin/main or origin/master is never guessed, since a pushed branch that is not the default would then supply the rules."""
-    rc, ref = _git(root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
-    if rc == 0 and ref.strip().startswith("origin/") and _has_ref(root, f"refs/remotes/{ref.strip()}"):
-        return ref.strip()[len("origin/"):]
-    if not _net_allowed(root):
-        return None
-    rc, out = _net(root, "ls-remote", "--symref", "origin", "HEAD")
-    m = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", out, re.M) if rc == 0 else None
-    if not m:
-        if rc == 0:
+    """origin's default branch name, or None when it cannot be told. The local origin/HEAD is used without the network
+    while origin named it and the ref it names has not moved since (HEAD_FILE).
+    Otherwise origin is asked (ls-remote): after a fetch moved that ref (a branch pushed under the old default's name
+    after a rename), on the first call, or when origin/HEAD is missing or dangles. A success rewrites the local
+    origin/HEAD and HEAD_FILE; a failure (or one within MISS_TTL before, when origin is not asked) keeps the local
+    answer (a stale one is fine: the older rules apply). A dangling origin/HEAD (its ref was pruned) is not fetched by name, since that name may now be
+    any pushed branch. A missing origin/<name> is fetched once into that ref, so a single-branch clone (whose refspec
+    does not cover name) gets it too. origin/main or origin/master is never guessed, since a pushed branch that is not
+    the default would then supply the rules."""
+    name = asked = None
+    # Without --short: a tag or branch named origin/<name> would make the short form ambiguous (remotes/origin/<name>)
+    rc, ref = _git(root, "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD")
+    ref = ref.strip()
+    if rc == 0 and ref.startswith("refs/remotes/origin/") and _has_ref(root, ref):
+        name = ref[len("refs/remotes/origin/"):]
+    if not (name and _confirmed(root, name)) and _net_allowed(root):
+        before = _remote_refs(root)
+        rc, out = _net(root, "ls-remote", "--symref", "origin", "HEAD")
+        m = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", out, re.M) if rc == 0 else None
+        if m:
+            name = asked = m.group(1)
+            _git(root, "symbolic-ref", "refs/remotes/origin/HEAD", f"refs/remotes/origin/{name}")
+        elif rc == 0:
             _mark_miss(root)  # answered without a HEAD symref: unknown for MISS_TTL too
+    if not name:
         return None
-    _git(root, "symbolic-ref", "refs/remotes/origin/HEAD", f"refs/remotes/origin/{m.group(1)}")
-    return m.group(1)
+    ref = f"refs/remotes/origin/{name}"
+    if not _has_ref(root, ref) and _net_allowed(root):
+        _net(root, "fetch", "--quiet", "origin", "--", f"+refs/heads/{name}:{ref}")
+    if asked and before.get(ref):
+        # A ref fetched just now is not stamped: the next call asks once more and stamps it then
+        _confirm(root, asked, before[ref])
+    return name
 
 
 def base_spec(root: str):
@@ -136,15 +197,11 @@ def base_spec(root: str):
               "retried after 1 hour); skipping the repo's rule file", file=sys.stderr)
         return False
     ref = f"refs/remotes/origin/{name}"
-    if not _has_ref(root, ref) and _net_allowed(root):
-        # fetch it once into the ref, so a single-branch clone (whose refspec does not cover name) gets it too;
-        # a stale origin/<default> is fine (the older rules apply)
-        _net(root, "fetch", "--quiet", "origin", "--", f"+refs/heads/{name}:{ref}")
     if not _has_ref(root, ref):
         print(f"repo-structure-guard: cannot read origin/{name}; skipping the repo's rule file", file=sys.stderr)
         return False
     rel = SPEC_RELPATH.replace(os.sep, "/")
-    rc, text = _git(root, "show", f"{ref}:{rel}")
+    rc, text = _show(root, f"{ref}:{rel}")
     if rc == 0:
         return f"origin/{name}:{SPEC_RELPATH}", text
     # None only when the tree says the file is absent; a blob that cannot be read (a partial clone offline) is False
