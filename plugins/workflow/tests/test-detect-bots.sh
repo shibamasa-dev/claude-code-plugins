@@ -90,6 +90,9 @@ row 'default renamed, pushed main fetched: the trunk line wins' "$(det "$w")" 'c
 w=$(base tagged 'review-heavy: coderabbit' 'review-heavy: none'); git -C "$w" push -q origin feat:refs/tags/origin/main && git -C "$w" fetch -q --tags origin || exit 1
 det "$w" >/dev/null; git -C "$w" remote set-url origin ssh://nohost.invalid/x.git; rm -f "$T/net"; det "$w" '' "GIT_SSH_COMMAND=touch $T/net; false" >/dev/null
 row 'tag named origin/main: a second run makes no network call' "$([ -f "$T/net" ] && echo network || echo cached)" 'cached'
+# origin unreachable with a valid origin/HEAD: the failed refresh keeps the local answer, and its local blob is read
+w=$(base offline 'review-heavy: coderabbit' 'review-heavy: none'); git -C "$w" remote set-url origin ssh://nohost.invalid/x.git
+row 'origin unreachable, valid origin/HEAD: the local line wins' "$(det "$w" '' "GIT_SSH_COMMAND=false")" 'coderabbit/0'
 # A transport that hangs is cut at 5 s per network call, children included: in a partial clone the blob fetch runs in a
 # child git whose ssh keeps the output pipe open. A --light run (CLAUDE.md only) leaves AGENTS.md's blob to fetch
 w=$(base hang 'review-light: claude' 'review-heavy: none'); g() { git -C "$w" -c user.name=t -c user.email=t@t "$@"; }
