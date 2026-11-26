@@ -41,5 +41,7 @@ for case in spec["cases"]:
         print("\n".join("     | " + l for l in r.stdout.splitlines()))
     print("  %s -> %s (expect ok)" % (case["id"], "failed" if errs else "ok"))
 PY
+rc=$?   # a crashed runner (bad cases.json, an exception) must fail the script, not vanish behind the rows below
 n=0; [ -f "$shims/calls" ] && { cat "$shims/calls"; n=$(wc -l < "$shims/calls" | tr -d ' '); }
 printf '  calls to lp / lpstat / lpoptions / cancel -> %s (expect 0)\n' "$n"
+exit "$rc"
