@@ -51,6 +51,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/print/scripts/print.py" <file...> --dry-ru
 | `--2up` | 2 pages per side (`number-up=2`, `number-up-layout=lrtb`) |
 | `--no-number` | Don't add page numbers |
 | `--dry-run` | Show only, don't send |
+| `--keep-pdf` | Keep the converted and numbered PDFs and print their directory (default: removed when the script ends) |
 
 What the user asked for wins over the defaults (black and white, duplex long edge, A4, plain paper, 1 page per side). Sheets are "ceil(ceil(pages ÷ pages per side) ÷ (2 if duplex)) × copies", added up per file. On a printer where duplex could not be set, sheets are counted one-sided.
 
@@ -69,7 +70,7 @@ Command: lp -d EVAL_PRINTER -o ColorModel=Gray -o Duplex=DuplexNoTumble -o PageS
 (--dry-run: nothing sent)
 ```
 
-The path of a converted PDF is shown too. When the layout matters, render a few pages with `pdftoppm -png -r 50 -f 1 -l 3 <pdf> <prefix>` and look at them.
+The path of a converted PDF is shown too, but the file is removed when the script ends. When the layout matters, run the dry run with `--keep-pdf`, render a few pages with `pdftoppm -png -r 50 -f 1 -l 3 <pdf> <prefix>`, look at them, then remove the directory printed on the last line.
 
 ### 3. Check what could not be set
 

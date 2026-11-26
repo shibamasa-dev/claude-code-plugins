@@ -1,6 +1,6 @@
 # Troubleshooting printing
 
-Check from the top. Everything here only reads; no paper is used.
+Check from the top. The diagnosis commands (`lpoptions`, `lpstat`, `grep`) only read the printer's state; no paper is used. The commands that change state are marked **Changes state** below: run them only with the user's OK.
 
 ## Not duplex
 
@@ -21,8 +21,9 @@ Check from the top. Everything here only reads; no paper is used.
 1. `lpstat -p <printer>`: is it disabled or stopped? Read the reason line (out of paper, out of ink, offline)
 2. `lpstat -o <printer>`: is the job still in the queue? A stuck job blocks the ones behind it
 3. The printer's power and Wi-Fi. On macOS, look at the printer's status in System Settings
-4. Cancel a stuck job with `cancel <job ID>` (only jobs you sent; don't remove other people's). `cancel -a <printer>` removes all of them, so ask the user first
-5. If the queue stays stopped, `cupsenable <printer>` (may need privileges; the user does this)
+4. **Changes state:** cancel a stuck job you sent with `cancel <job ID>` (only jobs you sent; don't remove other people's)
+5. **Changes state:** `cancel -a <printer>` cancels every job on the printer, other people's included. Never run it without asking the user first
+6. **Changes state:** if the queue stays stopped, `cupsenable <printer>` (may need privileges; the user does this)
 
 ## No page numbers
 

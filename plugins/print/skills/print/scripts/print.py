@@ -283,6 +283,8 @@ def main():
     ap.add_argument("--no-number", action="store_true", help="do not add page numbers")
     ap.add_argument("--dry-run", action="store_true", help="show the settings and sheet count without sending")
     ap.add_argument("--lpoptions-file", help="a saved output of lpoptions -l")
+    ap.add_argument("--keep-pdf", action="store_true",
+                    help="keep the converted and numbered PDFs (prints their directory; remove it when done)")
     args = ap.parse_args()
     if args.copies < 1:
         die("--copies must be 1 or more")
@@ -315,7 +317,22 @@ def main():
     duplex_on = duplex_mode != "simplex" and wanted[1][1] is not None
 
     workdir = tempfile.mkdtemp(prefix="print-skill.")
-    items = [prepare(p, args, workdir) for p in args.files]
+    try:
+        send(args, printer, chosen, missing, duplex_on, workdir)
+    finally:
+        if args.keep_pdf:
+            print("Converted files kept in: %s (remove it when done)" % workdir)
+        else:
+            shutil.rmtree(workdir, ignore_errors=True)
+
+
+def send(args, printer, chosen, missing, duplex_on, workdir):
+    # One directory per input, so inputs with the same name (a/report.md, b/report.md) don't overwrite each other
+    items = []
+    for i, p in enumerate(args.files, 1):
+        d = os.path.join(workdir, str(i))
+        os.mkdir(d)
+        items.append(prepare(p, args, d))
 
     per_side = 2 if args.two_up else 1
     lp = ["lp", "-d", printer]

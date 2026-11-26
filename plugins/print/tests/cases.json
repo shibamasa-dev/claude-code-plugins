@@ -1,5 +1,5 @@
 {
-  "description": "Cases for the print skill. They grade the output of scripts/print.py --dry-run (the lp command line, sheet count, whether pages are numbered, settings that could not be set). lpoptions fixtures: lpoptions-epson-ep30va.txt is the unedited output of `lpoptions -p <queue> -l` for a real EPSON EP-30VA on macOS (2026-10-08). ipp-generic and kgray-noduplex are made up (each says so in its comments). Expected sheet counts were worked out by hand as ceil(ceil(pages / pages per side) / (2 for duplex, 1 for one-sided)) x copies. The PDF samples have 7 pages (checked with pdfinfo). Run by tests/test-print.sh, from the tests directory.",
+  "description": "Cases for the print skill. They grade the output of scripts/print.py --dry-run (the lp command line, sheet count, whether pages are numbered, settings that could not be set). lpoptions fixtures: lpoptions-epson-ep30va.txt is the unedited output of `lpoptions -p <queue> -l` for a real EPSON EP-30VA on macOS (2026-10-08). ipp-generic and kgray-noduplex are made up (each says so in its comments). Expected sheet counts were worked out by hand as ceil(ceil(pages / pages per side) / (2 for duplex, 1 for one-sided)) x copies. The PDF samples have 7 pages (checked with pdfinfo). A case with expect_files also runs with --keep-pdf and checks each file on the lp command line, in order (pages with pdfinfo, text with pdftotext). Run by tests/test-print.sh, from the tests directory.",
   "cases": [
     {
       "id": "epson-default",
@@ -98,6 +98,16 @@
       "lpoptions": "fixtures/lpoptions-epson-ep30va.txt",
       "expect_contains": ["Page numbers: no (image)", "→ 1 sheet ("],
       "expect_not_contains": []
+    },
+    {
+      "id": "same-name-inputs",
+      "description": "Two inputs with the same file name in different folders convert to two separate PDFs: lp gets a 1-page ALPHA file and a 3-page BRAVO file, in that order (1 + 2 sheets duplex)",
+      "args": ["fixtures/same-name/a/report.html", "fixtures/same-name/b/report.html"],
+      "lpoptions": "fixtures/lpoptions-epson-ep30va.txt",
+      "requires": ["chrome"],
+      "expect_contains": ["Total: 4 pages → 3 sheets (duplex)"],
+      "expect_not_contains": [],
+      "expect_files": [{"pages": 1, "text": "ALPHA"}, {"pages": 3, "text": "BRAVO"}]
     }
   ]
 }

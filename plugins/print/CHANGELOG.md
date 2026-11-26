@@ -9,3 +9,4 @@ Changes to the print plugin. The format follows [Keep a Changelog](https://keepa
 - `scripts/print.py` picks the `-o` keys and values from the printer's own `lpoptions -l` (PPD keys such as `ColorModel` / `Duplex` and IPP keys such as `print-color-mode` / `sides`), leaves out what the printer doesn't accept and reports it under "Could not set". `--dry-run` shows pages, sheets, settings and the `lp` command without sending
 - `scripts/to_pdf.sh` turns HTML, Markdown and text into PDF with headless Chrome and puts "page / pages" at the bottom center. A PDF without page numbers gets them overlaid with qpdf before printing
 - No printer name is stored: the default printer comes from `lpstat -d`
+- Each input is converted in its own work directory, so two inputs with the same file name don't overwrite each other, and the work directory is removed when the script ends (`--keep-pdf` keeps it for a look at the converted pages)

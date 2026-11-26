@@ -32,7 +32,7 @@ No settings. The printer is the system default from `lpstat -d` unless you name 
 
 ### Where files go
 
-Converted and numbered PDFs go to a new directory under the system temp directory (`print-skill.*`), which is not removed after the run. Nothing is kept in plugin data; uninstalling removes nothing else.
+Converted and numbered PDFs go to a new directory under the system temp directory (`print-skill.*`), one subdirectory per input, and the directory is removed when the script ends (after `lp` has taken the files). `--keep-pdf` keeps it and prints its path, for looking at the converted pages; remove it yourself afterwards. Nothing is kept in plugin data; uninstalling removes nothing else.
 
 ## Limitations
 
@@ -54,4 +54,4 @@ Converted and numbered PDFs go to a new directory under the system temp director
 bash plugins/print/tests/run-all.sh
 ```
 
-Offline and paperless: every case runs `print.py --dry-run` against saved `lpoptions -l` outputs, and `lp`, `lpstat`, `lpoptions` and `cancel` are replaced on `PATH` by shims that record any call; the last row checks there were none. The cases that need qpdf or Chrome are skipped (and not counted) when those are missing.
+Offline and paperless: every case runs `print.py --dry-run` against saved `lpoptions -l` outputs, and `lp`, `lpstat`, `lpoptions` and `cancel` are replaced on `PATH` by shims that record any call; the last two rows check there were none and that no `print-skill.*` work directory was left behind. The cases that need qpdf or Chrome are skipped (and not counted) when those are missing.
