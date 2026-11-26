@@ -79,4 +79,32 @@ git -C "$T/partial/origin.git" config uploadpack.allowFilter true
 git clone -q --filter=blob:none --no-checkout "file://$T/partial/origin.git" "$T/partial/clone" 2>/dev/null \
   && git -C "$T/partial/clone" cat-file -p origin/main:AGENTS.md >/dev/null && mv "$T/partial/origin.git" "$T/partial/gone.git" || exit 1
 row 'partial clone offline: an unreadable CLAUDE.md skips the lines' "$(det "$T/partial/clone")" '/4'
+# origin renamed main to trunk and deleted main; the clone (checked before the rename) never prunes, so origin/HEAD still
+# names origin/main. Someone pushes a main with `none` and the clone runs an ordinary fetch: trunk's line still wins
+w=$(base renamed 'review-heavy: coderabbit' 'review-heavy: none'); git -C "$w" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+det "$w" >/dev/null
+git -C "$T/renamed/origin.git" branch -m main trunk && git -C "$T/renamed/origin.git" symbolic-ref HEAD refs/heads/trunk || exit 1
+git -C "$w" push -q origin feat:main && git -C "$w" fetch -q origin || exit 1
+row 'default renamed, pushed main fetched: the trunk line wins' "$(det "$w")" 'coderabbit/0'
+# A tag named origin/main (pushed to origin and fetched) does not hide a valid origin/HEAD
+w=$(base tagged 'review-heavy: coderabbit' 'review-heavy: none'); git -C "$w" push -q origin feat:refs/tags/origin/main && git -C "$w" fetch -q --tags origin || exit 1
+det "$w" >/dev/null; git -C "$w" remote set-url origin ssh://nohost.invalid/x.git; rm -f "$T/net"; det "$w" '' "GIT_SSH_COMMAND=touch $T/net; false" >/dev/null
+row 'tag named origin/main: a second run makes no network call' "$([ -f "$T/net" ] && echo network || echo cached)" 'cached'
+# A transport that hangs is cut at 5 s per network call, children included: in a partial clone the blob fetch runs in a
+# child git whose ssh keeps the output pipe open. A --light run (CLAUDE.md only) leaves AGENTS.md's blob to fetch
+w=$(base hang 'review-light: claude' 'review-heavy: none'); g() { git -C "$w" -c user.name=t -c user.email=t@t "$@"; }
+g checkout -q main && printf '%s\n' 'review-heavy: coderabbit' > "$w/AGENTS.md" && g add AGENTS.md && g commit -qm agents && g push -q origin main || exit 1
+git -C "$T/hang/origin.git" config uploadpack.allowFilter true
+git clone -q --filter=blob:none --no-checkout "file://$T/hang/origin.git" "$T/hang/clone" 2>/dev/null && det "$T/hang/clone" --light >/dev/null || exit 1
+git -C "$T/hang/clone" remote set-url origin ssh://nohost.invalid/x.git
+s0=$SECONDS; det "$T/hang/clone" '' 'GIT_SSH_COMMAND=sleep 40; :' >/dev/null
+row 'transport hangs 40 s: returns within about 5 s' "$([ $((SECONDS - s0)) -le 15 ] && echo bounded || echo "$((SECONDS - s0)) s")" 'bounded'
+# partial clone with origin unreachable: a failed blob fetch is cached like a failed lookup, so the next run stays offline
+w=$(base partoff 'review-heavy: coderabbit' 'review-heavy: none'); git -C "$T/partoff/origin.git" config uploadpack.allowFilter true
+git clone -q --filter=blob:none --no-checkout "file://$T/partoff/origin.git" "$T/partoff/clone" 2>/dev/null || exit 1
+git -C "$T/partoff/clone" remote set-url origin ssh://nohost.invalid/x.git; rm -f "$T/net"
+det "$T/partoff/clone" '' "GIT_SSH_COMMAND=touch $T/net; false" >/dev/null
+row 'partial clone, origin unreachable: the first run tries origin' "$([ -f "$T/net" ] && echo network || echo cached)" 'network'
+rm -f "$T/net"; det "$T/partoff/clone" '' "GIT_SSH_COMMAND=touch $T/net; false" >/dev/null
+row 'partial clone, origin unreachable: a second run stays offline' "$([ -f "$T/net" ] && echo network || echo cached)" 'cached'
 exit $fail

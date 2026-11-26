@@ -1,6 +1,6 @@
 {
   "name": "guards",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "Hooks that stop destructive Bash operations, deletion of unmerged worktrees and pushes from a branch behind the default branch, `gh issue view --comments` without `--json` (gh-comments-guard) and `pip freeze` (pip-freeze-guard), and bring the local merge-target branch up to date after a merge. Optional publish-guard: checks issue / PR text against your own list of private-value patterns before it is published to a public repo. Repo layout rules apply only when you add a rule file. In the desktop app, link-check stops Claude once when its last reply links a file the file pane cannot open",
   "author": {
     "name": "shibamasa-dev"

@@ -31,24 +31,43 @@ BOTS='coderabbit=coderabbitai\[bot\] codex=chatgpt-codex-connector\[bot\] copilo
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY
 root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 # Read the files from the default branch (origin/<default>), not the working tree, so a PR cannot pick the tools that review it.
-# The name is the local origin/HEAD when its ref exists locally; otherwise origin is asked once (ls-remote, 5 s, no prompt) and a success is cached as the
-# local origin/HEAD. A failed network attempt is remembered for an hour (the mtime of detect-bots-origin-miss in the git common
-# dir). origin/main or origin/master is never guessed: when the default branch cannot be told, exit 4 (the caller asks).
-# A missing origin/<name> is fetched once into that ref (explicit, so a single-branch clone gets it too); a stale ref is fine.
+# The name is the local origin/HEAD, used without the network while origin named it and the ref it names has not moved since
+# (detect-bots-origin-head in the git common dir holds "<name> <sha>"). Otherwise origin is asked (ls-remote, no prompt): after a
+# fetch moved that ref (a branch pushed under the old default's name after a rename), on the first run, or when origin/HEAD is
+# missing or dangles; a success rewrites the local origin/HEAD. A failed network attempt is remembered for an hour (the mtime of
+# detect-bots-origin-miss in the git common dir) and keeps the local answer (a stale one is fine). origin/main or origin/master
+# is never guessed: when the default branch cannot be told, exit 4 (the caller asks).
+# A missing origin/<name> is fetched once into that ref (explicit, so a single-branch clone gets it too).
 # Without an origin remote no PR exists, so the working tree is read.
-net() {  # net <git args...>: a network git command, 5 s, no prompt; a failure is remembered
-  GIT_TERMINAL_PROMPT=0 perl -e 'alarm 5; exec @ARGV' git -C "$root" "$@" </dev/null 2>/dev/null || { : >> "$miss"; touch "$miss"; return 1; }
+net() {  # net <git args...>: a network git command, no prompt, killed after 5 s together with its children (an ssh child
+         # holding the output pipe would otherwise keep $(...) waiting); a failure is remembered
+  GIT_TERMINAL_PROMPT=0 perl -e '$p = fork; defined $p or exit 1; unless ($p) { setpgrp(0, 0); exec @ARGV or exit 127 }
+    $SIG{ALRM} = sub { kill "KILL", -$p; exit 1 }; alarm 5; waitpid $p, 0; $rc = $?; kill "KILL", -$p;
+    exit($rc & 127 ? 1 : $rc >> 8)' git -C "$root" "$@" </dev/null 2>/dev/null || { : >> "$miss"; touch "$miss"; return 1; }
+}
+show() {  # show <rev:path>: the blob's text; a blob missing from a partial clone is fetched only through net, not within the hour
+  o=$(git -C "$root" rev-parse --verify --quiet "$1" 2>/dev/null) || return 1
+  case $(git -C "$root" rev-list --objects --missing=print "$o" 2>/dev/null) in
+    \?*) [ "$net_ok" = 1 ] && net show "$1" ;;
+    *) git -C "$root" show "$1" 2>/dev/null ;;
+  esac
 }
 ref=
 if git -C "$root" remote get-url origin >/dev/null 2>&1; then
-  miss="$(git -C "$root" rev-parse --path-format=absolute --git-common-dir)/detect-bots-origin-miss"
+  common=$(git -C "$root" rev-parse --path-format=absolute --git-common-dir)
+  miss="$common/detect-bots-origin-miss"; head="$common/detect-bots-origin-head"
   net_ok=1; [ -n "$(find "$miss" -mmin -60 2>/dev/null)" ] && net_ok=0
-  name=$(git -C "$root" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null); name=${name#origin/}
+  # Without --short: a tag or branch named origin/<name> would make the short form ambiguous (remotes/origin/<name>)
+  name=$(git -C "$root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null)
+  case $name in refs/remotes/origin/?*) name=${name#refs/remotes/origin/} ;; *) name= ;; esac
   # A dangling origin/HEAD (its ref was pruned) is not fetched by name: that name may now be any pushed branch
   [ -n "$name" ] && ! git -C "$root" rev-parse --verify --quiet "refs/remotes/origin/$name" >/dev/null && name=
-  if [ -z "$name" ] && [ "$net_ok" = 1 ]; then
-    name=$(net ls-remote --symref origin HEAD | sed -n 's|^ref: refs/heads/\([^[:space:]]*\)[[:space:]]*HEAD$|\1|p')
-    if [ -n "$name" ]; then
+  stamp() { printf '%s %s' "$1" "$(git -C "$root" rev-parse --verify --quiet "refs/remotes/origin/$1" 2>/dev/null)"; }
+  asked=
+  if { [ -z "$name" ] || [ "$(cat "$head" 2>/dev/null)" != "$(stamp "$name")" ]; } && [ "$net_ok" = 1 ]; then
+    asked=$(net ls-remote --symref origin HEAD | sed -n 's|^ref: refs/heads/\([^[:space:]]*\)[[:space:]]*HEAD$|\1|p')
+    if [ -n "$asked" ]; then
+      name=$asked
       git -C "$root" symbolic-ref refs/remotes/origin/HEAD "refs/remotes/origin/$name" 2>/dev/null
     else
       : >> "$miss"; touch "$miss"; net_ok=0
@@ -61,16 +80,18 @@ if git -C "$root" remote get-url origin >/dev/null 2>&1; then
   ref=refs/remotes/origin/$name
   git -C "$root" rev-parse --verify --quiet "$ref" >/dev/null || [ "$net_ok" = 0 ] \
     || net fetch --quiet origin -- "+refs/heads/$name:$ref" >/dev/null
-  git -C "$root" rev-parse --verify --quiet "$ref" >/dev/null \
-    || echo "detect-bots: cannot read origin/$name; skipping the repo's review-* lines" >&2
+  if git -C "$root" rev-parse --verify --quiet "$ref" >/dev/null; then
+    [ -n "$asked" ] && { stamp "$name"; echo; } > "$head" 2>/dev/null
+  else
+    echo "detect-bots: cannot read origin/$name; skipping the repo's review-* lines" >&2
+  fi
 else
   echo "detect-bots: no origin remote: reading the review-* lines from the working tree" >&2
 fi
 line=
 for f in CLAUDE.md AGENTS.md .claude/CLAUDE.md; do
   if [ -n "$ref" ]; then
-    # 5 s, no prompt: in a partial clone the blob may be fetched on demand
-    if ! text=$(GIT_TERMINAL_PROMPT=0 perl -e 'alarm 5; exec @ARGV' git -C "$root" show "$ref:$f" </dev/null 2>/dev/null); then
+    if ! text=$(show "$ref:$f"); then
       # Absent on the default branch: try the next file. Present but unreadable: skip the repo's lines (never a later file)
       listed=$(git -C "$root" ls-tree --name-only "$ref" -- "$f" </dev/null 2>/dev/null) && [ -z "$listed" ] && continue
       echo "detect-bots: cannot read $f on ${ref#refs/remotes/}; skipping the repo's review-* lines" >&2

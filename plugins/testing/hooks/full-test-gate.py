@@ -77,6 +77,7 @@ if plugin_data():  # Bash does not get the variable, so the printed command carr
 _REPO_SELECT_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY")
 GIT_ENV = {**{k: v for k, v in os.environ.items() if k not in _REPO_SELECT_VARS}, "GIT_TERMINAL_PROMPT": "0"}
 MISS_FILE = "full-test-gate-origin-miss"  # in the git common dir; its mtime is the last failed network attempt
+HEAD_FILE = "full-test-gate-origin-head"  # in the git common dir: "<name> <sha>" of origin/<name> when origin last named it
 NO_BASE = "no comparison base (origin's default branch is unknown and the config has no \"base\")"
 MISS_TTL = 3600                           # seconds before origin is tried again after a failure
 
@@ -110,7 +111,7 @@ def read_config(top, working_tree=False):
         print("[full-test-gate] cannot tell origin's default branch (no local origin/HEAD, origin unreachable or its "
               "ref unavailable; retried after 1 hour): not gating", file=sys.stderr)
         return None
-    rc, text = git(top, "show", f"refs/remotes/{base}:{CONFIG}")
+    rc, text = _show(top, f"refs/remotes/{base}:{CONFIG}")
     if rc == 0:
         return text
     # Absent (= not opted in) only when the tree says so; a blob that cannot be read (a partial clone offline) is reported
@@ -134,9 +135,13 @@ def load_project(cwd, working_tree=False):
     return cfg, top, os.path.join(STATE_DIR, key + ".json")
 
 
-def _miss_path(top):
+def _common_file(top, name):
     _, common = git(top, "rev-parse", "--path-format=absolute", "--git-common-dir")
-    return os.path.join(common, MISS_FILE)
+    return os.path.join(common, name)
+
+
+def _miss_path(top):
+    return _common_file(top, MISS_FILE)
 
 
 def _net_allowed(top):
@@ -169,8 +174,40 @@ def _net(top, *args):
     return rc, out
 
 
+def _show(top, spec):
+    """`git show <spec>` that does not wait on the network each call: a blob missing from a partial clone is fetched only
+    through _net (5 s, a failure cached for MISS_TTL), and within MISS_TTL of a failure it is unreadable at once."""
+    rc, oid = git(top, "rev-parse", "--verify", "--quiet", spec)
+    if rc != 0:
+        return 1, ""
+    if git(top, "rev-list", "--objects", "--missing=print", oid)[1].startswith("?"):  # never fetches
+        return _net(top, "show", spec) if _net_allowed(top) else (1, "")
+    return git(top, "show", spec)
+
+
 def _has_ref(top, name):
     return git(top, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{name}")[0] == 0
+
+
+def _head_stamp(top, name):
+    """The stamp for origin/<name> as it is now: origin's answer is reused only while that ref has not moved."""
+    return f"{name} {git(top, 'rev-parse', '--verify', '--quiet', f'refs/remotes/origin/{name}')[1]}"
+
+
+def _confirmed(top, name):
+    try:
+        with open(_common_file(top, HEAD_FILE)) as f:
+            return f.read().strip() == _head_stamp(top, name)
+    except OSError:
+        return False
+
+
+def _confirm(top, name):
+    try:
+        with open(_common_file(top, HEAD_FILE), "w") as f:
+            f.write(_head_stamp(top, name) + "\n")
+    except OSError:
+        pass
 
 
 _DEFAULT = {}
@@ -178,22 +215,26 @@ _DEFAULT = {}
 
 def default_branch(top):
     """`origin/<name>` for origin's default branch, or None when it cannot be told. One answer serves both the config
-    source and the comparison base. Order: the local origin/HEAD when the ref it names exists locally (no network; a stale
-    one is fine); else ask origin once (ls-remote) and cache a success as the local origin/HEAD; a failure is cached for
-    MISS_TTL. A dangling origin/HEAD (its ref was pruned) is not fetched by name, since that name may now be any pushed branch. origin/main or origin/master is never guessed,
-    since a pushed branch that is not the default would then supply the config. A missing origin/<name> is fetched once
-    into that ref. None without an origin remote."""
+    source and the comparison base. The local origin/HEAD is used without the network while origin named it and the ref
+    it names has not moved since (HEAD_FILE). Otherwise origin is asked (ls-remote): after a fetch moved that ref (a
+    branch pushed under the old default's name after a rename), on the first call, or when origin/HEAD is missing or
+    dangles. A success rewrites the local origin/HEAD and HEAD_FILE; a failure is cached for MISS_TTL and keeps the local
+    answer (a stale one is fine: the older rules apply). A dangling origin/HEAD (its ref was pruned) is not fetched by
+    name, since that name may now be any pushed branch. origin/main or origin/master is never guessed, since a pushed
+    branch that is not the default would then supply the config. A missing origin/<name> is fetched once into that ref.
+    None without an origin remote."""
     if top in _DEFAULT:
         return _DEFAULT[top]
-    name = None
-    rc, ref = git(top, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
-    if rc == 0 and ref.startswith("origin/") and _has_ref(top, ref[len("origin/"):]):
-        name = ref[len("origin/"):]
-    elif git(top, "remote", "get-url", "origin")[0] == 0 and _net_allowed(top):
+    name = asked = None
+    # Without --short: a tag or branch named origin/<name> would make the short form ambiguous (remotes/origin/<name>)
+    rc, ref = git(top, "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD")
+    if rc == 0 and ref.startswith("refs/remotes/origin/") and _has_ref(top, ref[len("refs/remotes/origin/"):]):
+        name = ref[len("refs/remotes/origin/"):]
+    if not (name and _confirmed(top, name)) and git(top, "remote", "get-url", "origin")[0] == 0 and _net_allowed(top):
         rc, out = _net(top, "ls-remote", "--symref", "origin", "HEAD")
         m = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", out, re.M) if rc == 0 else None
         if m:
-            name = m.group(1)
+            name = asked = m.group(1)
             git(top, "symbolic-ref", "refs/remotes/origin/HEAD", f"refs/remotes/origin/{name}")
         elif rc == 0:
             _mark_miss(top)  # answered without a HEAD symref: treat as unknown for MISS_TTL too
@@ -201,12 +242,20 @@ def default_branch(top):
         # An explicit destination, so a single-branch clone (whose refspec does not cover name) still gets origin/<name>
         _net(top, "fetch", "--quiet", "origin", "--", f"+refs/heads/{name}:refs/remotes/origin/{name}")
     _DEFAULT[top] = f"origin/{name}" if name and _has_ref(top, name) else None
+    if asked and _DEFAULT[top]:
+        _confirm(top, asked)
     return _DEFAULT[top]
 
 
 def base_of(top, cfg):
     """The comparison base: the config's base, else origin's default branch. None when neither is known."""
     return cfg.get("base") or default_branch(top)
+
+
+def rev(top, base):
+    """base as git should read it: refs/remotes/<base> when that ref exists, so a tag or branch named like origin/main
+    (refs/tags/ outranks refs/remotes/ in git's lookup) does not stand in for the comparison base."""
+    return f"refs/remotes/{base}" if git(top, "rev-parse", "--verify", "--quiet", f"refs/remotes/{base}")[0] == 0 else base
 
 
 def load_state(path):
@@ -220,14 +269,14 @@ def load_state(path):
 def measure(top, cfg, sha, target):
     """How much the target paths changed from sha to target (a ref; None means the working tree). None if they cannot be compared (distinct from 0 changes)."""
     paths = cfg.get("paths") or ["."]
-    rng = [sha, target] if target else [sha]
+    rng = [sha, rev(top, target)] if target else [sha]
     rc, stat = git(top, "diff", "--shortstat", *rng, "--", *paths)
     if rc != 0:
         return None
     nums = {k: int(v) for v, k in re.findall(r"(\d+) (file|insertion|deletion)", stat)}
     commits = 0
     if target:
-        rc, c = git(top, "rev-list", "--count", f"{sha}..{target}", "--", *paths)
+        rc, c = git(top, "rev-list", "--count", f"{sha}..{rev(top, target)}", "--", *paths)
         if rc != 0:
             return None
         commits = int(c or 0)
@@ -269,7 +318,7 @@ def cmd_run(cwd, working_tree=False):
     if not working_tree and base is None:
         print(f"[full-test-gate] {NO_BASE}. Not run, not recorded"); return 1
     if not working_tree:  # --working-tree never records, so it needs no comparison base
-        rc_same, _ = git(top, "diff", "--quiet", base, "--", *paths)
+        rc_same, _ = git(top, "diff", "--quiet", rev(top, base), "--", *paths)
         if rc_same > 1:
             print(f"[full-test-gate] Cannot read the comparison base {base} (not available locally). Run git fetch and try again"); return 1
     p = subprocess.Popen(cfg["command"], shell=True, cwd=top, stdout=subprocess.PIPE,
@@ -293,7 +342,7 @@ def cmd_run(cwd, working_tree=False):
     if rc_same != 0:
         print(f"[full-test-gate] Passed, but not recorded because the target paths differ from {base} (this is a result of work in progress)")
         return 0
-    _, sha = git(top, "rev-parse", base)
+    _, sha = git(top, "rev-parse", rev(top, base))
     os.makedirs(STATE_DIR, exist_ok=True)
     with open(sp, "w") as f:
         json.dump({"sha": sha, "at": time.time(), "skipped": skipped}, f)

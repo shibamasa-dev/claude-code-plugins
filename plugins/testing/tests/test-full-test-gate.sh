@@ -95,12 +95,13 @@ row 'origin unreachable, pushed main: nothing recorded'           "$(recorded)" 
 w=$(repo gitdir "$BASE_CFG"); branch_cfg "$w" '{"command": "true", "paths": ["src"], "gate": []}'; git init -q "$T/gitdir/other"; echo b >> "$w/src/a"
 row 'GIT_DIR naming another repo: the default branch still gates'  "$(pre "$w" "GIT_DIR=$T/gitdir/other/.git")" deny
 
-# The config source and the comparison base are the same branch (local origin/HEAD says main, origin says trunk)
+# The config source and the comparison base are the same branch. The local origin/HEAD says main, but origin was never
+# asked for it, so origin is asked once and its answer (trunk) supplies both
 w=$(B=trunk repo stale "$BASE_CFG"); g "$w" checkout -qb m && printf '%s\n' '{"command": "echo main > ran", "paths": ["src"]}' > "$w/.claude/full-test.json" \
   && g "$w" commit -qam main && g "$w" push -q origin m:main && g "$w" fetch -q origin && g "$w" checkout -q feat || exit 1
 g "$w" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main; rm -rf "$FULL_TEST_STATE_DIR"
 out=$(cd "$w" && python3 "$H" run 2>/dev/null | sed -n 's/.*Recorded: \([^ ]*\).*/\1/p')
-row 'config source and comparison base agree (both main)'          "$([ "$(ran "$w")" = main ] && [ "$out" = origin/main ] && echo same || echo "differ")" same
+row 'config source and comparison base agree (both trunk)'         "$([ "$(ran "$w")" = base ] && [ "$out" = origin/trunk ] && echo same || echo "differ")" same
 
 # a path with non-ASCII characters and a space
 w=$(repo "日本語 dir/プロジェクト" "$BASE_CFG"); branch_cfg "$w" '{"command": "echo branch > ran", "paths": ["src"], "gate": []}'
@@ -124,6 +125,22 @@ row 'dangling origin/HEAD, pushed main: main is not fetched'        "$(ran "$w")
 echo b >> "$w/src/a"
 row 'dangling origin/HEAD, pushed main: release still gated'        "$(pre "$w")" deny
 
+# origin renamed main to trunk and deleted main; the clone (checked before the rename) never prunes, so origin/HEAD still
+# names origin/main. Someone pushes a main with a loosened config and the clone runs an ordinary fetch: trunk still rules
+w=$(repo renamed "$BASE_CFG"); o="$T/renamed/origin.git"; g "$w" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+pre "$w" ls >/dev/null
+git -C "$o" branch -m main trunk && git -C "$o" symbolic-ref HEAD refs/heads/trunk || exit 1
+branch_cfg "$w" '{"command": "echo branch > ran", "paths": ["src"], "gate": []}'; g "$w" push -q origin feat:main && g "$w" fetch -q origin || exit 1
+rm -rf "$FULL_TEST_STATE_DIR"; (cd "$w" && python3 "$H" run >/dev/null 2>&1)
+row 'default renamed, pushed main fetched: run uses trunk command'  "$(ran "$w")" base
+
+# A tag named origin/main (pushed to origin and fetched) does not hide a valid origin/HEAD, nor stand in for the comparison base
+w=$(repo tagged "$BASE_CFG"); echo b >> "$w/src/a"; g "$w" commit -qam work; g "$w" push -q origin feat:refs/tags/origin/main
+g "$w" fetch -q --tags origin; rm -rf "$FULL_TEST_STATE_DIR"; (cd "$w" && python3 "$H" run >/dev/null 2>&1)
+row 'tag named origin/main: a branch result is not recorded'          "$(recorded)" norecord
+g "$w" remote set-url origin ssh://nohost.invalid/x.git; pre "$w" "$NET_ENV" ls >/dev/null
+row 'tag named origin/main: a second call makes no network call'     "$(net)" cached
+
 # origin exists but cannot be read: not opted in (the working tree config is not used)
 w=$(repo unreadable "$BASE_CFG"); g "$w" remote set-url origin "$T/missing.git"; g "$w" update-ref -d refs/remotes/origin/main
 row 'origin unreadable: not opted in (status)'                    "$(cd "$w" && python3 "$H" status 2>/dev/null | grep -q 'Not configured' && echo off || echo on)" off
@@ -137,4 +154,12 @@ w=$(repo partial "$BASE_CFG"); git -C "$T/partial/origin.git" config uploadpack.
 git clone -q --filter=blob:none --no-checkout "file://$T/partial/origin.git" "$T/partial/clone" 2>/dev/null && mv "$T/partial/origin.git" "$T/partial/gone.git" || exit 1
 err=$(cd "$T/partial/clone" && python3 "$H" status 2>&1 >/dev/null)
 row 'partial clone offline: a note that the config cannot be read'  "$(printf '%s' "$err" | grep -q 'cannot read' && echo note || echo quiet)" note
+# partial clone with origin unreachable: a failed blob fetch is cached like a failed lookup, so the next call stays offline
+w=$(repo partoff "$BASE_CFG"); git -C "$T/partoff/origin.git" config uploadpack.allowFilter true
+git clone -q --filter=blob:none --no-checkout "file://$T/partoff/origin.git" "$T/partoff/clone" 2>/dev/null || exit 1
+g "$T/partoff/clone" remote set-url origin ssh://nohost.invalid/x.git
+pre "$T/partoff/clone" "$NET_ENV" ls >/dev/null
+row 'partial clone, origin unreachable: the first call tries origin'  "$(net)" network
+pre "$T/partoff/clone" "$NET_ENV" ls >/dev/null
+row 'partial clone, origin unreachable: a second call stays offline' "$(net)" cached
 exit $fail

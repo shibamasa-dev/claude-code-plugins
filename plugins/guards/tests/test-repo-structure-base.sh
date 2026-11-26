@@ -82,4 +82,26 @@ row 'origin unreadable, no user rule: a "check did not run" note'  "$(printf '{"
 w=$(repo partial base.md sneaky.md); git -C "$R/partial/origin.git" config uploadpack.allowFilter true
 git clone -q --filter=blob:none --no-checkout "file://$R/partial/origin.git" "$R/partial/clone" 2>/dev/null && mv "$R/partial/origin.git" "$R/partial/gone.git" || exit 1
 row 'partial clone offline, no user rule: a "check did not run" note' "$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$R/partial/clone/docs/sneaky.md" | env -u REPO_STRUCTURE_SPEC HOME="$R/home" python3 "$H" 2>/dev/null | grep -q 'NOT RUN' && echo note || echo quiet)" note
+# origin renamed main to trunk and deleted main; the clone (checked before the rename) never prunes, so origin/HEAD still
+# names origin/main. Someone pushes a main with the loosened rule and the clone runs an ordinary fetch: trunk still rules
+w=$(repo renamed base.md sneaky.md); git -C "$w" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+probe "$w/docs/a.md" >/dev/null
+git -C "$R/renamed/origin.git" branch -m main trunk && git -C "$R/renamed/origin.git" symbolic-ref HEAD refs/heads/trunk || exit 1
+git -C "$w" push -q origin feat:main && git -C "$w" fetch -q origin || exit 1
+row 'default renamed, pushed main fetched: the trunk rule denies'  "$(probe "$w/docs/sneaky.md")" deny
+# A tag named origin/main (pushed to origin and fetched) does not hide a valid origin/HEAD
+w=$(repo tagged base.md sneaky.md); git -C "$w" push -q origin feat:refs/tags/origin/main && git -C "$w" fetch -q --tags origin || exit 1
+probe "$w/docs/a.md" >/dev/null; git -C "$w" remote set-url origin ssh://nohost.invalid/x.git
+probe "$w/docs/b.md" "GIT_SSH_COMMAND=touch $R/net; false" >/dev/null
+row 'tag named origin/main: a second Write makes no network call'  "$([ -f "$R/net" ] && echo network || echo cached)" cached
+rm -f "$R/net"
+# partial clone with origin unreachable: a failed blob fetch is cached like a failed lookup, so the next Write stays offline
+w=$(repo partoff base.md sneaky.md); git -C "$R/partoff/origin.git" config uploadpack.allowFilter true
+git clone -q --filter=blob:none --no-checkout "file://$R/partoff/origin.git" "$R/partoff/clone" 2>/dev/null || exit 1
+git -C "$R/partoff/clone" remote set-url origin ssh://nohost.invalid/x.git
+probe "$R/partoff/clone/docs/a.md" "GIT_SSH_COMMAND=touch $R/net; false" >/dev/null
+row 'partial clone, origin unreachable: the first Write tries origin' "$([ -f "$R/net" ] && echo network || echo cached)" network
+rm -f "$R/net"; probe "$R/partoff/clone/docs/b.md" "GIT_SSH_COMMAND=touch $R/net; false" >/dev/null
+row 'partial clone, origin unreachable: a second Write stays offline' "$([ -f "$R/net" ] && echo network || echo cached)" cached
+rm -f "$R/net"
 exit $FAIL

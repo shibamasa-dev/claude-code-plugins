@@ -2,6 +2,13 @@
 
 Changes to the guards plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
 
+## [0.10.1] - 2026-11-26
+
+### Fixed
+- repo-structure-guard reads the local `origin/HEAD` without a network call only while origin has confirmed it and the branch it names has not moved since (`<git common dir>/repo-structure-guard-origin-head` holds the name and commit). After a fetch moves that branch, for example a branch pushed under the old default's name once the default was renamed and the old branch deleted on origin, the next call asks origin once, so the pushed branch no longer supplies the layout rules. When origin cannot be reached then, the local answer is kept (#86).
+- repo-structure-guard: a fetched tag or branch named `origin/<default>` no longer hides a valid `origin/HEAD`: `symbolic-ref` is read in full and `refs/remotes/origin/` stripped, instead of `--short`, which printed `remotes/origin/<default>` and made every call ask origin (#86).
+- repo-structure-guard: in a partial clone (`--filter=blob:none`) whose `.claude/rules/repo-structure.md` blob is not local, the blob is fetched with a 5-second limit and a failure is cached for an hour like a failed default-branch lookup, so later calls report it unreadable without touching the network instead of refetching on every call (#86).
+
 ## [0.10.0] - 2026-11-25
 
 ### Added
