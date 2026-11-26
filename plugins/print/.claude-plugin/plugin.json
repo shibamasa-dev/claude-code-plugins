@@ -1,0 +1,18 @@
+{
+  "name": "print",
+  "version": "0.1.0",
+  "description": "A skill that prints local files (PDF, image, text, HTML, Markdown) through CUPS (lp). Defaults to black and white, duplex, A4, plain paper, with page numbers; picks the lp options each printer accepts from lpoptions -l and shows pages, sheets and settings before sending",
+  "author": {
+    "name": "shibamasa-dev"
+  },
+  "homepage": "https://github.com/shibamasa-dev/claude-code-plugins/tree/main/plugins/print",
+  "repository": "https://github.com/shibamasa-dev/claude-code-plugins",
+  "license": "MIT",
+  "keywords": [
+    "print",
+    "cups",
+    "lp",
+    "pdf",
+    "duplex"
+  ]
+}

@@ -1,0 +1,10 @@
+# Made up (not a real printer's output): a driverless IPP queue with no PPD, written by hand in the usual format
+# of CUPS `lpoptions -p <printer> -l`, "Key/Label: value *default value".
+# It uses the IPP key names: print-color-mode for black and white, sides for duplex, media for paper size,
+# media-type for paper type. Written 2026-10-08; replace it with real output when one is captured.
+print-color-mode/Print Color Mode: *color monochrome
+print-quality/Print Quality: draft *normal high
+sides/2-Sided Printing: *one-sided two-sided-long-edge two-sided-short-edge
+media/Media Size: na_letter_8.5x11in *iso_a4_210x297mm iso_a5_148x210mm jis_b5_182x257mm
+media-type/Media Type: *stationery photographic-glossy envelope
+media-source/Media Source: *auto main manual

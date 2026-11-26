@@ -1,0 +1,6 @@
+ColorModel/Color Mode: Gray *RGB
+cupsPrintQuality/Quality: *Normal High
+Duplex/2-Sided Printing: None *DuplexNoTumble DuplexTumble
+PageSize/Media Size: 101.6x180.6mm 101.6x180.6mm.Fullbleed 120x176mm 3.5x5 3.5x5.Fullbleed 4x6 4x6.Fullbleed 5x7 5x7.Fullbleed 8x10 8x10.Fullbleed 98x148mm *A4 A4.Fullbleed A5 A6 B5 EnvC6 EnvChou3 EnvChou4 EnvYou4 Legal Letter Letter.Fullbleed Postcard Postcard.Fullbleed Custom.WIDTHxHEIGHT
+MediaType/MediaType: stationery photographic-high-gloss photographic photographic-glossy photographic-matte stationery-coated com.epson-hagaki stationery-inkjet com.epson-hagaki-glossy com.epson-hagaki-addr labels transfer envelope com.epson-matte-business-card com.epson-velvet-fine-art *any
+InputSlot/Media Source: auto main photo rear

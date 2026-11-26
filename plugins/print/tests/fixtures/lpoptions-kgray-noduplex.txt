@@ -1,0 +1,9 @@
+# Made up (not a real printer's output): a laser printer without a duplex unit, written by hand in the usual
+# format of CUPS `lpoptions -p <printer> -l`.
+# Black and white is KGray rather than Gray, color is CMYK, and there is no duplex key (Duplex / sides).
+# Written 2026-10-08; replace it with real output when one is captured.
+ColorModel/Color Mode: KGray *CMYK
+Resolution/Resolution: 300dpi *600dpi
+PageSize/Media Size: Letter Legal Executive *A4 A5 B5
+MediaType/Media Type: *Plain Thick Thin Envelope Labels
+InputSlot/Paper Source: *Auto Tray1 Manual
