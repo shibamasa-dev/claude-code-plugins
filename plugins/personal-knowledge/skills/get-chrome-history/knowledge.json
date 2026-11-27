@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "last_updated": "2026-11-27T00:00:00Z",
+  "filters": {
+    "min_visit_duration_seconds": 5,
+    "min_visit_count": 1
+  },
+  "services": {
+    "youtube.com":           { "category": "video",    "label": "YouTube" },
+    "youtu.be":              { "category": "video",    "label": "YouTube" },
+    "netflix.com":           { "category": "video",    "label": "Netflix" },
+    "nicovideo.jp":          { "category": "video",    "label": "Niconico" },
+    "abema.tv":              { "category": "video",    "label": "ABEMA" },
+    "primevideo.com":        { "category": "video",    "label": "Prime Video" },
+    "github.com":            { "category": "code",     "label": "GitHub" },
+    "githubusercontent.com": { "category": "code",     "label": "GitHub" },
+    "gitlab.com":            { "category": "code",     "label": "GitLab" },
+    "stackoverflow.com":     { "category": "docs",     "label": "Stack Overflow" },
+    "npmjs.com":             { "category": "docs",     "label": "npm" },
+    "pypi.org":              { "category": "docs",     "label": "PyPI" },
+    "docs.anthropic.com":    { "category": "docs",     "label": "Anthropic Docs" },
+    "qiita.com":             { "category": "docs",     "label": "Qiita" },
+    "zenn.dev":              { "category": "docs",     "label": "Zenn" },
+    "x.com":                 { "category": "social",   "label": "X (Twitter)" },
+    "twitter.com":           { "category": "social",   "label": "Twitter" },
+    "reddit.com":            { "category": "social",   "label": "Reddit" },
+    "news.ycombinator.com":  { "category": "news",     "label": "Hacker News" },
+    "techcrunch.com":        { "category": "news",     "label": "TechCrunch" },
+    "nikkei.com":            { "category": "news",     "label": "Nikkei" },
+    "amazon.co.jp":          { "category": "shopping", "label": "Amazon JP" },
+    "amazon.com":            { "category": "shopping", "label": "Amazon" },
+    "rakuten.co.jp":         { "category": "shopping", "label": "Rakuten" },
+    "mercari.com":           { "category": "shopping", "label": "Mercari" },
+    "spotify.com":           { "category": "music",    "label": "Spotify" },
+    "music.apple.com":       { "category": "music",    "label": "Apple Music" }
+  }
+}
