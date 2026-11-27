@@ -1,0 +1,27 @@
+{
+  "name": "personal-knowledge",
+  "version": "0.1.0",
+  "description": "Skills that keep a personal local data store on your machine. Currently get-chrome-history, which reads the Chrome browsing history added since the last run, sorts it by known service, and summarizes your interests, adding the domains it classifies to its own knowledge.json",
+  "author": {
+    "name": "shibamasa-dev"
+  },
+  "homepage": "https://github.com/shibamasa-dev/claude-code-plugins/tree/main/plugins/personal-knowledge",
+  "repository": "https://github.com/shibamasa-dev/claude-code-plugins",
+  "license": "MIT",
+  "keywords": [
+    "personal-data",
+    "chrome",
+    "browsing-history",
+    "interests",
+    "local-first"
+  ],
+  "userConfig": {
+    "chrome_profile": {
+      "type": "string",
+      "title": "Chrome profile",
+      "description": "Directory name of the Chrome profile get-chrome-history reads (for example Default or Profile 1, as under ~/Library/Application Support/Google/Chrome/ or ~/.config/google-chrome/). Empty means Default",
+      "required": false,
+      "default": "Default"
+    }
+  }
+}
