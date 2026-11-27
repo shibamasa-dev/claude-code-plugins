@@ -6,7 +6,7 @@
 # the run is read-only and exits 0. HOME points into the temp dir, so the default roots never scan the real home.
 set -u
 INV="$(cd "$(dirname "$0")/.." && pwd)/skills/python-venv/scripts/venv_inventory.py"
-TMP=$(mktemp -d) || exit 1; trap 'rm -rf "$TMP"' EXIT
+TMP=$(mktemp -d) || exit 1; trap 'chmod -R u+rwx "$TMP"; rm -rf "$TMP"' EXIT
 export HOME="$TMP/home"
 row() {  # row <description> <got> <want>: the verdict is ok when got equals want (run-all.sh reads lowercase words after ->)
   if [ "$2" = "$3" ]; then printf '  %-62s -> ok (expect ok)\n' "$1"; else printf '  %s [got: %s, want: %s] -> bad (expect ok)\n' "$1" "$2" "$3"; fi
@@ -86,7 +86,7 @@ row 'no deps file reports an empty list' "$(field "$TMP/out.json" /dead deps_fil
 echo '=== JSON shape ==='
 row 'top-level keys' "$(python3 -c 'import json,sys; print(",".join(sorted(json.load(open(sys.argv[1])))))' "$TMP/out.json")" 'generated_at,roots,thresholds,venvs'
 row 'per-venv keys' "$(python3 -c 'import json,sys; print(",".join(sorted(json.load(open(sys.argv[1]))["venvs"][0])))' "$TMP/out.json")" \
-  'created,deps_files,idle_days,last_modified,likely_dead,path,size_bytes,stale,stalled'
+  'created,deps_files,idle_days,incomplete,last_modified,likely_dead,path,size_bytes,stale,stalled'
 row 'size_bytes counts the files inside' "$(field "$TMP/out.json" /new-stalled size_bytes)" '27'
 row 'created is the pyvenv.cfg mtime (ISO date 60 days ago)' "$(field "$TMP/out.json" /repo/.venv created | cut -c2-11)" \
   "$(python3 -c 'import datetime,time; print(datetime.datetime.fromtimestamp(time.time()-60*86400).strftime("%Y-%m-%d"))')"
@@ -96,6 +96,18 @@ echo '=== read-only ==='
 python3 "$INV" "$S" > /dev/null 2>&1
 listing "$S" > "$TMP/after"
 row 'path, size and mtime of every entry are unchanged after runs' "$(cmp -s "$TMP/before" "$TMP/after" && echo same || echo changed)" 'same'
+
+echo '=== a part that cannot be read ==='
+U="$TMP/unreadable"
+venv "$U/locked" $((60*DAY)) $((60*DAY))   # stalled and stale on everything it can see
+chmod 000 "$U/locked/lib/python3.12/site-packages/pkg"
+python3 "$INV" "$U" --json > "$TMP/u.json" 2> "$TMP/uerr"; rc=$?
+row 'exit status' "$rc" '0'
+row 'an unreadable directory inside marks the venv incomplete' "$(field "$TMP/u.json" /locked incomplete)" 'true'
+row 'and it is not reported as likely dead' "$(field "$TMP/u.json" /locked likely_dead)" 'false'
+row 'and stderr warns' "$([ -s "$TMP/uerr" ] && echo yes || echo no)" 'yes'
+row 'a fully readable venv is not incomplete' "$(field "$TMP/out.json" /dead incomplete)" 'false'
+chmod 755 "$U/locked/lib/python3.12/site-packages/pkg"
 
 echo '=== roots ==='
 venv "$HOME/.venvs/cad" $DAY $DAY

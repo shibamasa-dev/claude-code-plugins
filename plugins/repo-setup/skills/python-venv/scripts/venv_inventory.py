@@ -14,7 +14,8 @@ A venv is a directory holding a pyvenv.cfg file. For each one it reports:
     not the venv root)
   - deps_files: requirements*.txt / pyproject.toml in the directory that holds the venv
   - likely_dead: stalled (last change within --stall-minutes of creation) AND stale
-    (last change at least --stale-days ago)
+    (last change at least --stale-days ago); never set when part of the venv could not be
+    read (incomplete), because the unread part may hold newer changes
 
 It skips node_modules, .git and Library/Caches, does not follow symlinks and does not look
 for venvs inside a venv. It never deletes, writes or runs pip / uv. Missing or unreadable
@@ -75,27 +76,34 @@ def find_venvs(root, max_depth):
 
 
 def measure(venv):
-    """Return (apparent size in bytes, newest mtime) of everything inside venv, without following symlinks."""
+    """Return (apparent size in bytes, newest mtime, complete) of everything inside venv, without following symlinks.
+
+    complete is False when some directory or entry inside could not be read."""
     size = 0
+    complete = True
     newest = os.lstat(venv).st_mtime
     stack = [venv]
     while stack:
         d = stack.pop()
         try:
             entries = list(os.scandir(d))
-        except OSError:
+        except OSError as e:
+            warn("cannot read %s: %s; its size and dates are incomplete" % (d, e.strerror))
+            complete = False
             continue
         for e in entries:
             try:
                 st = e.stat(follow_symlinks=False)
-            except OSError:
+            except OSError as err:
+                warn("cannot read %s: %s; its size and dates are incomplete" % (e.path, err.strerror))
+                complete = False
                 continue
             newest = max(newest, st.st_mtime)
             if stat.S_ISDIR(st.st_mode):
                 stack.append(e.path)
             else:
                 size += st.st_size
-    return size, newest
+    return size, newest, complete
 
 
 def iso(t):
@@ -111,7 +119,7 @@ def human(n):
 
 def inspect(venv, now, stall_s, stale_s):
     created = os.lstat(os.path.join(venv, "pyvenv.cfg")).st_mtime
-    size, last = measure(venv)
+    size, last, complete = measure(venv)
     try:
         deps = sorted(n for n in os.listdir(os.path.dirname(venv)) if DEPS_FILE.match(n))
     except OSError:
@@ -127,7 +135,8 @@ def inspect(venv, now, stall_s, stale_s):
         "deps_files": deps,
         "stalled": stalled,
         "stale": stale,
-        "likely_dead": stalled and stale,
+        "incomplete": not complete,
+        "likely_dead": stalled and stale and complete,
     }
 
 
@@ -173,7 +182,7 @@ def main(argv=None):
 
     for v in venvs:
         print("%-5s %8s  created %s  last %s  deps %-3s  %s" % (
-            "DEAD" if v["likely_dead"] else "-", human(v["size_bytes"]), v["created"][:10],
+            "DEAD" if v["likely_dead"] else ("?" if v["incomplete"] else "-"), human(v["size_bytes"]), v["created"][:10],
             v["last_modified"][:10], "yes" if v["deps_files"] else "no", v["path"]))
     dead = [v for v in venvs if v["likely_dead"]]
     print("%d venvs, %s; %d likely dead, %s" % (

@@ -62,6 +62,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/python-venv/scripts/venv_inventory.py" --s
 It lists every directory with a `pyvenv.cfg` under the shared dir and `~` (or the roots you pass), skipping `node_modules`, `.git` and `Library/Caches`, with size, created date, last change and whether a `requirements*.txt` / `pyproject.toml` sits next to it. It is read-only: it never deletes, writes or runs pip / uv.
 
 - `DEAD` (likely dead) = stalled (no change after the first minutes; `--stall-minutes`, default 10) **and** stale (no change for `--stale-days`, default 30). That pattern is a leftover from a one-off experiment.
+- `?` (incomplete) = part of the venv could not be read (a warning names it on stderr). It is never flagged dead, because the unread part may hold newer changes; check that part before deciding.
 - `--max-depth` (default 6) limits how deep below a root it looks; `--json` prints JSON for further filtering.
 - Size is apparent size. uv may clone or hard-link files from its cache, so deleting a venv can free less.
 

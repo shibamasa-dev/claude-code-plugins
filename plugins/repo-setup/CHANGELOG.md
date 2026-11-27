@@ -6,7 +6,7 @@ Change history of the repo-setup plugin (named devtools up to 0.2.2). Format fol
 
 ### Added
 - python-venv: a skill for where a Python venv goes and how to clean venvs up. One question decides the place (will a second repo or a worktree use it? yes → a shared venv per purpose, no → `<repo>/.venv`); it covers the three layers (project, shared, tool-managed), checking a shared venv for conflicts with `uv pip install --dry-run`, never running `uv pip sync` / `--exact` / `uninstall` on one, keeping source clones apart from venvs, and freezing with `uv pip freeze` before deleting. No hook comes with it.
-- python-venv: `scripts/venv_inventory.py`, a read-only inventory of every `pyvenv.cfg` under the given roots (default: the shared venv dir and `~`) with size, created and last-change times and whether a dependency file sits next to it. It flags a venv as likely dead when it stopped changing within minutes of creation and has not changed for days (`--stall-minutes`, `--stale-days`), and prints a table or `--json`.
+- python-venv: `scripts/venv_inventory.py`, a read-only inventory of every `pyvenv.cfg` under the given roots (default: the shared venv dir and `~`) with size, created and last-change times and whether a dependency file sits next to it. It flags a venv as likely dead when it stopped changing within minutes of creation and has not changed for days (`--stall-minutes`, `--stale-days`), and prints a table or `--json`. A venv with a part it cannot read is marked incomplete and never flagged dead.
 - `userConfig.shared_venv_dir` (default `~/.venvs`): where shared venvs go.
 - codebase-doctor: the Boundaries table points at python-venv for placing and cleaning up venvs.
 
