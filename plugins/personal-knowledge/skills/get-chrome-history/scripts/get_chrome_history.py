@@ -19,8 +19,8 @@ to a temporary directory first, read there, and the copy is removed.
 
 State lives in <data>/get-chrome-history/:
   state.json      the newest visit time seen per History file (`cursors`, keyed by its path), so the next run of
-                  that profile fetches only what came after it (a profile's first run fetches the last 7 days). It is written after the output is printed, so a failed run fetches the same
-                  window again.
+                  that profile fetches only what came after it (a profile's first run fetches the last 7 days). It
+                  is written after the output is printed, so a failed run fetches the same window again.
   knowledge.json  the services and filters. The first run copies the seed shipped next to this script; later runs
                   never overwrite it, because Claude adds the services it classifies there.
 <data> is $CLAUDE_PLUGIN_DATA when it names this plugin's own directory (`personal-knowledge-<marketplace>` or
