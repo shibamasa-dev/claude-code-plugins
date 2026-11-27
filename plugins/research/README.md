@@ -2,7 +2,10 @@
 
 English | [日本語](README.ja.md)
 
-Skills that read X and the web. Currently one skill, `research-x`: it asks xAI's X search about the X accounts you choose, keeps clear update announcements, summarizes each in your language and tone, and posts one Slack message per announcement.
+Skills that read X and the web.
+
+- `research-x` asks xAI's X search about the X accounts you choose, keeps clear update announcements, summarizes each in your language and tone, and posts one Slack message per announcement.
+- `read-x-article` reads one X post, long post or X Article from the URL you paste, through the fxtwitter API, and summarizes it. It saves a Markdown copy only when you ask.
 
 ## Install
 
@@ -11,13 +14,14 @@ Skills that read X and the web. Currently one skill, `research-x`: it asks xAI's
 /plugin install research@shibamasa-plugins
 ```
 
-Then set `accounts` (and `slack_channel` to post) in the plugin's settings, and put the two credentials in your environment (see Credentials).
+For research-x, set `accounts` (and `slack_channel` to post) in the plugin's settings, and put the two credentials in your environment (see Credentials). For read-x-article, set `save_dir` only if you want it to save posts.
 
 ## Skills
 
 | Skill | Use it for |
 |---|---|
 | `research-x` | "Run research-x", "check X for release announcements". Claude always runs a dry run first and shows what would be posted. It posts to Slack only when you ask. The script is `skills/research-x/scripts/research_x.py` (Python, standard library only) |
+| `read-x-article` | Paste an x.com or twitter.com status URL and say "read this" or "summarize this". Say "save it" to write a Markdown copy into `save_dir`. Instructions only, no script |
 
 ## How research-x works
 
@@ -32,6 +36,14 @@ It keeps no file or database. The channel history is the state, so runs from dif
 
 `--dry-run` never posts. It still reads the history when a token and a channel are set.
 
+## How read-x-article works
+
+1. It takes the handle and status ID from the URL and opens `https://api.fxtwitter.com/<handle>/status/<id>` with WebFetch. It never opens the x.com URL directly, which returns 402.
+2. For a regular or long post it reads `tweet.text`. For an X Article it joins `tweet.article.content.blocks[]` (Draft.js blocks) into Markdown; `preview_text` is only the opening.
+3. If fxtwitter gives no body, it looks for a copy on tool.lu. If there is none, it reports what it got and stops.
+4. It reports the title, author, date and a short summary in your language. That is the end unless you asked it to save.
+5. Saving, only on request and only when `save_dir` is set: one file `<YYYYMMDD>_Article_<handle>_<Short_Title>.md` with the source URL, the full text and every image URL. If `save_dir` has an `INDEX.md`, it adds one line in the format that file already uses. It never creates an index and never overwrites a file.
+
 ## Configuration
 
 `userConfig` keys, set when you enable the plugin or later with `/plugin`:
@@ -45,8 +57,9 @@ It keeps no file or database. The channel history is the state, so runs from dif
 | `topic_filter` | empty | Which posts to keep, in free text. Empty means new or changed application features only, no research results, clear update announcements only |
 | `timezone` | empty | IANA timezone for times in the prompt and the report. Empty means the system's local timezone |
 | `model` | empty | xAI model. Empty means the newest plain `grok-<version>` in the xAI model list, picked on every run |
+| `save_dir` | empty | Folder read-x-article saves to when you ask it to. Empty means it never saves |
 
-The skill passes these to the script as environment variables (`RESEARCH_X_ACCOUNTS`, `RESEARCH_X_SLACK_CHANNEL`, `RESEARCH_X_LANGUAGE`, `RESEARCH_X_TONE`, `RESEARCH_X_TOPIC`, `RESEARCH_X_TIMEZONE`, `RESEARCH_X_MODEL`). Set the same variables to run the script without Claude.
+`accounts` to `model` are research-x's. The skill passes these to the script as environment variables (`RESEARCH_X_ACCOUNTS`, `RESEARCH_X_SLACK_CHANNEL`, `RESEARCH_X_LANGUAGE`, `RESEARCH_X_TONE`, `RESEARCH_X_TOPIC`, `RESEARCH_X_TIMEZONE`, `RESEARCH_X_MODEL`). Set the same variables to run the script without Claude.
 
 ### Credentials
 
@@ -65,7 +78,11 @@ The plugin doesn't schedule runs. To run daily, call the script from your own sc
 
 ### Where files go
 
-research-x writes no file and keeps no database: the channel history is its state. Uninstalling removes nothing.
+research-x writes no file and keeps no database: the channel history is its state.
+
+read-x-article writes only when you ask it to save, and only into `save_dir`: one Markdown file per post, plus one line in that folder's `INDEX.md` if it has one. These are your own documents, so uninstalling the plugin leaves them in place.
+
+Uninstalling removes nothing.
 
 ## Limitations
 
@@ -73,6 +90,8 @@ research-x writes no file and keeps no database: the channel history is its stat
 - A post whose URL has no author (`x.com/i/status/<id>`) is dropped, because it can't be confirmed as one of the accounts.
 - The summary is the model's. research-x checks the account and the date, not the content.
 - The skill puts the settings into the command inside single quotes. A setting that contains `'` (likely only `tone` or `topic_filter`) must be escaped as `'\''`; the skill tells Claude to do that, but a value copied verbatim would break the command.
+- read-x-article sends the post URL to fxtwitter (`api.fxtwitter.com`), a third-party service, and, when that fails, searches for it on tool.lu. Both can be down or lack a post, and tool.lu often has no copy of an X Article.
+- read-x-article reads through WebFetch, which hands the page to a model. A very long X Article may come back shortened; check the end of the text before relying on a saved copy.
 - Not yet verified against the live services, only against recorded and synthetic responses: posting to a real channel, the metadata round trip (`run_started_at`, `since`, `last` written by `chat.postMessage` and read back by `conversations.history` with `include_all_metadata`), and the English prompt against the current xAI model.
 
 ### First run
@@ -83,8 +102,8 @@ research-x writes no file and keeps no database: the channel history is its stat
 
 ## Requirements
 
-- Python 3.9 or later (standard library only)
-- An xAI API key, and a Slack bot token for posting
+- research-x: Python 3.9 or later (standard library only), an xAI API key, and a Slack bot token for posting
+- read-x-article: the WebFetch and WebSearch tools in Claude Code. No key
 
 ## Tests
 
@@ -92,4 +111,4 @@ research-x writes no file and keeps no database: the channel history is its stat
 bash plugins/research/tests/run-all.sh
 ```
 
-Offline: xAI and Slack are replaced by recorded responses under `tests/fixtures/`.
+Offline: xAI and Slack are replaced by recorded responses under `tests/fixtures/`. They cover research-x; read-x-article is instructions only and has no script to test.
