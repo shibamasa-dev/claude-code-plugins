@@ -1,7 +1,7 @@
 {
   "name": "research",
-  "version": "0.1.0",
-  "description": "Skills that read X and the web. Currently research-x, which summarizes update announcements from a list of X accounts (through the xAI API's X search) and posts one Slack message per announcement",
+  "version": "0.2.0",
+  "description": "Skills that read X and the web: research-x summarizes update announcements from a list of X accounts (through the xAI API's X search) and posts one Slack message per announcement; read-x-article reads one X post or X Article from its URL through the fxtwitter API, summarizes it, and saves it as Markdown only when asked",
   "author": {
     "name": "shibamasa-dev"
   },
@@ -13,14 +13,17 @@
     "twitter",
     "xai",
     "slack",
-    "release-notes"
+    "release-notes",
+    "fxtwitter",
+    "x-article"
   ],
   "userConfig": {
     "accounts": {
       "type": "string",
       "title": "X accounts to watch",
       "description": "Comma-separated X handles without @ (for example vendor_a,vendor_b). research-x asks about 10 of them per xAI request",
-      "required": true
+      "required": false,
+      "default": ""
     },
     "slack_channel": {
       "type": "string",
@@ -61,6 +64,13 @@
       "type": "string",
       "title": "xAI model",
       "description": "xAI model to use. Empty means the newest plain grok-<version> in the xAI model list, picked on every run",
+      "required": false,
+      "default": ""
+    },
+    "save_dir": {
+      "type": "string",
+      "title": "Folder read-x-article saves to",
+      "description": "Folder where read-x-article writes a Markdown copy of a post when you ask it to save (for example ~/notes/x). Empty means it never saves. If the folder has an INDEX.md, a line is added to it",
       "required": false,
       "default": ""
     }

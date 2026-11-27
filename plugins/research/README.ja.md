@@ -2,7 +2,10 @@
 
 [English](README.md) | 日本語
 
-X や Web を読むスキル群。今は `research-x` の 1 つだけ。選んだ X アカウントについて xAI の X 検索に問い合わせ、はっきりしたアップデート告知だけを、指定した言語と口調で要約し、1 件 1 メッセージで Slack に流す。
+X や Web を読むスキル群。
+
+- `research-x` は、選んだ X アカウントについて xAI の X 検索に問い合わせ、はっきりしたアップデート告知だけを、指定した言語と口調で要約し、1 件 1 メッセージで Slack に流す。
+- `read-x-article` は、貼られた URL の X のポスト・長文ポスト・X Article を fxtwitter API 経由で 1 件読み、要約する。Markdown で保存するのは頼まれたときだけ。
 
 ## 導入
 
@@ -11,13 +14,14 @@ X や Web を読むスキル群。今は `research-x` の 1 つだけ。選ん�
 /plugin install research@shibamasa-plugins
 ```
 
-入れたら、プラグインの設定で `accounts`（投稿するなら `slack_channel` も）を入れ、資格情報 2 つを環境変数に置く（「資格情報」を参照）。
+research-x を使うなら、プラグインの設定で `accounts`（投稿するなら `slack_channel` も）を入れ、資格情報 2 つを環境変数に置く（「資格情報」を参照）。read-x-article で保存もしたいときだけ `save_dir` を入れる。
 
 ## スキル
 
 | スキル | 使いどころ |
 |---|---|
 | `research-x` | 「research-x 回して」「X のリリース告知を拾って」。Claude はまず必ず dry-run を走らせ、流す予定の中身を見せる。Slack に投稿するのは頼まれたときだけ。実体は `skills/research-x/scripts/research_x.py`（Python・標準ライブラリだけ） |
+| `read-x-article` | x.com か twitter.com の status URL を貼って「読んで」「要約して」。「保存して」と言えば `save_dir` に Markdown で書く。指示だけのスキルで、スクリプトは無い |
 
 ## research-x の動き
 
@@ -32,21 +36,30 @@ X や Web を読むスキル群。今は `research-x` の 1 つだけ。選ん�
 
 `--dry-run` は投稿しない。token とチャンネルがあれば履歴は読む。
 
+## read-x-article の動き
+
+1. URL からハンドルと status ID を取り出し、`https://api.fxtwitter.com/<ハンドル>/status/<ID>` を WebFetch で開く。x.com の URL は 402 が返るので直接は開かない。
+2. 通常ポストと長文ポストは `tweet.text` を読む。X Article は `tweet.article.content.blocks[]`（Draft.js のブロック）をつないで Markdown にする。`preview_text` は冒頭だけ。
+3. fxtwitter で本文が取れなければ tool.lu の写しを探す。無ければ取れた分を報告して終わる。
+4. タイトル・著者・日付と短い要約を、話しかけた言語で報告する。保存を頼まれていなければここで終わる。
+5. 保存は、頼まれたとき、かつ `save_dir` があるときだけ。1 件 1 ファイル `<YYYYMMDD>_Article_<ハンドル>_<Short_Title>.md` に、元の URL・全文・画像 URL を全部書く。`save_dir` に `INDEX.md` があれば、そのファイルの今の書き方で 1 行足す。索引を新しく作ることも、既存のファイルを上書きすることもない。
+
 ## 設定
 
 `userConfig` のキー。プラグインを有効にするとき、または後から `/plugin` で入れる。
 
 | キー | 既定 | 意味 |
 |---|---|---|
-| `accounts` | （必須） | X のハンドルをカンマ区切りで。`@` は付けない |
+| `accounts` | 空 | X のハンドルをカンマ区切りで。`@` は付けない。research-x には必要で、空なら research-x は止まって設定を頼む |
 | `slack_channel` | 空 | 投稿先で、履歴を読むチャンネルの ID。投稿するなら必須 |
 | `summary_language` | 空 | 要約の言語。空なら Claude に話しかけた言語。Claude を通さずに回すと英語 |
 | `tone` | 空 | 要約の口調（自由記述）。空なら中立で事実に沿った口調 |
 | `topic_filter` | 空 | 残す投稿の条件（自由記述）。空なら「アプリの機能追加・変更の告知だけ。研究結果は不要。はっきりしたアップデート告知だけ」 |
 | `timezone` | 空 | プロンプトと結果に出す時刻の IANA タイムゾーン。空ならシステムのローカル |
 | `model` | 空 | xAI のモデル。空なら実行のたびに xAI のモデル一覧から最新の素の `grok-<版>` を選ぶ |
+| `save_dir` | 空 | 頼まれたときに read-x-article が保存するフォルダ。空なら保存しない |
 
-スキルはこれらを環境変数（`RESEARCH_X_ACCOUNTS`・`RESEARCH_X_SLACK_CHANNEL`・`RESEARCH_X_LANGUAGE`・`RESEARCH_X_TONE`・`RESEARCH_X_TOPIC`・`RESEARCH_X_TIMEZONE`・`RESEARCH_X_MODEL`）でスクリプトに渡す。Claude を通さずに回すときは同じ変数を入れる。
+`accounts` から `model` までは research-x の設定。スキルはこれらを環境変数（`RESEARCH_X_ACCOUNTS`・`RESEARCH_X_SLACK_CHANNEL`・`RESEARCH_X_LANGUAGE`・`RESEARCH_X_TONE`・`RESEARCH_X_TOPIC`・`RESEARCH_X_TIMEZONE`・`RESEARCH_X_MODEL`）でスクリプトに渡す。Claude を通さずに回すときは同じ変数を入れる。
 
 ### 資格情報
 
@@ -65,7 +78,11 @@ X や Web を読むスキル群。今は `research-x` の 1 つだけ。選ん�
 
 ### ファイルの置き場
 
-research-x はファイルを書かず、DB も持たない。チャンネルの履歴が状態になる。アンインストールで消えるものは無い。
+research-x はファイルを書かず、DB も持たない。チャンネルの履歴が状態になる。
+
+read-x-article が書くのは保存を頼まれたときだけで、書く先は `save_dir` だけ。1 件 1 つの Markdown ファイルと、そのフォルダに `INDEX.md` があればその 1 行。これは利用者自身の文書なので、プラグインをアンインストールしても残る。
+
+アンインストールで消えるものは無い。
 
 ## 制約
 
@@ -73,6 +90,8 @@ research-x はファイルを書かず、DB も持たない。チャンネルの
 - 投稿者が URL に無い投稿（`x.com/i/status/<id>`）は落とす。対象アカウントの投稿か確かめられないため。
 - 要約はモデルが書く。research-x が確かめるのはアカウントと日時で、中身ではない。
 - スキルは設定値をシングルクォートで囲んでコマンドに入れる。`'` を含む設定（`tone` か `topic_filter` くらい）は `'\''` とエスケープする必要がある。スキルは Claude にそうさせるが、値をそのまま写すとコマンドが壊れる。
+- read-x-article はポストの URL を第三者のサービスである fxtwitter（`api.fxtwitter.com`）に送り、だめなら tool.lu で探す。どちらも止まっていたり、そのポストを持っていなかったりする。tool.lu には X Article の写しが無いことが多い。
+- read-x-article は WebFetch で読む。WebFetch はページをモデルに渡すので、とても長い X Article は短くなって返ることがある。保存した写しに頼る前に、本文の終わりまで入っているか確かめる。
 - 本物のサービスではまだ確かめていない。確かめたのは記録した応答と合成した応答だけ。未確認なのは、本物のチャンネルへの投稿、metadata の往復（`chat.postMessage` で書いた `run_started_at`・`since`・`last` を、`include_all_metadata` 付きの `conversations.history` で読み戻せるか）、英語のプロンプトを今の xAI のモデルに投げたときの結果。
 
 ### 初回の確かめ方
@@ -83,8 +102,8 @@ research-x はファイルを書かず、DB も持たない。チャンネルの
 
 ## 前提
 
-- Python 3.9 以上（標準ライブラリだけ）
-- xAI の API キー。投稿するなら Slack の bot token
+- research-x: Python 3.9 以上（標準ライブラリだけ）、xAI の API キー。投稿するなら Slack の bot token
+- read-x-article: Claude Code の WebFetch と WebSearch。キーは要らない
 
 ## テスト
 
@@ -92,4 +111,4 @@ research-x はファイルを書かず、DB も持たない。チャンネルの
 bash plugins/research/tests/run-all.sh
 ```
 
-オフラインで回る。xAI と Slack は `tests/fixtures/` の記録した応答で置き換える。
+オフラインで回る。xAI と Slack は `tests/fixtures/` の記録した応答で置き換える。対象は research-x。read-x-article は指示だけのスキルで、テストするスクリプトが無い。
