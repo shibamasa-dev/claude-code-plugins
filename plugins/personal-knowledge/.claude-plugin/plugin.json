@@ -1,7 +1,7 @@
 {
   "name": "personal-knowledge",
-  "version": "0.1.0",
-  "description": "Skills that keep a personal local data store on your machine. Currently get-chrome-history, which reads the Chrome browsing history added since the last run, sorts it by known service, and summarizes your interests, adding the domains it classifies to its own knowledge.json",
+  "version": "0.2.0",
+  "description": "Skills that keep a personal data store on your machine: get-chrome-history reads the Chrome browsing history added since the last run, sorts it by known service and summarizes your interests; relationship-ledger keeps a private ledger of the people you know or met (business cards, where you met, SNS accounts, sourced notes, status labels) in SQLite by default, or Postgres/Supabase directly or through a claude.ai connector",
   "author": {
     "name": "shibamasa-dev"
   },
@@ -13,6 +13,9 @@
     "chrome",
     "browsing-history",
     "interests",
+    "contacts",
+    "sqlite",
+    "postgres",
     "local-first"
   ],
   "userConfig": {
@@ -22,6 +25,41 @@
       "description": "Directory name of the Chrome profile get-chrome-history reads (for example Default or Profile 1, as under ~/Library/Application Support/Google/Chrome/ or ~/.config/google-chrome/). Empty means Default",
       "required": false,
       "default": "Default"
+    },
+    "ledger_sqlite_path": {
+      "type": "string",
+      "title": "Relationship ledger SQLite file",
+      "description": "Path of the relationship ledger's SQLite file (~ is expanded; a relative path is relative to the plugin data directory). Empty means relationship-ledger/ledger.sqlite3 in the plugin data directory, which is deleted when you uninstall the plugin from the last scope unless you pass --keep-data. Not used when ledger_database_url is set (with ledger_route=sqlite saved, the server then stops until the two agree)",
+      "required": false,
+      "default": ""
+    },
+    "ledger_database_url": {
+      "type": "string",
+      "title": "Relationship ledger Postgres URL",
+      "description": "postgresql://... for Postgres or Supabase. When set, the bundled ledger MCP server connects here instead of SQLite. Stored in secure storage, not settings.json",
+      "required": false,
+      "sensitive": true
+    },
+    "ledger_route": {
+      "type": "string",
+      "title": "Relationship ledger route (saved by Claude)",
+      "description": "Where the relationship ledger lives: sqlite or postgres (through the bundled MCP server; postgres needs ledger_database_url) or connector (a claude.ai connector that runs SQL). Claude decides and saves this on first use. Empty means not decided yet. When the saved store's setting is missing, the server stops instead of opening another store",
+      "required": false,
+      "default": ""
+    },
+    "ledger_connector_id": {
+      "type": "string",
+      "title": "Relationship ledger connector (saved by Claude)",
+      "description": "With ledger_route=connector: the server part of the connector's tool names, for example the <server> in mcp__<server>__execute_sql",
+      "required": false,
+      "default": ""
+    },
+    "ledger_connector_project_id": {
+      "type": "string",
+      "title": "Relationship ledger connector project ID (saved by Claude)",
+      "description": "With ledger_route=connector: the project_id (or similar target ID) the connector's SQL tool needs. Empty if it needs none",
+      "required": false,
+      "default": ""
     }
   }
 }

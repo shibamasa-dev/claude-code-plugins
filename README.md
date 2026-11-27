@@ -49,7 +49,7 @@ Every plugin is independent. Install only the ones you need.
 | [hr](plugins/hr/README.md) | Japan-specific HR and labour admin. Currently `employee-certificate`, which fills the certificates a company issues to an employee (the employment certificate for nursery and after-school applications, proof of enrolment, separation certificates, proof of income) on the requester's Excel form, mapped by item label so a changed layout still fills, from company and employee files you keep outside the plugin |
 | [agent-bridge](plugins/agent-bridge/README.md) | Two-way messaging between Claude Code and other AI agents through a message queue you host on Supabase. Every agent uses one API with its own token and is woken by a webhook or by polling; a listening Claude Code session wakes when a message arrives. A setup skill builds the bridge in your Supabase project with placeholder Vault secrets you replace |
 | [print](plugins/print/README.md) | Prints local files (PDF, image, text, HTML, Markdown) through CUPS `lp`: black and white, duplex long edge, A4 and plain paper by default, with page numbers. It picks the options each printer accepts from `lpoptions -l`, reports what the printer doesn't take, and shows pages, sheets and settings before sending |
-| [personal-knowledge](plugins/personal-knowledge/README.md) | Skills that keep a personal local data store on your machine. Currently `get-chrome-history`, which reads the Chrome browsing history added since the last run, groups it by service and summarizes your interests; the domains it learns go into its own `knowledge.json` in the plugin data directory |
+| [personal-knowledge](plugins/personal-knowledge/README.md) | Skills that keep a personal data store on your machine. `get-chrome-history` reads the Chrome browsing history added since the last run, groups it by service and summarizes your interests; the domains it learns go into its own `knowledge.json` in the plugin data directory. `relationship-ledger` keeps a private ledger of the people you know or met (business cards, where you met, SNS accounts, sourced notes, status labels) in SQLite by default, or Postgres/Supabase |
 
 Each plugin's README lists its skills, hooks and settings.
 
@@ -81,7 +81,7 @@ English is the base language, and the plugins are being translated from Japanese
 - `research`'s `research-x` also needs an xAI API key and a Slack bot token
 - `agent-bridge` also needs a Supabase project and a Supabase connector (claude.ai connector or MCP server) for setup
 - `print` also needs CUPS (`lp`), poppler, and Chrome for HTML, Markdown and text; qpdf and pandoc are optional
-- `personal-knowledge`'s `get-chrome-history` also needs Google Chrome or Chromium
+- `personal-knowledge`'s `get-chrome-history` also needs Google Chrome or Chromium, and its `relationship-ledger` needs `uv` (to start its MCP server)
 
 ## Contributing
 
