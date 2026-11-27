@@ -166,7 +166,7 @@ Contact note:
 - One person in full: the `rl_v_people` row, then `SELECT * FROM <table> WHERE person_key = '<key>' ORDER BY created_at DESC` for `rl_social_accounts`, `rl_interaction_notes` (the latest 20), `rl_prompt_injection_events` and `rl_photo_refs`.
 - The watch list: `SELECT person_key, display_name, status, relationship, prompt_injection_count FROM rl_v_people WHERE status IN ('watch', 'avoid', 'blocked') ORDER BY status, person_key;`. Keep playful `watch` entries apart from `avoid` and `blocked` when you present it.
 - Everyone: `SELECT * FROM rl_v_people ORDER BY updated_at DESC, person_key;`
-- Export: the same `SELECT *` from each of the five tables, ordered by `person_key`, written where the user says.
+- Export: the same `SELECT *` from each of the five tables, ordered by `person_key` (and `id` for the four tables besides `rl_people`), written where the user says. A result holds at most 500 rows; when it comes back with `"truncated": true`, add `LIMIT 500 OFFSET <rows so far>` to the same query and repeat until a page comes back without it.
 - Delete a person after the user confirms: `DELETE FROM rl_people WHERE person_key = '<key>';` removes their accounts, notes, events and photo refs with them.
 
 When the ledger informs a public post, don't call the owner "the user" in the post: use their public name or handle, or leave the actor out.

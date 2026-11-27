@@ -169,7 +169,10 @@ class Postgres:
         self.conn = self.connect()
 
     def connect(self):
-        return self.psycopg.connect(self.url, autocommit=True, connect_timeout=CONNECT_TIMEOUT_S)
+        # Keepalives: a connection that dies silently (sleep, VPN switch) fails within about a minute instead of
+        # blocking every later request until the OS gives up on it
+        return self.psycopg.connect(self.url, autocommit=True, connect_timeout=CONNECT_TIMEOUT_S,
+                                    keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=3)
 
     def lost(self) -> bool:
         return self.conn.closed or self.conn.broken

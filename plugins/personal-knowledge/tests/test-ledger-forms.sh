@@ -108,3 +108,13 @@ sql "INSERT INTO rl_interaction_notes (person_key, kind, note, occurred_at) VALU
     "INSERT INTO rl_interaction_notes (person_key, kind, note, occurred_at) VALUES ('saburo-sample', 'meeting', 'event: Example Meetup #5', '2026-11-27T23:30:00-08:00')" >/dev/null
 row 'the latest meeting is chosen by its time in UTC, not by its text' "$(yesno [ "$(val "SELECT last_met_at FROM rl_v_people WHERE person_key = 'saburo-sample'")" = 2026-11-27T23:30:00-08:00 ])" 'yes'
 
+
+# Export paging: a result holds at most 500 rows, so the export repeats the query with LIMIT / OFFSET until a page
+# comes back without "truncated"
+sql "INSERT INTO rl_interaction_notes (person_key, kind, note)
+     WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 520) SELECT 'saburo-sample', 'other', 'bulk note ' || i FROM n" >/dev/null
+rows_of() { python3 -c 'import json,sys; d=json.load(sys.stdin); print(len(d["rows"]), "truncated" if d.get("truncated") else "complete")'; }
+q="SELECT * FROM rl_interaction_notes ORDER BY person_key, id"
+row 'the first export page of more than 500 notes is marked truncated' "$(sql "$q" | rows_of | tr ' ' '-')" '500-truncated'
+p2=$(sql "$q LIMIT 500 OFFSET 500" | rows_of)
+row 'the next page holds the rest and is complete' "$(yesno [ "$p2" = "$(( $(val "SELECT count(*) FROM rl_interaction_notes") - 500 )) complete" ])" 'yes'
