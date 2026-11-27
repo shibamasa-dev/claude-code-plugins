@@ -149,6 +149,31 @@ def case_youtube_title():
         e.close()
 
 
+def case_youtu_be_title():
+    e = Env()
+    try:
+        url = "https://youtu.be/abc123"
+        make_history(e.home, rows=[(url, "Short link video - YouTube", 1, 1, 30, 0)])
+        _, out, _ = e.run()
+        return by_url(out, url).get("video_title"), "Short link video"
+    finally:
+        e.close()
+
+
+def case_unreadable_copy():
+    e = Env()
+    try:
+        d = os.path.join(e.home, MAC_ROOT, "Default")
+        os.makedirs(d)
+        with open(os.path.join(d, "History"), "wb") as f:
+            f.write(b"SQLite format 3\x00" + b"\xff" * 4000)  # a torn or corrupt file
+        rc, out, _ = e.run()
+        return ((rc, "error" in (out or {}), os.path.exists(os.path.join(e.state_dir, "state.json")), os.listdir(e.tmp)),
+                (1, True, False, []))
+    finally:
+        e.close()
+
+
 def case_parent_domain():
     e = Env()
     try:
@@ -408,6 +433,7 @@ def case_title_cleaned():
 CASES = [
     ("known service gets service and category", case_known_service),
     ("YouTube entry gets video_title", case_youtube_title),
+    ("youtu.be entry gets video_title", case_youtu_be_title),
     ("www.amazon.co.jp matches amazon.co.jp", case_parent_domain),
     ("unknown hosts aggregated in unknown_domains", case_unknown_bucket),
     ("short visit counted as noise, not listed", case_noise_bucket),
@@ -423,6 +449,7 @@ CASES = [
     ("another plugin's CLAUDE_PLUGIN_DATA falls back to ~/.claude/state", case_foreign_data_dir),
     ("unsubstituted ${CLAUDE_PLUGIN_DATA} falls back to ~/.claude/state", case_placeholder_data_dir),
     ("missing profile exits 1 with the profiles found, writes nothing", case_missing_profile),
+    ("unreadable History copy exits 1 with an error, keeps the window", case_unreadable_copy),
     ("unsubstituted ${user_config...} profile means Default", case_placeholder_profile),
     ("Linux ~/.config/google-chrome profile is found", case_linux_profile_path),
     ("non-ASCII titles print under an ASCII locale", case_ascii_locale),

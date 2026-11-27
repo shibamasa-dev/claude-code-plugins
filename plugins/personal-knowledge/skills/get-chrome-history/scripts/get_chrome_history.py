@@ -109,11 +109,30 @@ def read_json(path: Path) -> dict:
         return json.load(f)
 
 
+def write_atomic(path: Path, data: bytes, replace: bool) -> None:
+    """Write data to a temp file next to path, then move it into place in one step. With replace=False an existing
+    path is kept (os.link fails), so two first runs at once can't replace a knowledge.json Claude already added to."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix="." + path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        if replace:
+            os.replace(tmp, path)
+        else:
+            try:
+                os.link(tmp, path)
+            except FileExistsError:
+                pass
+    finally:
+        if os.path.lexists(tmp):
+            os.unlink(tmp)
+
+
 def load_knowledge(path: Path) -> dict:
     """Copy the seed to path when there is none yet; never overwrite an existing copy."""
     if not path.exists():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(SEED_KNOWLEDGE, path)
+        write_atomic(path, SEED_KNOWLEDGE.read_bytes(), replace=False)
     return read_json(path)
 
 
@@ -153,16 +172,16 @@ def load_state(path: Path, db_path: str) -> dict:
 def save_state(path: Path, db_path: str, chrome_time: int) -> None:
     cursors = load_cursors(path)
     cursors[db_path] = {"last_fetch_chrome_time": chrome_time, "last_fetch_iso": chrome_time_to_iso(chrome_time)}
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump({"cursors": cursors}, f, indent=2)
-    os.replace(tmp, path)
+    write_atomic(path, json.dumps({"cursors": cursors}, indent=2).encode("utf-8"), replace=True)
 
 
 def clean_title(title: str | None) -> str:
     title = CONTROL_CHARS.sub(" ", title or "").strip()
     return title if len(title) <= MAX_TITLE_CHARS else title[:MAX_TITLE_CHARS - 1] + "\u2026"
+
+
+def is_youtube(host: str) -> bool:
+    return "youtube" in host or host == "youtu.be" or host.endswith(".youtu.be")
 
 
 def extract_youtube_title(title: str) -> str:
@@ -224,7 +243,7 @@ def classify(raw: list[dict], services: dict, filters: dict) -> tuple[list[dict]
         if svc:
             entry["service"] = svc.get("label", host)
             entry["category"] = svc.get("category", "other")
-            if svc["category"] == "video" and "youtube" in host:
+            if entry["category"] == "video" and is_youtube(host):
                 entry["video_title"] = extract_youtube_title(e["title"])
         else:
             agg = unknown_map.setdefault(
@@ -271,7 +290,17 @@ def main() -> int:
 
     state = load_state(state_path, db_path)
     last_fetch = state["last_fetch_chrome_time"]
-    raw, new_max_time = fetch_raw(db_path, last_fetch)
+    try:
+        raw, new_max_time = fetch_raw(db_path, last_fetch)
+    except sqlite3.DatabaseError as exc:
+        # The copy was taken while Chrome was writing, or the file is damaged: report it and keep the window
+        emit({
+            "error": f"Could not read the copy of the History file: {exc}",
+            "profile": profile,
+            "db_path": db_path,
+            "hint": "Run it again; if it keeps failing, quit Chrome and run it again",
+        })
+        return 1
     entries, unknown_map, noise_count = classify(raw, services, filters)
 
     unknown_domains = sorted(unknown_map.values(), key=lambda x: x["total_duration_seconds"],
