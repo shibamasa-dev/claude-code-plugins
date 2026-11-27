@@ -118,3 +118,21 @@ q="SELECT * FROM rl_interaction_notes ORDER BY person_key, id"
 row 'the first export page of more than 500 notes is marked truncated' "$(sql "$q" | rows_of | tr ' ' '-')" '500-truncated'
 p2=$(sql "$q LIMIT 500 OFFSET 500" | rows_of)
 row 'the next page holds the rest and is complete' "$(yesno [ "$p2" = "$(( $(val "SELECT count(*) FROM rl_interaction_notes") - 500 )) complete" ])" 'yes'
+
+# A transaction-control statement hidden behind a comment is refused before anything runs
+out=$(python3 "$CALL" --tx "INSERT INTO rl_people (person_key, display_name) VALUES ('rokuro-sample', 'Rokuro Sample')" \
+    "/* end of intake */ COMMIT" "-- done
+ROLLBACK")
+row 'a COMMIT behind a comment is refused' "$(yesno grep -q '^ERROR' <<<"$out")" 'yes'
+row '... and nothing before it is committed' "$(val "SELECT count(*) FROM rl_people WHERE person_key = 'rokuro-sample'")" '0'
+# A COMMIT after a semicolon inside one statement string must not commit the first half either
+out=$(python3 "$CALL" --tx "INSERT INTO rl_people (person_key, display_name) VALUES ('shichiro-sample', 'Shichiro Sample'); COMMIT" \
+    "INSERT INTO rl_interaction_notes (person_key, kind, note) VALUES ('shichiro-sample', 'rumor', 'n')")
+row 'a statement string with its own COMMIT is an error' "$(yesno grep -q '^ERROR' <<<"$out")" 'yes'
+row '... and commits nothing' "$(val "SELECT count(*) FROM rl_people WHERE person_key = 'shichiro-sample'")" '0'
+# A write whose RETURNING exceeds the row cap still commits; only the response is cut
+out=$(python3 "$CALL" --tx "INSERT INTO rl_interaction_notes (person_key, kind, note)
+     WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 520) SELECT 'saburo-sample', 'other', 'returned note ' || i FROM n
+     RETURNING id")
+row 'a transaction whose RETURNING passes the row cap commits' "$(yesno grep -q '"committed": true' <<<"$out")" 'yes'
+row '... all of its rows' "$(val "SELECT count(*) FROM rl_interaction_notes WHERE note LIKE 'returned note %'")" '520'

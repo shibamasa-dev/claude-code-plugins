@@ -209,7 +209,9 @@ class Postgres:
         try:
             with self.conn.transaction():
                 for i, sql in enumerate(statements):
-                    cur = self.conn.execute(sql)
+                    # prepare=True sends it through the extended protocol, which refuses "a; COMMIT" in one string;
+                    # without it psycopg runs every part, and a COMMIT inside would commit the statements before it
+                    cur = self.conn.execute(sql, prepare=True)
                     on_result(i, cur.description, cur)
         except self.psycopg.OperationalError as e:
             if not self.lost():
@@ -323,6 +325,8 @@ def result_of(desc, cur) -> dict:
     if not desc:
         return {"rowcount": cur.rowcount}
     rows = cur.fetchmany(MAX_ROWS + 1)
+    # Done reading: an unfinished cursor (a long RETURNING, say) would keep SQLite from committing
+    cur.close()
     out = {
         "columns": [d[0] for d in desc],
         "rows": [[jsonable(v) for v in r] for r in rows[:MAX_ROWS]],
@@ -340,7 +344,9 @@ def tool_execute_sql(args: dict) -> dict:
     return result_of(*db.query(sql))
 
 
-TX_CONTROL = re.compile(r"^\s*(BEGIN|COMMIT|END|ROLLBACK|SAVEPOINT|RELEASE|START)\b", re.IGNORECASE)
+# The first keyword after any leading whitespace and comments
+TX_CONTROL = re.compile(r"^(?:\s+|--[^\n]*(?:\n|$)|/\*.*?\*/)*(BEGIN|COMMIT|END|ROLLBACK|ABORT|SAVEPOINT|RELEASE|START)\b",
+                        re.IGNORECASE | re.DOTALL)
 
 
 def tool_execute_transaction(args: dict) -> dict:
@@ -358,8 +364,9 @@ def tool_execute_transaction(args: dict) -> dict:
     except ConnectionError:
         raise
     except Exception as e:
-        raise RuntimeError(f"statement {len(results) + 1} of {len(statements)} failed, so nothing was committed: "
-                           f"{type(e).__name__}: {e}") from e
+        where = (f"statement {len(results) + 1} of {len(statements)}" if len(results) < len(statements)
+                 else "the commit")
+        raise RuntimeError(f"{where} failed, so nothing was committed: {type(e).__name__}: {e}") from e
     return {"committed": True, "results": results}
 
 
