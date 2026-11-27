@@ -41,7 +41,6 @@ SQL は Claude が書く。プラグインが持つのはスキーマ（`migrati
 | キー | 既定 | 意味 |
 |---|---|---|
 | `chrome_profile` | `Default` | 読む Chrome のプロファイルのディレクトリ名（`Default`・`Profile 1` など）。空なら `Default`。そのプロファイルに History が無いときは、見つかったプロファイルを示す |
-
 | `ledger_sqlite_path` | 空 | relationship-ledger の SQLite ファイル（`~` は展開する。相対パスはプラグインのデータディレクトリから）。空ならプラグインのデータディレクトリの `relationship-ledger/ledger.sqlite3`。`ledger_database_url` があるときは使わない |
 | `ledger_database_url` | 空 | Postgres・Supabase の `postgresql://...`。`ledger` サーバーは SQLite の代わりにここへつなぐ。機密扱いで、`settings.json` ではなく安全な保存先に入る |
 | `ledger_route` | 空 | 初回に Claude が保存する: `sqlite`・`postgres`・`connector`。保存した置き場所の設定が欠けているとき（`ledger_database_url` の無い `postgres`、ある `sqlite`）は、別の置き場所を開かずに毎回エラーにする |

@@ -41,7 +41,6 @@ Claude writes the SQL; the plugin ships the schema (`migrations/sqlite/` and `mi
 | Key | Default | Meaning |
 |---|---|---|
 | `chrome_profile` | `Default` | The Chrome profile directory to read (`Default`, `Profile 1`, ...). Empty means `Default`. When the profile has no History file, the skill lists the profiles it did find |
-
 | `ledger_sqlite_path` | empty | The relationship ledger's SQLite file (`~` is expanded; a relative path is relative to the plugin data directory). Empty means `relationship-ledger/ledger.sqlite3` in the plugin data directory. Not used when `ledger_database_url` is set |
 | `ledger_database_url` | empty | `postgresql://...` for Postgres or Supabase; the `ledger` server connects there instead of SQLite. Sensitive: kept in secure storage, not `settings.json` |
 | `ledger_route` | empty | Saved by Claude on first use: `sqlite`, `postgres` or `connector`. When the saved store's setting is missing (`postgres` without `ledger_database_url`, or `sqlite` with one), every call fails instead of opening another store |
