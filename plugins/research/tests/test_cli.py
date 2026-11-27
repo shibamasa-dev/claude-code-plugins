@@ -157,6 +157,14 @@ class SettingsTest(unittest.TestCase):
         self.assertFalse(report["ok"])
         self.assertIn("RESEARCH_X_ACCOUNTS", report["error"])
 
+    def test_the_empty_default_fails_with_the_setting_name(self):
+        env = {**ENV, "RESEARCH_X_ACCOUNTS": ""}
+
+        report = run(FakeChannel(), datetime(2026, 9, 23, tzinfo=timezone.utc), [], env=env)
+
+        self.assertFalse(report["ok"])
+        self.assertIn("RESEARCH_X_ACCOUNTS", report["error"])
+
     def test_an_unsubstituted_placeholder_counts_as_empty(self):
         env = {**ENV, "RESEARCH_X_ACCOUNTS": "${user_config.accounts}"}
 

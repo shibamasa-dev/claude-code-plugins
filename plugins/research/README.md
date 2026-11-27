@@ -50,7 +50,7 @@ It keeps no file or database. The channel history is the state, so runs from dif
 
 | Key | Default | Meaning |
 |---|---|---|
-| `accounts` | (required) | Comma-separated X handles without `@` |
+| `accounts` | empty | Comma-separated X handles without `@`. research-x needs it: with it empty, research-x stops and asks you to set it |
 | `slack_channel` | empty | Slack channel ID to post to and read history from. Required to post |
 | `summary_language` | empty | Language of the summaries. Empty means the language you write to Claude in; a run outside Claude uses English |
 | `tone` | empty | Tone of the summaries, in free text. Empty means neutral and factual |

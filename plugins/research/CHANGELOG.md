@@ -5,8 +5,11 @@ Changes to the research plugin. The format follows [Keep a Changelog](https://ke
 ## [0.2.0] - 2026-11-27
 
 ### Added
-- The `read-x-article` skill: reads an X post, long post or X Article from its URL through the fxtwitter API (WebFetch gets a 402 from x.com), falls back to tool.lu when fxtwitter has no body, and summarizes it in the user's language. Instructions only, no script
+- The `read-x-article` skill: reads an X post, long post or X Article from its URL through the fxtwitter API (WebFetch gets a 402 from x.com), falls back to tool.lu when fxtwitter gives no body or a cut-short one, and summarizes it in the user's language. Instructions only, no script
 - `save_dir` setting: the folder read-x-article saves a Markdown copy to, only when the user asks. Empty (the default) means it never saves. If that folder has an `INDEX.md`, one line is added to it in the format it already uses; no index is created
+
+### Changed
+- `accounts` is no longer required when enabling the plugin (default empty), so read-x-article works without it. research-x still needs it: with it empty, research-x stops and asks the user to set it
 
 ## [0.1.0] - 2026-11-17
 

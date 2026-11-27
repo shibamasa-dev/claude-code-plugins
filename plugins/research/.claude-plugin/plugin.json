@@ -22,7 +22,8 @@
       "type": "string",
       "title": "X accounts to watch",
       "description": "Comma-separated X handles without @ (for example vendor_a,vendor_b). research-x asks about 10 of them per xAI request",
-      "required": true
+      "required": false,
+      "default": ""
     },
     "slack_channel": {
       "type": "string",
