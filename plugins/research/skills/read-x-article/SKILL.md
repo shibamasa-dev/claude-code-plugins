@@ -64,7 +64,7 @@ When `tweet.article` is present, the body is in **`tweet.article.content.blocks[
 tweet.article.title              Article title
 tweet.article.preview_text       The opening preview (about 80 characters). Not the body
 tweet.article.content.blocks[]   The body. Join the text of each block
-tweet.article.content.entityMap  Links and embeds referenced from the blocks
+tweet.article.content.entityMap  Code blocks, media and embedded posts referenced from the blocks
 tweet.article.media_entities[]   Media inside the article
 ```
 
@@ -81,7 +81,17 @@ Map each block's `type` to Markdown:
 | `blockquote` | `> ` |
 | `code-block` | Fenced code block |
 
-Put the links and embeds from `entityMap` into the text.
+Then apply each block's `entityRanges`. `entityMap` is a list of `{key, value}` entries: match each range's `key`, as a string, to an entry's `key`. Replace the range (`offset`, `length`) in the block's text by entry type:
+
+| `value.type` | Put in place of the range |
+|---|---|
+| `MARKDOWN` | `value.data.markdown`. Code blocks live here, not in `text`; the value already starts with a ```` ``` ```` fence, so don't fence it again |
+| `MEDIA` | The image or video from `tweet.article.media_entities[]` whose `media_id` matches `value.data.mediaItems[0].mediaId` |
+| `TWEET` | A link to `https://x.com/i/status/{value.data.tweetId}` |
+
+Skipping `MARKDOWN` entities drops every code block from the article.
+
+Links are not in `entityMap`: a block's `data.urls[]` and `data.mentions[]` give `fromIndex`, `toIndex` and `text` for each one. Turn a URL into a Markdown link, and a mention into a link to `https://x.com/{text}`.
 
 ### When it worked
 
@@ -93,7 +103,7 @@ Put the links and embeds from `entityMap` into the text.
 
 ## Step 3: Fall back to tool.lu
 
-Only when fxtwitter gave no body.
+Only when fxtwitter gave no body, or a body that is clearly cut short.
 
 Search with WebSearch for `site:tool.lu {tweet_id}` or `tool.lu {username} {tweet_id}`, find a URL of the form `https://tool.lu/article/{ID}/preview`, and open it with WebFetch.
 
