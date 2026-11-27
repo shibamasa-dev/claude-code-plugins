@@ -217,16 +217,28 @@ def case_incremental():
         e.close()
 
 
+def case_profiles_keep_own_cursor():
+    e = Env()
+    try:
+        make_history(e.home, rows=[("https://a.example.com/", "A", 1, 1, 30, 0)])
+        make_history(e.home, profile="Profile 1", rows=[("https://b.example.com/", "B", 1, 2, 30, 0)])
+        e.run()  # Default: its cursor moves to 1 hour ago
+        _, out, _ = e.run("--profile", "Profile 1")  # first run of Profile 1: its 2-hour-old visit is new to it
+        return [x["url"] for x in out["entries"]], ["https://b.example.com/"]
+    finally:
+        e.close()
+
+
 def case_state_cursor():
     e = Env()
     try:
         now = time.time()
-        make_history(e.home, now=now)
+        db = make_history(e.home, now=now)
         e.run()
         with open(os.path.join(e.state_dir, "state.json"), encoding="utf-8") as f:
             state = json.load(f)
         newest = chrome_time(now - 1 * HOUR)  # the newest non-hidden rows are 1 hour old
-        return state["last_fetch_chrome_time"], newest
+        return state["cursors"][db]["last_fetch_chrome_time"], newest
     finally:
         e.close()
 
@@ -403,6 +415,7 @@ CASES = [
     ("hidden urls skipped", case_hidden_skipped),
     ("second run fetches only new visits", case_incremental),
     ("state.json holds the newest visit time", case_state_cursor),
+    ("each profile keeps its own cursor", case_profiles_keep_own_cursor),
     ("fresh run writes only knowledge.json and state.json under the data dir", case_writes_only_data_dir),
     ("first run copies the seed knowledge.json", case_seed_copied),
     ("user's knowledge.json is never overwritten", case_seed_not_overwritten),

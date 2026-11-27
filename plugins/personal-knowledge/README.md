@@ -20,7 +20,7 @@ Skills that keep a personal local data store on your machine. Currently one skil
 ## How get-chrome-history works
 
 1. **Read.** The script finds the History database of the profile in `chrome_profile`, under `~/Library/Application Support/Google/Chrome/<profile>/` (macOS), `~/.config/google-chrome/<profile>/` or `~/.config/chromium/<profile>/` (Linux). Chrome locks the file while it runs, so the script copies it to a temporary directory, reads the copy and removes it. It never writes to Chrome's files.
-2. **Window.** It takes the visits after the newest one it saw last time. The first run takes the last 7 days.
+2. **Window.** It takes the visits after the newest one it saw last time in that profile. A profile's first run takes the last 7 days.
 3. **Sort.** Each visit lands in one of three buckets: a known service from `knowledge.json` (with its category), an unknown domain (aggregated, with sample titles, the top 20 by time spent), or noise (shorter than `min_visit_duration_seconds`, fewer visits than `min_visit_count`, or a service marked `"ignore": true`).
 4. **Learn.** Claude classifies the unknown domains and adds them to your `knowledge.json`, so the next run recognizes them.
 5. **Report.** Claude summarizes the tendencies per category in your language and leaves a field empty when the evidence is thin.
@@ -40,7 +40,7 @@ To find a profile's directory name, open `chrome://version` in that profile and 
 | File | Place | What it is |
 |---|---|---|
 | `knowledge.json` | `${CLAUDE_PLUGIN_DATA}/get-chrome-history/` | The services and filters the skill knows. The first run copies the seed shipped in `skills/get-chrome-history/knowledge.json`; after that Claude adds to your copy and updates never overwrite it |
-| `state.json` | `${CLAUDE_PLUGIN_DATA}/get-chrome-history/` | The newest visit time seen. Delete it to fetch the last 7 days again |
+| `state.json` | `${CLAUDE_PLUGIN_DATA}/get-chrome-history/` | The newest visit time seen, one per History file, so switching `chrome_profile` skips nothing. Delete it to fetch the last 7 days again |
 | The History copy | the system temp directory | Removed as soon as it has been read |
 
 `${CLAUDE_PLUGIN_DATA}` is `~/.claude/plugins/data/personal-knowledge-<marketplace>/`. When the script runs without it (for example by hand from a terminal), it uses `~/.claude/state/personal-knowledge/get-chrome-history/` instead and says so on stderr.
@@ -67,4 +67,4 @@ Uninstalling the plugin from the last place it is installed deletes `${CLAUDE_PL
 bash plugins/personal-knowledge/tests/run-all.sh
 ```
 
-Offline: every case builds a History database with Chrome's `urls` / `visits` tables and fictional URLs in a temp directory, and points `HOME`, `TMPDIR` and `CLAUDE_PLUGIN_DATA` there, so no real profile or home directory is read or written. The rows check the three buckets, the 7-day first window, the incremental fetch, that a fresh run writes only `knowledge.json` and `state.json` under the data directory (and nothing in the skill directory), that the seed is copied once and never overwritten, the fallback directory, a missing profile, the Linux profile path, output (and the missing-profile error) under an ASCII locale, that a run whose output can't be written leaves `state.json` unwritten, and title cleaning.
+Offline: every case builds a History database with Chrome's `urls` / `visits` tables and fictional URLs in a temp directory, and points `HOME`, `TMPDIR` and `CLAUDE_PLUGIN_DATA` there, so no real profile or home directory is read or written. The rows check the three buckets, the 7-day first window, the incremental fetch, a separate cursor per profile, that a fresh run writes only `knowledge.json` and `state.json` under the data directory (and nothing in the skill directory), that the seed is copied once and never overwritten, the fallback directory, a missing profile, the Linux profile path, output (and the missing-profile error) under an ASCII locale, that a run whose output can't be written leaves `state.json` unwritten, and title cleaning.

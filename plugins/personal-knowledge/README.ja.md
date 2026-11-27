@@ -20,7 +20,7 @@
 ## get-chrome-history の動き
 
 1. **読む。** `chrome_profile` のプロファイルの History データベースを、`~/Library/Application Support/Google/Chrome/<profile>/`（macOS）、`~/.config/google-chrome/<profile>/`・`~/.config/chromium/<profile>/`（Linux）から探す。Chrome は起動中このファイルをロックするので、一時ディレクトリにコピーして読み、コピーは消す。Chrome のファイルには書かない。
-2. **範囲。** 前回見た一番新しい訪問より後の訪問を取る。初回は直近 7 日。
+2. **範囲。** そのプロファイルで前回見た一番新しい訪問より後の訪問を取る。プロファイルごとの初回は直近 7 日。
 3. **振り分ける。** 訪問ごとに 3 つのどれかに入れる: `knowledge.json` にある既知のサービス（カテゴリ付き）、未知のドメイン（集計し、タイトルの例を付け、滞在時間の多い順に上位 20 件）、ノイズ（`min_visit_duration_seconds` より短い、`min_visit_count` より訪問が少ない、または `"ignore": true` を付けたサービス）。
 4. **覚える。** Claude が未知のドメインを分類して自分の `knowledge.json` に足すので、次の実行から既知になる。
 5. **まとめる。** Claude がカテゴリごとの傾向を利用者の言語でまとめる。根拠が薄い項目は空のままにする。
@@ -40,7 +40,7 @@
 | ファイル | 場所 | 中身 |
 |---|---|---|
 | `knowledge.json` | `${CLAUDE_PLUGIN_DATA}/get-chrome-history/` | スキルが知っているサービスとフィルタ。初回に `skills/get-chrome-history/knowledge.json` の種をコピーし、以後は Claude が自分のコピーに足していく。プラグインを更新しても上書きしない |
-| `state.json` | `${CLAUDE_PLUGIN_DATA}/get-chrome-history/` | 見た中で一番新しい訪問の時刻。消すと次は直近 7 日を取り直す |
+| `state.json` | `${CLAUDE_PLUGIN_DATA}/get-chrome-history/` | 見た中で一番新しい訪問の時刻。History ファイルごとに持つので、`chrome_profile` を切り替えても取りこぼさない。消すと次は直近 7 日を取り直す |
 | History のコピー | システムの一時ディレクトリ | 読み終えたらすぐ消す |
 
 `${CLAUDE_PLUGIN_DATA}` は `~/.claude/plugins/data/personal-knowledge-<marketplace>/`。これが無い状態で動いたとき（ターミナルから手で動かしたときなど）は、代わりに `~/.claude/state/personal-knowledge/get-chrome-history/` を使い、そのことを標準エラーに出す。
@@ -67,4 +67,4 @@
 bash plugins/personal-knowledge/tests/run-all.sh
 ```
 
-オフラインで動く。どのケースも、Chrome の `urls` / `visits` テーブルと架空の URL で History データベースを一時ディレクトリに作り、`HOME`・`TMPDIR`・`CLAUDE_PLUGIN_DATA` をそこへ向けるので、本物のプロファイルやホームディレクトリは読み書きしない。確かめるのは、3 つの振り分け、初回の 7 日の範囲、差分の取得、初回の実行がデータディレクトリの `knowledge.json` と `state.json` だけを書く（スキルのディレクトリには何も書かない）こと、種のコピーが 1 回だけで上書きされないこと、代わりの置き場所、プロファイルが無いとき、Linux のプロファイルの場所、ASCII のロケールでの出力（プロファイルが無いときのエラーも）、出力を書けなかった実行が `state.json` を書かないこと、タイトルの整形。
+オフラインで動く。どのケースも、Chrome の `urls` / `visits` テーブルと架空の URL で History データベースを一時ディレクトリに作り、`HOME`・`TMPDIR`・`CLAUDE_PLUGIN_DATA` をそこへ向けるので、本物のプロファイルやホームディレクトリは読み書きしない。確かめるのは、3 つの振り分け、初回の 7 日の範囲、差分の取得、プロファイルごとのカーソル、初回の実行がデータディレクトリの `knowledge.json` と `state.json` だけを書く（スキルのディレクトリには何も書かない）こと、種のコピーが 1 回だけで上書きされないこと、代わりの置き場所、プロファイルが無いとき、Linux のプロファイルの場所、ASCII のロケールでの出力（プロファイルが無いときのエラーも）、出力を書けなかった実行が `state.json` を書かないこと、タイトルの整形。

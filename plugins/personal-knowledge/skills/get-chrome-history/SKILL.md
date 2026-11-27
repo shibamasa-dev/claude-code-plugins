@@ -25,7 +25,7 @@ The script prints one JSON object:
 - `unknown_domains[]`: the unclassified hosts, aggregated, with `sample_titles`, at most 20 per run (the ones with the most time spent).
 - `noise_count`: visits dropped by the thresholds in `filters`, or because their service is marked `"ignore": true`.
 - `knowledge_path`: the `knowledge.json` to edit in Step 3.
-- `last_fetch_iso`: the start of this window. The first run covers the last 7 days.
+- `last_fetch_iso`: the start of this window. Each profile keeps its own; its first run covers the last 7 days.
 
 If `fetched_count` is 0, tell the user there is no new history and stop.
 

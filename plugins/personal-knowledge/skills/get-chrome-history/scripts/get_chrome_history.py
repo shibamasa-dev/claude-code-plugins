@@ -18,8 +18,8 @@ placeholder left unsubstituted, means `Default`. The History file is looked up u
 to a temporary directory first, read there, and the copy is removed.
 
 State lives in <data>/get-chrome-history/:
-  state.json      the newest visit time seen, so the next run fetches only what came after it (the first run fetches
-                  the last 7 days). It is written after the output is printed, so a failed run fetches the same
+  state.json      the newest visit time seen per History file (`cursors`, keyed by its path), so the next run of
+                  that profile fetches only what came after it (a profile's first run fetches the last 7 days). It is written after the output is printed, so a failed run fetches the same
                   window again.
   knowledge.json  the services and filters. The first run copies the seed shipped next to this script; later runs
                   never overwrite it, because Claude adds the services it classifies there.
@@ -136,20 +136,27 @@ def chrome_time_to_iso(chrome_time: int) -> str:
     return datetime.fromtimestamp(unix_ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def load_state(path: Path) -> dict:
-    if path.exists():
-        return read_json(path)
-    # No state yet: fetch the last COLD_START_DAYS days, not the whole history
+def load_cursors(path: Path) -> dict:
+    return read_json(path).get("cursors", {}) if path.exists() else {}
+
+
+def load_state(path: Path, db_path: str) -> dict:
+    """The cursor of this History file: each profile has its own, so switching profiles skips nothing."""
+    cursor = load_cursors(path).get(db_path)
+    if cursor:
+        return cursor
+    # Not seen yet: fetch the last COLD_START_DAYS days, not the whole history
     chrome_time = to_chrome_time(time.time() - COLD_START_DAYS * 86400)
     return {"last_fetch_chrome_time": chrome_time, "last_fetch_iso": chrome_time_to_iso(chrome_time)}
 
 
-def save_state(path: Path, chrome_time: int) -> None:
+def save_state(path: Path, db_path: str, chrome_time: int) -> None:
+    cursors = load_cursors(path)
+    cursors[db_path] = {"last_fetch_chrome_time": chrome_time, "last_fetch_iso": chrome_time_to_iso(chrome_time)}
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump({"last_fetch_chrome_time": chrome_time, "last_fetch_iso": chrome_time_to_iso(chrome_time)}, f,
-                  indent=2)
+        json.dump({"cursors": cursors}, f, indent=2)
     os.replace(tmp, path)
 
 
@@ -262,7 +269,7 @@ def main() -> int:
     services = knowledge.get("services", {})
     filters = {**DEFAULT_FILTERS, **knowledge.get("filters", {})}
 
-    state = load_state(state_path)
+    state = load_state(state_path, db_path)
     last_fetch = state["last_fetch_chrome_time"]
     raw, new_max_time = fetch_raw(db_path, last_fetch)
     entries, unknown_map, noise_count = classify(raw, services, filters)
@@ -282,7 +289,7 @@ def main() -> int:
         "entries": entries,
     })
     if new_max_time > last_fetch:
-        save_state(state_path, new_max_time)
+        save_state(state_path, db_path, new_max_time)
     return 0
 
 
