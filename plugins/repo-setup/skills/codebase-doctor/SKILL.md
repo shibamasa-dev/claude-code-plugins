@@ -413,6 +413,7 @@ This skill **audits and proposes; it does not build**. The one thing it writes o
 | Derive an allowlist from real usage | `fewer-permission-prompts` | it reads transcripts, which this skill does not |
 | Wire a hook | `hookify` | Check 14 spots the candidate only |
 | Scaffold the project's test-design knowledge layer | `testcase-generator` | Check 6b detects absence only; that skill owns the layout |
+| Decide where a Python venv goes, or clean up old venvs | `python-venv` (this plugin) | this skill checks the lock file only, not where venvs live |
 | Decide when a full test run is due | `full-test-gate` hook (testing plugin) | Check 12 keeps the whole-suite deny; that hook decides timing |
 | Enforce where docs and scripts live | `repo-structure-guard` hook (guards plugin) | this skill does not check layout |
 | Set up a cloud execution environment | `remote-setup` | Check 15 is SKIP by default |

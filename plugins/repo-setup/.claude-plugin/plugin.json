@@ -1,7 +1,7 @@
 {
   "name": "repo-setup",
-  "version": "0.7.0",
-  "description": "Skills for starting up a repo (auditing the basic setup, setting up cloud environments, building a real-app verification skill)",
+  "version": "0.8.0",
+  "description": "Skills for starting up a repo (auditing the basic setup, setting up cloud environments, building a real-app verification skill, placing and cleaning up Python venvs)",
   "author": {
     "name": "shibamasa-dev"
   },
@@ -10,6 +10,17 @@
   "license": "MIT",
   "keywords": [
     "setup",
-    "scaffold"
-  ]
+    "scaffold",
+    "python",
+    "venv"
+  ],
+  "userConfig": {
+    "shared_venv_dir": {
+      "type": "string",
+      "title": "Shared Python venv folder",
+      "description": "Folder for venvs that more than one repo or worktree uses, one per purpose (for example ~/.venvs/cad). python-venv puts shared venvs here and its inventory scans it. Empty means ~/.venvs",
+      "required": false,
+      "default": "~/.venvs"
+    }
+  }
 }
