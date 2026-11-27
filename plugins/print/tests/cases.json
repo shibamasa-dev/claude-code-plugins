@@ -1,0 +1,113 @@
+{
+  "description": "Cases for the print skill. They grade the output of scripts/print.py --dry-run (the lp command line, sheet count, whether pages are numbered, settings that could not be set). lpoptions fixtures: lpoptions-epson-ep30va.txt is the unedited output of `lpoptions -p <queue> -l` for a real EPSON EP-30VA on macOS (2026-10-08). ipp-generic and kgray-noduplex are made up (each says so in its comments). Expected sheet counts were worked out by hand as ceil(ceil(pages / pages per side) / (2 for duplex, 1 for one-sided)) x copies. The PDF samples have 7 pages (checked with pdfinfo). A case with expect_files also runs with --keep-pdf and checks each file on the lp command line, in order (pages with pdfinfo, text with pdftotext). Run by tests/test-print.sh, from the tests directory.",
+  "cases": [
+    {
+      "id": "epson-default",
+      "description": "The defaults (black and white, duplex long edge, A4, plain paper) are picked from the EPSON's real keys, and 7 pages take 4 sheets",
+      "args": ["fixtures/doc-7p-numbered.pdf"],
+      "lpoptions": "fixtures/lpoptions-epson-ep30va.txt",
+      "expect_contains": ["-o ColorModel=Gray", "-o Duplex=DuplexNoTumble", "-o PageSize=A4", "-o MediaType=stationery", "→ 4 sheets", "Page numbers: yes", "Layout: 1 page(s) per side", "Could not set: none", "(--dry-run: nothing sent)"],
+      "expect_not_contains": ["number-up", "-n "]
+    },
+    {
+      "id": "epson-color-simplex",
+      "description": "--color --simplex gives color and one-sided, and 7 pages take 7 sheets",
+      "args": ["fixtures/doc-7p-numbered.pdf", "--color", "--simplex"],
+      "lpoptions": "fixtures/lpoptions-epson-ep30va.txt",
+      "expect_contains": ["-o ColorModel=RGB", "-o Duplex=None", "→ 7 sheets"],
+      "expect_not_contains": ["ColorModel=Gray", "DuplexNoTumble"]
+    },
+    {
+      "id": "epson-short-edge-copies",
+      "description": "--short-edge --copies 2 gives short-edge binding and 2 copies, 8 sheets",
+      "args": ["fixtures/doc-7p-numbered.pdf", "--short-edge", "--copies", "2"],
+      "lpoptions": "fixtures/lpoptions-epson-ep30va.txt",
+      "expect_contains": ["-o Duplex=DuplexTumble", "-n 2", "→ 8 sheets"],
+      "expect_not_contains": ["DuplexNoTumble"]
+    },
+    {
+      "id": "epson-2up-duplex",
+      "description": "--2up puts 2 pages on a side. Duplex, 7 pages make 4 sides, so 2 sheets",
+      "args": ["fixtures/doc-7p-numbered.pdf", "--2up"],
+      "lpoptions": "fixtures/lpoptions-epson-ep30va.txt",
+      "expect_contains": ["-o number-up=2", "-o number-up-layout=lrtb", "Layout: 2 page(s) per side", "→ 2 sheets", "-o Duplex=DuplexNoTumble"],
+      "expect_not_contains": []
+    },
+    {
+      "id": "epson-2up-simplex",
+      "description": "--2up --simplex: 7 pages make 4 sides, so 4 sheets",
+      "args": ["fixtures/doc-7p-numbered.pdf", "--2up", "--simplex"],
+      "lpoptions": "fixtures/lpoptions-epson-ep30va.txt",
+      "expect_contains": ["-o number-up=2", "-o Duplex=None", "→ 4 sheets"],
+      "expect_not_contains": []
+    },
+    {
+      "id": "epson-size-unavailable",
+      "description": "A paper size the printer doesn't accept (A3) gets no -o and is reported under Could not set",
+      "args": ["fixtures/doc-7p-numbered.pdf", "--size", "A3"],
+      "lpoptions": "fixtures/lpoptions-epson-ep30va.txt",
+      "expect_contains": ["Could not set: A3", "-o ColorModel=Gray"],
+      "expect_not_contains": ["PageSize="]
+    },
+    {
+      "id": "ipp-generic-keys",
+      "description": "On a printer with IPP keys (print-color-mode, sides, media, media-type) the defaults are picked (made-up fixture)",
+      "args": ["fixtures/doc-7p-numbered.pdf"],
+      "lpoptions": "fixtures/lpoptions-ipp-generic.txt",
+      "expect_contains": ["-o print-color-mode=monochrome", "-o sides=two-sided-long-edge", "-o media=iso_a4_210x297mm", "-o media-type=stationery", "→ 4 sheets"],
+      "expect_not_contains": ["ColorModel", "Duplex="]
+    },
+    {
+      "id": "kgray-no-duplex",
+      "description": "On a printer whose black and white is KGray and which has no duplex key, duplex is left out and reported, and sheets are counted one-sided (made-up fixture)",
+      "args": ["fixtures/doc-7p-numbered.pdf"],
+      "lpoptions": "fixtures/lpoptions-kgray-noduplex.txt",
+      "expect_contains": ["-o ColorModel=KGray", "-o MediaType=Plain", "-o PageSize=A4", "Could not set: duplex long edge", "→ 7 sheets (one-sided)"],
+      "expect_not_contains": ["Duplex=", "sides="]
+    },
+    {
+      "id": "pdf-no-number-flag",
+      "description": "--no-number on a PDF without numbers reports Page numbers: no and sends the source PDF as is",
+      "args": ["fixtures/doc-7p-plain.pdf", "--no-number"],
+      "lpoptions": "fixtures/lpoptions-epson-ep30va.txt",
+      "expect_contains": ["Page numbers: no", "-- fixtures/doc-7p-plain.pdf"],
+      "expect_not_contains": ["numbered.pdf"]
+    },
+    {
+      "id": "pdf-stamp-numbers",
+      "description": "A PDF without numbers gets them added before printing (when qpdf and Chrome are there), and the numbered copy is sent",
+      "args": ["fixtures/doc-7p-plain.pdf"],
+      "lpoptions": "fixtures/lpoptions-epson-ep30va.txt",
+      "requires": ["qpdf", "chrome"],
+      "expect_contains": ["Page numbers: yes (added before printing)", "numbered.pdf"],
+      "expect_not_contains": []
+    },
+    {
+      "id": "html-convert-numbers",
+      "description": "HTML is converted to PDF with page numbers (a 3-page sample, 2 sheets duplex)",
+      "args": ["fixtures/report.html"],
+      "lpoptions": "fixtures/lpoptions-epson-ep30va.txt",
+      "requires": ["chrome"],
+      "expect_contains": ["(converted from HTML)", "Pages: 3 / Page numbers: yes", "→ 2 sheets"],
+      "expect_not_contains": []
+    },
+    {
+      "id": "image-one-page",
+      "description": "An image counts as 1 page and gets no page number",
+      "args": ["fixtures/photo.png"],
+      "lpoptions": "fixtures/lpoptions-epson-ep30va.txt",
+      "expect_contains": ["Page numbers: no (image)", "→ 1 sheet ("],
+      "expect_not_contains": []
+    },
+    {
+      "id": "same-name-inputs",
+      "description": "Two inputs with the same file name in different folders convert to two separate PDFs: lp gets a 1-page ALPHA file and a 3-page BRAVO file, in that order (1 + 2 sheets duplex)",
+      "args": ["fixtures/same-name/a/report.html", "fixtures/same-name/b/report.html"],
+      "lpoptions": "fixtures/lpoptions-epson-ep30va.txt",
+      "requires": ["chrome"],
+      "expect_contains": ["Total: 4 pages → 3 sheets (duplex)"],
+      "expect_not_contains": [],
+      "expect_files": [{"pages": 1, "text": "ALPHA"}, {"pages": 3, "text": "BRAVO"}]
+    }
+  ]
+}

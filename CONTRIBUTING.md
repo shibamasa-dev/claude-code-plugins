@@ -27,6 +27,8 @@ claude plugin test plugins/instructions                    # mod tests (*.test.t
 claude plugin test plugins/workflow
 ```
 
+The print tests need poppler and qpdf (`brew install poppler qpdf`, the same step as the CI macOS job) and Google Chrome, which does not start inside the Claude Code sandbox.
+
 CI also runs these. Run them when you touch the parts they cover:
 
 ```bash

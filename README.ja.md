@@ -26,6 +26,7 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 /plugin install research@shibamasa-plugins
 /plugin install hr@shibamasa-plugins
 /plugin install agent-bridge@shibamasa-plugins
+/plugin install print@shibamasa-plugins
 ```
 
 どれも独立していて、必要なものだけ入れられる。
@@ -46,6 +47,7 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 | [research](plugins/research/README.ja.md) | X や Web を読むスキル群。今は `research-x` だけ。選んだ X アカウントについて xAI の X 検索に問い合わせ、はっきりしたアップデート告知だけを、指定した言語と口調で要約し、1 件ずつ Slack に流す。状態はチャンネルの履歴だけで持つ |
 | [hr](plugins/hr/README.ja.md) | 日本向けの人事・労務の事務。今は `employee-certificate` だけ。会社が社員に出す証明書（保育園・学童の申込みに付ける就労証明書、在籍証明書、退職証明書、収入証明）を、先方の Excel 様式に項目名で対応づけて記入する（レイアウトが変わっても埋まる）。会社と社員のデータはプラグインの外に置いた利用者のファイルから読む |
 | [agent-bridge](plugins/agent-bridge/README.ja.md) | 自分の Supabase に置くメッセージキューを通して、Claude Code とほかの AI エージェントが双方向にやり取りする。どのエージェントも自分のトークンで同じ API を使い、webhook かポーリングで起こされる。待ち受け中の Claude Code セッションはメッセージが届くと起きる。セットアップ用のスキルが、Supabase プロジェクトにブリッジを作り、Vault の秘密をダミー値で登録する（本物はあとで入れる） |
+| [print](plugins/print/README.ja.md) | 手元のファイル（PDF・画像・テキスト・HTML・Markdown）を CUPS の `lp` で印刷する。既定は白黒・両面長辺とじ・A4・普通紙で、ページ番号つき。プリンタが受け付けるオプションを `lpoptions -l` から選び、受け付けない設定は報告し、送る前にページ数・紙の枚数・設定を示す |
 
 スキル・フックの一覧と設定は、各プラグインの README にある。
 
@@ -76,6 +78,7 @@ review の設定（`review_heavy`・`review_light`・`review_auto`・`rereview_t
 - `inventory` と `creative` は `uv`（MCP サーバーの起動に使う）
 - `research` は xAI の API キーと Slack の bot token
 - `agent-bridge` は Supabase のプロジェクトと、セットアップ用の Supabase コネクタ（claude.ai のコネクタか MCP サーバー）
+- `print` は CUPS（`lp`）、poppler、HTML・Markdown・テキストを変換するなら Chrome。qpdf と pandoc は任意
 
 ## コントリビュート
 

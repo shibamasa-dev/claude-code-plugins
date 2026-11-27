@@ -77,6 +77,9 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: false
+      # The print tests count pages with poppler's pdfinfo / pdftotext and stamp page numbers with qpdf (Chrome is on the image)
+      - name: Install poppler and qpdf
+        run: brew install poppler qpdf
       # py_compile is not enough: a 3.10-only annotation (`str | None`) parses on 3.9 and fails only when the module runs
       - name: Execute every plugin hook and script at module level (without main)
         if: matrix.python != 'default'
