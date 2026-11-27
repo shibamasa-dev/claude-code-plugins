@@ -72,8 +72,10 @@ Show the user the list and let them pick what to delete. Leave tool-managed venv
 The venv can go, but the record of what was in it stays. A venv with no `requirements*.txt` or `pyproject.toml` next to it cannot be rebuilt without this:
 
 ```bash
-VIRTUAL_ENV=<venv> uv pip freeze > <dir holding the venv>/requirements-frozen-<YYYY-MM-DD>.txt
+(set -o noclobber; VIRTUAL_ENV=<venv> uv pip freeze > <dir holding the venv>/requirements-frozen-<venv name>-<YYYY-MM-DD>.txt)
 ```
+
+The venv's name is in the file name because shared venvs sit side by side in one folder, and `noclobber` makes the command fail rather than overwrite a record already there; pick another name if it does.
 
 Use `uv pip freeze`, not `pip freeze`. A venv made by uv may have no `pip`, and `pip freeze` then prints nothing without an error, which leaves an empty file that looks like a backup. Check the file is not empty before deleting.
 

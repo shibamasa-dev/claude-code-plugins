@@ -38,7 +38,7 @@ The test-design check in `codebase-doctor` (Check 6b) reads where test artifacts
 | What the skills set up for you to commit | in the repo: the Decided setup section of `CLAUDE.md`, `.claude/skills/verify-<app>/`, `scripts/remote-setup/` |
 | The log of the generated setup script | `~/.cache/remote-setup/<repo>.log` on the machine that runs it |
 
-python-venv writes nothing itself: its inventory script only reads. The frozen `requirements-frozen-<date>.txt` it asks for goes next to the venv being deleted.
+python-venv writes nothing itself: its inventory script only reads. The frozen `requirements-frozen-<venv name>-<date>.txt` it asks for goes next to the venv being deleted.
 
 It keeps nothing in its plugin data directory, so uninstalling removes none of these files.
 

@@ -38,7 +38,7 @@
 | スキルが用意してコミットするもの | リポの中: `CLAUDE.md` の Decided setup の節、`.claude/skills/verify-<app>/`、`scripts/remote-setup/` |
 | 生成したセットアップスクリプトのログ | 動かしたマシンの `~/.cache/remote-setup/<リポ名>.log` |
 
-python-venv 自身は何も書かない（棚卸しのスクリプトは読むだけ）。消す前に作る `requirements-frozen-<日付>.txt` は、消す venv の隣に置く。
+python-venv 自身は何も書かない（棚卸しのスクリプトは読むだけ）。消す前に作る `requirements-frozen-<venv 名>-<日付>.txt` は、消す venv の隣に置く。
 
 プラグインのデータディレクトリには何も置かないので、アンインストールしてもこれらのファイルは消えない。
 

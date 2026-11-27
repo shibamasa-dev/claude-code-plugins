@@ -35,7 +35,14 @@ d=json.load(open(sys.argv[1])); m=[v for v in d["venvs"] if v["path"].endswith(s
 print(json.dumps(m[0][sys.argv[3]]) if m else "missing")' "$1" "$2" "$3"
 }
 count() { python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["venvs"]))' "$1"; }
-listing() { (cd "$1" && find . -exec stat -f '%N %z %m' {} + 2>/dev/null || find . -exec stat -c '%n %s %Y' {} +) | LC_ALL=C sort; }
+# listing <dir>: path, size and mtime of every entry (Python lstat, so BSD and GNU stat flags don't matter)
+listing() {
+  python3 -c 'import os,sys
+r=sys.argv[1]
+for d, dirs, files in os.walk(r):
+    for n in sorted(dirs + files):
+        p=os.path.join(d, n); st=os.lstat(p); print(os.path.relpath(p, r), st.st_size, st.st_mtime_ns)' "$1" | LC_ALL=C sort
+}
 
 S="$TMP/scan"
 venv "$S/dead"            $((60*DAY))        $((60*DAY - 120))      # stalled 2 min after creation, untouched 60 days
