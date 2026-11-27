@@ -77,7 +77,7 @@ A ledger at a `ledger_sqlite_path` outside that directory, a database behind `le
 - Chrome and Chromium on macOS and Linux only. Windows, other Chromium-based browsers (Edge, Brave, Arc) and Firefox are not read.
 - One profile per run.
 - A service matches by host and its parent domains (`www.amazon.co.jp` matches `amazon.co.jp`), not by path, so two services on one host can't be told apart.
-- relationship-ledger: business-card intake is several statements, each committed on its own (the server runs one statement per call), so a failure part-way leaves the earlier rows; the skill tells Claude to check before re-adding notes. Handle uniqueness uses `lower()`, which folds only ASCII on SQLite. The upserts need SQLite 3.24 or later; the `->>` JSON operator is not used.
+- relationship-ledger: business-card intake is several statements, each committed on its own (the server runs one statement per call), so a failure part-way leaves the earlier rows; the skill tells Claude to check before re-adding notes. Handle uniqueness uses `lower()`, which folds only ASCII on SQLite. The upserts need SQLite 3.24 or later; the `->>` JSON operator is not used. The `ledger` server runs whatever single statement Claude sends: on SQLite it refuses `ATTACH`, so no statement opens a file outside the ledger, and on Postgres the role in `ledger_database_url` decides what a statement can reach, so use one that is not a superuser.
 - The window is by each URL's last visit time, and a URL's `visit_count` and time spent are its totals in Chrome, not just within the window.
 - The copy is taken while Chrome may be writing. A visit Chrome had not committed yet when the copy was taken is missed if a newer visit was already in the copy.
 

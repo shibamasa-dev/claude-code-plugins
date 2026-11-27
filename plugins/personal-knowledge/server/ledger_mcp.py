@@ -84,6 +84,10 @@ def setting(name: str) -> str:
     return "" if v.startswith("${") else v
 
 
+def _no_attach(action, *_):
+    return sqlite3.SQLITE_DENY if action in (sqlite3.SQLITE_ATTACH, sqlite3.SQLITE_DETACH) else sqlite3.SQLITE_OK
+
+
 class SQLite:
     dialect = "sqlite"
 
@@ -93,6 +97,9 @@ class SQLite:
         self.conn = sqlite3.connect(str(path), isolation_level=None, timeout=10)  # autocommit; scripts BEGIN themselves
         self.conn.create_function("rl_norm", 1, norm, deterministic=True)
         self.conn.execute("PRAGMA foreign_keys = ON")
+        # ATTACH opens or creates a database file at any path the user can write, so one statement could write
+        # outside the ledger. The ledger never needs a second database, so the server refuses both.
+        self.conn.set_authorizer(_no_attach)
 
     def query(self, sql: str):
         cur = self.conn.execute(sql)

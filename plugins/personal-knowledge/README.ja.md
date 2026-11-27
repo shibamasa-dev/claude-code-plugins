@@ -77,7 +77,7 @@ claude plugin uninstall personal-knowledge@shibamasa-plugins --keep-data
 - 読めるのは macOS と Linux の Chrome・Chromium だけ。Windows、ほかの Chromium 系ブラウザ（Edge・Brave・Arc）、Firefox は読まない。
 - 1 回に読むのは 1 プロファイル。
 - サービスはホストとその親ドメインで照合する（`www.amazon.co.jp` は `amazon.co.jp` に当たる）。パスでは見ないので、同じホストにある 2 つのサービスは区別できない。
-- relationship-ledger: 名刺の登録は複数の文に分かれ、それぞれ別にコミットされる（サーバーは 1 回の呼び出しで 1 文を実行する）。途中で失敗すると前の行は残るので、スキルはメモを足し直す前に確かめるよう Claude に指示している。ハンドルの重複判定は `lower()` を使い、SQLite では ASCII だけを畳む。upsert を使うので SQLite 3.24 以上が要る。JSON の `->>` 演算子は使わない。
+- relationship-ledger: 名刺の登録は複数の文に分かれ、それぞれ別にコミットされる（サーバーは 1 回の呼び出しで 1 文を実行する）。途中で失敗すると前の行は残るので、スキルはメモを足し直す前に確かめるよう Claude に指示している。ハンドルの重複判定は `lower()` を使い、SQLite では ASCII だけを畳む。upsert を使うので SQLite 3.24 以上が要る。JSON の `->>` 演算子は使わない。`ledger` サーバーは Claude が送った 1 文をそのまま実行する。SQLite では `ATTACH` を拒むので、台帳の外のファイルを開く文は通らない。Postgres では `ledger_database_url` のロールが届く範囲を決めるので、スーパーユーザーでないロールを使うこと。
 - 範囲は URL ごとの最終訪問時刻で決まる。URL の `visit_count` と滞在時間は Chrome に残る累計で、範囲内の分だけではない。
 - コピーは Chrome が書き込み中かもしれない時点で取る。コピーの時点で Chrome がまだ確定していなかった訪問は、それより新しい訪問がコピーに入っていると取りこぼす。
 

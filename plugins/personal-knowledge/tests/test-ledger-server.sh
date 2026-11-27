@@ -51,6 +51,12 @@ out=$(LEDGER_ROUTE=sqlite LEDGER_DATABASE_URL='postgresql://127.0.0.1:1/none' sq
 row 'ledger_route=sqlite with a ledger_database_url is an error until the two agree' "$(yesno grep -q "^ERROR: .*ledger_route is 'sqlite' but ledger_database_url is set" <<<"$out")" 'yes'
 out=$(LEDGER_ROUTE=direct sql "SELECT 1")
 row 'a ledger_route that names no store is an error' "$(yesno grep -q "^ERROR: .*ledger_route is 'direct'" <<<"$out")" 'yes'
+# ATTACH would create a database file at any path; the server refuses it
+attach_to=$(mktemp -d "${TMPDIR:-/tmp}/ledger-attach.XXXXXX")
+out=$(sql "ATTACH DATABASE '$attach_to/elsewhere.db' AS other")
+row 'ATTACH DATABASE is refused' "$(yesno grep -q '^ERROR' <<<"$out")" 'yes'
+row '... and creates no file' "$(find "$attach_to" -type f | wc -l | tr -d ' ')" '0'
+rm -rf "$attach_to"
 # An option the user never set may reach the server as the literal placeholder
 out=$(LEDGER_DATABASE_URL='${user_config.ledger_database_url}' python3 "$CALL" --tool apply_migrations)
 row 'an unexpanded ${user_config.ledger_database_url} counts as unset' "$(yesno grep -q '"backend": "sqlite"' <<<"$out")" 'yes'
