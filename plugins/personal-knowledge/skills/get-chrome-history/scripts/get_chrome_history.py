@@ -57,6 +57,9 @@ CHROME_ROOTS = [
 # How many unknown domains to surface per run (avoids overwhelming Claude on the first run)
 MAX_UNKNOWNS_PER_RUN = 20
 COLD_START_DAYS = 7
+# Titles are set by the sites visited, so they are data, never instructions: cut them short and drop control characters
+MAX_TITLE_CHARS = 200
+CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2066-\u2069]")
 DEFAULT_FILTERS = {"min_visit_duration_seconds": 5, "min_visit_count": 1}
 # Chrome stores times as microseconds since 1601-01-01 UTC
 EPOCH_DELTA_SECONDS = 11644473600
@@ -150,6 +153,11 @@ def save_state(path: Path, chrome_time: int) -> None:
     os.replace(tmp, path)
 
 
+def clean_title(title: str | None) -> str:
+    title = CONTROL_CHARS.sub(" ", title or "").strip()
+    return title if len(title) <= MAX_TITLE_CHARS else title[:MAX_TITLE_CHARS - 1] + "\u2026"
+
+
 def extract_youtube_title(title: str) -> str:
     return re.sub(r"\s*[-–]\s*YouTube\s*$", "", title).strip()
 
@@ -181,7 +189,7 @@ def fetch_raw(db_path: str, last_fetch_chrome_time: int) -> tuple[list[dict], in
     for url, title, visit_count, chrome_time, duration_us in rows:
         results.append({
             "url": url,
-            "title": title or "",
+            "title": clean_title(title),
             "visit_count": visit_count,
             "total_duration_seconds": round(duration_us / 1_000_000, 1),
             "last_visit_iso": chrome_time_to_iso(chrome_time),
@@ -223,6 +231,12 @@ def classify(raw: list[dict], services: dict, filters: dict) -> tuple[list[dict]
     return entries, unknown_map, noise_count
 
 
+def emit(obj: dict) -> None:
+    """Print JSON as UTF-8 whatever the locale (titles are often non-ASCII)."""
+    sys.stdout.buffer.write(json.dumps(obj, ensure_ascii=False, indent=2).encode("utf-8") + b"\n")
+    sys.stdout.flush()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Fetch new Chrome history and sort it by known service.")
     parser.add_argument("--profile", default="", help="Chrome profile directory name (default: Default)")
@@ -232,12 +246,13 @@ def main() -> int:
     candidates = history_candidates(profile)
     db_path = next((p for p in candidates if os.path.isfile(p)), None)
     if not db_path:
-        print(json.dumps({
+        emit({
             "error": f"Chrome History file not found for profile {profile!r}",
+            "profile": profile,
             "searched": candidates,
             "available_profiles": available_profiles(),
             "hint": "Set the plugin's chrome_profile option to one of available_profiles",
-        }, ensure_ascii=False, indent=2))
+        })
         return 1
 
     sdir = state_dir()
@@ -254,7 +269,8 @@ def main() -> int:
 
     unknown_domains = sorted(unknown_map.values(), key=lambda x: x["total_duration_seconds"],
                              reverse=True)[:MAX_UNKNOWNS_PER_RUN]
-    out = json.dumps({
+    # Print first, then move the cursor, so a run whose output never arrives loses no window
+    emit({
         "db_path": db_path,
         "profile": profile,
         "knowledge_path": str(knowledge_path),
@@ -264,10 +280,7 @@ def main() -> int:
         "unknown_domain_count": len(unknown_map),
         "unknown_domains": unknown_domains,
         "entries": entries,
-    }, ensure_ascii=False, indent=2)
-    # Write UTF-8 whatever the locale, and only then move the cursor, so a failed print loses no window
-    sys.stdout.buffer.write(out.encode("utf-8") + b"\n")
-    sys.stdout.flush()
+    })
     if new_max_time > last_fetch:
         save_state(state_path, new_max_time)
     return 0

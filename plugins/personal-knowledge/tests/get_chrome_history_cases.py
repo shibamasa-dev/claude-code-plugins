@@ -90,12 +90,15 @@ class Env:
     def fallback_dir(self):
         return os.path.join(self.home, ".claude", "state", "personal-knowledge", "get-chrome-history")
 
-    def run(self, *args, data=None):
+    def env(self, data=None, **extra):
         env = {k: v for k, v in os.environ.items() if not k.startswith(("LC_", "LANG", "PYTHON", "CLAUDE_"))}
-        env.update(HOME=self.home, TMPDIR=self.tmp, CLAUDE_PLUGIN_DATA=self.data if data is None else data)
+        env.update(HOME=self.home, TMPDIR=self.tmp, CLAUDE_PLUGIN_DATA=self.data if data is None else data, **extra)
+        return env
+
+    def run(self, *args, data=None, **extra):
         # -B: the stock macOS python3 caches stdlib bytecode under ~/Library/Caches/com.apple.python, which is the
         # interpreter's doing, not the script's, and would hide what the script writes
-        p = subprocess.run([sys.executable, "-B", SCRIPT, *args], env=env, capture_output=True)
+        p = subprocess.run([sys.executable, "-B", SCRIPT, *args], env=self.env(data, **extra), capture_output=True)
         try:
             out = json.loads(p.stdout.decode("utf-8"))
         except ValueError:
@@ -342,17 +345,50 @@ def case_linux_profile_path():
         e.close()
 
 
+ASCII = {"LC_ALL": "C", "PYTHONIOENCODING": "ascii"}
+
+
 def case_ascii_locale():
     e = Env()
     try:
         make_history(e.home)
-        env_extra = {"LC_ALL": "C", "PYTHONIOENCODING": "ascii"}
-        env = {k: v for k, v in os.environ.items() if not k.startswith(("LC_", "LANG", "PYTHON", "CLAUDE_"))}
-        env.update(HOME=e.home, TMPDIR=e.tmp, CLAUDE_PLUGIN_DATA=e.data, **env_extra)
-        p = subprocess.run([sys.executable, "-B", SCRIPT], env=env, capture_output=True)
-        out = json.loads(p.stdout.decode("utf-8")) if p.returncode == 0 else {}
-        title = (by_url(out, ROWS[2][0]) or {}).get("title") if out else None
-        return (p.returncode, title), (0, ROWS[2][1])
+        rc, out, _ = e.run(**ASCII)
+        return (rc, (by_url(out or {"entries": []}, ROWS[2][0]) or {}).get("title")), (0, ROWS[2][1])
+    finally:
+        e.close()
+
+
+def case_ascii_locale_error():
+    e = Env()
+    try:
+        make_history(e.home)
+        rc, out, _ = e.run("--profile", "仕事用", **ASCII)
+        return (rc, (out or {}).get("profile")), (1, "仕事用")
+    finally:
+        e.close()
+
+
+def case_failed_output_keeps_window():
+    e = Env()
+    try:
+        make_history(e.home)
+        r, w = os.pipe()
+        os.close(r)  # nobody reads: the script's write fails
+        p = subprocess.run([sys.executable, "-B", SCRIPT], env=e.env(), stdout=w, stderr=subprocess.DEVNULL)
+        os.close(w)
+        return (p.returncode != 0, os.path.exists(os.path.join(e.state_dir, "state.json"))), (True, False)
+    finally:
+        e.close()
+
+
+def case_title_cleaned():
+    e = Env()
+    try:
+        url = "https://shout.example.com/"
+        make_history(e.home, rows=[(url, "\x1b[31mRed\u202e\n" + "x" * 500, 1, 1, 30, 0)])
+        _, out, _ = e.run()
+        t = by_url(out, url)["title"]
+        return (len(t) <= 200, t.startswith("[31mRed"), any(ord(c) < 32 or 0x202a <= ord(c) <= 0x202e for c in t)), (True, True, False)
     finally:
         e.close()
 
@@ -377,6 +413,9 @@ CASES = [
     ("unsubstituted ${user_config...} profile means Default", case_placeholder_profile),
     ("Linux ~/.config/google-chrome profile is found", case_linux_profile_path),
     ("non-ASCII titles print under an ASCII locale", case_ascii_locale),
+    ("missing-profile error prints under an ASCII locale", case_ascii_locale_error),
+    ("output that cannot be written leaves state.json unwritten", case_failed_output_keeps_window),
+    ("titles lose control characters and are cut at 200", case_title_cleaned),
 ]
 
 

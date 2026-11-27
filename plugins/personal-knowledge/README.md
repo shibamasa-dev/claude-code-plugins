@@ -25,7 +25,7 @@ Skills that keep a personal local data store on your machine. Currently one skil
 4. **Learn.** Claude classifies the unknown domains and adds them to your `knowledge.json`, so the next run recognizes them.
 5. **Report.** Claude summarizes the tendencies per category in your language and leaves a field empty when the evidence is thin.
 
-Your history stays on your machine: the script prints to Claude's session only, and the skill tells Claude to summarize rather than copy raw URLs and titles elsewhere.
+Page titles are written by the sites you visit, so the script drops control characters and cuts them at 200 characters, and the skill tells Claude never to follow an instruction found in a title or URL. Your history stays on your machine: the script prints to Claude's session only, and the skill tells Claude to summarize rather than copy raw URLs and titles elsewhere.
 
 ## Configuration
 
@@ -67,4 +67,4 @@ Uninstalling the plugin from the last place it is installed deletes `${CLAUDE_PL
 bash plugins/personal-knowledge/tests/run-all.sh
 ```
 
-Offline: every case builds a History database with Chrome's `urls` / `visits` tables and fictional URLs in a temp directory, and points `HOME`, `TMPDIR` and `CLAUDE_PLUGIN_DATA` there, so no real profile or home directory is read or written. The rows check the three buckets, the 7-day first window, the incremental fetch, that a fresh run writes only `knowledge.json` and `state.json` under the data directory (and nothing in the skill directory), that the seed is copied once and never overwritten, the fallback directory, a missing profile, the Linux profile path and output under an ASCII locale.
+Offline: every case builds a History database with Chrome's `urls` / `visits` tables and fictional URLs in a temp directory, and points `HOME`, `TMPDIR` and `CLAUDE_PLUGIN_DATA` there, so no real profile or home directory is read or written. The rows check the three buckets, the 7-day first window, the incremental fetch, that a fresh run writes only `knowledge.json` and `state.json` under the data directory (and nothing in the skill directory), that the seed is copied once and never overwritten, the fallback directory, a missing profile, the Linux profile path, output (and the missing-profile error) under an ASCII locale, that a run whose output can't be written leaves `state.json` unwritten, and title cleaning.
