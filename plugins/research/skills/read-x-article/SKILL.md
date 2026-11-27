@@ -86,7 +86,7 @@ Then apply each block's `entityRanges`. `entityMap` is a list of `{key, value}` 
 | `value.type` | Put in place of the range |
 |---|---|
 | `MARKDOWN` | `value.data.markdown`. Code blocks live here, not in `text`; the value already starts with a ```` ``` ```` fence, so don't fence it again |
-| `MEDIA` | The image or video from `tweet.article.media_entities[]` whose `media_id` matches `value.data.mediaItems[0].mediaId` |
+| `MEDIA` | For each item of `value.data.mediaItems[]`, in order, the image or video from `tweet.article.media_entities[]` whose `media_id` matches its `mediaId` |
 | `TWEET` | A link to `https://x.com/i/status/{value.data.tweetId}` |
 
 Skipping `MARKDOWN` entities drops every code block from the article.
