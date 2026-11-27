@@ -24,6 +24,20 @@ CREATE OR REPLACE FUNCTION rl_now() RETURNS text
   LANGUAGE sql VOLATILE
   AS $$ SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') $$;
 
+-- An ISO 8601 date or date-time as UTC text 'YYYY-MM-DD HH24:MI:SS', the same as SQLite's datetime(): a value with an
+-- offset (or Z) is converted, one without is taken as UTC, and anything that doesn't parse is NULL
+CREATE OR REPLACE FUNCTION rl_utc(t text) RETURNS text
+  LANGUAGE plpgsql STABLE
+  AS $$
+BEGIN
+  IF t ~ '[T ][0-9:.]+(Z|[+-][0-9]{2}(:?[0-9]{2})?)$' THEN  -- a time with an offset (a date alone ends in -DD)
+    RETURN to_char(t::timestamptz AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS');
+  END IF;
+  RETURN to_char(t::timestamp, 'YYYY-MM-DD HH24:MI:SS');
+EXCEPTION WHEN others THEN
+  RETURN NULL;
+END $$;
+
 CREATE TABLE IF NOT EXISTS rl_schema_migrations (
   version    text PRIMARY KEY,
   applied_at text NOT NULL DEFAULT rl_now()
@@ -225,8 +239,10 @@ SELECT p.person_key, p.display_name, p.relationship, p.summary, p.status, p.sour
          ORDER BY s.updated_at DESC, s.id DESC LIMIT 1) AS discord_url,
        (SELECT count(*) FROM rl_social_accounts s WHERE s.person_key = p.person_key) AS social_account_count,
        (SELECT count(*) FROM rl_interaction_notes n WHERE n.person_key = p.person_key) AS note_count,
-       (SELECT max(coalesce(n.occurred_at, n.created_at)) FROM rl_interaction_notes n
-         WHERE n.person_key = p.person_key AND n.kind = 'meeting') AS last_met_at,
+       -- The latest meeting by its time in UTC, shown as written; occurred_at that doesn't parse sorts by created_at
+       (SELECT coalesce(n.occurred_at, n.created_at) FROM rl_interaction_notes n
+         WHERE n.person_key = p.person_key AND n.kind = 'meeting'
+         ORDER BY coalesce(rl_utc(n.occurred_at), rl_utc(n.created_at)) DESC, n.id DESC LIMIT 1) AS last_met_at,
        (SELECT count(*) FROM rl_prompt_injection_events e WHERE e.person_key = p.person_key) AS prompt_injection_count,
        (SELECT count(*) FROM rl_photo_refs r WHERE r.person_key = p.person_key) AS photo_ref_count,
        p.created_at, p.updated_at

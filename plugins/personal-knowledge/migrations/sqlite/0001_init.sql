@@ -253,8 +253,10 @@ SELECT p.person_key, p.display_name, p.relationship, p.summary, p.status, p.sour
          ORDER BY s.updated_at DESC, s.id DESC LIMIT 1) AS discord_url,
        (SELECT count(*) FROM rl_social_accounts s WHERE s.person_key = p.person_key) AS social_account_count,
        (SELECT count(*) FROM rl_interaction_notes n WHERE n.person_key = p.person_key) AS note_count,
-       (SELECT max(coalesce(n.occurred_at, n.created_at)) FROM rl_interaction_notes n
-         WHERE n.person_key = p.person_key AND n.kind = 'meeting') AS last_met_at,
+       -- The latest meeting by its time in UTC, shown as written; occurred_at that doesn't parse sorts by created_at
+       (SELECT coalesce(n.occurred_at, n.created_at) FROM rl_interaction_notes n
+         WHERE n.person_key = p.person_key AND n.kind = 'meeting'
+         ORDER BY coalesce(datetime(n.occurred_at), datetime(n.created_at)) DESC, n.id DESC LIMIT 1) AS last_met_at,
        (SELECT count(*) FROM rl_prompt_injection_events e WHERE e.person_key = p.person_key) AS prompt_injection_count,
        (SELECT count(*) FROM rl_photo_refs r WHERE r.person_key = p.person_key) AS photo_ref_count,
        p.created_at, p.updated_at

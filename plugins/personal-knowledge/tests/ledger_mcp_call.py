@@ -5,6 +5,7 @@
                                          An argument starting with ! is a shell command run between two calls
                                          (for example to cut the server's database connection); it prints nothing
     mcp_call.py --file FILE              one execute_sql call per statement in FILE (statements end with ';' at line end)
+    mcp_call.py --tx SQL ...             one execute_transaction call with every SQL argument as one statement
     mcp_call.py --tool NAME              call another tool (for example apply_migrations) with no arguments
     mcp_call.py --list                   print the tool names from tools/list (no tool call)
 
@@ -40,6 +41,8 @@ def main():
         text = Path(args[1]).read_text(encoding="utf-8")
         lines = [ln for ln in text.splitlines() if not ln.lstrip().startswith("--")]
         calls = [("execute_sql", {"query": s.strip()}) for s in "\n".join(lines).split(";\n") if s.strip()]
+    elif args[:1] == ["--tx"]:
+        calls = [("execute_transaction", {"statements": args[1:]})]
     elif args[:1] == ["--tool"]:
         calls = [(args[1], {})]
     elif args[:1] == ["--list"]:

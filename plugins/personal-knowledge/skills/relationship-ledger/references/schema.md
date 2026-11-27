@@ -77,7 +77,7 @@ References to photos the user provided or authorized. Not a face recognition ind
 
 ## Views
 
-- `rl_v_people`: one row per person with the latest account per supported platform (`x_handle`, `x_url`, `slack_handle`, `slack_url`, `github_handle`, `github_url`, `linkedin_handle`, `linkedin_url`, `discord_handle`, `discord_url`), `social_account_count`, `note_count`, `last_met_at` (the latest `meeting` note's `occurred_at`, or its `created_at`), `prompt_injection_count` and `photo_ref_count`.
+- `rl_v_people`: one row per person with the latest account per supported platform (`x_handle`, `x_url`, `slack_handle`, `slack_url`, `github_handle`, `github_url`, `linkedin_handle`, `linkedin_url`, `discord_handle`, `discord_url`), `social_account_count`, `note_count`, `last_met_at` (the `occurred_at`, or else `created_at`, of the latest `meeting` note, compared in UTC so offsets don't mislead), `prompt_injection_count` and `photo_ref_count`.
 - `rl_v_search`: `person_key`, `found_in` (`person`, `social_account` or `note`) and `search_text`, for searching every text at once with `search_text LIKE '%' || rl_norm('<term>') || '%' ESCAPE '\'`.
 
 ## rl_norm()

@@ -30,7 +30,7 @@
 
 ## relationship-ledger の動き
 
-SQL は Claude が書く。プラグインが持つのはスキーマ（`migrations/sqlite/` と `migrations/postgres/`）と小さな MCP サーバー `server/ledger_mcp.py` で、`.mcp.json` に `ledger` として宣言し、`uv run --script` で起動する。サーバーがするのは SQL の実行（`execute_sql`）、マイグレーションの適用（`apply_migrations`。セッションの最初の呼び出しでも走る）、SQLite での `rl_norm()`（NFKC と小文字化）の提供だけ。どの書き込みでも守るべき決まりはスキーマが持つ: 許される状態・メモの種類・深刻度、確度 0〜5、キーの形式、`(platform, handle)` ごとに大文字小文字を区別せずアカウントは 1 つ、写真の参照には同意の根拠が必須、全テーブルの `updated_at`、変えられないキー。
+SQL は Claude が書く。プラグインが持つのはスキーマ（`migrations/sqlite/` と `migrations/postgres/`）と小さな MCP サーバー `server/ledger_mcp.py` で、`.mcp.json` に `ledger` として宣言し、`uv run --script` で起動する。サーバーがするのは SQL の実行（1 文なら `execute_sql`、まとめて 1 トランザクションにするなら `execute_transaction`）、マイグレーションの適用（`apply_migrations`。セッションの最初の呼び出しでも走る）、SQLite での `rl_norm()`（NFKC と小文字化）の提供だけ。どの書き込みでも守るべき決まりはスキーマが持つ: 許される状態・メモの種類・深刻度、確度 0〜5、キーの形式、`(platform, handle)` ごとに大文字小文字を区別せずアカウントは 1 つ、写真の参照には同意の根拠が必須、全テーブルの `updated_at`、変えられないキー。
 
 - テーブル: `rl_people`（`taro-example` のような slug がキー）、`rl_social_accounts`、`rl_interaction_notes`、`rl_prompt_injection_events`、`rl_photo_refs`、`rl_schema_migrations`。ビュー: `rl_v_people`（1 人 1 行。プラットフォームごとの最新のアカウントと件数）と `rl_v_search`（検索できる文面すべて）。各列の説明はスキルの `references/schema.md`。
 - データの置き場所は初回に 1 度だけ決めて `ledger_route` に保存する: `sqlite`（既定のファイル）、`postgres`（`ledger_database_url`）、`connector`（SQL を実行できる claude.ai のコネクタ。Supabase など）。保存した置き場所が使えないとき、Claude とサーバーは止まってそう伝える。台帳が 2 か所に割れるので、別の置き場所は開かない。
@@ -77,7 +77,7 @@ claude plugin uninstall personal-knowledge@shibamasa-plugins --keep-data
 - 読めるのは macOS と Linux の Chrome・Chromium だけ。Windows、ほかの Chromium 系ブラウザ（Edge・Brave・Arc）、Firefox は読まない。
 - 1 回に読むのは 1 プロファイル。
 - サービスはホストとその親ドメインで照合する（`www.amazon.co.jp` は `amazon.co.jp` に当たる）。パスでは見ないので、同じホストにある 2 つのサービスは区別できない。
-- relationship-ledger: 名刺の登録は複数の文に分かれ、それぞれ別にコミットされる（サーバーは 1 回の呼び出しで 1 文を実行する）。途中で失敗すると前の行は残るので、スキルはメモを足し直す前に確かめるよう Claude に指示している。ハンドルの重複判定は `lower()` を使い、SQLite では ASCII だけを畳む。upsert を使うので SQLite 3.24 以上が要る。JSON の `->>` 演算子は使わない。`ledger` サーバーは Claude が送った 1 文をそのまま実行する。SQLite では `ATTACH` を拒むので、台帳の外のファイルを開く文は通らない。Postgres では `ledger_database_url` のロールが届く範囲を決めるので、スーパーユーザーでないロールを使うこと。
+- relationship-ledger: コネクタの経路では、名刺の登録は複数の文をつないだ 1 つの文字列になり、Postgres はそれを 1 トランザクションとして実行する。これは `psql` で確かめたもので、本物のコネクタでは確かめていない。コネクタのツールが別の実行の仕方をする可能性はある。ハンドルの重複判定は `lower()` を使い、SQLite では ASCII だけを畳む。upsert を使うので SQLite 3.24 以上が要る。JSON の `->>` 演算子は使わない。`ledger` サーバーは Claude が送った文をそのまま実行する。SQLite では `ATTACH` を拒むので、台帳の外のファイルを開く文は通らない。Postgres では `ledger_database_url` のロールが届く範囲を決めるので、スーパーユーザーでないロールを使うこと。
 - 範囲は URL ごとの最終訪問時刻で決まる。URL の `visit_count` と滞在時間は Chrome に残る累計で、範囲内の分だけではない。
 - コピーは Chrome が書き込み中かもしれない時点で取る。コピーの時点で Chrome がまだ確定していなかった訪問は、それより新しい訪問がコピーに入っていると取りこぼす。
 
@@ -97,4 +97,4 @@ bash plugins/personal-knowledge/tests/run-postgres.sh   # relationship-ledger �
 
 オフラインで動く。どのケースも、Chrome の `urls` / `visits` テーブルと架空の URL で History データベースを一時ディレクトリに作り、`HOME`・`TMPDIR`・`CLAUDE_PLUGIN_DATA` をそこへ向けるので、本物のプロファイルやホームディレクトリは読み書きしない。確かめるのは、3 つの振り分け、初回の 7 日の範囲、差分の取得、プロファイルごとのカーソル、読めない History のコピー、初回の実行がデータディレクトリの `knowledge.json` と `state.json` だけを書く（スキルのディレクトリには何も書かない）こと、種のコピーが 1 回だけで上書きされないこと、代わりの置き場所、プロファイルが無いとき、Linux のプロファイルの場所、ASCII のロケールでの出力（プロファイルが無いときのエラーも）、出力を書けなかった実行が `state.json` を書かないこと、タイトルの整形。
 
-relationship-ledger の行は、SKILL.md が教える検索・記録・名刺の登録・要注意リストの SQL を、MCP サーバーを stdio 越しに呼んで実行する。人物はすべて架空で、スクリプトごとに新しいデータディレクトリを使う。ほかに確かめるのは、まっさらな起動（新しい `HOME`・作業ディレクトリ・uv のキャッシュ）がデータディレクトリの `relationship-ledger/ledger.sqlite3` だけを書くこと、`ledger_sqlite_path` で移せること、マイグレーションが 1 度だけ適用され、もう一度走ってもスキーマと行が変わらないこと、どのテーブルでも UPDATE で `updated_at` が進み、手で書いた `updated_at`・`search_text` は置き換わること、制約が不正な行を拒むこと、使えない・食い違う置き場所はエラーになり SQLite に切り替わらないこと。`run-postgres.sh` は同じ行を Postgres で回し、psycopg が要る行（接続 URL のパスワードがエラーに出ないこと）と、コネクタの経路（マイグレーションのファイルだけを `psql` で 2 回流し、RLS が有効で、ビューが Supabase の API ロールから閉じていること）も確かめる。
+relationship-ledger の行は、SKILL.md が教える検索・記録・名刺の登録・要注意リストの SQL を、MCP サーバーを stdio 越しに呼んで実行する。人物はすべて架空で、スクリプトごとに新しいデータディレクトリを使う。ほかに確かめるのは、まっさらな起動（新しい `HOME`・作業ディレクトリ・uv のキャッシュ）がデータディレクトリの `relationship-ledger/ledger.sqlite3` だけを書くこと、`ledger_sqlite_path` で移せること、マイグレーションが 1 度だけ適用され、もう一度走ってもスキーマと行が変わらないこと、どのテーブルでも UPDATE で `updated_at` が進み、手で書いた `updated_at`・`search_text` は置き換わること、制約が不正な行を拒むこと、1 文でも失敗したトランザクションは何もコミットしないこと、`rl_norm()` の無いクライアントでも全テーブルとビューを読めること、使えない・食い違う置き場所はエラーになり SQLite に切り替わらないこと。`run-postgres.sh` は同じ行を Postgres で回し、psycopg が要る行（接続 URL のパスワードがエラーに出ないこと）と、コネクタの経路（マイグレーションのファイルだけを `psql` で 2 回流し、RLS が有効で、ビューが Supabase の API ロールから閉じていること）も確かめる。

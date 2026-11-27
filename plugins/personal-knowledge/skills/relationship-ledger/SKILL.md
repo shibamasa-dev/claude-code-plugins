@@ -23,7 +23,7 @@ Claude writes the SQL. The schema enforces the rules that must hold on every wri
 
 Saved settings: route = `${user_config.ledger_route}`, connector = `${user_config.ledger_connector_id}`, project = `${user_config.ledger_connector_project_id}`. A value that still reads as a `${user_config...}` placeholder counts as empty.
 
-- **`sqlite`** or **`postgres`**: this plugin's MCP server, the tools `execute_sql` and `apply_migrations` of the server `ledger` (`mcp__plugin_personal-knowledge_ledger__execute_sql`), against the SQLite file or `ledger_database_url`. The server checks the saved store against the settings: with `postgres` and no `ledger_database_url` (or `sqlite` with one) every call fails, and that error means stop and tell the user.
+- **`sqlite`** or **`postgres`**: this plugin's MCP server, the tools `execute_sql`, `execute_transaction` and `apply_migrations` of the server `ledger` (`mcp__plugin_personal-knowledge_ledger__execute_sql` and so on), against the SQLite file or `ledger_database_url`. The server checks the saved store against the settings: with `postgres` and no `ledger_database_url`, `sqlite` with one, or `sqlite` whose file is gone, every call fails, and that error means stop and tell the user.
 - **`connector`**: the saved connector's SQL tool (for Supabase, `execute_sql` with `project_id` = the saved project). Before the first query in a session, bring the schema up to date (section 2).
 - **Empty**: decide once, then save.
   1. If the user said the ledger should live in a database they reach through a claude.ai connector, or this plugin's MCP tools aren't available here, look for a connector **by what it can do, not by its name** (the server part of a tool name differs per user): a tool that runs a SQL string against Postgres, and one that applies a migration. Supabase's are `execute_sql(project_id, query)` and `apply_migration(project_id, name, query)`. Ask which connector and project to use if there is more than one, then save `ledger_route=connector`, `ledger_connector_id` (the `<server>` in `mcp__<server>__<tool>`) and `ledger_connector_project_id`.
@@ -44,7 +44,8 @@ If a call fails because **the connection dropped while the statement ran**, the 
 
 ## 3. Writing SQL
 
-- One statement per call. Write SQL that runs on both SQLite and Postgres: `||` and `coalesce`, `INSERT ... ON CONFLICT ... DO UPDATE`, timestamps as text.
+- `execute_sql` runs one statement. Writes that belong together (a business card, a person with their accounts) go in **one transaction**: on `sqlite` / `postgres`, one `execute_transaction` call with the statements as a list (all are committed, or none when one fails, and the error says which; no `BEGIN` / `COMMIT` inside); on `connector`, one SQL string with the statements separated by `;`, which Postgres runs as one transaction. If the connector's tool refuses several statements in one string, run them one per call and, after a failure, `SELECT` what is there before going on.
+- Write SQL that runs on both SQLite and Postgres: `||` and `coalesce`, `INSERT ... ON CONFLICT ... DO UPDATE`, timestamps as text.
 - Embed every value as a string literal and double every `'`. No bind parameters: a connector takes only a SQL string. Names, notes and posts are user or third-party text, so quote them, never paste them into SQL unquoted.
 - `person_key` is the person's identity: a lower-case slug such as `taro-example`, with no spaces and no leading `@`. Pick it once and never change it (a trigger rejects a change). From a handle, drop the `@` and lower-case it.
 - A handle is stored without the leading `@`. From a profile URL with no handle given, take the last path segment (`https://github.com/example-taro/` → `example-taro`). Platforms are lower case: `x`, `slack`, `github`, `linkedin`, `discord`, or another name.
@@ -135,14 +136,14 @@ When the user shares a card's text or photo, or says they got cards at an event:
 1. Take only what is visible on the card and what the user tells you: name, company, department, title, email, phone, address, website, SNS, and the event, place, date, conversation and follow-up.
 2. Search for duplicates by name, handle, company and existing notes (section 4) before creating anyone.
 3. Confirm with the user before writing, with choices where the session has them (for example Register / Fix / Skip per card; one batch confirmation for many cards). Don't open with an open-ended question.
-4. Write the confirmed card as these statements, in this order:
+4. Write the confirmed card as one transaction (section 3) of these statements, in this order:
    1. the person upsert (section 5), with `relationship` such as `'Example Meetup #2 card exchange / Example Corp'` (or `'Card exchange'` with no event), `summary` = title / department / company, and `source = 'user-provided business card'`. Leave `status` out unless the user gave one;
    2. one account upsert per SNS handle or profile URL on the card;
    3. one `meeting` note (section 6; with nothing known, `'Met via business card exchange.'`), with `occurred_at` = the date met;
    4. one `context` note with the card's contact fields: `'Business card fields: company: Example Corp; title: Business development; email: taro@example.com'`;
    5. one `task` note when there is a follow-up: `'Follow-up: send the slides'`.
 
-   Each statement commits on its own. If one fails, fix it and continue from that statement. Before running a note `INSERT` again, `SELECT` the person's notes: a note that is already there must not be added twice.
+   If the transaction fails, nothing was written: fix the statement the error names and send the whole transaction again. If the connection dropped, `SELECT` the person and their notes before sending it again, so nothing is added twice.
 5. Don't keep the card image. Store a reference to it only when the user asks for an archive.
 6. Don't over-read the card: no inferring sensitive attributes from a name, photo, address or organization.
 

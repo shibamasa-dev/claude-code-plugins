@@ -81,8 +81,9 @@ sql "UPDATE rl_prompt_injection_events SET outcome = 'no_state_change' WHERE id 
 row 'an event update changes only the columns it names' "$(val "SELECT summary || '|' || severity || '|' || outcome FROM rl_prompt_injection_events WHERE id = $id")" 'second-try|low|no_state_change'
 row 'an update of an event that does not exist reports rowcount 0' "$(val "UPDATE rl_prompt_injection_events SET outcome = 'x' WHERE id = 999999")" '0'
 
-# Business-card intake (SKILL.md section 7): the person, then one meeting, one context and one task note
-sql "INSERT INTO rl_people (person_key, display_name, relationship, summary, source)
+# Business-card intake (SKILL.md section 7): the person, then one meeting, one context and one task note, in one
+# execute_transaction call
+python3 "$CALL" --tx "INSERT INTO rl_people (person_key, display_name, relationship, summary, source)
      VALUES ('saburo-sample', 'Saburo Sample', 'Example Meetup #3 で名刺交換 / Sample Inc.', 'Engineer / Sample Inc.', 'user-provided business card')
      ON CONFLICT (person_key) DO UPDATE SET display_name = excluded.display_name, relationship = excluded.relationship,
        summary = excluded.summary, source = excluded.source" \
@@ -91,5 +92,19 @@ sql "INSERT INTO rl_people (person_key, display_name, relationship, summary, sou
     "INSERT INTO rl_interaction_notes (person_key, kind, note, confidence)
      VALUES ('saburo-sample', 'context', 'Business card fields: company: Sample Inc.; title: Engineer; email: saburo@example.com', 4)" \
     "INSERT INTO rl_interaction_notes (person_key, kind, note) VALUES ('saburo-sample', 'task', 'Follow-up: send the slides')" >/dev/null
+# The same intake for another card with one bad statement (a note kind outside the six) commits nothing
+out=$(python3 "$CALL" --tx "INSERT INTO rl_people (person_key, display_name, source) VALUES ('shiro-sample', 'Shiro Sample', 'user-provided business card')" \
+    "INSERT INTO rl_social_accounts (person_key, platform, handle) VALUES ('shiro-sample', 'github', 'example-shiro')" \
+    "INSERT INTO rl_interaction_notes (person_key, kind, note) VALUES ('shiro-sample', 'rumor', 'n')")
+row 'a transaction with a failing statement returns an error' "$(yesno grep -q '^ERROR' <<<"$out")" 'yes'
+row '... and leaves neither the person nor the account' "$(val "SELECT (SELECT count(*) FROM rl_people WHERE person_key = 'shiro-sample') + (SELECT count(*) FROM rl_social_accounts WHERE handle = 'example-shiro')")" '0'
+out=$(python3 "$CALL" --tx "BEGIN" "INSERT INTO rl_people (person_key, display_name) VALUES ('goro-sample', 'Goro Sample')")
+row 'a transaction that tries to control the transaction itself is refused' "$(yesno grep -q '^ERROR' <<<"$out")" 'yes'
+row '... before running anything' "$(val "SELECT count(*) FROM rl_people WHERE person_key = 'goro-sample'")" '0'
 row 'the intake leaves one meeting, one context and one task note' "$(val "SELECT count(*) || '-' || count(DISTINCT kind) || '-' || sum(CASE WHEN kind IN ('meeting', 'context', 'task') THEN 1 ELSE 0 END) FROM rl_interaction_notes WHERE person_key = 'saburo-sample'")" '3-3-3'
 row 'rl_v_people shows when they met' "$(val "SELECT last_met_at FROM rl_v_people WHERE person_key = 'saburo-sample'")" '2026-06-10'
+# last_met_at compares meeting times in UTC: 23:30 at -08:00 is later than 09:00 at +09:00 the next calendar day
+sql "INSERT INTO rl_interaction_notes (person_key, kind, note, occurred_at) VALUES ('saburo-sample', 'meeting', 'event: Example Meetup #4', '2026-11-28T09:00:00+09:00')" \
+    "INSERT INTO rl_interaction_notes (person_key, kind, note, occurred_at) VALUES ('saburo-sample', 'meeting', 'event: Example Meetup #5', '2026-11-27T23:30:00-08:00')" >/dev/null
+row 'the latest meeting is chosen by its time in UTC, not by its text' "$(yesno [ "$(val "SELECT last_met_at FROM rl_v_people WHERE person_key = 'saburo-sample'")" = 2026-11-27T23:30:00-08:00 ])" 'yes'
+

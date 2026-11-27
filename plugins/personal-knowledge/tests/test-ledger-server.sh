@@ -4,7 +4,7 @@ set -u
 . "$(dirname "$0")/ledger_lib.sh"
 
 fresh_db
-row 'tools/list offers exactly execute_sql and apply_migrations' "$(yesno [ "$(python3 "$CALL" --list)" = execute_sql,apply_migrations ])" 'yes'
+row 'tools/list offers exactly execute_sql, execute_transaction and apply_migrations' "$(yesno [ "$(python3 "$CALL" --list)" = execute_sql,execute_transaction,apply_migrations ])" 'yes'
 out=$(LEDGER_ROUTE=connector sql "SELECT 1")
 row 'with ledger_route=connector every call is refused and points at the connector' "$(yesno grep -q "^ERROR: .*ledger_route is 'connector'" <<<"$out")" 'yes'
 
@@ -49,12 +49,25 @@ row 'ledger_route=postgres without ledger_database_url is an error, not SQLite' 
 row '... and it creates no SQLite file' "$(find "$CLAUDE_PLUGIN_DATA" -type f | wc -l | tr -d ' ')" '0'
 out=$(LEDGER_ROUTE=sqlite LEDGER_DATABASE_URL='postgresql://127.0.0.1:1/none' sql "SELECT 1")
 row 'ledger_route=sqlite with a ledger_database_url is an error until the two agree' "$(yesno grep -q "^ERROR: .*ledger_route is 'sqlite' but ledger_database_url is set" <<<"$out")" 'yes'
+# A saved sqlite route whose file is gone stops instead of creating a new, empty ledger
+gone=$(mktemp -d "${TMPDIR:-/tmp}/ledger-gone.XXXXXX")
+out=$(LEDGER_ROUTE=sqlite LEDGER_SQLITE_PATH="$gone/ledger.sqlite3" sql "SELECT 1")
+row 'ledger_route=sqlite with the ledger file missing is an error' "$(yesno grep -q '^ERROR' <<<"$out")" 'yes'
+row '... and creates no new ledger' "$(find "$gone" -type f | wc -l | tr -d ' ')" '0'
+LEDGER_SQLITE_PATH="$gone/ledger.sqlite3" sql "SELECT 1" >/dev/null   # first use with no route saved creates it
+out=$(LEDGER_ROUTE=sqlite LEDGER_SQLITE_PATH="$gone/ledger.sqlite3" sql "SELECT count(*) FROM rl_people")
+row 'ledger_route=sqlite opens the ledger once it exists' "$(yesno grep -q '"rows"' <<<"$out")" 'yes'
+rm -rf "$gone"
 out=$(LEDGER_ROUTE=direct sql "SELECT 1")
 row 'a ledger_route that names no store is an error' "$(yesno grep -q "^ERROR: .*ledger_route is 'direct'" <<<"$out")" 'yes'
 # ATTACH would create a database file at any path; the server refuses it
 attach_to=$(mktemp -d "${TMPDIR:-/tmp}/ledger-attach.XXXXXX")
 out=$(sql "ATTACH DATABASE '$attach_to/elsewhere.db' AS other")
 row 'ATTACH DATABASE is refused' "$(yesno grep -q '^ERROR' <<<"$out")" 'yes'
+row '... and creates no file' "$(find "$attach_to" -type f | wc -l | tr -d ' ')" '0'
+# VACUUM INTO writes a copy through the same ATTACH step, so the same refusal covers it
+out=$(sql "VACUUM INTO '$attach_to/copy.db'")
+row 'VACUUM INTO is refused' "$(yesno grep -q '^ERROR' <<<"$out")" 'yes'
 row '... and creates no file' "$(find "$attach_to" -type f | wc -l | tr -d ' ')" '0'
 rm -rf "$attach_to"
 # An option the user never set may reach the server as the literal placeholder

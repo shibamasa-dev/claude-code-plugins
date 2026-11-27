@@ -5,7 +5,8 @@
 # ///
 """stdio MCP server for the personal-knowledge plugin's relationship ledger.
 
-Its whole job: run SQL, apply the schema migrations, and provide rl_norm(text) on SQLite.
+Its whole job: run SQL (one statement, or several in one transaction), apply the schema migrations, and provide
+rl_norm(text) on SQLite.
 Claude writes the SQL; the rules that must hold on every write live in the schema (migrations/).
 
 Where the data lives comes from the environment, which .mcp.json fills from userConfig:
@@ -39,6 +40,7 @@ SERVER_NAME = "relationship-ledger"
 SERVER_VERSION = "0.1.0"
 MIGRATIONS = Path(__file__).resolve().parent.parent / "migrations"
 MAX_ROWS = 500
+MAX_TX_STATEMENTS = 50
 CONNECT_TIMEOUT_S = 10
 PSYCOPG = "psycopg[binary]>=3.1"
 ROUTES = ("sqlite", "postgres", "connector")
@@ -58,6 +60,30 @@ TOOLS = [
             "type": "object",
             "properties": {"query": {"type": "string", "description": "One SQL statement"}},
             "required": ["query"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "execute_transaction",
+        "description": (
+            "Run several SQL statements against the relationship ledger in one transaction: all of them are committed, "
+            "or none when any one fails (the error says which). Use it for writes that belong together, such as a "
+            "business-card intake (the person, their accounts and notes). Returns one result per statement, in order. "
+            "The same SQL rules as execute_sql; no BEGIN, COMMIT, ROLLBACK or SAVEPOINT inside. "
+            f"At most {MAX_TX_STATEMENTS} statements."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "statements": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "minItems": 1,
+                    "maxItems": MAX_TX_STATEMENTS,
+                    "description": "The statements, one SQL statement per item, run in this order",
+                }
+            },
+            "required": ["statements"],
             "additionalProperties": False,
         },
     },
@@ -104,6 +130,19 @@ class SQLite:
     def query(self, sql: str):
         cur = self.conn.execute(sql)
         return cur.description, cur
+
+    def run_all(self, statements: list, on_result) -> None:
+        """Run the statements in one transaction; any error rolls all of them back."""
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            for i, sql in enumerate(statements):
+                cur = self.conn.execute(sql)
+                on_result(i, cur.description, cur)
+            self.conn.execute("COMMIT")
+        except BaseException:
+            if self.conn.in_transaction:
+                self.conn.execute("ROLLBACK")
+            raise
 
     def run_script(self, sql: str):
         # One transaction per migration file, which is why the files must not contain BEGIN or COMMIT
@@ -159,6 +198,29 @@ class Postgres:
             ) from e
         return cur.description, cur
 
+    def run_all(self, statements: list, on_result) -> None:
+        """Run the statements in one transaction; any error rolls all of them back. If the connection drops,
+        the transaction was not committed unless the drop came during COMMIT itself, so the caller is told to check."""
+        if self.lost():
+            self.conn = self.connect()
+        try:
+            with self.conn.transaction():
+                for i, sql in enumerate(statements):
+                    cur = self.conn.execute(sql)
+                    on_result(i, cur.description, cur)
+        except self.psycopg.OperationalError as e:
+            if not self.lost():
+                raise
+            try:
+                self.conn = self.connect()
+            except self.psycopg.OperationalError:
+                pass  # the next call tries again
+            raise ConnectionError(
+                "the database connection dropped during this transaction. It was rolled back unless the drop came "
+                "while it committed, so check the current state with a SELECT before running it again. "
+                f"({type(e).__name__}: {e})"
+            ) from e
+
     def run_script(self, sql: str):
         # One transaction per migration file, which is why the files must not contain BEGIN or COMMIT
         if self.lost():
@@ -200,6 +262,12 @@ def open_backend():
         path = Path(data) / "relationship-ledger" / "ledger.sqlite3"
     else:
         raise RuntimeError("no database: set ledger_sqlite_path or ledger_database_url (CLAUDE_PLUGIN_DATA is not set either)")
+    if route == "sqlite" and not path.is_file():
+        # The ledger was created when the route was saved. A missing file means it moved or was deleted, and a new
+        # empty one here would quietly start a second ledger
+        raise RuntimeError(f"ledger_route is 'sqlite' but the ledger file {path} does not exist. Stop and tell the user: "
+                           "it may have moved (set ledger_sqlite_path to where it is now). Only if they want a new, "
+                           "empty ledger, clear ledger_route and start again.")
     return SQLite(path)
 
 
@@ -248,12 +316,7 @@ def jsonable(v):
     return str(v)  # Decimal, datetime and the like
 
 
-def tool_execute_sql(args: dict) -> dict:
-    sql = args.get("query")
-    if not isinstance(sql, str) or not sql.strip():
-        raise ValueError("query must be a non-empty SQL string")
-    db = get_db()
-    desc, cur = db.query(sql)
+def result_of(desc, cur) -> dict:
     if not desc:
         return {"rowcount": cur.rowcount}
     rows = cur.fetchmany(MAX_ROWS + 1)
@@ -264,6 +327,37 @@ def tool_execute_sql(args: dict) -> dict:
     if len(rows) > MAX_ROWS:
         out["truncated"] = True
     return out
+
+
+def tool_execute_sql(args: dict) -> dict:
+    sql = args.get("query")
+    if not isinstance(sql, str) or not sql.strip():
+        raise ValueError("query must be a non-empty SQL string")
+    db = get_db()
+    return result_of(*db.query(sql))
+
+
+TX_CONTROL = re.compile(r"^\s*(BEGIN|COMMIT|END|ROLLBACK|SAVEPOINT|RELEASE|START)\b", re.IGNORECASE)
+
+
+def tool_execute_transaction(args: dict) -> dict:
+    statements = args.get("statements")
+    if (not isinstance(statements, list) or not statements or len(statements) > MAX_TX_STATEMENTS
+            or not all(isinstance(s, str) and s.strip() for s in statements)):
+        raise ValueError(f"statements must be a list of 1 to {MAX_TX_STATEMENTS} non-empty SQL strings")
+    for i, sql in enumerate(statements, start=1):
+        if TX_CONTROL.match(sql):
+            raise ValueError(f"statement {i} controls the transaction itself; leave BEGIN, COMMIT and the like out")
+    db = get_db()
+    results = []
+    try:
+        db.run_all(statements, lambda i, desc, cur: results.append(result_of(desc, cur)))
+    except ConnectionError:
+        raise
+    except Exception as e:
+        raise RuntimeError(f"statement {len(results) + 1} of {len(statements)} failed, so nothing was committed: "
+                           f"{type(e).__name__}: {e}") from e
+    return {"committed": True, "results": results}
 
 
 def tool_apply_migrations(_args: dict) -> dict:
@@ -301,7 +395,8 @@ def redact(text: str) -> str:
     return text
 
 
-HANDLERS = {"execute_sql": tool_execute_sql, "apply_migrations": tool_apply_migrations}
+HANDLERS = {"execute_sql": tool_execute_sql, "execute_transaction": tool_execute_transaction,
+            "apply_migrations": tool_apply_migrations}
 
 
 def handle(msg: dict):

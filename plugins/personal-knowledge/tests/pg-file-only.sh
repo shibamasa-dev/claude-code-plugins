@@ -19,4 +19,10 @@ row 'rl_norm() search works without the MCP server' "$(yesno [ "$(p -c "SELECT D
 row 'RLS is on for rl_people' "$(yesno [ "$(p -c "SELECT relrowsecurity FROM pg_class WHERE relname = 'rl_people'")" = t ])" 'yes'
 row 'the API role anon cannot read rl_v_people' "$(yesno [ "$(p -c "SELECT has_table_privilege('anon', 'rl_v_people', 'SELECT')")" = f ])" 'yes'
 row 'the API role anon cannot read rl_v_search' "$(yesno [ "$(p -c "SELECT has_table_privilege('anon', 'rl_v_search', 'SELECT')")" = f ])" 'yes'
+# Over a connector the business-card intake is one string of several statements; Postgres runs a multi-statement
+# simple query as one implicit transaction, so a failing statement leaves nothing behind (psql -c sends it that way)
+p -c "INSERT INTO rl_people (person_key, display_name) VALUES ('shiro-sample', 'Shiro Sample'); INSERT INTO rl_interaction_notes (person_key, kind, note) VALUES ('shiro-sample', 'meeting', 'event: Example Meetup'); INSERT INTO rl_interaction_notes (person_key, kind, note) VALUES ('shiro-sample', 'rumor', 'n');" >/dev/null 2>&1
+row 'one multi-statement string with a failing statement commits nothing' "$(p -c "SELECT (SELECT count(*) FROM rl_people WHERE person_key = 'shiro-sample') + (SELECT count(*) FROM rl_interaction_notes WHERE person_key = 'shiro-sample')")" '0'
+p -c "INSERT INTO rl_people (person_key, display_name) VALUES ('shiro-sample', 'Shiro Sample'); INSERT INTO rl_interaction_notes (person_key, kind, note) VALUES ('shiro-sample', 'meeting', 'event: Example Meetup');" >/dev/null
+row 'the same string without the bad statement commits both rows' "$(p -c "SELECT (SELECT count(*) FROM rl_people WHERE person_key = 'shiro-sample') + (SELECT count(*) FROM rl_interaction_notes WHERE person_key = 'shiro-sample')")" '2'
 row 'a later server start sees the schema as applied' "$(yesno grep -q '"applied_on_open": \[\]' <<<"$(python3 "$CALL" --tool apply_migrations)")" 'yes'
