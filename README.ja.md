@@ -38,7 +38,7 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 | [guards](plugins/guards/README.ja.md) | 作業を止めるフック。破壊的な削除・未マージ worktree の削除・古い既定ブランチからの push。リポ構成のルール（ルールファイルを置いたときだけ）。マージの後のローカルのマージ先ブランチの追従。`--json` なしの `gh issue view --comments`（gh-comments-guard）と `pip freeze`（pip-freeze-guard）も止める。`publish_patterns` を設定すると、`gh` コマンドと GitHub コネクタ経由で公開リポへ出す issue / PR の文面が、自分で登録した非公開値のパターンに当たらないかも調べる（publish-guard。見えない範囲は guards の README に書いてある） |
 | [workflow](plugins/workflow/README.ja.md) | 依頼からマージまでの開発フロー（PR のレビューの振り分けと待ち方を含む）・issue 運用・セッションの引き継ぎ・runbook 記録などのスキルとフック、使用枠をファイルへ書き出す mod |
 | [testing](plugins/testing/README.ja.md) | テストを設計して回す。Gherkin のテストケース作成・成果物の検証・全体テストのゲート |
-| [repo-setup](plugins/repo-setup/README.ja.md) | リポの立ち上げ。基本設定の点検・クラウド環境のセットアップ・プロジェクト専用の実アプリ検証スキルの作成（`verification-skill-builder`） |
+| [repo-setup](plugins/repo-setup/README.ja.md) | リポの立ち上げ。基本設定の点検・クラウド環境のセットアップ・プロジェクト専用の実アプリ検証スキルの作成（`verification-skill-builder`）・Python の venv の置き場と掃除（`python-venv`） |
 | [creative](plugins/creative/README.ja.md) | 画像生成プロンプト（画像の履歴を SQLite か Postgres に残す）と、コードで描くモーション動画のスキル |
 | [diagram](plugins/diagram/README.ja.md) | 図をコードで描くスキル。`one-page-diagram` は全体像や概念の一枚図を SVG で描き、要素の種別が混ざらないようにする。`typed-diagram` はフロー図・シーケンス図・状態遷移図・ER 図・C4 を Mermaid で、提案書や客先向けの資料には SVG で描く。どちらも1枚の図の上で論点を順に示せる。どちらも、描いた図を表示して確かめてから渡す。確かめられなかったときはそう伝える |
 | [lint](plugins/lint/README.ja.md) | スキルを作るための道具群。skill-planner（作る前の計画）と skill-lint（スキルに作った人・会社・マシンの固有情報が混ざっていないかを調べ、配布してよいかを報告する）。DESIGN.md を編集したら lint するフックも |
