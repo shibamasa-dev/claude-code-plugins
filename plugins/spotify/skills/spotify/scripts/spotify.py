@@ -544,8 +544,8 @@ def cmd_auth(a):
             raise
         st.create(a.client_id)
         vals = {"client_id": a.client_id}
-    if a.client_id and vals.get("client_id") != a.client_id:
-        st.save({"client_id": a.client_id})
+    if a.client_id:
+        # A changed client ID is saved only together with the tokens it earns, so a failed run keeps the old pair
         vals["client_id"] = a.client_id
     if not vals.get("client_id"):
         raise CliError("no client_id. Pass it with `spotify.py auth --client-id <Client ID>`", code=2)
@@ -602,7 +602,7 @@ def cmd_auth(a):
         raise CliError("authorization was not granted: %s" % got["error"], code=2)
     tok = token_request({"grant_type": "authorization_code", "code": got["code"], "redirect_uri": redirect,
                          "client_id": vals["client_id"], "code_verifier": verifier})
-    st.save({"refresh_token": tok["refresh_token"], "access_token": tok["access_token"],
+    st.save({"client_id": vals["client_id"], "refresh_token": tok["refresh_token"], "access_token": tok["access_token"],
              "expires_at": str(int(time.time() + int(tok.get("expires_in", 3600))))})
     out({"ok": True, "scope": tok.get("scope", "").split()})
 

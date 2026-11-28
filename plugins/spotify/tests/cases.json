@@ -1245,6 +1245,79 @@
       "expect_token_file": {
         "refresh_token": "keep-refresh"
       }
+    },
+    {
+      "id": "auth-keeps-old-client-id-until-success",
+      "description": "auth --client-id with a different ID on an authorized store keeps the old client ID and tokens when the authorization fails (wrong state), and saves the new ID together with the new tokens when it succeeds",
+      "token_file": {
+        "client_id": "0123456789abcdef0123456789abcdef",
+        "refresh_token": "old-refresh",
+        "access_token": "old-access",
+        "expires_at": "4102444800"
+      },
+      "routes": {
+        "POST /api/token": [
+          {
+            "status": 200,
+            "json": {
+              "access_token": "switched-access",
+              "token_type": "Bearer",
+              "expires_in": 3600,
+              "refresh_token": "switched-refresh"
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "auth_callback": "wrong",
+          "run": [
+            "--client-id",
+            "fedcba9876543210fedcba9876543210",
+            "--port",
+            "18766"
+          ],
+          "expect_code": 2,
+          "expect_stderr_contains": [
+            "state"
+          ]
+        },
+        {
+          "check_token_file": {
+            "client_id": "0123456789abcdef0123456789abcdef",
+            "refresh_token": "old-refresh"
+          }
+        },
+        {
+          "auth_callback": "ok",
+          "run": [
+            "--client-id",
+            "fedcba9876543210fedcba9876543210",
+            "--port",
+            "18766"
+          ],
+          "expect_code": 0
+        }
+      ],
+      "expect_requests": [
+        {
+          "method": "POST",
+          "path": "/api/token",
+          "form": {
+            "grant_type": "authorization_code",
+            "client_id": "fedcba9876543210fedcba9876543210"
+          }
+        }
+      ],
+      "expect_token_file": {
+        "client_id": "fedcba9876543210fedcba9876543210",
+        "refresh_token": "switched-refresh",
+        "access_token": "switched-access"
+      },
+      "expect_token_mode": {
+        "file": "600",
+        "dir": "700"
+      }
     }
   ]
 }

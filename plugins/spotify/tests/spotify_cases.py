@@ -233,6 +233,12 @@ def run_case(mock, case, root):
             with open(tf, "w") as f:
                 json.dump(d, f)
             continue
+        if "check_token_file" in step:
+            with open(tf) as f:
+                d = json.load(f)
+            if not subset(step["check_token_file"], d):
+                fails.append("step %d: stored values changed too early: client_id=%s" % (n, d.get("client_id")))
+            continue
         env = dict(base, **(step.get("env") or {}))
         if step.get("plugin_data"):
             env["CLAUDE_PLUGIN_DATA"] = os.path.join(root, step["plugin_data"])
