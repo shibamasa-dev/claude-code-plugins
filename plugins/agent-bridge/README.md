@@ -55,6 +55,7 @@ The bundled MCP server (`bridge`): `send_message`, `check_inbox`, `mark_read`, `
 | Hook | When | What it does |
 |---|---|---|
 | `arm_session.py` | `PostToolUse` on the bridge's tools | Marks the session as one that talks to agents, so only such sessions listen |
+| `token_check.py` | `SessionStart` | When `bridge_url` is set but the token did not reach the session (secure storage may have been unreadable at start), shows one warning line: run `/reload-plugins` or restart, and re-enter the token only if that does not help. The bridge tools answer `token_missing` in the same case. Never shows the token or its length |
 | `wait_inbox.py` | `SessionStart` and `Stop`, in the background (`asyncRewake`) | With `listen` on, in a marked session: polls the bridge's status every `poll_seconds`. When a message is unread and either its id is newer than any this machine has seen for this bridge or the unread count went up, it wakes Claude with a count only (never the body). It records the id and count first, so one message wakes one session once. Stops `max_wait_minutes` after the session's last turn (a new turn extends a poller that is still running) or when its session's process is gone, and the next turn starts it again |
 | `unread_notice.py` | `UserPromptSubmit` | When messages are unread, adds their count to your prompt's context. Silent when there are none or the bridge doesn't answer within 2 seconds |
 

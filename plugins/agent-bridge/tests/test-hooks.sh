@@ -13,6 +13,13 @@ input() { printf '{"session_id":"%s","hook_event_name":"Stop"}' "$1"; }
 # wait_status SESSION: run the poller (short interval and deadline); print its exit code
 wait_status() { input "$1" | python3 "$WAIT" 2>"$CLAUDE_PLUGIN_DATA/stderr"; echo $?; }
 
+# token_check.py needs no bridge: it compares the two options only
+CHECK="$PLUGIN/hooks/token_check.py"
+out=$(echo '{}' | CLAUDE_PLUGIN_OPTION_BRIDGE_URL=https://bridge.example.test/x CLAUDE_PLUGIN_OPTION_TOKEN= python3 "$CHECK")
+row 'with bridge_url but no token SessionStart shows one warning line that suggests /reload-plugins' "$(yesno [ "$(wc -l <<<"$out" | tr -d ' ')/$(jget "$out" '"/reload-plugins" in d["systemMessage"]')" = 1/True ])" yes
+row 'with bridge_url and a token SessionStart prints nothing' "$(yesno [ -z "$(echo '{}' | CLAUDE_PLUGIN_OPTION_BRIDGE_URL=https://bridge.example.test/x CLAUDE_PLUGIN_OPTION_TOKEN="$FAKE_CLAUDE" python3 "$CHECK")" ])" yes
+row 'without bridge_url SessionStart prints nothing' "$(yesno [ -z "$(echo '{}' | CLAUDE_PLUGIN_OPTION_BRIDGE_URL= CLAUDE_PLUGIN_OPTION_TOKEN= python3 "$CHECK")" ])" yes
+
 start_fake
 export CLAUDE_PLUGIN_OPTION_BRIDGE_URL="$BRIDGE_URL" CLAUDE_PLUGIN_OPTION_AGENT_ID=claude
 export CLAUDE_PLUGIN_OPTION_POLL_SECONDS=15 CLAUDE_PLUGIN_OPTION_MAX_WAIT_MINUTES=1

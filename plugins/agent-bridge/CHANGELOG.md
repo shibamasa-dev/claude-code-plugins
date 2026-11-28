@@ -2,6 +2,13 @@
 
 Changes to the agent-bridge plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the `version` in plugin.json.
 
+## [0.2.3] - 2026-11-28
+
+### Changed
+- The bridge tools tell a missing token apart from a bridge that is not set up. With `bridge_url` set and the token empty (it did not reach the MCP server, for example because secure storage was unreadable when the server started), they answer `token_missing` and suggest `/reload-plugins` or a restart, re-entering the token only if that does not help, instead of pointing at the setup skill. With `bridge_url` empty the `not configured` error is unchanged
+- New synchronous `SessionStart` hook `token_check.py`: in the same case it shows one warning line with the same advice when the session starts. It never prints the token or its length
+- `talk` skill: on `token_missing`, follow the error's advice instead of running `setup`
+
 ## [0.2.2] - 2026-11-22
 
 ### Changed
