@@ -19,21 +19,28 @@
     "token_store": {
       "type": "string",
       "title": "Where to keep the Spotify tokens",
-      "description": "file (default) keeps the client ID and tokens in one JSON file with mode 0600 at <plugin data>/spotify/token.json. 1password keeps them in one 1Password item through the op CLI",
+      "description": "file (default) keeps the client ID and tokens in one JSON file with mode 0600 at <plugin data>/spotify/token.json. 1password keeps them in one 1Password item through the op CLI and a service account (needs op_vault and op_token_env), so no command waits for Touch ID or a password",
       "required": false,
       "default": "file"
     },
     "op_item": {
       "type": "string",
       "title": "1Password item title",
-      "description": "Title of the 1Password item that holds the client ID and tokens (only with token_store = 1password). The first auth creates it. No single quotes: the skills pass it inside single quotes",
+      "description": "Title or ID of the 1Password item that holds the client ID and tokens (only with token_store = 1password). The first auth creates it and prints its ID; an ID saves requests. No single quotes: the skills pass it inside single quotes",
       "required": false,
       "default": "Spotify Web API"
     },
     "op_vault": {
       "type": "string",
       "title": "1Password vault",
-      "description": "Vault of that item (only with token_store = 1password). Empty means every vault when reading and op's default vault when creating. No single quotes",
+      "description": "Name or ID of the vault for that item (required with token_store = 1password): a vault of its own that the service account can read and write. No single quotes",
+      "required": false,
+      "default": ""
+    },
+    "op_token_env": {
+      "type": "string",
+      "title": "Variable holding the 1Password service account token",
+      "description": "NAME of an environment variable (for example SPOTIFY_OP_SA_TOKEN) that holds the service account token, set in the environment Claude Code starts with (required with token_store = 1password). Put the name here, never the token. The script passes its value only to op",
       "required": false,
       "default": ""
     },

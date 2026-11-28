@@ -28,12 +28,19 @@ Development Mode limits:
 
 ## 3. Authorize in the browser
 
-Only with token store `1password`: first ask the user to unlock 1Password and turn on its CLI integration (Settings → Developer → "Integrate with 1Password CLI"). The script creates the item (title from the `op_item` option, vault from `op_vault`, or `op`'s default vault when that is empty); nobody creates it by hand. If items with the same title exist in several vaults, set `op_vault`.
+Only with token store `1password`, before running `auth` (the user does these in 1Password; the script only ever uses a service account, so no command waits for Touch ID or a password):
+
+1. Create a vault just for this, for example `Spotify`. A service account can't use the Personal (Private) vault, and vaults can't be added to it later, so the vault comes first.
+2. Create a service account (on 1Password.com: Developer → Service Accounts) with **read and write** access to that vault only. Write access is needed because Spotify may hand out a new refresh token on every refresh.
+3. Put the service account token in an environment variable of the user's choosing (for example `SPOTIFY_OP_SA_TOKEN`) in the environment Claude Code starts with, for example exported by the shell profile, then restart Claude Code. Never paste the token into the chat or into a plugin option.
+4. Set the plugin's options: `op_vault` to the vault, `op_token_env` to the variable's **name**, then `/reload-plugins`.
+
+`auth` creates the item (title from `op_item`) and prints `op_item_id`; setting `op_item` to that ID saves requests. Individual and Families accounts allow 1,000 service account requests a day in total. Every command calls `op` once to read the item, and one that refreshes the token (about once an hour) calls it again to write; how many requests one `op` call counts as is not documented here.
 
 Run this **outside Claude Code's Bash sandbox** (`dangerouslyDisableSandbox: true`): it opens the browser, listens on 127.0.0.1 for Spotify's callback, and writes the token store, all of which the sandbox may block. Give it a timeout of at least 310 seconds (it waits up to 300 for the callback), or run it in the background and read its output.
 
 ```bash
-CLAUDE_PLUGIN_DATA='${CLAUDE_PLUGIN_DATA}' SPOTIFY_TOKEN_STORE='${user_config.token_store}' SPOTIFY_OP_ITEM='${user_config.op_item}' SPOTIFY_OP_VAULT='${user_config.op_vault}' SPOTIFY_REDIRECT_PORT='${user_config.redirect_port}' python3 "${CLAUDE_PLUGIN_ROOT}/skills/spotify/scripts/spotify.py" auth --client-id <Client ID>
+CLAUDE_PLUGIN_DATA='${CLAUDE_PLUGIN_DATA}' SPOTIFY_TOKEN_STORE='${user_config.token_store}' SPOTIFY_OP_ITEM='${user_config.op_item}' SPOTIFY_OP_VAULT='${user_config.op_vault}' SPOTIFY_OP_TOKEN_ENV='${user_config.op_token_env}' SPOTIFY_REDIRECT_PORT='${user_config.redirect_port}' python3 "${CLAUDE_PLUGIN_ROOT}/skills/spotify/scripts/spotify.py" auth --client-id <Client ID>
 ```
 
 The browser opens Spotify's consent page; the user presses "Agree". If no browser opens, the script prints the URL on stderr: give it to the user to open. `{"ok": true, ...}` means the token store now holds the refresh token, and from then on the script renews the hour-long access token by itself.
@@ -43,8 +50,8 @@ To authorize again (the refresh token expired, the user revoked access, or the s
 ## 4. Confirm
 
 ```bash
-CLAUDE_PLUGIN_DATA='${CLAUDE_PLUGIN_DATA}' SPOTIFY_TOKEN_STORE='${user_config.token_store}' SPOTIFY_OP_ITEM='${user_config.op_item}' SPOTIFY_OP_VAULT='${user_config.op_vault}' SPOTIFY_REDIRECT_PORT='${user_config.redirect_port}' python3 "${CLAUDE_PLUGIN_ROOT}/skills/spotify/scripts/spotify.py" check
-CLAUDE_PLUGIN_DATA='${CLAUDE_PLUGIN_DATA}' SPOTIFY_TOKEN_STORE='${user_config.token_store}' SPOTIFY_OP_ITEM='${user_config.op_item}' SPOTIFY_OP_VAULT='${user_config.op_vault}' SPOTIFY_REDIRECT_PORT='${user_config.redirect_port}' python3 "${CLAUDE_PLUGIN_ROOT}/skills/spotify/scripts/spotify.py" devices
+CLAUDE_PLUGIN_DATA='${CLAUDE_PLUGIN_DATA}' SPOTIFY_TOKEN_STORE='${user_config.token_store}' SPOTIFY_OP_ITEM='${user_config.op_item}' SPOTIFY_OP_VAULT='${user_config.op_vault}' SPOTIFY_OP_TOKEN_ENV='${user_config.op_token_env}' SPOTIFY_REDIRECT_PORT='${user_config.redirect_port}' python3 "${CLAUDE_PLUGIN_ROOT}/skills/spotify/scripts/spotify.py" check
+CLAUDE_PLUGIN_DATA='${CLAUDE_PLUGIN_DATA}' SPOTIFY_TOKEN_STORE='${user_config.token_store}' SPOTIFY_OP_ITEM='${user_config.op_item}' SPOTIFY_OP_VAULT='${user_config.op_vault}' SPOTIFY_OP_TOKEN_ENV='${user_config.op_token_env}' SPOTIFY_REDIRECT_PORT='${user_config.redirect_port}' python3 "${CLAUDE_PLUGIN_ROOT}/skills/spotify/scripts/spotify.py" devices
 ```
 
 Setup is done when `check` shows a user ID and `devices` lists the device from step 1. Both only read; nothing in the account changes. Then the spotify skill takes over.
@@ -55,7 +62,9 @@ Setup is done when `check` shows a user ID and `devices` lists the device from s
 |---|---|
 | Exit 3 with `reason: store_not_writable` | The command ran inside the sandbox. Run it again outside |
 | Exit 3 with `reason: store_write_failed` | The new tokens were received but not saved. Run the command again outside the sandbox; if it then fails with `invalid_grant`, do step 3 again |
-| `op timed out` | 1Password is locked, or the command ran inside the sandbox |
+| `op timed out` | No network access to 1Password, for example inside the sandbox: run it outside |
+| Exit 3 with `reason: op_token_missing` | `op_token_env` is empty, or the variable it names is not set where Claude Code runs: set it and restart Claude Code |
+| Exit 2 with `reason: op_token_env_invalid` | `op_token_env` holds something other than a variable name, perhaps the token itself: put the name there and rotate the token if it was the token |
 | `invalid_grant` | 6 months passed since the authorization, or access was revoked: step 3 again, without `--client-id` |
 | Spotify's page says the redirect URI is invalid | The Redirect URI in the dashboard differs from `http://127.0.0.1:<redirect port>/callback` |
 | `Address already in use` | The redirect port is taken: change it in the dashboard and in `redirect_port` together |

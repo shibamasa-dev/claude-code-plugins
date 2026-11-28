@@ -30,9 +30,10 @@ The refresh token expires 6 months after you authorized, and refreshing the acce
 
 | Key | Default | Meaning |
 |---|---|---|
-| `token_store` | `file` | Where the client ID and tokens live. `file`: one JSON file, mode 0600, in a directory with mode 0700. `1password`: one 1Password item, read and written through the `op` CLI |
-| `op_item` | `Spotify Web API` | Title of the 1Password item (`1password` only). The first `auth` creates it. No single quotes (the skills pass it inside single quotes) |
-| `op_vault` | empty | Vault of that item (`1password` only). Empty means every vault when reading and `op`'s default vault when creating. No single quotes |
+| `token_store` | `file` | Where the client ID and tokens live. `file`: one JSON file, mode 0600, in a directory with mode 0700. `1password`: one 1Password item, read and written through the `op` CLI with a service account, so no command waits for Touch ID or a password |
+| `op_item` | `Spotify Web API` | Title or ID of the 1Password item (`1password` only). The first `auth` creates it and prints its ID; an ID saves requests. No single quotes (the skills pass it inside single quotes) |
+| `op_vault` | empty | Name or ID of the vault for that item. Required with `1password`: a vault of its own that the service account can read and write (a service account can't use the Personal vault). No single quotes |
+| `op_token_env` | empty | The **name** of the environment variable that holds the service account token, for example `SPOTIFY_OP_SA_TOKEN`. Required with `1password`. Set the variable in the environment Claude Code starts with; the script passes its value only to `op`, as `OP_SERVICE_ACCOUNT_TOKEN` |
 | `redirect_port` | `8888` | Port of the Redirect URI registered in your developer app. Change both together |
 
 Commands Claude runs through Bash get none of these on their own, so the skills pass them to the script as environment variables. A value that still reads as a `${user_config...}` placeholder counts as unset and takes the default.
@@ -62,7 +63,7 @@ Uninstalling the plugin from the last place it is installed deletes `${CLAUDE_PL
 - A Spotify account with Premium (the developer app owner)
 - Python 3.9 or later (standard library only)
 - A browser on the same machine for `auth`
-- The 1Password CLI (`op`) with the desktop app integration, only for the `1password` store
+- Only for the `1password` store: the 1Password CLI (`op`), a vault of its own and a service account with read and write access to it. Individual and Families accounts allow 1,000 service account requests a day across all service accounts. Every command calls `op` once to read the item, and one that refreshes the token (about once an hour) calls it again to write
 
 ## Tests
 
@@ -70,4 +71,4 @@ Uninstalling the plugin from the last place it is installed deletes `${CLAUDE_PL
 bash plugins/spotify/tests/run-all.sh
 ```
 
-Offline: each case runs the script against a mock Spotify on 127.0.0.1 with a temp plugin data directory, and `PATH` holds only a recording `op` stub and the system directories, so neither the real Spotify nor 1Password is reached. The cases cover playing and moving playback by device name, adding with duplicate skipping and 100-track chunks, refusing ambiguous or foreign playlists, Liked Songs since a time, refresh and write-back without printing tokens, player errors and 429 retries, `taste`, PKCE `auth` (wrong state refused, tokens saved, then `check` with the stored token), keeping the old client ID and tokens when switching to another app fails, `token.json` at mode 600 in a 700 directory under umask 022, the `1password` store calling `op` with the item JSON on stdin, unsubstituted `${user_config...}` values falling back to the `file` store, refusing a foreign or unsubstituted `CLAUDE_PLUGIN_DATA`, an unknown `token_store`, stopping before a refresh when the store can't be written, refusing a device without an ID, keeping `is_playing` during an ad, stopping on a long `Retry-After` instead of resending early, a malformed token response, and replacing a broken `token.json` with `auth --client-id`. The auth callback uses a free port per case.
+Offline: each case runs the script against a mock Spotify on 127.0.0.1 with a temp plugin data directory, and `PATH` holds only a recording `op` stub and the system directories, so neither the real Spotify nor 1Password is reached. The cases cover playing and moving playback by device name, adding with duplicate skipping and 100-track chunks, refusing ambiguous or foreign playlists, Liked Songs since a time, refresh and write-back without printing tokens, player errors and 429 retries, `taste`, PKCE `auth` (wrong state refused, tokens saved, then `check` with the stored token), keeping the old client ID and tokens when switching to another app fails, `token.json` at mode 600 in a 700 directory under umask 022, the `1password` store calling `op` with the service account token only in its env and the item JSON on stdin, refusing to call `op` without that token or a vault, unsubstituted `${user_config...}` values falling back to the `file` store, refusing a foreign or unsubstituted `CLAUDE_PLUGIN_DATA`, an unknown `token_store`, stopping before a refresh when the store can't be written, refusing a device without an ID, keeping `is_playing` during an ad, stopping on a long `Retry-After` instead of resending early, a malformed token response, and replacing a broken `token.json` with `auth --client-id`. The auth callback uses a free port per case.

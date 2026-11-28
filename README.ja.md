@@ -84,7 +84,7 @@ review の設定（`review_heavy`・`review_light`・`review_auto`・`rereview_t
 - `agent-bridge` は Supabase のプロジェクトと、セットアップ用の Supabase コネクタ（claude.ai のコネクタか MCP サーバー）
 - `print` は CUPS（`lp`）、poppler、HTML・Markdown・テキストを変換するなら Chrome。qpdf と pandoc は任意
 - `personal-knowledge` の `get-chrome-history` は Google Chrome か Chromium
-- `spotify` は Spotify Premium のアカウント（使う開発者アプリの持ち主として）。1Password CLI はトークンの置き場を `1password` にするときだけ
+- `spotify` は Spotify Premium のアカウント（使う開発者アプリの持ち主として）。1Password CLI とサービスアカウントはトークンの置き場を `1password` にするときだけ
 
 ## コントリビュート
 

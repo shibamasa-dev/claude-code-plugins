@@ -38,7 +38,7 @@ d = os.environ["OP_STUB_DIR"]
 args = sys.argv[1:]
 stdin = sys.stdin.read() if args[:2] == ["item", "edit"] else ""
 with open(os.path.join(d, "calls.jsonl"), "a") as f:
-    f.write(json.dumps({"argv": args, "stdin": stdin}) + "\\n")
+    f.write(json.dumps({"argv": args, "stdin": stdin, "sa_token": os.environ.get("OP_SERVICE_ACCOUNT_TOKEN")}) + "\\n")
 path = os.path.join(d, "item.json")
 if args[:2] == ["item", "get"]:
     if not os.path.exists(path):
@@ -237,7 +237,7 @@ def run_case(mock, case, root):
         with open(os.path.join(stub, "item.json"), "w") as f:
             json.dump(case["op_item"], f)
     base = {k: v for k, v in os.environ.items() if not k.startswith(("SPOTIFY_", "CLAUDE_PLUGIN_"))
-            and k.lower() not in ("http_proxy", "https_proxy", "all_proxy", "no_proxy")}
+            and not k.startswith("OP_") and k.lower() not in ("http_proxy", "https_proxy", "all_proxy", "no_proxy")}
     base["NO_PROXY"] = "127.0.0.1,localhost"
     base.update({"PATH": stub + ":" + SYSTEM_PATH, "OP_STUB_DIR": stub, "CLAUDE_PLUGIN_DATA": data,
                  "SPOTIFY_API_BASE": mock.base + "/v1", "SPOTIFY_ACCOUNTS_BASE": mock.base})
@@ -372,6 +372,11 @@ def run_case(mock, case, root):
         for s in case.get("expect_op_stdin_contains", []):
             if s not in stdin:
                 fails.append("op item edit stdin lacks '%s'" % s)
+        if "expect_op_sa_token" in case:
+            got_tokens = sorted({c["sa_token"] for c in calls}, key=str)
+            if got_tokens != [case["expect_op_sa_token"]]:
+                fails.append("op got OP_SERVICE_ACCOUNT_TOKEN %s, not the value of the variable op_token_env names"
+                             % ["<set>" if t else t for t in got_tokens])
         secrets_in_argv = [a for c in calls for a in c["argv"] if "refresh" in a or "access" in a]
         if secrets_in_argv:
             fails.append("a token appeared in op's argv: %s" % secrets_in_argv)

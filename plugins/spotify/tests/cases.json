@@ -972,11 +972,13 @@
     },
     {
       "id": "token-store-1password-uses-op",
-      "description": "token_store = 1password reads the item with op item get (item title and vault from SPOTIFY_OP_ITEM / SPOTIFY_OP_VAULT), refreshes an expired access token, writes it back with op item edit passing the item JSON on stdin (no token in argv), and creates no token file",
+      "description": "token_store = 1password goes through a service account: the token from the variable op_token_env names reaches op only as OP_SERVICE_ACCOUNT_TOKEN in its env and is never printed. It reads the item with op item get (title and vault from SPOTIFY_OP_ITEM / SPOTIFY_OP_VAULT), refreshes an expired access token, writes it back with op item edit passing the item JSON on stdin (no token in argv), and creates no token file",
       "env": {
         "SPOTIFY_TOKEN_STORE": "1password",
         "SPOTIFY_OP_ITEM": "Spotify Test Item",
-        "SPOTIFY_OP_VAULT": "Test Vault"
+        "SPOTIFY_OP_VAULT": "Test Vault",
+        "SPOTIFY_OP_TOKEN_ENV": "SPOTIFY_TEST_OP_SA_TOKEN",
+        "SPOTIFY_TEST_OP_SA_TOKEN": "ops_testServiceAccountTokenValue"
       },
       "token_file_absent": true,
       "op_item": {
@@ -1042,7 +1044,11 @@
           },
           "expect_stdout_not_contains": [
             "op-new-access",
-            "op-refresh"
+            "op-refresh",
+            "ops_testServiceAccountTokenValue"
+          ],
+          "expect_stderr_not_contains": [
+            "ops_testServiceAccountTokenValue"
           ]
         }
       ],
@@ -1082,7 +1088,8 @@
       "expect_op_stdin_contains": [
         "op-new-access"
       ],
-      "expect_no_token_file": true
+      "expect_no_token_file": true,
+      "expect_op_sa_token": "ops_testServiceAccountTokenValue"
     },
     {
       "id": "unsubstituted-settings-fall-back-to-defaults",
@@ -1091,7 +1098,8 @@
         "SPOTIFY_TOKEN_STORE": "${user_config.token_store}",
         "SPOTIFY_OP_ITEM": "${user_config.op_item}",
         "SPOTIFY_OP_VAULT": "${user_config.op_vault}",
-        "SPOTIFY_REDIRECT_PORT": "${user_config.redirect_port}"
+        "SPOTIFY_REDIRECT_PORT": "${user_config.redirect_port}",
+        "SPOTIFY_OP_TOKEN_ENV": "${user_config.op_token_env}"
       },
       "token_file": {
         "client_id": "0123456789abcdef0123456789abcdef",
@@ -1532,6 +1540,113 @@
         "file": "600",
         "dir": "700"
       }
+    },
+    {
+      "id": "1password-without-service-account-token-never-calls-op",
+      "description": "token_store = 1password exits 3 with reason op_token_missing and never calls op (which would prompt) when op_token_env is empty or names an unset variable, and exits 2 without echoing it when op_token_env holds something that is not a variable name",
+      "env": {
+        "SPOTIFY_TOKEN_STORE": "1password",
+        "SPOTIFY_OP_VAULT": "Test Vault"
+      },
+      "token_file_absent": true,
+      "op_item": {
+        "id": "stubitem01",
+        "title": "Spotify Test Item",
+        "fields": [
+          {
+            "id": "client_id",
+            "label": "client_id",
+            "type": "STRING",
+            "value": "0123456789abcdef0123456789abcdef"
+          }
+        ]
+      },
+      "routes": {},
+      "steps": [
+        {
+          "env": {
+            "SPOTIFY_OP_TOKEN_ENV": "${user_config.op_token_env}"
+          },
+          "run": [
+            "check"
+          ],
+          "expect_code": 3,
+          "expect_stderr_contains": [
+            "op_token_missing",
+            "setup skill"
+          ]
+        },
+        {
+          "env": {
+            "SPOTIFY_OP_TOKEN_ENV": "SPOTIFY_TEST_UNSET_TOKEN"
+          },
+          "run": [
+            "check"
+          ],
+          "expect_code": 3,
+          "expect_stderr_contains": [
+            "SPOTIFY_TEST_UNSET_TOKEN",
+            "op_token_missing"
+          ]
+        },
+        {
+          "env": {
+            "SPOTIFY_OP_TOKEN_ENV": "ops_eyJpYXQiOjE3MDAwMDAwMDB9"
+          },
+          "run": [
+            "check"
+          ],
+          "expect_code": 2,
+          "expect_stderr_contains": [
+            "op_token_env_invalid"
+          ],
+          "expect_stderr_not_contains": [
+            "ops_eyJpYXQiOjE3MDAwMDAwMDB9"
+          ]
+        }
+      ],
+      "expect_op_calls": [],
+      "expect_no_token_file": true
+    },
+    {
+      "id": "1password-requires-a-vault",
+      "description": "token_store = 1password exits 2 without calling op when op_vault is empty, because a service account only sees the vaults it was given",
+      "env": {
+        "SPOTIFY_TOKEN_STORE": "1password",
+        "SPOTIFY_OP_TOKEN_ENV": "SPOTIFY_TEST_OP_SA_TOKEN",
+        "SPOTIFY_TEST_OP_SA_TOKEN": "ops_testServiceAccountTokenValue",
+        "SPOTIFY_OP_VAULT": ""
+      },
+      "token_file_absent": true,
+      "op_item": {
+        "id": "stubitem01",
+        "title": "Spotify Test Item",
+        "fields": [
+          {
+            "id": "client_id",
+            "label": "client_id",
+            "type": "STRING",
+            "value": "0123456789abcdef0123456789abcdef"
+          }
+        ]
+      },
+      "routes": {},
+      "steps": [
+        {
+          "run": [
+            "check"
+          ],
+          "expect_code": 2,
+          "expect_stderr_contains": [
+            "op_vault"
+          ],
+          "expect_stderr_not_contains": [
+            "ops_testServiceAccountTokenValue"
+          ]
+        }
+      ],
+      "expect_op_calls": [],
+      "expect_no_token_file": true
     }
   ]
 }

@@ -4,7 +4,8 @@
 Auth is Authorization Code + PKCE (no client secret). The client ID and tokens (client_id / refresh_token /
 access_token / expires_at) live in one token store, picked by SPOTIFY_TOKEN_STORE:
   file (default) -- one JSON file, $CLAUDE_PLUGIN_DATA/spotify/token.json, mode 0600 in a 0700 directory
-  1password      -- one 1Password item through the op CLI (SPOTIFY_OP_ITEM, SPOTIFY_OP_VAULT)
+  1password      -- one 1Password item through the op CLI and a service account (SPOTIFY_OP_ITEM, SPOTIFY_OP_VAULT,
+                    SPOTIFY_OP_TOKEN_ENV), so no command waits for Touch ID or a password
 An empty value, or one still reading as an unsubstituted ${...} placeholder, counts as unset.
 
 Output is JSON on stdout (ensure_ascii=False). Tokens are never printed.
@@ -14,8 +15,10 @@ Errors are one JSON line on stderr {"error": ..., "status": ..., "reason": ...} 
 Settings (the skill passes them, because commands run through Bash get no plugin variables):
   CLAUDE_PLUGIN_DATA        the plugin's data directory (file store)
   SPOTIFY_TOKEN_STORE       file | 1password
-  SPOTIFY_OP_ITEM           1Password item title (default "Spotify Web API")
-  SPOTIFY_OP_VAULT          1Password vault (default: every vault when reading, op's default when creating)
+  SPOTIFY_OP_ITEM           1Password item title or ID (default "Spotify Web API")
+  SPOTIFY_OP_VAULT          1Password vault name or ID (required with 1password)
+  SPOTIFY_OP_TOKEN_ENV      NAME of the environment variable holding the service account token (required with
+                            1password). Its value goes only into the env of the op subprocess, as OP_SERVICE_ACCOUNT_TOKEN
   SPOTIFY_REDIRECT_PORT     port of http://127.0.0.1:<port>/callback (default 8888)
 Test-only (never set in real use):
   SPOTIFY_API_BASE / SPOTIFY_ACCOUNTS_BASE  point the API somewhere else
@@ -93,20 +96,25 @@ def redirect_port():
 # ---------------------------------------------------------------- token store
 
 class OpStore:
-    """One 1Password item. Writes pass the item JSON on stdin, so no value appears in argv."""
+    """One 1Password item, reached through a service account so op never prompts. Writes pass the item JSON on
+    stdin, so no value appears in argv. The service account token goes only into the op subprocess's env."""
 
-    def __init__(self, item, vault):
-        self.item_name, self.vault, self._item = item, vault, None
+    def __init__(self, item, vault, token):
+        self.item_name, self.vault, self._token, self._item = item, vault, token, None
 
     def _run(self, args, stdin=None):
-        cmd = ["op", *args] + (["--vault", self.vault] if self.vault else [])
+        cmd = ["op", *args, "--vault", self.vault]
+        env = dict(os.environ, OP_SERVICE_ACCOUNT_TOKEN=self._token)
         try:
-            return subprocess.run(cmd, input=stdin, capture_output=True, text=True, timeout=60)
+            return subprocess.run(cmd, input=stdin, capture_output=True, text=True, timeout=60, env=env)
         except FileNotFoundError:
             raise CliError("the 1Password CLI (op) is not installed or not on PATH", code=3)
         except subprocess.TimeoutExpired:
-            raise CliError("op timed out (is 1Password locked, or is this running inside Claude Code's Bash "
-                           "sandbox, where op does not work?)", code=3)
+            raise CliError("op timed out (no network access to 1Password? Inside Claude Code's Bash sandbox, run "
+                           "it outside)", code=3)
+
+    def item_id(self):
+        return (self._item or {}).get("id")
 
     def _get_item(self):
         p = self._run(["item", "get", self.item_name, "--format", "json"])
@@ -150,6 +158,7 @@ class OpStore:
                 fields.append({"id": key, "label": key,
                                "type": "STRING" if key in ("client_id", "expires_at") else "CONCEALED",
                                "value": value})
+        self._item = item
         p = self._run(["item", "edit", item["id"]], stdin=json.dumps(item))
         if p.returncode != 0:
             raise CliError("cannot write to 1Password: %s" % p.stderr.strip()[:300], code=3)
@@ -235,12 +244,33 @@ def token_file():
     return os.path.join(data, PLUGIN, "token.json")
 
 
+def op_store():
+    """The 1password store works only through a service account: an interactive op would prompt on every command."""
+    name = setting("SPOTIFY_OP_TOKEN_ENV")
+    if not name:
+        raise CliError("token_store = 1password needs op_token_env: the name of the environment variable that holds "
+                       "your 1Password service account token. See the setup skill", code=3, reason="op_token_missing")
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", name) or name.lower().startswith("ops_"):
+        # Never echo it: someone may have pasted the token itself here
+        raise CliError("op_token_env must be the NAME of an environment variable (letters, digits and _), not the "
+                       "token itself. See the setup skill", code=2, reason="op_token_env_invalid")
+    token = os.environ.get(name, "")
+    if not token:
+        raise CliError("the environment variable %s (op_token_env) is not set in Claude Code's environment. See the "
+                       "setup skill" % name, code=3, reason="op_token_missing")
+    vault = setting("SPOTIFY_OP_VAULT")
+    if not vault:
+        raise CliError("token_store = 1password needs op_vault: the vault (name or ID) the service account can read "
+                       "and write. See the setup skill", code=2)
+    return OpStore(setting("SPOTIFY_OP_ITEM", "Spotify Web API"), vault, token)
+
+
 def store():
     kind = setting("SPOTIFY_TOKEN_STORE", "file").lower()
     if kind == "file":
         return FileStore(token_file())
     if kind == "1password":
-        return OpStore(setting("SPOTIFY_OP_ITEM", "Spotify Web API"), setting("SPOTIFY_OP_VAULT"))
+        return op_store()
     raise CliError("unknown token store %r: use file or 1password" % kind, code=2)
 
 
@@ -636,7 +666,10 @@ def cmd_auth(a):
                         need=("access_token", "refresh_token"))
     st.save({"client_id": vals["client_id"], "refresh_token": tok["refresh_token"], "access_token": tok["access_token"],
              "expires_at": str(int(time.time() + int(tok.get("expires_in", 3600))))})
-    out({"ok": True, "scope": tok.get("scope", "").split()})
+    res = {"ok": True, "scope": tok.get("scope", "").split()}
+    if isinstance(st, OpStore):
+        res["op_item_id"] = st.item_id()  # setting op_item to this ID saves requests
+    out(res)
 
 
 def cmd_check(a):

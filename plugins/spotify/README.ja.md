@@ -30,9 +30,10 @@ refresh token は許可した時点から 6 か月で切れ、access token を�
 
 | キー | 既定 | 意味 |
 |---|---|---|
-| `token_store` | `file` | client ID とトークンの置き場。`file` は JSON ファイル 1 つ（権限 0600、ディレクトリは 0700）。`1password` は 1Password の項目 1 つで、`op` CLI で読み書きする |
-| `op_item` | `Spotify Web API` | 1Password の項目のタイトル（`1password` のときだけ）。最初の `auth` が作る。単一引用符は使えない（スキルが単一引用符で囲んで渡すため） |
-| `op_vault` | 空 | その項目の vault（`1password` のときだけ）。空なら、読むときは全 vault、作るときは `op` の既定の vault。単一引用符は使えない |
+| `token_store` | `file` | client ID とトークンの置き場。`file` は JSON ファイル 1 つ（権限 0600、ディレクトリは 0700）。`1password` は 1Password の項目 1 つで、`op` CLI とサービスアカウントで読み書きする（どのコマンドも Touch ID やパスワードを待たない） |
+| `op_item` | `Spotify Web API` | 1Password の項目のタイトルか ID（`1password` のときだけ）。最初の `auth` が作って ID を出す。ID にするとリクエストが減る。単一引用符は使えない（スキルが単一引用符で囲んで渡すため） |
+| `op_vault` | 空 | その項目の vault の名前か ID。`1password` では必須で、サービスアカウントが読み書きできる専用の vault にする（サービスアカウントは Personal の vault を使えない）。単一引用符は使えない |
+| `op_token_env` | 空 | サービスアカウントのトークンを入れた環境変数の**名前**（例: `SPOTIFY_OP_SA_TOKEN`）。`1password` では必須。変数は Claude Code を起動する環境に置く。スクリプトはその値を `OP_SERVICE_ACCOUNT_TOKEN` として `op` にだけ渡す |
 | `redirect_port` | `8888` | 開発者アプリに登録した Redirect URI のポート。変えるときは両方そろえる |
 
 Claude が Bash で動かすコマンドにはこれらの値が自動では渡らないので、スキルが環境変数でスクリプトに渡す。`${user_config...}` のまま置き換わっていない値は未設定とみなし、既定を使う。
@@ -62,7 +63,7 @@ Claude が Bash で動かすコマンドにはこれらの値が自動では渡�
 - Spotify Premium のアカウント（開発者アプリの持ち主）
 - Python 3.9 以上（標準ライブラリだけ）
 - `auth` 用に、同じマシンのブラウザ
-- `1password` の置き場を使うときだけ、1Password CLI（`op`）とデスクトップアプリとの連携
+- `1password` の置き場を使うときだけ、1Password CLI（`op`）、専用の vault、その vault を読み書きできるサービスアカウント。Individual と Families のアカウントでは、サービスアカウントのリクエストは全部合わせて 1 日 1,000 回まで。どのコマンドも項目を読むために `op` を 1 回呼び、トークンを更新するコマンド（1 時間に 1 回ほど）は書き込みでもう 1 回呼ぶ
 
 ## テスト
 
@@ -70,4 +71,4 @@ Claude が Bash で動かすコマンドにはこれらの値が自動では渡�
 bash plugins/spotify/tests/run-all.sh
 ```
 
-オフラインで動く。どのケースも 127.0.0.1 の模擬 Spotify と一時的なプラグインのデータディレクトリに向けてスクリプトを動かし、`PATH` には記録用の `op` スタブとシステムのディレクトリしか入れないので、本物の Spotify にも 1Password にも届かない。確かめるのは、端末名での再生と切り替え、重複を除いて 100 曲ずつ足すこと、あいまいな名前や他人のプレイリストを断ること、指定時刻以降の♡、トークンを出さずに更新して書き戻すこと、再生のエラーと 429 の再試行、`taste`、PKCE の `auth`（state 違いを断り、トークンを保存し、保存したトークンで `check` が通る）、別のアプリへの切り替えに失敗したときは元の client ID とトークンが残ること、umask 022 の下で `token.json` が 600・ディレクトリが 700 になること、`1password` の置き場が項目の JSON を stdin で渡して `op` を呼ぶこと、置き換わっていない `${user_config...}` が `file` の置き場になること、別のプラグインのものや置き換わっていない `CLAUDE_PLUGIN_DATA` を断ること、知らない `token_store`、置き場に書けないときに更新の前で止まること、ID の無い端末を断ること、広告中も `is_playing` を保つこと、長い `Retry-After` では早めに送り直さず止まること、不正なトークン応答、壊れた `token.json` を `auth --client-id` で置き換えること。auth の callback はケースごとに空いているポートを使う。
+オフラインで動く。どのケースも 127.0.0.1 の模擬 Spotify と一時的なプラグインのデータディレクトリに向けてスクリプトを動かし、`PATH` には記録用の `op` スタブとシステムのディレクトリしか入れないので、本物の Spotify にも 1Password にも届かない。確かめるのは、端末名での再生と切り替え、重複を除いて 100 曲ずつ足すこと、あいまいな名前や他人のプレイリストを断ること、指定時刻以降の♡、トークンを出さずに更新して書き戻すこと、再生のエラーと 429 の再試行、`taste`、PKCE の `auth`（state 違いを断り、トークンを保存し、保存したトークンで `check` が通る）、別のアプリへの切り替えに失敗したときは元の client ID とトークンが残ること、umask 022 の下で `token.json` が 600・ディレクトリが 700 になること、`1password` の置き場がサービスアカウントのトークンを env だけで渡し、項目の JSON を stdin で渡して `op` を呼ぶこと、トークンか vault が無いときは `op` を呼ばずに止まること、置き換わっていない `${user_config...}` が `file` の置き場になること、別のプラグインのものや置き換わっていない `CLAUDE_PLUGIN_DATA` を断ること、知らない `token_store`、置き場に書けないときに更新の前で止まること、ID の無い端末を断ること、広告中も `is_playing` を保つこと、長い `Retry-After` では早めに送り直さず止まること、不正なトークン応答、壊れた `token.json` を `auth --client-id` で置き換えること。auth の callback はケースごとに空いているポートを使う。

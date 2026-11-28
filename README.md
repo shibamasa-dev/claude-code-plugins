@@ -84,7 +84,7 @@ English is the base language, and the plugins are being translated from Japanese
 - `agent-bridge` also needs a Supabase project and a Supabase connector (claude.ai connector or MCP server) for setup
 - `print` also needs CUPS (`lp`), poppler, and Chrome for HTML, Markdown and text; qpdf and pandoc are optional
 - `personal-knowledge`'s `get-chrome-history` also needs Google Chrome or Chromium
-- `spotify` also needs a Spotify Premium account (as the owner of the developer app it uses), and the 1Password CLI only for its `1password` token store
+- `spotify` also needs a Spotify Premium account (as the owner of the developer app it uses), and, only for its `1password` token store, the 1Password CLI and a service account
 
 ## Contributing
 
