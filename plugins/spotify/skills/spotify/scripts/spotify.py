@@ -28,6 +28,7 @@ import hashlib
 import http.server
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -55,6 +56,7 @@ SCOPES = [
     "user-library-read",            # read Liked Songs
 ]
 TOKEN_FIELDS = ("refresh_token", "access_token", "expires_at")
+MAX_RETRY_WAIT = 10  # seconds; a longer Retry-After stops the command instead
 SANDBOX_HINT = ("If this runs inside Claude Code's Bash sandbox, run it outside the sandbox "
                 "(the sandbox may not allow writes there)")
 
@@ -81,10 +83,8 @@ def setting(name, default=""):
 
 def redirect_port():
     raw = setting("SPOTIFY_REDIRECT_PORT", "8888")
-    try:
-        port = int(float(raw))  # userConfig numbers may arrive as "8888.0"
-    except ValueError:
-        port = 0
+    m = re.fullmatch(r"(\d+)(\.0+)?", raw)  # userConfig numbers may arrive as "8888.0"
+    port = int(m.group(1)) if m else 0
     if not 0 < port < 65536:
         raise CliError("SPOTIFY_REDIRECT_PORT is not a port number: %r" % raw, code=2)
     return port
@@ -169,15 +169,19 @@ class FileStore:
             raise ItemMissing("no token file yet (%s). Create it with `spotify.py auth --client-id <Client ID>` "
                               "(the setup skill)" % self.path, code=3)
         except ValueError:
-            raise CliError("the token file %s is not valid JSON; run `spotify.py auth --client-id <Client ID>` "
-                           "again" % self.path, code=3)
+            # ItemMissing, so `auth --client-id` replaces the broken file
+            raise ItemMissing("the token file %s is not valid JSON. Replace it with `spotify.py auth --client-id "
+                              "<Client ID>`" % self.path, code=3)
         except OSError as e:
             raise CliError("cannot read the token file %s: %s" % (self.path, e.strerror), code=3)
-        return data if isinstance(data, dict) else {}
+        if not isinstance(data, dict):
+            raise ItemMissing("the token file %s does not hold a JSON object. Replace it with `spotify.py auth "
+                              "--client-id <Client ID>`" % self.path, code=3)
+        return data
 
-    def _fail(self, e):
+    def _fail(self, e, reason):
         return CliError("cannot write the token file %s: %s. %s" % (self.path, e.strerror, SANDBOX_HINT),
-                        code=3, reason="store_not_writable")
+                        code=3, reason=reason)
 
     def _dir(self):
         d = os.path.dirname(self.path)
@@ -193,7 +197,7 @@ class FileStore:
             os.close(fd)
             os.unlink(tmp)
         except OSError as e:
-            raise self._fail(e)
+            raise self._fail(e, "store_not_writable")
 
     def _write(self, data):
         try:
@@ -210,7 +214,7 @@ class FileStore:
                     pass
                 raise
         except OSError as e:
-            raise self._fail(e)
+            raise self._fail(e, "store_write_failed")
 
     def create(self, client_id):
         self._write({"client_id": client_id})
@@ -240,21 +244,31 @@ def store():
     raise CliError("unknown token store %r: use file or 1password" % kind, code=2)
 
 
-def token_request(form):
-    """PKCE: the form carries client_id instead of a client secret."""
+def token_request(form, need):
+    """PKCE: the form carries client_id instead of a client secret. need: fields the response must carry."""
     req = urllib.request.Request(ACCOUNTS + "/api/token", data=urllib.parse.urlencode(form).encode(),
                                  method="POST")
     req.add_header("Content-Type", "application/x-www-form-urlencoded")
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
-            return json.loads(r.read())
+            raw = r.read()
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", "replace")
         if "invalid_grant" in body:
-            raise CliError("the refresh token is no longer valid (expired or revoked; the developer app's Refresh "
-                           "Token Lifetime decides when). Run `spotify.py auth` to approve in the browser again",
+            raise CliError("the refresh token is no longer valid (it expires 6 months after the authorization, or "
+                           "access was revoked). Run `spotify.py auth` to approve in the browser again",
                            code=3, status=e.code, reason="invalid_grant")
         raise CliError("token endpoint error: %s" % body[:300], status=e.code)
+    tok = None
+    try:
+        tok = json.loads(raw)
+        if not isinstance(tok, dict) or any(not isinstance(tok.get(k), str) or not tok[k] for k in need):
+            raise ValueError
+        tok["expires_in"] = int(tok.get("expires_in") or 3600)
+    except (ValueError, TypeError):  # never echo the body: it may hold a token
+        raise CliError("the token endpoint returned an unexpected response (fields: %s)"
+                       % (sorted(tok) if isinstance(tok, dict) else type(tok).__name__), code=3)
+    return tok
 
 
 def access_token():
@@ -276,7 +290,7 @@ def access_token():
         return vals["access_token"]
     st.check_writable()
     tok = token_request({"grant_type": "refresh_token", "refresh_token": vals["refresh_token"],
-                         "client_id": vals["client_id"]})
+                         "client_id": vals["client_id"]}, need=("access_token",))
     updates = {"access_token": tok["access_token"],
                "expires_at": str(int(time.time() + int(tok.get("expires_in", 3600))))}
     if tok.get("refresh_token"):  # replace it only when one comes back (not every time)
@@ -311,16 +325,26 @@ def api(method, path, params=None, body=None):
                 return json.loads(raw) if raw and r.status != 204 else None
         except urllib.error.HTTPError as e:
             raw = e.read().decode("utf-8", "replace")
-            if e.code == 429 and attempt < 2:
-                time.sleep(min(int(e.headers.get("Retry-After") or 1), 10))
-                continue
+            if e.code == 429:
+                try:
+                    wait = max(int(e.headers.get("Retry-After") or 1), 1)
+                except ValueError:
+                    wait = 1
+                if wait > MAX_RETRY_WAIT:  # never resend early: stop and say when it may be retried
+                    raise CliError("rate limited: retry after %d seconds" % wait, status=429, reason="RETRY_AFTER_%d" % wait)
+                if attempt < 2:
+                    time.sleep(wait)
+                    continue
             try:
-                err = json.loads(raw).get("error", {})
+                err = json.loads(raw)
             except ValueError:
-                err = {}
+                err = None
+            err = err.get("error") if isinstance(err, dict) else None
             if isinstance(err, str):
                 err = {"message": err}
-            raise CliError(err.get("message") or raw[:200] or "HTTP %d" % e.code,
+            if not isinstance(err, dict):
+                err = {}
+            raise CliError(str(err.get("message") or raw[:200] or "HTTP %d" % e.code),
                            status=e.code, reason=err.get("reason"))
     raise CliError("still 429 after retrying", status=429)
 
@@ -403,10 +427,12 @@ def resolve_playlist(ref, editable=False):
 
 def playlist_items(pid, cap=None):
     rows = []
-    for it in collect("/playlists/%s/items" % pid, {"limit": 50}, cap=cap):
+    for it in iter_items("/playlists/%s/items" % pid, {"limit": 50}):
         t = it.get("item")  # item since 2026-02 (track is deprecated)
         if t and t.get("type", "track") == "track":
             rows.append({**track_brief(t), "added_at": it.get("added_at")})
+            if cap and len(rows) >= cap:  # count tracks, not episodes or removed items
+                break
     return rows
 
 
@@ -422,6 +448,9 @@ def resolve_device(ref):
         raise CliError("device '%s' does not match exactly one device (devices visible now: %s). Only devices with "
                        "the Spotify app open are listed" % (ref, [d.get("name") for d in devs] or "none"), code=2,
                        reason="DEVICE_NOT_FOUND")
+    if not hit[0].get("id"):
+        raise CliError("device '%s' has no ID the Web API can address; open Spotify on it again or pick another"
+                       % hit[0].get("name"), code=2, reason="DEVICE_NOT_FOUND")
     if hit[0].get("is_restricted"):
         raise CliError("device '%s' does not accept Web API commands (is_restricted)" % hit[0].get("name"), code=2)
     return hit[0]
@@ -456,11 +485,11 @@ def cmd_transfer(a):
 
 def cmd_now(a):
     r = api("GET", "/me/player/currently-playing")
-    if not r or not r.get("item"):
+    if not r:
         out({"playing": False})
         return
     out({"playing": bool(r.get("is_playing")), "progress_ms": r.get("progress_ms"),
-         "type": r.get("currently_playing_type"), "track": track_brief(r["item"]),
+         "type": r.get("currently_playing_type"), "track": track_brief(r.get("item")),
          "device": (r.get("device") or {}).get("name"), "context": (r.get("context") or {}).get("uri")})
 
 
@@ -562,6 +591,8 @@ def cmd_auth(a):
     got = {}
 
     class Handler(http.server.BaseHTTPRequestHandler):
+        timeout = 5  # a connection that stalls can't hold the --wait deadline
+
         def do_GET(self):
             u = urllib.parse.urlparse(self.path)
             if u.path != "/callback":
@@ -601,7 +632,8 @@ def cmd_auth(a):
     if "error" in got:
         raise CliError("authorization was not granted: %s" % got["error"], code=2)
     tok = token_request({"grant_type": "authorization_code", "code": got["code"], "redirect_uri": redirect,
-                         "client_id": vals["client_id"], "code_verifier": verifier})
+                         "client_id": vals["client_id"], "code_verifier": verifier},
+                        need=("access_token", "refresh_token"))
     st.save({"client_id": vals["client_id"], "refresh_token": tok["refresh_token"], "access_token": tok["access_token"],
              "expires_at": str(int(time.time() + int(tok.get("expires_in", 3600))))})
     out({"ok": True, "scope": tok.get("scope", "").split()})
@@ -610,6 +642,13 @@ def cmd_auth(a):
 def cmd_check(a):
     m = api("GET", "/me")
     out({"ok": True, "user_id": m.get("id"), "display_name": m.get("display_name")})
+
+
+def positive(v):
+    n = int(v)
+    if n < 1:
+        raise argparse.ArgumentTypeError("must be 1 or more")
+    return n
 
 
 def build_parser():
@@ -652,7 +691,7 @@ def build_parser():
 
     s = sp.add_parser("tracks", help="tracks in a playlist")
     s.add_argument("playlist", help="name, ID, URI or URL")
-    s.add_argument("--limit", type=int)
+    s.add_argument("--limit", type=positive, help="at most this many tracks")
     s.set_defaults(fn=cmd_tracks)
 
     s = sp.add_parser("taste", help="taste summary per playlist (top artists, recently added tracks)")
@@ -664,7 +703,7 @@ def build_parser():
 
     s = sp.add_parser("search", help="search tracks to get URIs")
     s.add_argument("query", help='for example "track:<title> artist:<artist>"')
-    s.add_argument("--limit", type=int, default=5, help="1〜10")
+    s.add_argument("--limit", type=int, default=5, help="1 to 10")
     s.add_argument("--market", default=None)
     s.set_defaults(fn=cmd_search)
 

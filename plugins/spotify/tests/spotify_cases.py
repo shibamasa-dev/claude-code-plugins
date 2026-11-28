@@ -10,6 +10,7 @@ script's output.
 """
 import base64
 import hashlib
+import socket
 import json
 import os
 import re
@@ -157,12 +158,33 @@ def req_matches(exp, rec):
     return True
 
 
+NO_PROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # the callback goes straight to 127.0.0.1
+
+
+def free_port():
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
 def run_auth(env, step):
     """Starts auth in the background and calls back with the state from the printed URL (in place of a browser).
     Keeps the URL's query on the step for the PKCE check."""
     args = [sys.executable, "-B", SCRIPT, "auth", "--no-open", "--wait", "20", *step["run"]]
     p = subprocess.Popen(args, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                          text=True)
+    timer = threading.Timer(60, p.kill)  # one deadline from start to exit, so a stuck child fails only this case
+    timer.start()
+    try:
+        return _drive_auth(p, args, step)
+    finally:
+        timer.cancel()
+        if p.poll() is None:
+            p.kill()
+            p.communicate()
+
+
+def _drive_auth(p, args, step):
     p.stderr.readline()
     url = p.stderr.readline().strip()
     q = {k: v[0] for k, v in urllib.parse.parse_qs(urllib.parse.urlparse(url).query).items()}
@@ -175,7 +197,7 @@ def run_auth(env, step):
     cb = q["redirect_uri"] + "?" + urllib.parse.urlencode({"code": "eval-code", "state": state})
     for _ in range(50):  # wait until the server listens
         try:
-            urllib.request.urlopen(cb, timeout=2).read()
+            NO_PROXY.open(cb, timeout=2).read()
             break
         except (urllib.error.URLError, ConnectionError):
             time.sleep(0.1)
@@ -200,6 +222,8 @@ def mode(path):
 
 def run_case(mock, case, root):
     fails = []
+    # A free port per case for auth's callback server, so a busy fixed port can't fail a correct script
+    case = json.loads(json.dumps(case).replace("{AUTH_PORT}", str(free_port())))
     mock.reset(case.get("routes", {}))
     data = os.path.join(root, DATA_NAME)
     tdir = os.path.join(data, "spotify")
@@ -212,15 +236,22 @@ def run_case(mock, case, root):
     if "op_item" in case:
         with open(os.path.join(stub, "item.json"), "w") as f:
             json.dump(case["op_item"], f)
-    base = {k: v for k, v in os.environ.items() if not k.startswith(("SPOTIFY_", "CLAUDE_PLUGIN_"))}
+    base = {k: v for k, v in os.environ.items() if not k.startswith(("SPOTIFY_", "CLAUDE_PLUGIN_"))
+            and k.lower() not in ("http_proxy", "https_proxy", "all_proxy", "no_proxy")}
+    base["NO_PROXY"] = "127.0.0.1,localhost"
     base.update({"PATH": stub + ":" + SYSTEM_PATH, "OP_STUB_DIR": stub, "CLAUDE_PLUGIN_DATA": data,
                  "SPOTIFY_API_BASE": mock.base + "/v1", "SPOTIFY_ACCOUNTS_BASE": mock.base})
+    if "token_file_raw" in case:
+        os.makedirs(tdir)
+        os.chmod(tdir, 0o700)
+        with open(tf, "w") as f:
+            f.write(case["token_file_raw"])
     if "token_file" in case:
         os.makedirs(tdir)
         os.chmod(tdir, 0o700)  # as auth leaves it; the file itself starts at 644 so a write-back must make it 600
         with open(tf, "w") as f:
             json.dump(case["token_file"], f)
-    elif not case.get("token_file_absent"):
+    elif not case.get("token_file_absent") and "token_file_raw" not in case:
         base["SPOTIFY_ACCESS_TOKEN"] = "eval-token"
     base.update(case.get("env") or {})
     if case.get("chmod_token_dir"):
@@ -243,6 +274,7 @@ def run_case(mock, case, root):
         if step.get("plugin_data"):
             env["CLAUDE_PLUGIN_DATA"] = os.path.join(root, step["plugin_data"])
             os.makedirs(env["CLAUDE_PLUGIN_DATA"], exist_ok=True)
+        before = len(mock.log)
         if "auth_callback" in step:
             p, err = run_auth(env, step)
             if err:
@@ -252,6 +284,10 @@ def run_case(mock, case, root):
             p = subprocess.run([sys.executable, "-B", SCRIPT, *expand(step["run"])], env=env,
                                stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
         tag = "step %d (%s)" % (n, " ".join(step["run"][:2]))
+        for s in step.get("expect_step_not_requested", []):
+            hits = [r["line"] for r in mock.log[before:] if s in r["line"]]
+            if hits:
+                fails.append("%s: requested '%s' during this step: %s" % (tag, s, hits[:3]))
         if p.returncode != step.get("expect_code", 0):
             fails.append("%s: exit %d (want %d) stderr=%s" % (tag, p.returncode, step.get("expect_code", 0),
                                                               p.stderr.strip()[:300]))
@@ -271,6 +307,9 @@ def run_case(mock, case, root):
         for s in step.get("expect_stdout_not_contains", []):
             if s in p.stdout:
                 fails.append("%s: stdout shows '%s', which must not appear" % (tag, s))
+        for s in step.get("expect_stderr_not_contains", []):
+            if s in p.stderr:
+                fails.append("%s: stderr shows '%s', which must not appear" % (tag, s))
         for s in step.get("expect_stderr_contains", []):
             if s not in p.stderr:
                 fails.append("%s: stderr lacks '%s': %s" % (tag, s, p.stderr.strip()[:300]))
@@ -294,6 +333,10 @@ def run_case(mock, case, root):
         hits = [r["line"] for r in mock.log if s in r["line"]]
         if hits:
             fails.append("request that must not happen '%s': %s" % (s, hits[:3]))
+    for key, want in (case.get("expect_request_count") or {}).items():
+        got = len([r for r in mock.log if "%s %s" % (r["method"], r["path"]) == key])
+        if got != want:
+            fails.append("%s was requested %d times (want %d)" % (key, got, want))
     no_route = [r["line"] for r in mock.log if "%s %s" % (r["method"], r["path"]) not in mock.routes]
     if no_route:
         fails.append("hit a path the mock does not serve: %s" % no_route[:3])

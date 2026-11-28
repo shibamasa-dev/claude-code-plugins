@@ -26,14 +26,14 @@
     "op_item": {
       "type": "string",
       "title": "1Password item title",
-      "description": "Title of the 1Password item that holds the client ID and tokens (only with token_store = 1password). The first auth creates it",
+      "description": "Title of the 1Password item that holds the client ID and tokens (only with token_store = 1password). The first auth creates it. No single quotes: the skills pass it inside single quotes",
       "required": false,
       "default": "Spotify Web API"
     },
     "op_vault": {
       "type": "string",
       "title": "1Password vault",
-      "description": "Vault of that item (only with token_store = 1password). Empty means every vault when reading and op's default vault when creating",
+      "description": "Vault of that item (only with token_store = 1password). Empty means every vault when reading and op's default vault when creating. No single quotes",
       "required": false,
       "default": ""
     },

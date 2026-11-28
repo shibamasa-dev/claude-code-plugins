@@ -39,5 +39,6 @@ Sources: https://developer.spotify.com/documentation/web-api/references/changes/
   Source: https://developer.spotify.com/documentation/web-api/tutorials/refreshing-tokens
 - The plugin uses Authorization Code + PKCE, so it never handles a Client Secret. The authorize URL carries `code_challenge_method=S256` and `code_challenge`; the token exchange and the refresh put `client_id` in the body (the exchange also `code_verifier`), with no Basic auth.
   Source: https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow
-- With PKCE, a refresh may return a new refresh token every time. The script writes it back to the token store, and checks that the store is writable before it asks for one. Whether the old refresh token still works when a write-back fails is not documented (unverified); if not, authorizing again is the way out.
-- The refresh token's lifetime is set in the developer app ("Refresh Token Lifetime" in the dashboard). After it, `invalid_grant`.
+- With PKCE, a refresh may return a new refresh token every time. The script writes it back to the token store; with the file store it first checks that the token directory is writable (`store_not_writable`), and a write that fails afterwards reports `store_write_failed`. Whether the old refresh token still works when a write-back fails is not documented (unverified); if not, authorizing again is the way out.
+- Refresh tokens last 6 months from the user's original authorization; refreshing the access token does not extend them. After that the token endpoint returns 400 `invalid_grant`.
+  Sources: https://developer.spotify.com/blog/2026-06-18-refresh-token-expiration and the "Refresh token lifetime" section of the refreshing-tokens tutorial above

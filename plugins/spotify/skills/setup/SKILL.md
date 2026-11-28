@@ -20,7 +20,7 @@ Only devices with the Spotify app running and signed in appear in the device lis
    - App name and App description: anything
    - **Redirect URI**: `http://127.0.0.1:<port>/callback`, with the redirect port above (`http://127.0.0.1:8888/callback` by default). Spotify rejects `localhost`; write the numbers `127.0.0.1`. If the port is taken on this machine, pick another, register that one, and set the plugin's `redirect_port` option to the same number (then `/reload-plugins`)
    - Which API/SDKs are you planning to use?: **Web API**
-3. In the app's "Settings", copy the **Client ID** (it is not secret) and note the "Refresh Token Lifetime". After that many days, step 4 has to be done again.
+3. In the app's "Settings", copy the **Client ID** (it is not secret) and The authorization lasts 6 months from step 3 (refreshing does not extend it); after that, step 3 has to be done again.
 
 Development Mode limits:
 - The app owner's account must have **Spotify Premium** (the app stops working when it lapses). Playback control needs Premium too.
@@ -54,8 +54,9 @@ Setup is done when `check` shows a user ID and `devices` lists the device from s
 | What you see | What to do |
 |---|---|
 | Exit 3 with `reason: store_not_writable` | The command ran inside the sandbox. Run it again outside |
+| Exit 3 with `reason: store_write_failed` | The new tokens were received but not saved. Run the command again outside the sandbox; if it then fails with `invalid_grant`, do step 3 again |
 | `op timed out` | 1Password is locked, or the command ran inside the sandbox |
-| `invalid_grant` | The Refresh Token Lifetime passed or access was revoked: step 3 again, without `--client-id` |
+| `invalid_grant` | 6 months passed since the authorization, or access was revoked: step 3 again, without `--client-id` |
 | Spotify's page says the redirect URI is invalid | The Redirect URI in the dashboard differs from `http://127.0.0.1:<redirect port>/callback` |
 | `Address already in use` | The redirect port is taken: change it in the dashboard and in `redirect_port` together |
 

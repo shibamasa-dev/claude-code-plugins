@@ -898,11 +898,14 @@
             "--client-id",
             "0123456789abcdef0123456789abcdef",
             "--port",
-            "18765"
+            "{AUTH_PORT}"
           ],
           "expect_code": 2,
           "expect_stderr_contains": [
             "state"
+          ],
+          "expect_step_not_requested": [
+            "/api/token"
           ]
         },
         {
@@ -918,7 +921,7 @@
           ],
           "expect_authorize": {
             "client_id": "0123456789abcdef0123456789abcdef",
-            "redirect_uri": "http://127.0.0.1:18765/callback",
+            "redirect_uri": "http://127.0.0.1:{AUTH_PORT}/callback",
             "code_challenge_method": "S256",
             "response_type": "code",
             "scope": "user-read-playback-state user-modify-playback-state user-read-currently-playing user-read-recently-played playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public user-library-read"
@@ -944,7 +947,7 @@
           "form": {
             "grant_type": "authorization_code",
             "code": "eval-code",
-            "redirect_uri": "http://127.0.0.1:18765/callback",
+            "redirect_uri": "http://127.0.0.1:{AUTH_PORT}/callback",
             "client_id": "0123456789abcdef0123456789abcdef"
           }
         },
@@ -960,7 +963,7 @@
         "access_token": "auth-access"
       },
       "env": {
-        "SPOTIFY_REDIRECT_PORT": "18765"
+        "SPOTIFY_REDIRECT_PORT": "{AUTH_PORT}"
       },
       "expect_token_mode": {
         "file": "600",
@@ -1275,11 +1278,14 @@
             "--client-id",
             "fedcba9876543210fedcba9876543210",
             "--port",
-            "18766"
+            "{AUTH_PORT}"
           ],
           "expect_code": 2,
           "expect_stderr_contains": [
             "state"
+          ],
+          "expect_step_not_requested": [
+            "/api/token"
           ]
         },
         {
@@ -1294,7 +1300,7 @@
             "--client-id",
             "fedcba9876543210fedcba9876543210",
             "--port",
-            "18766"
+            "{AUTH_PORT}"
           ],
           "expect_code": 0
         }
@@ -1313,6 +1319,214 @@
         "client_id": "fedcba9876543210fedcba9876543210",
         "refresh_token": "switched-refresh",
         "access_token": "switched-access"
+      },
+      "expect_token_mode": {
+        "file": "600",
+        "dir": "700"
+      }
+    },
+    {
+      "id": "device-without-id-is-refused",
+      "description": "A device whose name matches but whose id is null is refused with exit 2 before any play or transfer request, instead of falling back to the active device or sending [null]",
+      "routes": {
+        "GET /v1/me/player/devices": [
+          {
+            "status": 200,
+            "json": {
+              "devices": [
+                {
+                  "id": null,
+                  "is_active": false,
+                  "is_restricted": false,
+                  "name": "Living Room Speaker",
+                  "type": "Speaker",
+                  "volume_percent": 40
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "run": [
+            "play",
+            "--device",
+            "Living Room",
+            "--uris",
+            "spotify:track:3dPQuX8Gs42Y7b454ybpMR"
+          ],
+          "expect_code": 2,
+          "expect_stderr_contains": [
+            "DEVICE_NOT_FOUND"
+          ]
+        },
+        {
+          "run": [
+            "transfer",
+            "--device",
+            "Living Room"
+          ],
+          "expect_code": 2
+        }
+      ],
+      "expect_not_requested": [
+        "/v1/me/player/play",
+        "PUT /v1/me/player"
+      ]
+    },
+    {
+      "id": "now-keeps-is-playing-without-item",
+      "description": "now keeps is_playing and the type when Spotify reports playback with item null (an ad), instead of saying nothing plays",
+      "routes": {
+        "GET /v1/me/player/currently-playing": [
+          {
+            "status": 200,
+            "json": {
+              "is_playing": true,
+              "currently_playing_type": "ad",
+              "item": null,
+              "progress_ms": 1200,
+              "device": {
+                "name": "MacBook Pro"
+              }
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "run": [
+            "now"
+          ],
+          "expect_code": 0,
+          "expect_json": {
+            "playing": true,
+            "type": "ad",
+            "track": {},
+            "device": "MacBook Pro"
+          }
+        }
+      ]
+    },
+    {
+      "id": "long-retry-after-stops-without-resending",
+      "description": "A 429 whose Retry-After is longer than the script waits (10 seconds) exits 1 with the wait in the reason and sends no early retry",
+      "routes": {
+        "GET /v1/me/player/devices": [
+          {
+            "status": 429,
+            "headers": {
+              "Retry-After": "30"
+            },
+            "json": {
+              "error": {
+                "status": 429,
+                "message": "API rate limit exceeded"
+              }
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "run": [
+            "devices"
+          ],
+          "expect_code": 1,
+          "expect_stderr_contains": [
+            "RETRY_AFTER_30"
+          ]
+        }
+      ],
+      "expect_request_count": {
+        "GET /v1/me/player/devices": 1
+      }
+    },
+    {
+      "id": "malformed-token-response-is-an-error",
+      "description": "A 200 from the token endpoint without access_token exits 3 with a JSON error (no traceback, no body echoed) and leaves the stored tokens as they were",
+      "token_file": {
+        "client_id": "0123456789abcdef0123456789abcdef",
+        "refresh_token": "keep-refresh",
+        "access_token": "expired-access",
+        "expires_at": "1000"
+      },
+      "routes": {
+        "POST /api/token": [
+          {
+            "status": 200,
+            "json": {
+              "token_type": "Bearer",
+              "expires_in": null
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "run": [
+            "check"
+          ],
+          "expect_code": 3,
+          "expect_stderr_contains": [
+            "unexpected response"
+          ],
+          "expect_stderr_not_contains": [
+            "Traceback"
+          ]
+        }
+      ],
+      "expect_not_requested": [
+        "/v1/me"
+      ],
+      "expect_token_file": {
+        "refresh_token": "keep-refresh",
+        "access_token": "expired-access"
+      }
+    },
+    {
+      "id": "broken-token-file-is-replaced-by-auth",
+      "description": "A token.json that is not valid JSON makes commands exit 3 pointing at auth --client-id, and that command replaces it",
+      "token_file_raw": "{not json",
+      "routes": {
+        "POST /api/token": [
+          {
+            "status": 200,
+            "json": {
+              "access_token": "fresh-access",
+              "token_type": "Bearer",
+              "expires_in": 3600,
+              "refresh_token": "fresh-refresh"
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "run": [
+            "check"
+          ],
+          "expect_code": 3,
+          "expect_stderr_contains": [
+            "auth --client-id"
+          ]
+        },
+        {
+          "auth_callback": "ok",
+          "run": [
+            "--client-id",
+            "0123456789abcdef0123456789abcdef",
+            "--port",
+            "{AUTH_PORT}"
+          ],
+          "expect_code": 0
+        }
+      ],
+      "expect_token_file": {
+        "client_id": "0123456789abcdef0123456789abcdef",
+        "refresh_token": "fresh-refresh",
+        "access_token": "fresh-access"
       },
       "expect_token_mode": {
         "file": "600",
