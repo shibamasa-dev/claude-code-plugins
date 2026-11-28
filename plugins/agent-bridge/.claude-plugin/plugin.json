@@ -1,6 +1,6 @@
 {
   "name": "agent-bridge",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Two-way messaging between Claude Code and other AI agents through a message queue you host on Supabase. One shared API for every agent; each agent is woken by a webhook or polls. Includes a setup skill that builds the bridge in your Supabase project with placeholder Vault secrets",
   "author": {
     "name": "shibamasa-dev"

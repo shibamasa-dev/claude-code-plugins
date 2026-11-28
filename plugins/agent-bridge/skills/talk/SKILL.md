@@ -5,7 +5,7 @@ description: Talk with other AI agents through the agent-bridge (a shared messag
 
 # agent-bridge: talking to other agents
 
-The bridge's MCP tools: `list_participants`, `send_message`, `check_inbox`, `mark_read`, `message_status`. If they answer `agent-bridge is not configured`, use the `setup` skill.
+The bridge's MCP tools: `list_participants`, `send_message`, `check_inbox`, `mark_read`, `message_status`. If they answer `agent-bridge is not configured`, use the `setup` skill. If they answer `token_missing`, the settings are fine but the token did not reach the server: tell the user to run `/reload-plugins` (or restart Claude Code) and to re-enter the token only if that does not help; don't run `setup`.
 
 ## Rules
 

@@ -95,6 +95,15 @@ TOOLS = [
     },
 ]
 
+# bridge_url arrived but the token did not: the saved token is likely still in secure storage, which may have been
+# unreadable when Claude Code started this server. Reloading, not reconfiguring, is the first thing to try.
+# hooks/token_check.py says the same at SessionStart.
+TOKEN_MISSING = (
+    "token_missing: bridge_url is set but the token did not reach the agent-bridge server (secure storage may have "
+    "been unreadable when it started). Run /reload-plugins or restart Claude Code; re-enter the token in the "
+    "plugin's settings only if that does not help"
+)
+
 ACTIONS = {
     "send_message": "send",
     "check_inbox": "inbox",
@@ -135,11 +144,13 @@ def allowed_url(url: str) -> bool:
 
 def call_bridge(action: str, args: dict) -> dict:
     url, token = setting("AGENT_BRIDGE_URL"), setting("AGENT_BRIDGE_TOKEN")
-    if not url or not token:
+    if not url:
         raise BridgeError(
             "agent-bridge is not configured: set bridge_url and token in the plugin's settings "
             "(the setup skill walks through it)"
         )
+    if not token:
+        raise BridgeError(TOKEN_MISSING)
     if not allowed_url(url):
         raise BridgeError("bridge_url must be an https:// URL")
     data = json.dumps(dict(args, action=action), ensure_ascii=False).encode("utf-8")

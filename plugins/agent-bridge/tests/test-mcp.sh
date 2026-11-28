@@ -11,6 +11,11 @@ out=$(python3 "$CALL" list_participants)
 row 'without bridge_url and token a call is an error that names the setting' "$(yesno grep -q '^ERROR: .*not configured' <<<"$out")" yes
 out=$(AGENT_BRIDGE_URL='${user_config.bridge_url}' AGENT_BRIDGE_TOKEN='${user_config.token}' python3 "$CALL" list_participants)
 row 'unset userConfig placeholders count as not configured' "$(yesno grep -q '^ERROR: .*not configured' <<<"$out")" yes
+out=$(AGENT_BRIDGE_URL= AGENT_BRIDGE_TOKEN="$FAKE_CLAUDE" python3 "$CALL" list_participants)
+row 'without bridge_url a call still says not configured, even with a token' "$(yesno grep -q '^ERROR: .*not configured' <<<"$out")" yes
+out=$(AGENT_BRIDGE_URL=https://bridge.example.test/x AGENT_BRIDGE_TOKEN= python3 "$CALL" list_participants)
+row 'with bridge_url but no token the error names the token and suggests /reload-plugins' "$(yesno grep -q '^ERROR: token_missing:.*/reload-plugins' <<<"$out")" yes
+row 'and it does not send the user back to setup' "$(yesno not grep -qi 'setup\|not configured' <<<"$out")" yes
 out=$(AGENT_BRIDGE_URL=http://example.com/x AGENT_BRIDGE_TOKEN="$FAKE_WRONG" python3 "$CALL" list_participants)
 row 'a plain http URL is refused before any request' "$(yesno grep -q '^ERROR: .*https' <<<"$out")" yes
 out=$(AGENT_BRIDGE_URL=http://127.0.0.1.example.test/x AGENT_BRIDGE_TOKEN="$FAKE_WRONG" python3 "$CALL" list_participants)
