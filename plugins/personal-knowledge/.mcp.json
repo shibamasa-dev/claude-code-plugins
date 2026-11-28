@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "ledger": {
+      "command": "uv",
+      "args": ["run", "--quiet", "--script", "${CLAUDE_PLUGIN_ROOT}/server/ledger_mcp.py"],
+      "env": {
+        "LEDGER_DATABASE_URL": "${user_config.ledger_database_url}",
+        "LEDGER_SQLITE_PATH": "${user_config.ledger_sqlite_path}",
+        "LEDGER_ROUTE": "${user_config.ledger_route}"
+      }
+    }
+  }
+}

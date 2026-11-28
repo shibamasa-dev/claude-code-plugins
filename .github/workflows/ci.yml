@@ -100,7 +100,7 @@ jobs:
           exit $fail
 
   postgres:
-    # The inventory, agent-bridge and creative tests against a real Postgres: each run-postgres.sh as is (a postgres:16 container)
+    # The inventory, agent-bridge, creative and personal-knowledge tests against a real Postgres: each run-postgres.sh as is (a postgres:16 container)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -138,4 +138,14 @@ jobs:
           echo "$out" | grep -qE '/ 0 mismatches ====' || { echo "::error::creative run-postgres.sh reported mismatches"; fail=1; }
           # pg-file-only.sh runs only on the Postgres route, so its absence means the run fell back to SQLite or stopped early
           echo "$out" | grep -q '▼ pg-file-only.sh' || { echo "::error::creative pg-file-only.sh did not run"; fail=1; }
+          exit $fail
+      - name: personal-knowledge relationship ledger tests on Postgres (fails on any mismatch)
+        run: |
+          rc=0; out=$(bash plugins/personal-knowledge/tests/run-postgres.sh 2>&1) || rc=$?
+          echo "$out"
+          fail=0
+          if [ "$rc" != 0 ]; then echo "::error::personal-knowledge run-postgres.sh exited with $rc"; fail=1; fi
+          echo "$out" | grep -qE '/ 0 mismatches ====' || { echo "::error::personal-knowledge run-postgres.sh reported mismatches"; fail=1; }
+          # pg-file-only.sh runs only on the Postgres route, so its absence means the run fell back to SQLite or stopped early
+          echo "$out" | grep -q '▼ pg-file-only.sh' || { echo "::error::personal-knowledge pg-file-only.sh did not run"; fail=1; }
           exit $fail
