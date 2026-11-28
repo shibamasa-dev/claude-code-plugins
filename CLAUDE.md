@@ -82,6 +82,15 @@ Every file a skill, hook or command produces goes to one of these places. A skil
 - A command a hook prints for Claude to run puts `CLAUDE_PLUGIN_DATA=<value>` in front of it, shell-quoted (`shlex.quote`); a command in a SKILL.md body writes `CLAUDE_PLUGIN_DATA='${CLAUDE_PLUGIN_DATA}'`, which Claude Code substitutes when it loads the skill (single quotes, so a `$` in the path is not expanded again) (files under `references/` are read, not loaded, so they point at the SKILL.md command instead).
 - Each plugin README's Configuration section lists where its files go and what uninstalling removes.
 
+## Secrets a plugin reads
+
+A plugin must run without an interactive prompt (Touch ID, a password, an approval dialog) on each command; a one-time prompt during setup is fine. A secret a script reads on every run comes from a non-interactive source:
+
+- By default, a file under `${CLAUDE_PLUGIN_DATA}` with mode 0600.
+- 1Password only through a service account, whose token sits in an environment variable the user names in `userConfig`. The script passes the token only to the `op` subprocess; never set `OP_SERVICE_ACCOUNT_TOKEN` globally.
+
+`sensitive` `userConfig` values do not reach commands Claude runs through Bash, so such scripts take the variable's name, not the secret.
+
 ## Before changing a shared skill or hook
 
 Skills and hooks here run in many repos. Check these before proposing a change.
