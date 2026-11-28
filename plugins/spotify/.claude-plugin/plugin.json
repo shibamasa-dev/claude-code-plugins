@@ -1,0 +1,48 @@
+{
+  "name": "spotify",
+  "version": "0.1.0",
+  "description": "Skills that drive your own Spotify through the Web API (PKCE, no client secret): list devices, play on a chosen device, move playback, now playing and recently played, read your playlists, add tracks without duplicates, check Liked Songs, and read your taste from your playlists to recommend tracks. The setup skill walks through creating the developer app and the first authorization. Tokens go to a 0600 file in the plugin data directory, or to 1Password",
+  "author": {
+    "name": "shibamasa-dev"
+  },
+  "homepage": "https://github.com/shibamasa-dev/claude-code-plugins/tree/main/plugins/spotify",
+  "repository": "https://github.com/shibamasa-dev/claude-code-plugins",
+  "license": "MIT",
+  "keywords": [
+    "spotify",
+    "music",
+    "playlist",
+    "web-api",
+    "pkce"
+  ],
+  "userConfig": {
+    "token_store": {
+      "type": "string",
+      "title": "Where to keep the Spotify tokens",
+      "description": "file (default) keeps the client ID and tokens in one JSON file with mode 0600 at <plugin data>/spotify/token.json. 1password keeps them in one 1Password item through the op CLI",
+      "required": false,
+      "default": "file"
+    },
+    "op_item": {
+      "type": "string",
+      "title": "1Password item title",
+      "description": "Title of the 1Password item that holds the client ID and tokens (only with token_store = 1password). The first auth creates it",
+      "required": false,
+      "default": "Spotify Web API"
+    },
+    "op_vault": {
+      "type": "string",
+      "title": "1Password vault",
+      "description": "Vault of that item (only with token_store = 1password). Empty means every vault when reading and op's default vault when creating",
+      "required": false,
+      "default": ""
+    },
+    "redirect_port": {
+      "type": "number",
+      "title": "Redirect URI port",
+      "description": "Port of the Redirect URI registered in your Spotify developer app (http://127.0.0.1:<port>/callback). The first auth listens on it",
+      "required": false,
+      "default": 8888
+    }
+  }
+}

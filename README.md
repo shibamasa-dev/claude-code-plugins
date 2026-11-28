@@ -28,6 +28,7 @@ A Claude Code plugin marketplace: guard hooks and workflow skills from daily dev
 /plugin install agent-bridge@shibamasa-plugins
 /plugin install print@shibamasa-plugins
 /plugin install personal-knowledge@shibamasa-plugins
+/plugin install spotify@shibamasa-plugins
 ```
 
 Every plugin is independent. Install only the ones you need.
@@ -50,6 +51,7 @@ Every plugin is independent. Install only the ones you need.
 | [agent-bridge](plugins/agent-bridge/README.md) | Two-way messaging between Claude Code and other AI agents through a message queue you host on Supabase. Every agent uses one API with its own token and is woken by a webhook or by polling; a listening Claude Code session wakes when a message arrives. A setup skill builds the bridge in your Supabase project with placeholder Vault secrets you replace |
 | [print](plugins/print/README.md) | Prints local files (PDF, image, text, HTML, Markdown) through CUPS `lp`: black and white, duplex long edge, A4 and plain paper by default, with page numbers. It picks the options each printer accepts from `lpoptions -l`, reports what the printer doesn't take, and shows pages, sheets and settings before sending |
 | [personal-knowledge](plugins/personal-knowledge/README.md) | Skills that keep a personal local data store on your machine. Currently `get-chrome-history`, which reads the Chrome browsing history added since the last run, groups it by service and summarizes your interests; the domains it learns go into its own `knowledge.json` in the plugin data directory |
+| [spotify](plugins/spotify/README.md) | Drives your own Spotify through the Web API (PKCE, no client secret): plays on a chosen device, moves playback, shows now playing and recently played, reads your playlists, adds tracks without duplicates and checks Liked Songs. Claude reads your taste from your playlists, recommends and plays tracks, and adds the ones you liked. A `setup` skill walks through the developer app and the first authorization; tokens go to a 0600 file in the plugin data directory or to 1Password |
 
 Each plugin's README lists its skills, hooks and settings.
 
@@ -82,6 +84,7 @@ English is the base language, and the plugins are being translated from Japanese
 - `agent-bridge` also needs a Supabase project and a Supabase connector (claude.ai connector or MCP server) for setup
 - `print` also needs CUPS (`lp`), poppler, and Chrome for HTML, Markdown and text; qpdf and pandoc are optional
 - `personal-knowledge`'s `get-chrome-history` also needs Google Chrome or Chromium
+- `spotify` also needs a Spotify Premium account (as the owner of the developer app it uses), and the 1Password CLI only for its `1password` token store
 
 ## Contributing
 

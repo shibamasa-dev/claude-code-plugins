@@ -1,0 +1,1250 @@
+{
+  "skill_name": "spotify",
+  "note": "Cases for skills/spotify/scripts/spotify.py, run by spotify_cases.py against a local mock Spotify. No network beyond 127.0.0.1, no real 1Password: PATH holds only a recording op stub and the system directories. The response shapes come from the response examples in Spotify's Web API reference: devices=get-a-users-available-devices, play=start-a-users-playback (204), transfer=transfer-a-users-playback (one device_ids entry), currently-playing=get-the-users-currently-playing-track, recently-played=get-recently-played, /me/playlists=get-a-list-of-current-users-playlists (items.total), playlist items=get-playlists-items (items[].item, 2026-02), add=add-items-to-playlist (POST /items, 100 per request), /me/tracks=get-users-saved-tracks (items[].track, added_at), refresh=tutorials/refreshing-tokens (PKCE puts client_id in the body; a refresh_token may not come back). IDs and URIs are synthetic values in the right shape; the Japanese playlist and track names stand for Japanese user data. Behaviour the reference does not document (currently-playing 204, play 404 NO_ACTIVE_DEVICE, /me/tracks newest first) is mocked as commonly observed but is unverified against a real account.",
+  "cases": [
+    {
+      "id": "play-and-transfer-by-device-name",
+      "description": "Resolves the device_id from a partial device name and plays (PUT /me/player/play?device_id=..., body uris), then moves playback to another device (PUT /me/player, exactly one device_ids entry, play: true)",
+      "routes": {
+        "GET /v1/me/player/devices": [
+          {
+            "status": 200,
+            "json": {
+              "devices": [
+                {
+                  "id": "5fbb3ba6aa454b5534c4ba43a8c7e8e45a63ad0e",
+                  "is_active": false,
+                  "is_private_session": false,
+                  "is_restricted": false,
+                  "name": "Living Room MacBook",
+                  "type": "Computer",
+                  "volume_percent": 60,
+                  "supports_volume": true
+                },
+                {
+                  "id": "9e4c0d1f2a3b4c5d6e7f8091a2b3c4d5e6f70812",
+                  "is_active": true,
+                  "is_private_session": false,
+                  "is_restricted": false,
+                  "name": "iPhone",
+                  "type": "Smartphone",
+                  "volume_percent": 100,
+                  "supports_volume": false
+                }
+              ]
+            }
+          }
+        ],
+        "PUT /v1/me/player/play": [
+          {
+            "status": 204
+          }
+        ],
+        "PUT /v1/me/player": [
+          {
+            "status": 204
+          }
+        ]
+      },
+      "steps": [
+        {
+          "run": [
+            "play",
+            "--device",
+            "macbook",
+            "--uris",
+            "spotify:track:3dPQuX8Gs42Y7b454ybpMR",
+            "spotify:track:4KULAymBBJcPRpk1yO4dOG"
+          ],
+          "expect_code": 0,
+          "expect_json": {
+            "ok": true,
+            "device_id": "5fbb3ba6aa454b5534c4ba43a8c7e8e45a63ad0e"
+          }
+        },
+        {
+          "run": [
+            "transfer",
+            "--device",
+            "iPhone",
+            "--play"
+          ],
+          "expect_code": 0,
+          "expect_json": {
+            "ok": true,
+            "device": "iPhone"
+          }
+        }
+      ],
+      "expect_requests": [
+        {
+          "method": "PUT",
+          "path": "/v1/me/player/play",
+          "query": {
+            "device_id": "5fbb3ba6aa454b5534c4ba43a8c7e8e45a63ad0e"
+          },
+          "body": {
+            "uris": [
+              "spotify:track:3dPQuX8Gs42Y7b454ybpMR",
+              "spotify:track:4KULAymBBJcPRpk1yO4dOG"
+            ]
+          }
+        },
+        {
+          "method": "PUT",
+          "path": "/v1/me/player",
+          "body": {
+            "device_ids": [
+              "9e4c0d1f2a3b4c5d6e7f8091a2b3c4d5e6f70812"
+            ],
+            "play": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "add-skips-duplicates-and-chunks-100",
+      "description": "Resolves the playlist by name, drops tracks already in it (two pages of items[].item) and duplicates within the arguments, and adds the rest to POST /playlists/{id}/items 100 at a time",
+      "routes": {
+        "GET /v1/me": [
+          {
+            "status": 200,
+            "json": {
+              "id": "user_01",
+              "display_name": "テストユーザー"
+            }
+          }
+        ],
+        "GET /v1/me/playlists": [
+          {
+            "status": 200,
+            "json": {
+              "href": "",
+              "limit": 50,
+              "offset": 0,
+              "next": null,
+              "total": 2,
+              "items": [
+                {
+                  "id": "37i9dQZF1DXcBWIGoYBM5M",
+                  "name": "他人のプレイリスト",
+                  "collaborative": false,
+                  "public": true,
+                  "owner": {
+                    "id": "someone_else"
+                  },
+                  "items": {
+                    "href": "",
+                    "total": 50
+                  }
+                },
+                {
+                  "id": "1aB2cD3eF4gH5iJ6kL7mN8",
+                  "name": "冬の歌",
+                  "collaborative": false,
+                  "public": false,
+                  "owner": {
+                    "id": "user_01"
+                  },
+                  "items": {
+                    "href": "",
+                    "total": 3
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "GET /v1/playlists/1aB2cD3eF4gH5iJ6kL7mN8/items": [
+          {
+            "status": 200,
+            "json": {
+              "limit": 50,
+              "offset": 0,
+              "total": 3,
+              "next": "{BASE}/v1/playlists/1aB2cD3eF4gH5iJ6kL7mN8/items?offset=50&limit=50",
+              "items": [
+                {
+                  "added_at": "2025-12-01T10:00:00Z",
+                  "is_local": false,
+                  "item": {
+                    "type": "track",
+                    "name": "白日",
+                    "uri": "spotify:track:2fF1kQJ0Ckx4aGkSuuHYuR",
+                    "duration_ms": 277000,
+                    "artists": [
+                      {
+                        "name": "King Gnu"
+                      }
+                    ],
+                    "album": {
+                      "name": "CEREMONY"
+                    }
+                  }
+                },
+                {
+                  "added_at": "2025-12-02T10:00:00Z",
+                  "is_local": false,
+                  "item": {
+                    "type": "episode",
+                    "name": "ポッドキャストの回",
+                    "uri": "spotify:episode:0Q86acNRm6V9GYx55SXKwf"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "status": 200,
+            "json": {
+              "limit": 50,
+              "offset": 50,
+              "total": 3,
+              "next": null,
+              "items": [
+                {
+                  "added_at": "2025-12-03T10:00:00Z",
+                  "is_local": false,
+                  "item": {
+                    "type": "track",
+                    "name": "Lemon",
+                    "uri": "spotify:track:04TshWXkhV1qkqHzf31Hn6",
+                    "duration_ms": 255000,
+                    "artists": [
+                      {
+                        "name": "米津玄師"
+                      }
+                    ],
+                    "album": {
+                      "name": "Lemon"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "POST /v1/playlists/1aB2cD3eF4gH5iJ6kL7mN8/items": [
+          {
+            "status": 201,
+            "json": {
+              "snapshot_id": "abc"
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "run": [
+            "add",
+            "冬の歌",
+            "spotify:track:04TshWXkhV1qkqHzf31Hn6",
+            "@gen:spotify:track:new{i:03d}xxxxxxxxxxxxxxxx:1:105",
+            "spotify:track:new001xxxxxxxxxxxxxxxx"
+          ],
+          "expect_code": 0,
+          "expect_json_len": {
+            "added": 105,
+            "skipped_duplicates": 2
+          },
+          "expect_json": {
+            "playlist_id": "1aB2cD3eF4gH5iJ6kL7mN8",
+            "skipped_duplicates": [
+              "spotify:track:04TshWXkhV1qkqHzf31Hn6",
+              "spotify:track:new001xxxxxxxxxxxxxxxx"
+            ]
+          }
+        }
+      ],
+      "expect_requests": [
+        {
+          "method": "GET",
+          "path": "/v1/playlists/1aB2cD3eF4gH5iJ6kL7mN8/items",
+          "query": {
+            "offset": "50"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/playlists/1aB2cD3eF4gH5iJ6kL7mN8/items",
+          "body_uris_len": 100,
+          "body_first_uri": "spotify:track:new001xxxxxxxxxxxxxxxx"
+        },
+        {
+          "method": "POST",
+          "path": "/v1/playlists/1aB2cD3eF4gH5iJ6kL7mN8/items",
+          "body_uris_len": 5
+        }
+      ],
+      "expect_not_requested": [
+        "/v1/playlists/1aB2cD3eF4gH5iJ6kL7mN8/tracks"
+      ]
+    },
+    {
+      "id": "add-refuses-ambiguous-or-foreign-playlist",
+      "description": "Adds nothing and exits 2 when a partial name matches two playlists, and when the name is someone else's playlist",
+      "routes": {
+        "GET /v1/me": [
+          {
+            "status": 200,
+            "json": {
+              "id": "user_01"
+            }
+          }
+        ],
+        "GET /v1/me/playlists": [
+          {
+            "status": 200,
+            "json": {
+              "next": null,
+              "items": [
+                {
+                  "id": "aaaaaaaaaaaaaaaaaaaaa1",
+                  "name": "ドライブ①",
+                  "collaborative": false,
+                  "public": false,
+                  "owner": {
+                    "id": "user_01"
+                  },
+                  "items": {
+                    "total": 10
+                  }
+                },
+                {
+                  "id": "aaaaaaaaaaaaaaaaaaaaa2",
+                  "name": "ドライブ②",
+                  "collaborative": false,
+                  "public": false,
+                  "owner": {
+                    "id": "user_01"
+                  },
+                  "items": {
+                    "total": 10
+                  }
+                },
+                {
+                  "id": "bbbbbbbbbbbbbbbbbbbbb1",
+                  "name": "洋楽 Top 50",
+                  "collaborative": false,
+                  "public": true,
+                  "owner": {
+                    "id": "spotify"
+                  },
+                  "items": {
+                    "total": 50
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "run": [
+            "add",
+            "ドライブ",
+            "spotify:track:3dPQuX8Gs42Y7b454ybpMR"
+          ],
+          "expect_code": 2,
+          "expect_stderr_contains": [
+            "ドライブ①",
+            "ドライブ②"
+          ]
+        },
+        {
+          "run": [
+            "add",
+            "洋楽 Top 50",
+            "spotify:track:3dPQuX8Gs42Y7b454ybpMR"
+          ],
+          "expect_code": 2
+        }
+      ],
+      "expect_not_requested": [
+        "POST "
+      ]
+    },
+    {
+      "id": "liked-since-among-stops-at-older",
+      "description": "Reads Liked Songs (/me/tracks, items[].track) newest first, stops before the next page once an item is older than --since, and returns only the --among tracks",
+      "routes": {
+        "GET /v1/me/tracks": [
+          {
+            "status": 200,
+            "json": {
+              "limit": 50,
+              "offset": 0,
+              "total": 120,
+              "next": "{BASE}/v1/me/tracks?offset=50&limit=50",
+              "items": [
+                {
+                  "added_at": "2026-11-28T10:20:00Z",
+                  "track": {
+                    "type": "track",
+                    "name": "夜に駆ける",
+                    "uri": "spotify:track:3dPQuX8Gs42Y7b454ybpMR",
+                    "duration_ms": 261000,
+                    "artists": [
+                      {
+                        "name": "YOASOBI"
+                      }
+                    ],
+                    "album": {
+                      "name": "THE BOOK"
+                    }
+                  }
+                },
+                {
+                  "added_at": "2026-11-28T10:10:00Z",
+                  "track": {
+                    "type": "track",
+                    "name": "おすすめ外の曲",
+                    "uri": "spotify:track:7qiZfU4dY1lWllzX7mPBI3",
+                    "duration_ms": 200000,
+                    "artists": [
+                      {
+                        "name": "Ed Sheeran"
+                      }
+                    ],
+                    "album": {
+                      "name": "÷"
+                    }
+                  }
+                },
+                {
+                  "added_at": "2026-11-28T10:05:00+00:00",
+                  "track": {
+                    "type": "track",
+                    "name": "怪物",
+                    "uri": "spotify:track:4KULAymBBJcPRpk1yO4dOG",
+                    "duration_ms": 205000,
+                    "artists": [
+                      {
+                        "name": "YOASOBI"
+                      }
+                    ],
+                    "album": {
+                      "name": "THE BOOK 2"
+                    }
+                  }
+                },
+                {
+                  "added_at": "2026-11-20T09:00:00Z",
+                  "track": {
+                    "type": "track",
+                    "name": "以前の♡",
+                    "uri": "spotify:track:5ChkMS8OtdzJeqyybCc9R5",
+                    "duration_ms": 300000,
+                    "artists": [
+                      {
+                        "name": "Mr.Children"
+                      }
+                    ],
+                    "album": {
+                      "name": "x"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "status": 200,
+            "json": {
+              "next": null,
+              "items": []
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "run": [
+            "liked",
+            "--since",
+            "2026-11-28T19:00:00+09:00",
+            "--among",
+            "spotify:track:3dPQuX8Gs42Y7b454ybpMR",
+            "spotify:track:4KULAymBBJcPRpk1yO4dOG",
+            "spotify:track:5ChkMS8OtdzJeqyybCc9R5"
+          ],
+          "expect_code": 0,
+          "expect_json": [
+            {
+              "name": "夜に駆ける",
+              "uri": "spotify:track:3dPQuX8Gs42Y7b454ybpMR"
+            },
+            {
+              "name": "怪物",
+              "uri": "spotify:track:4KULAymBBJcPRpk1yO4dOG"
+            }
+          ]
+        }
+      ],
+      "expect_not_requested": [
+        "/v1/me/tracks?offset=50"
+      ]
+    },
+    {
+      "id": "refresh-writes-back-and-hides-token",
+      "description": "Refreshes an expired access token with the PKCE refresh (client_id in the body, no Basic auth), writes back a new refresh token when one comes back and keeps the old one otherwise, keeps token.json at mode 600, and never prints a token",
+      "token_file": {
+        "client_id": "0123456789abcdef0123456789abcdef",
+        "refresh_token": "old-refresh",
+        "access_token": "expired-access",
+        "expires_at": "1000"
+      },
+      "routes": {
+        "POST /api/token": [
+          {
+            "status": 200,
+            "json": {
+              "access_token": "new-access-1",
+              "token_type": "Bearer",
+              "expires_in": 3600,
+              "refresh_token": "new-refresh",
+              "scope": "user-read-playback-state"
+            }
+          },
+          {
+            "status": 200,
+            "json": {
+              "access_token": "new-access-2",
+              "token_type": "Bearer",
+              "expires_in": 3600,
+              "scope": "user-read-playback-state"
+            }
+          }
+        ],
+        "GET /v1/me": [
+          {
+            "status": 200,
+            "json": {
+              "id": "user_01",
+              "display_name": "テストユーザー"
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "run": [
+            "check"
+          ],
+          "expect_code": 0,
+          "expect_json": {
+            "ok": true,
+            "user_id": "user_01"
+          },
+          "expect_stdout_not_contains": [
+            "new-access-1",
+            "new-refresh"
+          ]
+        },
+        {
+          "expire_token_file": true
+        },
+        {
+          "run": [
+            "check"
+          ],
+          "expect_code": 0
+        }
+      ],
+      "expect_requests": [
+        {
+          "method": "POST",
+          "path": "/api/token",
+          "auth": null,
+          "form": {
+            "grant_type": "refresh_token",
+            "refresh_token": "old-refresh",
+            "client_id": "0123456789abcdef0123456789abcdef"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/v1/me",
+          "auth": "Bearer new-access-1"
+        },
+        {
+          "method": "POST",
+          "path": "/api/token",
+          "form": {
+            "grant_type": "refresh_token",
+            "refresh_token": "new-refresh"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/v1/me",
+          "auth": "Bearer new-access-2"
+        }
+      ],
+      "expect_token_file": {
+        "refresh_token": "new-refresh",
+        "access_token": "new-access-2"
+      },
+      "expect_token_mode": {
+        "file": "600",
+        "dir": "700"
+      }
+    },
+    {
+      "id": "player-errors-and-empty",
+      "description": "Nothing playing (204) gives playing: false; no active device (404 NO_ACTIVE_DEVICE) exits 1 with the reason; 429 waits for Retry-After and succeeds on retry; an unknown device name exits 2",
+      "routes": {
+        "GET /v1/me/player/currently-playing": [
+          {
+            "status": 204
+          }
+        ],
+        "PUT /v1/me/player/play": [
+          {
+            "status": 404,
+            "json": {
+              "error": {
+                "status": 404,
+                "message": "Player command failed: No active device found",
+                "reason": "NO_ACTIVE_DEVICE"
+              }
+            }
+          }
+        ],
+        "GET /v1/me/player/recently-played": [
+          {
+            "status": 429,
+            "headers": {
+              "Retry-After": "0"
+            },
+            "json": {
+              "error": {
+                "status": 429,
+                "message": "Too many requests",
+                "reason": "QUOTA_EXCEEDED"
+              }
+            }
+          },
+          {
+            "status": 200,
+            "json": {
+              "next": null,
+              "cursors": {
+                "after": "1",
+                "before": "0"
+              },
+              "limit": 20,
+              "items": [
+                {
+                  "played_at": "2026-11-28T09:30:00.000Z",
+                  "context": {
+                    "type": "playlist",
+                    "uri": "spotify:playlist:1aB2cD3eF4gH5iJ6kL7mN8"
+                  },
+                  "track": {
+                    "type": "track",
+                    "name": "白日",
+                    "uri": "spotify:track:2fF1kQJ0Ckx4aGkSuuHYuR",
+                    "duration_ms": 277000,
+                    "artists": [
+                      {
+                        "name": "King Gnu"
+                      }
+                    ],
+                    "album": {
+                      "name": "CEREMONY"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "GET /v1/me/player/devices": [
+          {
+            "status": 200,
+            "json": {
+              "devices": []
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "run": [
+            "now"
+          ],
+          "expect_code": 0,
+          "expect_json": {
+            "playing": false
+          }
+        },
+        {
+          "run": [
+            "play",
+            "--uris",
+            "spotify:track:3dPQuX8Gs42Y7b454ybpMR"
+          ],
+          "expect_code": 1,
+          "expect_stderr_contains": [
+            "NO_ACTIVE_DEVICE"
+          ]
+        },
+        {
+          "run": [
+            "recent"
+          ],
+          "expect_code": 0,
+          "expect_json": [
+            {
+              "name": "白日",
+              "artists": [
+                "King Gnu"
+              ],
+              "played_at": "2026-11-28T09:30:00.000Z"
+            }
+          ]
+        },
+        {
+          "run": [
+            "play",
+            "--device",
+            "Echo",
+            "--uris",
+            "spotify:track:3dPQuX8Gs42Y7b454ybpMR"
+          ],
+          "expect_code": 2,
+          "expect_stderr_contains": [
+            "DEVICE_NOT_FOUND"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "taste-and-tracks-read-items-shape",
+      "description": "taste reads only your own playlists and, from the items[].item tracks (episodes and nulls dropped), lists the most frequent artists and the recently added tracks",
+      "routes": {
+        "GET /v1/me": [
+          {
+            "status": 200,
+            "json": {
+              "id": "user_01"
+            }
+          }
+        ],
+        "GET /v1/me/playlists": [
+          {
+            "status": 200,
+            "json": {
+              "next": null,
+              "items": [
+                {
+                  "id": "ccccccccccccccccccccc1",
+                  "name": "アニメ",
+                  "collaborative": false,
+                  "public": false,
+                  "owner": {
+                    "id": "user_01"
+                  },
+                  "items": {
+                    "total": 4
+                  }
+                },
+                {
+                  "id": "ddddddddddddddddddddd1",
+                  "name": "他人の",
+                  "collaborative": false,
+                  "public": true,
+                  "owner": {
+                    "id": "x"
+                  },
+                  "items": {
+                    "total": 9
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "GET /v1/playlists/ccccccccccccccccccccc1/items": [
+          {
+            "status": 200,
+            "json": {
+              "next": null,
+              "items": [
+                {
+                  "added_at": "2026-01-01T00:00:00Z",
+                  "item": {
+                    "type": "track",
+                    "name": "紅蓮華",
+                    "uri": "spotify:track:a1",
+                    "artists": [
+                      {
+                        "name": "LiSA"
+                      }
+                    ],
+                    "album": {
+                      "name": "LEO-NiNE"
+                    }
+                  }
+                },
+                {
+                  "added_at": "2026-03-01T00:00:00Z",
+                  "item": {
+                    "type": "track",
+                    "name": "炎",
+                    "uri": "spotify:track:a2",
+                    "artists": [
+                      {
+                        "name": "LiSA"
+                      }
+                    ],
+                    "album": {
+                      "name": "炎"
+                    }
+                  }
+                },
+                {
+                  "added_at": "2026-02-01T00:00:00Z",
+                  "item": {
+                    "type": "track",
+                    "name": "残酷な天使のテーゼ",
+                    "uri": "spotify:track:a3",
+                    "artists": [
+                      {
+                        "name": "高橋洋子"
+                      }
+                    ],
+                    "album": {
+                      "name": "x"
+                    }
+                  }
+                },
+                {
+                  "added_at": "2026-04-01T00:00:00Z",
+                  "item": null
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "run": [
+            "taste",
+            "--sample",
+            "2"
+          ],
+          "expect_code": 0,
+          "expect_json": [
+            {
+              "playlist": "アニメ",
+              "read": 3,
+              "top_artists": [
+                {
+                  "artist": "LiSA",
+                  "count": 2
+                },
+                {
+                  "artist": "高橋洋子",
+                  "count": 1
+                }
+              ],
+              "recently_added": [
+                "炎 / LiSA",
+                "残酷な天使のテーゼ / 高橋洋子"
+              ]
+            }
+          ]
+        }
+      ],
+      "expect_not_requested": [
+        "/v1/playlists/ddddddddddddddddddddd1/"
+      ]
+    },
+    {
+      "id": "auth-pkce-creates-item-and-saves-tokens",
+      "description": "With no token file, auth --client-id creates <plugin data>/spotify/token.json (mode 600, directory 700). The authorize URL uses PKCE (S256), a 127.0.0.1 redirect on the port from SPOTIFY_REDIRECT_PORT and only the needed scopes. A callback with the wrong state is refused; the right one is exchanged with code_verifier (no secret), and a later check uses the stored access token",
+      "token_file_absent": true,
+      "routes": {
+        "POST /api/token": [
+          {
+            "status": 200,
+            "json": {
+              "access_token": "auth-access",
+              "token_type": "Bearer",
+              "expires_in": 3600,
+              "refresh_token": "auth-refresh",
+              "scope": "user-read-playback-state user-modify-playback-state user-read-currently-playing user-read-recently-played playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public user-library-read"
+            }
+          }
+        ],
+        "GET /v1/me": [
+          {
+            "status": 200,
+            "json": {
+              "id": "user_01",
+              "display_name": "Test User"
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "auth_callback": "wrong",
+          "run": [
+            "--client-id",
+            "0123456789abcdef0123456789abcdef",
+            "--port",
+            "18765"
+          ],
+          "expect_code": 2,
+          "expect_stderr_contains": [
+            "state"
+          ]
+        },
+        {
+          "auth_callback": "ok",
+          "run": [
+            "--client-id",
+            "0123456789abcdef0123456789abcdef"
+          ],
+          "expect_code": 0,
+          "expect_stdout_not_contains": [
+            "auth-access",
+            "auth-refresh"
+          ],
+          "expect_authorize": {
+            "client_id": "0123456789abcdef0123456789abcdef",
+            "redirect_uri": "http://127.0.0.1:18765/callback",
+            "code_challenge_method": "S256",
+            "response_type": "code",
+            "scope": "user-read-playback-state user-modify-playback-state user-read-currently-playing user-read-recently-played playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public user-library-read"
+          },
+          "expect_pkce": true
+        },
+        {
+          "run": [
+            "check"
+          ],
+          "expect_code": 0,
+          "expect_json": {
+            "ok": true,
+            "user_id": "user_01"
+          }
+        }
+      ],
+      "expect_requests": [
+        {
+          "method": "POST",
+          "path": "/api/token",
+          "auth": null,
+          "form": {
+            "grant_type": "authorization_code",
+            "code": "eval-code",
+            "redirect_uri": "http://127.0.0.1:18765/callback",
+            "client_id": "0123456789abcdef0123456789abcdef"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/v1/me",
+          "auth": "Bearer auth-access"
+        }
+      ],
+      "expect_token_file": {
+        "client_id": "0123456789abcdef0123456789abcdef",
+        "refresh_token": "auth-refresh",
+        "access_token": "auth-access"
+      },
+      "env": {
+        "SPOTIFY_REDIRECT_PORT": "18765"
+      },
+      "expect_token_mode": {
+        "file": "600",
+        "dir": "700"
+      }
+    },
+    {
+      "id": "token-store-1password-uses-op",
+      "description": "token_store = 1password reads the item with op item get (item title and vault from SPOTIFY_OP_ITEM / SPOTIFY_OP_VAULT), refreshes an expired access token, writes it back with op item edit passing the item JSON on stdin (no token in argv), and creates no token file",
+      "env": {
+        "SPOTIFY_TOKEN_STORE": "1password",
+        "SPOTIFY_OP_ITEM": "Spotify Test Item",
+        "SPOTIFY_OP_VAULT": "Test Vault"
+      },
+      "token_file_absent": true,
+      "op_item": {
+        "id": "stubitem01",
+        "title": "Spotify Test Item",
+        "fields": [
+          {
+            "id": "client_id",
+            "label": "client_id",
+            "type": "STRING",
+            "value": "0123456789abcdef0123456789abcdef"
+          },
+          {
+            "id": "refresh_token",
+            "label": "refresh_token",
+            "type": "CONCEALED",
+            "value": "op-refresh"
+          },
+          {
+            "id": "access_token",
+            "label": "access_token",
+            "type": "CONCEALED",
+            "value": "op-expired"
+          },
+          {
+            "id": "expires_at",
+            "label": "expires_at",
+            "type": "STRING",
+            "value": "1000"
+          }
+        ]
+      },
+      "routes": {
+        "POST /api/token": [
+          {
+            "status": 200,
+            "json": {
+              "access_token": "op-new-access",
+              "token_type": "Bearer",
+              "expires_in": 3600
+            }
+          }
+        ],
+        "GET /v1/me": [
+          {
+            "status": 200,
+            "json": {
+              "id": "user_01",
+              "display_name": "Test User"
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "run": [
+            "check"
+          ],
+          "expect_code": 0,
+          "expect_json": {
+            "ok": true,
+            "user_id": "user_01"
+          },
+          "expect_stdout_not_contains": [
+            "op-new-access",
+            "op-refresh"
+          ]
+        }
+      ],
+      "expect_requests": [
+        {
+          "method": "POST",
+          "path": "/api/token",
+          "form": {
+            "grant_type": "refresh_token",
+            "refresh_token": "op-refresh"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/v1/me",
+          "auth": "Bearer op-new-access"
+        }
+      ],
+      "expect_op_calls": [
+        [
+          "item",
+          "get",
+          "Spotify Test Item",
+          "--format",
+          "json",
+          "--vault",
+          "Test Vault"
+        ],
+        [
+          "item",
+          "edit",
+          "stubitem01",
+          "--vault",
+          "Test Vault"
+        ]
+      ],
+      "expect_op_stdin_contains": [
+        "op-new-access"
+      ],
+      "expect_no_token_file": true
+    },
+    {
+      "id": "unsubstituted-settings-fall-back-to-defaults",
+      "description": "Values still reading as ${user_config...} placeholders count as unset: the store is the file store and op is never called",
+      "env": {
+        "SPOTIFY_TOKEN_STORE": "${user_config.token_store}",
+        "SPOTIFY_OP_ITEM": "${user_config.op_item}",
+        "SPOTIFY_OP_VAULT": "${user_config.op_vault}",
+        "SPOTIFY_REDIRECT_PORT": "${user_config.redirect_port}"
+      },
+      "token_file": {
+        "client_id": "0123456789abcdef0123456789abcdef",
+        "refresh_token": "file-refresh",
+        "access_token": "file-access",
+        "expires_at": "4102444800"
+      },
+      "routes": {
+        "GET /v1/me": [
+          {
+            "status": 200,
+            "json": {
+              "id": "user_01",
+              "display_name": "Test User"
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "run": [
+            "check"
+          ],
+          "expect_code": 0,
+          "expect_json": {
+            "ok": true,
+            "user_id": "user_01"
+          }
+        }
+      ],
+      "expect_requests": [
+        {
+          "method": "GET",
+          "path": "/v1/me",
+          "auth": "Bearer file-access"
+        }
+      ]
+    },
+    {
+      "id": "file-store-needs-own-plugin-data-dir",
+      "description": "The file store refuses (exit 2, nothing written) when CLAUDE_PLUGIN_DATA is an unsubstituted placeholder or another plugin's data directory, so tokens never land in a second place",
+      "token_file_absent": true,
+      "routes": {},
+      "steps": [
+        {
+          "env": {
+            "CLAUDE_PLUGIN_DATA": "${CLAUDE_PLUGIN_DATA}"
+          },
+          "run": [
+            "check"
+          ],
+          "expect_code": 2,
+          "expect_stderr_contains": [
+            "CLAUDE_PLUGIN_DATA"
+          ]
+        },
+        {
+          "plugin_data": "other-plugin-test-marketplace",
+          "run": [
+            "check"
+          ],
+          "expect_code": 2,
+          "expect_stderr_contains": [
+            "CLAUDE_PLUGIN_DATA"
+          ]
+        }
+      ],
+      "expect_no_token_file": true,
+      "expect_dir_empty": "other-plugin-test-marketplace"
+    },
+    {
+      "id": "unknown-token-store-exits-2",
+      "description": "A token_store other than file or 1password exits 2 instead of guessing a store",
+      "env": {
+        "SPOTIFY_TOKEN_STORE": "keychain"
+      },
+      "token_file": {
+        "client_id": "0123456789abcdef0123456789abcdef",
+        "refresh_token": "file-refresh",
+        "access_token": "file-access",
+        "expires_at": "4102444800"
+      },
+      "routes": {
+        "GET /v1/me": [
+          {
+            "status": 200,
+            "json": {
+              "id": "user_01",
+              "display_name": "Test User"
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "run": [
+            "check"
+          ],
+          "expect_code": 2,
+          "expect_stderr_contains": [
+            "keychain"
+          ]
+        }
+      ],
+      "expect_not_requested": [
+        "/v1/me"
+      ]
+    },
+    {
+      "id": "unwritable-store-stops-before-refresh",
+      "description": "When the token directory can't be written (as inside a sandbox), an expired token exits 3 with reason store_not_writable before asking Spotify for new tokens, so a rotated refresh token is never lost",
+      "token_file": {
+        "client_id": "0123456789abcdef0123456789abcdef",
+        "refresh_token": "keep-refresh",
+        "access_token": "expired-access",
+        "expires_at": "1000"
+      },
+      "chmod_token_dir": "500",
+      "routes": {
+        "POST /api/token": [
+          {
+            "status": 200,
+            "json": {
+              "access_token": "never",
+              "expires_in": 3600
+            }
+          }
+        ],
+        "GET /v1/me": [
+          {
+            "status": 200,
+            "json": {
+              "id": "user_01",
+              "display_name": "Test User"
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "run": [
+            "check"
+          ],
+          "expect_code": 3,
+          "expect_stderr_contains": [
+            "store_not_writable"
+          ]
+        }
+      ],
+      "expect_not_requested": [
+        "/api/token",
+        "/v1/me"
+      ],
+      "expect_token_file": {
+        "refresh_token": "keep-refresh"
+      }
+    }
+  ]
+}

@@ -28,6 +28,7 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 /plugin install agent-bridge@shibamasa-plugins
 /plugin install print@shibamasa-plugins
 /plugin install personal-knowledge@shibamasa-plugins
+/plugin install spotify@shibamasa-plugins
 ```
 
 どれも独立していて、必要なものだけ入れられる。
@@ -50,6 +51,7 @@ Claude Code 用のプラグインマーケットプレイス。日々の開発�
 | [agent-bridge](plugins/agent-bridge/README.ja.md) | 自分の Supabase に置くメッセージキューを通して、Claude Code とほかの AI エージェントが双方向にやり取りする。どのエージェントも自分のトークンで同じ API を使い、webhook かポーリングで起こされる。待ち受け中の Claude Code セッションはメッセージが届くと起きる。セットアップ用のスキルが、Supabase プロジェクトにブリッジを作り、Vault の秘密をダミー値で登録する（本物はあとで入れる） |
 | [print](plugins/print/README.ja.md) | 手元のファイル（PDF・画像・テキスト・HTML・Markdown）を CUPS の `lp` で印刷する。既定は白黒・両面長辺とじ・A4・普通紙で、ページ番号つき。プリンタが受け付けるオプションを `lpoptions -l` から選び、受け付けない設定は報告し、送る前にページ数・紙の枚数・設定を示す |
 | [personal-knowledge](plugins/personal-knowledge/README.ja.md) | 個人のデータを手元のマシンに貯めるスキル群。今は `get-chrome-history` だけ。前回以降に増えた Chrome の閲覧履歴を読み、サービスごとにまとめて興味の傾向を示す。覚えたドメインはプラグインのデータディレクトリにある自分用の `knowledge.json` に入る |
+| [spotify](plugins/spotify/README.ja.md) | 自分の Spotify を Web API で操作する（PKCE・Client Secret なし）。端末を選んで再生し、再生を移し、今の曲と最近聴いた曲を出し、自分のプレイリストを読み、重複させずに曲を足し、♡を確かめる。Claude がプレイリストから好みを読んで曲を選んで流し、気に入った曲を足す。開発者アプリと最初の許可は `setup` スキルが案内する。トークンはプラグインのデータディレクトリの 0600 のファイルか 1Password に置く |
 
 スキル・フックの一覧と設定は、各プラグインの README にある。
 
@@ -82,6 +84,7 @@ review の設定（`review_heavy`・`review_light`・`review_auto`・`rereview_t
 - `agent-bridge` は Supabase のプロジェクトと、セットアップ用の Supabase コネクタ（claude.ai のコネクタか MCP サーバー）
 - `print` は CUPS（`lp`）、poppler、HTML・Markdown・テキストを変換するなら Chrome。qpdf と pandoc は任意
 - `personal-knowledge` の `get-chrome-history` は Google Chrome か Chromium
+- `spotify` は Spotify Premium のアカウント（使う開発者アプリの持ち主として）。1Password CLI はトークンの置き場を `1password` にするときだけ
 
 ## コントリビュート
 
